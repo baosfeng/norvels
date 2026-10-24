@@ -1,0 +1,40 @@
+# norvels 静态检查配置（golangci-lint v2 格式）
+#
+# 用途：把质量门禁里「圈复杂度」与「函数长度」交给社区工具实测，
+# 由 scripts/gate-complexity.sh / scripts/gate-size.sh 调用。
+# 只启用与门禁直接相关的 linter，其余保持 none，避免既存风格问题淹没门禁信号。
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - gocyclo      # 圈复杂度（门禁 4：<= 10）
+    - funlen       # 函数长度（门禁 5：单函数 <= 70 行）
+    - gocognit     # 认知复杂度，辅助定位难维护函数（不单独设阈值门禁）
+  settings:
+    gocyclo:
+      min-complexity: 10
+    funlen:
+      lines: 70
+      statements: 50
+      ignore-comments: true
+    gocognit:
+      min-complexity: 20
+
+issues:
+  # 门禁要的是「全部超标函数」，不要被默认条数截断。
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  sort-order:
+    - file
+  formats:
+    text:
+      path: stdout
+      print-issued-lines: true
+      colors: false

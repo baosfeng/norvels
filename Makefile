@@ -6,10 +6,11 @@ BUILTAT ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.builtAt=$(BUILTAT)
 BIN := bin/norvels
 
-.PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy verify
+.PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy gallery \
+        verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance
 
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-14s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
 
 all: build ## 默认：构建前端 + 后端
 
@@ -32,11 +33,11 @@ run: ## 本地启动
 import: ## 导入示例（SOURCE=路径）
 	go run ./cmd/norvels import --dir "$(SOURCE)" --db ./data/norvels.db
 
-test: ## 运行全部 Go 测试
+test: ## 运行全部 Go 测试（含 Gherkin 验收测试）
 	go test ./... -count=1
 
 fmt: ## 格式化
-	gofmt -w ./cmd ./internal
+	gofmt -w ./cmd ./internal ./tests
 
 tidy: ## 整理依赖
 	go mod tidy
@@ -53,8 +54,25 @@ privacy: ## 隐私扫描（工作区全部文件，提交前跑一次）
 gallery: ## 重新生成三版原型对比页 + 截图（自动相对化路径）
 	scripts/gallery.sh
 
-verify: fmt ## 提交前门禁：格式 + vet + 测试 + 隐私扫描
-	gofmt -l ./cmd ./internal | tee /tmp/norvels-gofmt.txt | (! grep .) || (echo "gofmt 未通过，见上" && exit 1)
-	go vet ./...
-	go test ./... -count=1
-	scripts/privacy-scan.sh --all
+# ---------- 质量门禁（quality-gates 9 项，逐项可单独跑）----------
+# 每个 gate-* 都如实报告：不达标即 exit 1，不调阈值、不 skip。详见 docs/quality-gates.md。
+
+gate-complexity: ## 门禁 4：圈复杂度（单函数 ≤ 10）
+	@scripts/gate-complexity.sh
+
+gate-size: ## 门禁 5：模块大小（单函数 ≤ 70 行、单文件 ≤ 400 行）
+	@scripts/gate-size.sh
+
+gate-deps: ## 门禁 6：依赖结构（方向 + 循环依赖）
+	@scripts/gate-deps.sh
+
+gate-cover: ## 门禁 7：覆盖率（总行 ≥ 85%，核心包各自 ≥ 85%）
+	@scripts/gate-cover.sh
+
+gate-acceptance: ## 门禁 2：Gherkin 验收测试（godog）
+	@go test ./tests/acceptance/ -count=1
+
+gate: ## 全部质量门禁（跑完逐项打印结果，任一未通过则 exit 1）
+	@scripts/gate-all.sh
+
+verify: gate ## 提交前门禁：等同 make gate（全部 9 项）
