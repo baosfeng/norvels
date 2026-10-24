@@ -1,0 +1,51 @@
+# norvels 容器编排。在仓库根执行：
+#   docker compose -f deploy/compose.yml up -d
+# 相对路径以本文件所在目录（deploy/）为基准，故数据目录写作 ../data。
+# 数据落点：容器内 /data/norvels.db（NORVELS_DB），对应宿主机仓库根 data/norvels.db。
+# 小说源目录只读挂载到容器内 /books，导入时才需要（NORVELS_BOOKS_DIR 指向真实目录）。
+
+name: norvels
+
+services:
+  norvels:
+    image: norvels:${NORVELS_VERSION:-0.1.0}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VERSION: ${NORVELS_VERSION:-0.1.0}
+        COMMIT: ${NORVELS_COMMIT:-dev}
+        BUILTAT: ${NORVELS_BUILTAT:-unknown}
+    container_name: norvels
+    ports:
+      # 宿主端口可通过 NORVELS_PORT 覆盖，容器内固定 8080。
+      - "${NORVELS_PORT:-8080}:8080"
+    environment:
+      NORVELS_ADDR: ":8080"
+      NORVELS_DB: "/data/norvels.db"
+      NORVELS_HEALTH_URL: "http://127.0.0.1:8080/api/health"
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      # 数据卷：SQLite 主库、WAL、SHM 都在同一目录（/data）。
+      - ../data:/data
+      # 小说 txt 目录只读挂载；把 NORVELS_BOOKS_DIR 指向真实目录（含中文/空格也可）。
+      - "${NORVELS_BOOKS_DIR:-../books}:/books:ro"
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 15s
+    # 资源建议：浏览 1C1G 足够；导入 4.4GB 建议 2C2G（详见 docs/deploy.md）。
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "2.0"
+    #       memory: 2G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
