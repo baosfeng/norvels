@@ -1,0 +1,36 @@
+# 版本控制与本地环境（不进构建上下文，镜像层更小更快）
+.git
+.gitignore
+.github
+.gitattributes
+.idea
+.vscode
+.DS_Store
+.env
+*.log
+
+# 本地构建产物
+bin/
+dist/
+
+# 本地数据与备份（数据通过 volume 挂载，绝不进镜像）
+data/
+backups/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+testdata/
+
+# 前端依赖与产物：阶段 1 自行安装并构建
+web/node_modules/
+web/dist/
+web/.vite/
+internal/webui/dist/
+
+# 文档与部署辅助文件不需要进入上下文
+docs/
+scripts/
+Makefile
+README.md
+deploy/compose.yml

@@ -1,0 +1,52 @@
+# binaries / build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# local data
+/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+!testdata/**/*.db
+
+# web
+web/node_modules/
+web/dist/
+# 前端构建产物不入库，只保留 .gitkeep（go:embed 需要 dist 至少有 1 个文件）
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+
+# 隐私：本地黑名单只在机器上维护，不入库（避免把真实书名/作者写进仓库）
+.privacy-denylist.txt
+
+# 原型截图由工具本地生成，重生成一次即可（避免把早期含真实数据的旧图带进历史）
+.open-design/shots/
+# Open Design 官方模版种子（第三方资产，按需 odops template-use 重新拉取）
+.open-design/seed/
+
+# misc
+.DS_Store
+.idea/
+*.log
+.env
+
+# >>> open-design 原型白名单（odops keep 生成，勿手改）
+# 本地工作区全部保留；入库只放定稿原型 + 决策链 + 设计体系 + 关键截图
+.open-design/*
+!.open-design/08-prototype.html
+!.open-design/00-brief.md
+!.open-design/02-style.md
+!.open-design/04-rounds.md
+!.open-design/05-checklist.md
+!.open-design/design-system/
+!.open-design/shots/
+# <<< open-design 原型白名单
+
+# 隐私：上面的白名单放行 shots/，但骨架阶段的截图与并排对比页属于中间产物，
+# 且定稿后会被重新生成——留在本地即可（这里覆盖上面的 ! 规则，规则以后者为准）。
+.open-design/shots/
+.open-design/03-compare.jpg
