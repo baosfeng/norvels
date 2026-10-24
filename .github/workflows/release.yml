@@ -96,5 +96,11 @@ jobs:
             VERSION=${{ steps.meta.outputs.version }}
             COMMIT=${{ github.sha }}
             BUILTAT=${{ steps.buildinfo.outputs.builtat }}
+          # SBOM（SPDX，随 manifest 一起推到 registry）：用户可用
+          #   docker buildx imagetools inspect bsfeng/norvels:1.2.3 --format '{{json .SBOM}}'
+          # 自查镜像里有哪些包与版本，供应链审计不必反推 Dockerfile。
+          sbom: true
+          # gha 缓存跨工作流共享（scope=gha）：release 与 edge 复用同一批层，
+          # mode=max 连中间层一起缓存，多架构构建才不会每次都从零编译前端与 Go。
           cache-from: type=gha
           cache-to: type=gha,mode=max

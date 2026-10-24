@@ -1,21 +1,23 @@
-# norvels 容器编排。在仓库根执行：
+# norvels 容器编排（面向使用者：直接拉 registry 镜像）。
+#
+# 在仓库根执行：
 #   docker compose -f deploy/compose.yml up -d
 # 相对路径以本文件所在目录（deploy/）为基准，故数据目录写作 ../data。
 # 数据落点：容器内 /data/norvels.db（NORVELS_DB），对应宿主机仓库根 data/norvels.db。
 # 小说源目录只读挂载到容器内 /books，导入时才需要（NORVELS_BOOKS_DIR 指向真实目录）。
+#
+# 版本选择：NORVELS_VERSION 默认 latest；生产建议钉具体版本，例如
+#   NORVELS_VERSION=0.2.0 docker compose -f deploy/compose.yml up -d
+#
+# 本地开发请叠加 dev 覆盖文件（它保留 build: 段，从源码构建）：
+#   docker compose -f deploy/compose.yml -f deploy/compose.dev.yml up -d --build
 
 name: norvels
 
 services:
   norvels:
-    image: norvels:${NORVELS_VERSION:-0.1.0}
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-      args:
-        VERSION: ${NORVELS_VERSION:-0.1.0}
-        COMMIT: ${NORVELS_COMMIT:-dev}
-        BUILTAT: ${NORVELS_BUILTAT:-unknown}
+    # 从 Docker Hub 拉取多架构镜像（amd64 / arm64），无需本地源码与构建工具链。
+    image: bsfeng/norvels:${NORVELS_VERSION:-latest}
     container_name: norvels
     ports:
       # 宿主端口可通过 NORVELS_PORT 覆盖，容器内固定 8080。
@@ -25,6 +27,8 @@ services:
       NORVELS_DB: "/data/norvels.db"
       NORVELS_HEALTH_URL: "http://127.0.0.1:8080/api/health"
       TZ: "${TZ:-Asia/Shanghai}"
+      # 公网部署必须设置鉴权令牌（空 = 开放模式，启动日志会告警）：
+      # NORVELS_AUTH_TOKEN: "${NORVELS_AUTH_TOKEN:?公网部署必须设置 NORVELS_AUTH_TOKEN}"
     volumes:
       # 数据卷：SQLite 主库、WAL、SHM 都在同一目录（/data）。
       - ../data:/data
@@ -33,9 +37,25 @@ services:
     healthcheck:
       test: ["CMD", "/healthcheck"]
       interval: 30s
+      # 大库首次迁移（上千万章节的 FTS 建索引）可能远超 10s；start_period 内失败不计入
+      # retries，给 60s 避免「迁移中 → 被判定 unhealthy → 重启 → 迁移重来」的循环。
       timeout: 5s
-      start_period: 10s
+      start_period: 60s
       retries: 3
+
+    # 只读根文件系统（可选加固，默认注释）：容器内除 /data 外都不可写，
+    # 把「被入侵后写入恶意文件 / 篡改二进制」的窗口压到最小。
+    # 程序只需要写 /data（数据库）与 /tmp（临时文件）两处，因此配套给 /tmp 挂 tmpfs：
+    # tmpfs 内容落在内存、容器停止即消失，不会写进镜像层或数据卷。
+    # 打开前先确认：导入大库时 /tmp 峰值需 < size；要导出到其他目录的用法需另挂可写卷。
+    # read_only: true
+    # tmpfs:
+    #   - /tmp:size=64m,mode=1777
+
+    # 数据目录属主不是 65532 时的逃生口（见 docs/deploy.md §4.2）：
+    # 以宿主当前用户运行可绕过权限问题（会失去 nonroot 加固，仅在本地调试用）。
+    # user: "${NORVELS_UID:-1000}:${NORVELS_GID:-1000}"
+
     restart: unless-stopped
     stop_grace_period: 15s
     # 资源建议：浏览 1C1G 足够；导入 4.4GB 建议 2C2G（详见 docs/deploy.md）。

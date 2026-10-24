@@ -16,8 +16,15 @@
 ARG GO_VERSION=1.26
 ARG PNPM_VERSION=9
 
+# 交叉编译约定（重要）：
+#   构建 stage 一律声明 --platform=$BUILDPLATFORM，只在「跑在构建机上」的处理器架构执行；
+#   目标架构由 ARG TARGETOS/TARGETARCH 传给 go build（CGO_ENABLED=0 纯 Go，天然可交叉编译）。
+#   不声明时 buildx 会把整个 stage 跑在目标平台上：arm64 构建时 node/pnpm 与 go build
+#   全在 QEMU 模拟下执行，耗时慢数倍。运行 stage 不声明，才会按目标架构拉基础镜像。
+#   参照：docs/deploy.md §2.2 与 https://docs.docker.com/build/building/multi-platform/
+
 # ---------- 阶段 1：前端构建（React + Vite + Tailwind） ----------
-FROM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 ARG PNPM_VERSION
 WORKDIR /src/web
 # 固定 pnpm 主版本，避免 corepack 在受限网络下协商版本失败。
@@ -39,13 +46,16 @@ COPY web/ ./
 RUN pnpm build
 
 # ---------- 阶段 2：后端静态编译（CGO_ENABLED=0，纯 Go SQLite） ----------
-FROM golang:${GO_VERSION}-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
 ARG VERSION=0.1.0
 ARG COMMIT=dev
 ARG BUILTAT=unknown
+# buildx 会按目标平台自动填充这两个 ARG；单架构构建时用默认值。
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-ARG GOPROXY=https://goproxy.cn,direct
+# 默认走官方代理（CI 在 GitHub runner 上）；国内本地构建可覆盖为
+# --build-arg GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=https://proxy.golang.org,direct
 
 ENV CGO_ENABLED=0 \
     GOOS=${TARGETOS} \
@@ -79,7 +89,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
  && chown -R 65532:65532 /out/data
 
 # ---------- 阶段 3：运行（distroless/static，非 root，无 shell） ----------
-FROM gcr.io/distroless/static-debian12:nonroot
+# 基础镜像：distroless static-debian13（上游只维护 debian13；debian12 已停更，
+# 其安全支持窗口到 2026-07-11 结束）。
+# 锁 digest 的理由：仓库里写 tag 只能证明「当时拉到的是某个镜像」，锁 @sha256 才能让
+# 同一份源码在任何时间、任何机器上构建出同一层基础镜像，也让升级基镜像变成一次可审计的
+# 显式改动（Dependabot 会以 PR 形式提出 digest 更新，见 .github/dependabot.yml）。
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
 ARG VERSION=0.1.0
 ARG COMMIT=dev
 ARG BUILTAT=unknown
@@ -89,6 +104,8 @@ LABEL org.opencontainers.image.title="norvels" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${BUILTAT}" \
+      org.opencontainers.image.source="https://github.com/baosfeng/norvels" \
+      org.opencontainers.image.documentation="https://github.com/baosfeng/norvels/blob/main/docs/deploy.md" \
       org.opencontainers.image.licenses="MIT"
 
 ENV NORVELS_ADDR=:8080 \
@@ -107,7 +124,9 @@ WORKDIR /data
 USER nonroot:nonroot
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+# start-period 给足 60s：大库首次迁移（上千万章节的 FTS 建索引）可能远超 10s，
+# 期间健康检查失败会触发 restart 循环，看起来像「启动即崩」。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD ["/healthcheck"]
 
 ENTRYPOINT ["/norvels", "serve"]

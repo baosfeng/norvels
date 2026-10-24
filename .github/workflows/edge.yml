@@ -78,5 +78,7 @@ jobs:
             VERSION=edge
             COMMIT=${{ github.sha }}
             BUILTAT=${{ steps.buildinfo.outputs.builtat }}
+          # 与 release.yml 同口径：带 SBOM、复用 gha 缓存（mode=max 含中间层）。
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max

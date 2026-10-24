@@ -1,0 +1,21 @@
+# norvels 本地开发覆盖文件：保留 build: 段，从源码构建镜像。
+#
+# 用法（必须两个 -f 叠加，后者覆盖前者）：
+#   docker compose -f deploy/compose.yml -f deploy/compose.dev.yml up -d --build
+#
+# 与 deploy/compose.yml 的差异只有一条：本文件提供 build: 段并改进程内的 image tag，
+# 让本地构建产物打上 <版本>-dev，不会覆盖 --pull 来的 latest 或已发布版本。
+# 其余（端口、数据卷、小说目录、健康检查、重启策略）全部继承主文件，避免两处分叉。
+services:
+  norvels:
+    image: bsfeng/norvels:${NORVELS_VERSION:-latest}-dev
+    build:
+      # 构建上下文是仓库根目录：Dockerfile 需要读 web/、go.mod、internal/。
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VERSION: ${NORVELS_VERSION:-0.1.0}-dev
+        COMMIT: ${NORVELS_COMMIT:-dev}
+        BUILTAT: ${NORVELS_BUILTAT:-unknown}
+        # 国内网络可改成 https://goproxy.cn,direct 加速 go mod download。
+        GOPROXY: ${NORVELS_GOPROXY:-https://proxy.golang.org,direct}

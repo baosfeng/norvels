@@ -8,13 +8,17 @@
 | 文件 | 作用 |
 |---|---|
 | `deploy/Dockerfile` | 三阶段构建：node 构建前端 → golang 静态编译 → distroless/static 运行 |
-| `deploy/compose.yml` | 单服务编排：端口 8080、`./data` 数据卷、小说目录只读挂载、健康检查、自动重启 |
+| `deploy/compose.yml` | 使用者版编排：直接拉 `bsfeng/norvels` 镜像，端口 8080、`../data` 数据卷、小说目录只读挂载、健康检查、自动重启 |
+| `deploy/compose.dev.yml` | 本地开发覆盖文件：保留 `build:` 段从源码构建（两个 `-f` 叠加使用） |
 | `scripts/import.sh` | 批量导入（本地二进制 / docker 两种模式），带校验、耗时统计、导入后 stats |
 | `scripts/backup.sh` | SQLite 在线备份（`.backup` 或 `VACUUM INTO`）+ 时间戳命名 + 保留策略 |
 | `cmd/healthcheck` | 2.1 MiB 静态健康检查器，供 distroless 镜像的 HEALTHCHECK 使用 |
 | `.dockerignore` | 排除 node_modules、dist、data、testdata 等，构建上下文更小 |
 
 ## 2. 构建
+
+> **使用者不需要看这一节**：`docker compose -f deploy/compose.yml up -d` 会直接从 Docker Hub 拉多架构镜像
+> （见 §4.1）。本节面向**要从源码自己构建**的人（贡献者、离线环境、要改代码的部署）。
 
 构建上下文必须是**仓库根目录**（Dockerfile 在 `deploy/`，但需要 `web/`、`go.mod`、`internal/`）：
 
@@ -39,7 +43,7 @@ docker buildx build \
 | `COMMIT` | `dev` | 注入 `main.commit` |
 | `BUILTAT` | `unknown` | 注入 `main.builtAt`（RFC3339） |
 | `TARGETOS` / `TARGETARCH` | `linux` / `amd64` | buildx 自动传入，交叉编译目标 |
-| `GOPROXY` | `https://goproxy.cn,direct` | 国内代理；海外构建可改为 `https://proxy.golang.org,direct` |
+| `GOPROXY` | `https://proxy.golang.org,direct` | 默认走官方代理（CI 在 GitHub runner 上）。国内本地构建可覆盖为 `--build-arg GOPROXY=https://goproxy.cn,direct` |
 
 示例：
 
@@ -55,7 +59,12 @@ docker build -f deploy/Dockerfile \
 
 1. **web（node:22-alpine）**：先只复制 `web/package.json`（及 `pnpm-lock.yaml`，若存在），通过 bind mount 探测 lock 文件后执行 `pnpm install --frozen-lockfile`（缺 lock 时退回 `pnpm install`），再复制源码执行 `pnpm build`。
 2. **build（golang:1.26-alpine）**：`CGO_ENABLED=0`、`-trimpath`、`-ldflags "-s -w"`；把 `web/dist` 同步进 `internal/webui/dist`（`//go:embed all:dist` 的目标），编译 `./cmd/norvels` 与 `./cmd/healthcheck`。
-3. **runtime（gcr.io/distroless/static-debian12:nonroot）**：只拷二进制、healthcheck 与 `/data` 目录，非 root（65532）运行，无 shell。
+3. **runtime（gcr.io/distroless/static-debian13:nonroot@sha256:…）**：只拷二进制、healthcheck 与 `/data` 目录，非 root（65532）运行，无 shell。
+
+**交叉编译**：web 与 build 两个 stage 都声明 `--platform=$BUILDPLATFORM`，只在构建机自身架构上执行；
+目标架构由 `ARG TARGETOS/TARGETARCH` 传给 `go build`（`CGO_ENABLED=0` 纯 Go，天然可交叉编译）。
+不声明时 buildx 会把整个 stage 放在目标平台上跑：arm64 构建时 node/pnpm 与 go build 全在 QEMU
+模拟下执行，耗时慢数倍。runtime stage 刻意不声明——它本来就该按目标架构拉基础镜像。
 
 ### 2.3 已知限制（重要）
 
@@ -70,6 +79,31 @@ docker build -f deploy/Dockerfile \
 >
 > 在有 Docker 的机器上，请以 `docker images norvels:0.1.0` 的实际输出为准，并回来更新下表。
 > 另外 `web/` 前端仍在并行开发，`web/dist` 体积按 Vite + React 19 + Tailwind 的常见区间估算。
+
+#### 基础镜像 digest 锁定
+
+运行镜像写成 `gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88`，
+标签 + digest 双写。为什么锁：
+
+- **tag 是可变的**：`nonroot` 是浮动标签，上游重建就会指向新镜像，同一份源码在不同时间可能构建出不同底座，"上周能跑这周不能跑"无法归因；
+- **digest 不可变**：`@sha256:…` 指向的唯一内容，镜像层被替换时构建会直接失败而不是静默换底座；
+- **升级可审计**：换 digest 是一次显式 diff（`.github/dependabot.yml` 的 `docker` 生态会以周更 PR 提出），评审看一眼 digest 行即可，不用反推"基镜像到底变没变"。
+
+该 digest 是 manifest index（多架构索引），同一行同时覆盖 linux/amd64 与 linux/arm64，
+因此多架构构建不需要按平台分别钉。取法（无需 docker）：
+
+```bash
+BASE=https://gcr.m.daocloud.io   # gcr.io 的只读代理；直连 gcr.io 时换成 https://gcr.io
+TOKEN=$(curl -s "https://m.daocloud.io/auth/token?service=gcr.m.daocloud.io&scope=repository:distroless/static-debian13:pull" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -s "$BASE/v2/distroless/static-debian13/manifests/nonroot" \
+  -H "Accept: application/vnd.oci.image.index.v1+json" \
+  -H "Authorization: Bearer $TOKEN" -D- -o /dev/null | grep -i docker-content-digest
+# docker-content-digest: sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
+```
+
+> 为什么是 debian13：上游 README 只维护 `*-debian13`，debian12 系列已标注 deprecated 且不再更新；
+> Debian 12 的安全支持窗口到 2026-07-11 结束。`static` 变体无 shell、无包管理器，体积约 2 MiB。
 
 ### 2.4 镜像内二进制与构建参数
 
@@ -89,7 +123,7 @@ docker build -f deploy/Dockerfile \
 |---|---:|---|
 | `/norvels`（Go 二进制） | **11.1 MiB** | 本机实测（linux/amd64、完整实现、含 x/text；`web/dist` 目前为占位，前端合入后预计 12–13 MiB） |
 | `/healthcheck` | **2.1 MiB** | 本机实测（手写最小 HTTP 客户端，不引入 net/http） |
-| distroless/static-debian12:nonroot 基础层 | **约 2.0–2.5 MiB** | 官方基镜像（无 shell、无包管理器，仅 ca-certificates、/etc/passwd、tzdata） |
+| distroless/static-debian13:nonroot 基础层 | **约 2.0–2.5 MiB** | 官方基镜像（无 shell、无包管理器，仅 ca-certificates、/etc/passwd、tzdata） |
 | **合计（估算）** | **约 15.5–16.5 MiB**（前端合入后约 16.5–18 MiB） | 目标 < 50 MiB，余量充足 |
 
 > 前端产物通过 `go:embed` 打进二进制，不额外占镜像层；上表合计 = 二进制 + healthcheck + 基础层。
@@ -104,19 +138,30 @@ docker build -f deploy/Dockerfile \
 
 ## 4. 运行
 
-### 4.1 compose（推荐）
+### 4.1 compose（推荐，直接拉镜像）
+
+`deploy/compose.yml` 面向使用者，**只用 `image:` 拉 Docker Hub 上的多架构镜像**，本机不需要源码与构建工具链。
 
 ```bash
-# 1) 构建镜像
-docker build -f deploy/Dockerfile -t norvels:0.1.0 .
-
-# 2) 先导入（服务尚未启动，避免单写者冲突）
+# 1) 先导入（服务尚未启动，避免单写者冲突）
 NORVELS_BOOKS_DIR="/path/to/txt" \
   docker compose -f deploy/compose.yml run --rm --entrypoint /norvels \
   norvels import --dir /books --db /data/norvels.db
 
-# 3) 启动
+# 2) 启动
 NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml up -d
+```
+
+版本用 `NORVELS_VERSION` 控制（默认 `latest`），**生产建议钉具体版本**：
+
+```bash
+NORVELS_VERSION=0.2.0 docker compose -f deploy/compose.yml up -d
+```
+
+本地开发从源码构建，叠加 dev 覆盖文件（它保留 `build:` 段，并把镜像打上 `-dev` 后缀）：
+
+```bash
+docker compose -f deploy/compose.yml -f deploy/compose.dev.yml up -d --build
 ```
 
 - 端口：宿主机 `8080`（`NORVELS_PORT` 可改）→ 容器 `8080`；
@@ -147,8 +192,11 @@ docker run -d --name norvels \
   -p 8080:8080 \
   -v "$PWD/data:/data" \
   -v "/path/to/txt:/books:ro" \
-  norvels:0.1.0
+  -e NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" \
+  bsfeng/norvels:latest          # 生产建议钉具体版本，如 bsfeng/norvels:0.2.0
 ```
+
+自己构建的镜像把最后一行的镜像名换成 `norvels:0.1.0`（见 §2）。
 
 ### 4.4 健康检查
 
@@ -162,7 +210,9 @@ curl -fsS http://127.0.0.1:8080/api/health
 ```
 
 `/healthcheck` 判定规则：HTTP 200 且 JSON 中 `status == "ok"`，否则退出码 1。
-`start_period: 10s` 给 SQLite 迁移留出时间；大库首次迁移更久时按需调大。
+`start_period: 60s` 给 SQLite 迁移留出时间：大库首次升级要建 FTS 索引，可能远超 10s；
+`start_period` 内失败**不计入** `retries`，否则会出现「迁移中 → 判定 unhealthy → 被重启 → 迁移重来」的死循环。
+库特别大时可按需继续调大。
 
 ## 5. SQLite on volume 注意事项
 
@@ -193,21 +243,72 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 ## 7. 升级与回滚
 
-```bash
-# 升级：先备份 → 拉新镜像 → 重建 → 验证
-scripts/backup.sh --keep 7
-docker build -f deploy/Dockerfile -t norvels:0.2.0 .
-docker compose -f deploy/compose.yml up -d --no-build   # 镜像 tag 指向新版本
+### 7.0 铁律：迁移只前进，回滚必须连数据库一起恢复
 
-# 回滚：切回旧 tag（数据目录不动）
+> **schema 迁移只前进，不支持降级。回滚镜像版本时，必须同时把数据库从备份恢复**——
+> 先停容器、换回旧镜像 tag、用升级前那份备份覆盖 `/data/norvels.db`，再启动。
+> 只回滚 tag 不动数据 = 让旧二进制去写由新版本迁移过的库。
+
+**为什么不能只回滚 tag**：迁移是「单向」的结构变更（新列、新表、新索引）。旧二进制不认识这些结构，
+它不会报错——它只是按自己那套更早的 schema 继续读写，并把 `PRAGMA user_version` /
+`schema_migrations` 里本该更高的版本号覆盖回自己认识的数字。结果是**静默的数据损坏**：
+新列被当成不存在、后续升级又被告知"已是最新版本"而跳过迁移，坏掉的结构再也不会被修复。
+
+回滚三步（**顺序不能改**）：
+
+```bash
+# 0) 升级前先备份（升级动作的第一步，不是可选步骤）
+scripts/backup.sh --keep 7            # 产物：backups/norvels-YYYYmmdd-HHMMSS.db
+
+# 1) 停容器：不要在服务运行时覆盖数据库文件（WAL/SHM 会打架）
 docker compose -f deploy/compose.yml down
-docker tag norvels:0.1.0 norvels:current
-docker compose -f deploy/compose.yml up -d
+
+# 2) 用升级前的备份覆盖数据库，并把库里残留的 WAL/SHM 一起清掉
+docker run --rm -v "$PWD/data:/data" -v "$PWD/backups:/backup" alpine:3 \
+  sh -c 'rm -f /data/norvels.db-wal /data/norvels.db-shm && \
+         cp /backup/norvels-YYYYmmdd-HHMMSS.db /data/norvels.db && \
+         chown 65532:65532 /data/norvels.db'
+
+# 3) 换回旧版本镜像再启动（钉版本，不要用 latest）
+NORVELS_VERSION=0.1.0 docker compose -f deploy/compose.yml up -d
 ```
 
-- schema 迁移是**版本化**的（编号迁移 + `schema_migrations` 记录表），升级只前进不回滚；升级前仍建议备份。
-- 回滚只需换镜像 tag；如果新版本写入过旧版本不认识的列，回滚前用备份恢复更稳妥。
-- 数据库文件格式向后兼容，但**不要**在旧版本上打开已被新版本迁移过的库并写入，先恢复备份。
+- **WAL/SHM 必须一起删**：只覆盖主库而留下新版本的 `-wal`，旧版本启动时会把 WAL 回放进主库，
+  等于把新结构又写回来一次。
+- **回滚后核对**：`curl -fsS http://127.0.0.1:8080/api/health` 返回 `status":"ok"`，
+  且 `/api/stats` 的书目/章节数与备份时一致；日志里应打印库版本号等于旧镜像支持的版本。
+- **备份策略**：`scripts/backup.sh --keep 7` 保留最近 7 份；升级前那一次备份建议另存到
+  数据卷之外（换机器也能恢复），并且在大版本升级前确认备份文件能打开（`sqlite3 <备份> 'PRAGMA integrity_check;'`）。
+- **只回滚代码、不改 schema 的场景**（同一个 schema 版本内的补丁版本）可以直接换 tag，
+  但前提是确认新版本没有应用任何迁移——启动日志会打印「库版本 N → 应用 M 个迁移」，
+  日志里 `应用 0 个迁移` 才是可安全回滚 tag 的情形。
+
+#### 升级与回滚完整示例
+
+```bash
+# 升级：备份 → 钉新版本 → 重建 → 验证
+scripts/backup.sh --keep 7
+NORVELS_VERSION=0.2.0 docker compose -f deploy/compose.yml up -d
+docker compose -f deploy/compose.yml logs --tail 20 norvels   # 确认迁移日志与版本号
+curl -fsS http://127.0.0.1:8080/api/health
+
+# 回滚：见上面 7.0 的三步（停容器 → 恢复备份 → 换旧 tag 启动）
+```
+
+> **待补的启动期守卫**：理想的形态是二进制启动时读库版本，发现「库版本 > 本二进制支持的最高版本」
+> 直接**拒绝启动**并提示「请升级镜像，或从备份恢复」，把静默损坏变成显式失败。
+> 该守卫需要改 `internal/store/` 的启动路径，当前尚未实现——在那之前，**7.0 的流程是唯一防线**，
+> 不要省略备份步骤。
+
+**守卫落地时要补的回归用例**（可直接照着写成 `internal/store` 的单测，本文件只登记断言）：
+
+| 用例 | 构造 | 期望 |
+|---|---|---|
+| 库版本 > 二进制版本 | 临时库执行 `INSERT INTO schema_migrations(version) VALUES(99)` | 打开返回错误；错误文案含「数据库由更新版本（v99）创建」与「当前版本（vN）」及「请升级镜像，或从备份恢复」；进程退出码非 0 |
+| 库版本 = 二进制版本 | 正常迁移到最新 | 正常启动，不打印迁移日志 |
+| 库版本 < 二进制版本 | 老库（`user_version=1`、无 `schema_migrations`） | 正常迁移到最新，且**不重跑建表**、数据条数不变 |
+| 拒绝后库不变 | 用例 1 打开失败后重新读库 | `schema_migrations` 最大版本仍为 99，`user_version` 未被改写（守卫必须**只读**，失败路径不写库） |
+| 空/损坏库 | 零字节文件或非 SQLite 文件 | 报错清晰（区分"不是数据库"与"版本过新"），不误判为老库 |
 
 ### 7.1 版本化迁移（v0.2.0 起）
 
@@ -226,6 +327,7 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 - **老库兼容**：v0.1.x 的库（`PRAGMA user_version=1`、有业务表、无 `schema_migrations`）
   首次升级会被识别并直接把版本 1 记为已应用，**不重跑建表**，数据条数不变；
 - 迁移版本号只增不减。若需要回退某个结构变更，请从备份恢复，不要删 `schema_migrations` 记录。
+- **只回滚镜像 tag 而不恢复备份 = 静默数据损坏**，完整流程见 [§7.0](#70-铁律迁移只前进回滚必须连数据库一起恢复)。
 
 | 版本 | 迁移 | 内容 |
 |---|---|---|
@@ -269,6 +371,8 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 | 镜像比预期大 | `docker history norvels:0.1.0`；确认 `-s -w` 与 `CGO_ENABLED=0` 生效，`web/node_modules` 未被 COPY |
 | 中文乱码 | 见 README FAQ；编码探测结果可在 `/api/books/{id}` 的 `encoding` 字段查看 |
 | 备份文件很小 | 检查是否只拷了主库而漏 WAL；用 `scripts/backup.sh` 而非 `cp` |
+| 回滚后数据异常 / 新列丢失 | 只换了镜像 tag 没恢复备份。按 §7.0 停容器 → 删 `-wal`/`-shm` → 从备份恢复 → 再用旧 tag 启动 |
+| 启动后反复重启、日志停在迁移 | 首次迁移超过 healthcheck 的 `start_period`。调大 `start_period`（当前 60s）或先单独跑 `migrate` 再 `up` |
 
 ## 9. 相关文档
 

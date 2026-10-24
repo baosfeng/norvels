@@ -1,6 +1,7 @@
 # Dependabot：依赖更新 PR。
 #
-# 两路 weekly：Go modules（go.mod/go.sum）与 GitHub Actions（uses: 里的 action 版本）。
+# 三路 weekly：Go modules（go.mod/go.sum）、GitHub Actions（uses: 里的 action 版本）、
+# Docker（deploy/ 下的基础镜像，含 distroless 的 digest 钉版）。
 # 自动 PR 同样会跑 ci.yml 的四个 job，不达标的更新会被挡在合并之外。
 version: 2
 updates:
@@ -33,3 +34,21 @@ updates:
     labels:
       - dependencies
       - github-actions
+
+  # Docker 基础镜像：deploy/Dockerfile 里的 node / golang / distroless 三层。
+  # 运行镜像用 @sha256 digest 钉版（见 Dockerfile 阶段 3 注释），这一路更新就是把
+  # 「新 digest 的 PR」摆到台面上：diff 只有 digest 一行，评审与回滚都很轻。
+  # 合并前必须走完 ci.yml（含镜像构建），否则等于在没验证的情况下换底座。
+  - package-ecosystem: docker
+    directory: "/deploy"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+      - docker
