@@ -1,0 +1,84 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./prototype.css";
+
+/* 应用级补充：只在原型样式未覆盖处添加，避免与移植的 626 行规则冲突 */
+
+/* 阅读器外壳：原型里由 body[data-view="reader"] .view-reader 触发，React 侧是独立路由外壳 */
+.reader-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--r-bg);
+  color: var(--r-fg);
+}
+body:has(.reader-shell) {
+  background: var(--r-bg);
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  font-family: var(--font-body);
+}
+#root {
+  min-height: 100%;
+}
+.h5-only-block {
+  display: block;
+}
+.active-link {
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+.sr-only-focusable:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+@media (max-width: 768px) {
+  /* H5 可点击元素 ≥44px（触屏可点区域）：独立可点元素统一抬到 44px，
+     行内文字链接用 padding 撑高但保持行内排布，避免打散正文行高。 */
+  .btn,
+  .chip,
+  .h5-row,
+  .side-nav a,
+  .pagination a,
+  .pagination button,
+  .vol-head,
+  .cv-row,
+  .settings-row .seg button,
+  .stepper button,
+  .vol-jump button,
+  .failure-toggle,
+  .drawer-head .btn,
+  .resume-card {
+    min-height: 44px;
+  }
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .input,
+  .select {
+    min-height: 44px;
+  }
+  .crumbs a,
+  .byline a,
+  .hit-meta a,
+  .h5-section-head a.meta,
+  .dash-block-head a.meta,
+  .drawer-list a,
+  .search-tabs button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}

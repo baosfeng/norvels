@@ -14,15 +14,16 @@ help:
 
 all: build ## 默认：构建前端 + 后端
 
-web: ## 构建前端并同步到 internal/webui/dist
-	cd web && (command -v pnpm >/dev/null && pnpm install --prefer-offline && pnpm build || npm install && npm run build)
-	rm -rf internal/webui/dist && cp -R web/dist internal/webui/dist
+web: ## 构建前端并同步到 internal/webui/dist（go:embed 的输入）
+	cd web && (command -v pnpm >/dev/null && (pnpm install --prefer-offline && pnpm build) || (npm install && npm run build))
+	rsync -a --delete web/dist/ internal/webui/dist/
+	@touch internal/webui/dist/.gitkeep
 
-build: build-web build-server ## 完整构建
+build: web build-server ## 完整构建（前端产物先同步进 embed 目录，二进制里才是真实页面）
 
 build-web: ## 构建前端（产物落到 web/dist）
 	@test -f web/package.json || { echo "web/ 前端尚未落地（React 实现阶段进行中）；现在可用 'make build-server' + 'make run' 看到占位页" >&2; exit 1; }
-	cd web && (command -v pnpm >/dev/null && pnpm build || npm run build)
+	cd web && (command -v pnpm >/dev/null && (pnpm install --prefer-offline && pnpm build) || (npm install && npm run build))
 
 build-server: ## 编译服务端二进制（内嵌 internal/webui/dist）
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/norvels
