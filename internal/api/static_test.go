@@ -37,7 +37,16 @@ func TestStaticIndexAndSPAFallback(t *testing.T) {
 
 func TestStaticAssetLongCacheAndETag(t *testing.T) {
 	env := newEnv(t)
+	etag := checkAssetCacheHeaders(t, env)
 
+	t.Run("If-None-Match 命中 304", func(t *testing.T) { checkAssetNotModified(t, env, etag) })
+	t.Run("弱 ETag 前缀", func(t *testing.T) { checkAssetWeakETag(t, env, etag) })
+	t.Run("HEAD 只返回头", func(t *testing.T) { checkAssetHead(t, env) })
+}
+
+// checkAssetCacheHeaders 首次请求校验缓存头与内容，返回 ETag。
+func checkAssetCacheHeaders(t *testing.T, env *testEnv) string {
+	t.Helper()
 	rr := env.get("/assets/app-abc123.js")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("状态码 = %d", rr.Code)
@@ -55,8 +64,12 @@ func TestStaticAssetLongCacheAndETag(t *testing.T) {
 	if rr.Body.String() != "console.log('norvels')" {
 		t.Fatalf("资源内容 = %q", rr.Body.String())
 	}
+	return etag
+}
 
-	// If-None-Match 命中 → 304
+// checkAssetNotModified If-None-Match 命中时返回 304 且无正文。
+func checkAssetNotModified(t *testing.T, env *testEnv, etag string) {
+	t.Helper()
 	notModified := env.do(http.MethodGet, "/assets/app-abc123.js", nil, map[string]string{"If-None-Match": etag})
 	if notModified.Code != http.StatusNotModified {
 		t.Fatalf("ETag 命中状态码 = %d，期望 304", notModified.Code)
@@ -64,14 +77,20 @@ func TestStaticAssetLongCacheAndETag(t *testing.T) {
 	if notModified.Body.Len() != 0 {
 		t.Fatalf("304 不应有响应体，实际 %q", notModified.Body.String())
 	}
+}
 
-	// 弱校验前缀也接受
+// checkAssetWeakETag 弱校验前缀（W/）同样命中 304。
+func checkAssetWeakETag(t *testing.T, env *testEnv, etag string) {
+	t.Helper()
 	weak := env.do(http.MethodGet, "/assets/app-abc123.js", nil, map[string]string{"If-None-Match": "W/" + etag})
 	if weak.Code != http.StatusNotModified {
 		t.Fatalf("弱 ETag 状态码 = %d，期望 304", weak.Code)
 	}
+}
 
-	// HEAD：只有头，无正文
+// checkAssetHead HEAD 只有头、无正文，但仍带 ETag。
+func checkAssetHead(t *testing.T, env *testEnv) {
+	t.Helper()
 	head := env.do(http.MethodHead, "/assets/app-abc123.js", nil, nil)
 	if head.Code != http.StatusOK || head.Body.Len() != 0 {
 		t.Fatalf("HEAD 结果 = %d，body=%q", head.Code, head.Body.String())

@@ -8,59 +8,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
-	"norvels/internal/parser"
 	"norvels/internal/store"
 )
-
-func newStore(t *testing.T) *store.Store {
-	t.Helper()
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "norvels.db"))
-	if err != nil {
-		t.Fatalf("store.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	if err := st.Migrate(context.Background()); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	return st
-}
-
-const bodyA = "华夏国梅宁市，午后的秋日，微风拂过城楼。他站在城楼上望着远方，心中百感交集。\n\n" +
-	"风起云涌，江湖路远。少年提剑前行，脚下是万里山河。\n\n"
-
-const bodyB = "梅宁城的雪下了三天三夜。秋蝉在雪里叫着，声音又细又长。\n\n" +
-	"他说，等到春天，我们就去看海。\n\n"
-
-func sampleText(title, author string) string {
-	var b strings.Builder
-	b.WriteString("书名：" + title + "\n作者：" + author + "\n\n")
-	b.WriteString("第一章 风起\n")
-	for i := 0; i < 6; i++ {
-		b.WriteString(bodyA)
-	}
-	b.WriteString("第二章 云涌\n")
-	for i := 0; i < 6; i++ {
-		b.WriteString(bodyB)
-	}
-	b.WriteString("第三章 归途\n")
-	for i := 0; i < 6; i++ {
-		b.WriteString(bodyA)
-	}
-	return b.String()
-}
-
-func writeTxt(t *testing.T, dir, name, content string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-}
-
-func opts(dir string) Options {
-	return Options{Dir: dir, Recursive: true, ParserOpts: parser.DefaultOptions()}
-}
 
 func TestRunImportsAndIsIdempotent(t *testing.T) {
 	ctx := context.Background()
@@ -70,48 +20,48 @@ func TestRunImportsAndIsIdempotent(t *testing.T) {
 	writeTxt(t, dir, "b.txt", sampleText("风雪归人", "月关"))
 	writeTxt(t, dir, "ignore.md", "not a novel")
 
-	var (
-		mu      sync.Mutex
-		seen    []Progress
-		inCb    int32
-		overlap bool
-	)
-	cb := func(p Progress) {
-		mu.Lock()
-		inCb++
-		if inCb > 1 {
-			overlap = true
-		}
-		mu.Unlock()
-		time.Sleep(2 * time.Millisecond) // 放大并发窗口
-		mu.Lock()
-		seen = append(seen, p)
-		inCb--
-		mu.Unlock()
-	}
-
-	res, err := Run(ctx, st, opts(dir), cb)
+	rec := &progressRecorder{}
+	res, err := Run(ctx, st, opts(dir), rec.callback())
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+
+	t.Run("汇总与进度回调", func(t *testing.T) { checkImportSummary(t, res, rec) })
+	t.Run("任务记录", func(t *testing.T) { checkImportJobCompleted(t, ctx, st, res) })
+	t.Run("书籍与检索", func(t *testing.T) { checkImportedBooksSearchable(t, ctx, st) })
+	t.Run("二次导入幂等", func(t *testing.T) { checkSecondRunIdempotent(t, ctx, st, dir) })
+}
+
+// checkImportSummary 校验首次导入的计数与进度回调（串行、末次快照）。
+func checkImportSummary(t *testing.T, res *Result, rec *progressRecorder) {
+	t.Helper()
 	if res.Failed != 0 || res.Skipped != 0 || len(res.Imported) != 2 {
 		t.Fatalf("result = %+v", res)
 	}
-	if overlap {
+	if rec.overlap {
 		t.Errorf("进度回调出现并发调用")
 	}
+	seen := rec.seen
 	if len(seen) != 2 || seen[len(seen)-1].Total != 2 || seen[len(seen)-1].Index != 2 {
 		t.Fatalf("progress = %+v", seen)
 	}
+}
+
+// checkImportJobCompleted 校验任务记录终态与详情。
+func checkImportJobCompleted(t *testing.T, ctx context.Context, st *store.Store, res *Result) {
+	t.Helper()
 	if res.Job == nil || res.Job.Status != "completed" || res.Job.Total != 2 || res.Job.Imported != 2 {
 		t.Fatalf("job = %+v", res.Job)
 	}
-
 	detail, err := st.GetImportJob(ctx, res.Job.ID)
 	if err != nil || detail.Status != "completed" || len(detail.Errors) != 0 || detail.FinishedAt == nil {
 		t.Fatalf("job detail = %+v, err=%v", detail, err)
 	}
+}
 
+// checkImportedBooksSearchable 校验入库书籍的元信息与全链路检索。
+func checkImportedBooksSearchable(t *testing.T, ctx context.Context, st *store.Store) {
+	t.Helper()
 	books, err := st.ListBooks(ctx, store.BookQuery{Page: 1, Size: 10})
 	if err != nil || books.Total != 2 {
 		t.Fatalf("books = %+v, err=%v", books, err)
@@ -130,8 +80,11 @@ func TestRunImportsAndIsIdempotent(t *testing.T) {
 	if !strings.Contains(r.Chapters.Items[0].Snippet, "<b>梅宁市</b>") {
 		t.Errorf("snippet = %q", r.Chapters.Items[0].Snippet)
 	}
+}
 
-	// 第二次导入：全部走 SHA256 幂等跳过。
+// checkSecondRunIdempotent 第二次导入：全部走 SHA256 幂等跳过。
+func checkSecondRunIdempotent(t *testing.T, ctx context.Context, st *store.Store, dir string) {
+	t.Helper()
 	res2, err := Run(ctx, st, opts(dir), nil)
 	if err != nil {
 		t.Fatalf("second Run: %v", err)
@@ -142,7 +95,7 @@ func TestRunImportsAndIsIdempotent(t *testing.T) {
 	if res2.Job == nil || res2.Job.Status != "completed" || res2.Job.Skipped != 2 {
 		t.Fatalf("second job = %+v", res2.Job)
 	}
-	books, _ = st.ListBooks(ctx, store.BookQuery{Page: 1, Size: 10})
+	books, _ := st.ListBooks(ctx, store.BookQuery{Page: 1, Size: 10})
 	if books.Total != 2 {
 		t.Errorf("幂等后书籍数 = %d", books.Total)
 	}
@@ -200,32 +153,55 @@ func TestRunReusesExternalJobID(t *testing.T) {
 	dir := t.TempDir()
 	writeTxt(t, dir, "a.txt", sampleText("示例书名", "示例作者"))
 
+	job := createRunningJob(t, ctx, st, dir)
+	t.Run("复用外部任务", func(t *testing.T) { checkReusesJob(t, ctx, st, dir, job.ID) })
+	t.Run("不存在的 JobID", func(t *testing.T) { checkMissingJobID(t, ctx, st, dir) })
+	t.Run("已完成任务不可复用", func(t *testing.T) { checkCompletedJobRejected(t, ctx, st, dir, job.ID) })
+}
+
+// createRunningJob 建一个处于 running 的导入任务。
+func createRunningJob(t *testing.T, ctx context.Context, st *store.Store, dir string) *store.ImportJob {
+	t.Helper()
 	job, err := st.CreateImportJob(ctx, dir)
 	if err != nil {
 		t.Fatalf("CreateImportJob: %v", err)
 	}
+	return job
+}
+
+// checkReusesJob 传入 JobID 时应复用该任务并把终态写在同一条记录上。
+func checkReusesJob(t *testing.T, ctx context.Context, st *store.Store, dir string, jobID int64) {
+	t.Helper()
 	o := opts(dir)
-	o.JobID = job.ID
+	o.JobID = jobID
 	res, err := Run(ctx, st, o, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if res.Job == nil || res.Job.ID != job.ID {
+	if res.Job == nil || res.Job.ID != jobID {
 		t.Fatalf("未复用任务：%+v", res.Job)
 	}
-	detail, err := st.GetImportJob(ctx, job.ID)
+	detail, err := st.GetImportJob(ctx, jobID)
 	if err != nil || detail.Status != "completed" || detail.Total != 1 || detail.Imported != 1 {
 		t.Fatalf("detail = %+v, err=%v", detail, err)
 	}
+}
 
-	// 不存在的 JobID。
+// checkMissingJobID 不存在的 JobID 应返回 ErrNotFound。
+func checkMissingJobID(t *testing.T, ctx context.Context, st *store.Store, dir string) {
+	t.Helper()
+	o := opts(dir)
 	o.JobID = 99999
 	if _, err := Run(ctx, st, o, nil); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("missing job err = %v", err)
 	}
+}
 
-	// 已完成的任务不能复用。
-	o.JobID = job.ID
+// checkCompletedJobRejected 已完成的任务不能复用，应返回 ErrConflict。
+func checkCompletedJobRejected(t *testing.T, ctx context.Context, st *store.Store, dir string, jobID int64) {
+	t.Helper()
+	o := opts(dir)
+	o.JobID = jobID
 	if _, err := Run(ctx, st, o, nil); !errors.Is(err, store.ErrConflict) {
 		t.Errorf("completed job reuse err = %v", err)
 	}
@@ -234,19 +210,32 @@ func TestRunReusesExternalJobID(t *testing.T) {
 func TestRunErrorsAndEdgeCases(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
+	t.Run("空目录", func(t *testing.T) { checkEmptyDir(t, ctx, st) })
+	t.Run("不存在的目录", func(t *testing.T) { checkMissingDir(t, ctx, st) })
+	t.Run("损坏的符号链接", func(t *testing.T) { checkBrokenSymlink(t, ctx, st) })
+}
 
-	// 空目录。
+// checkEmptyDir 空目录返回 ErrNoFiles。
+func checkEmptyDir(t *testing.T, ctx context.Context, st *store.Store) {
+	t.Helper()
 	empty := t.TempDir()
 	if _, err := Run(ctx, st, opts(empty), nil); !errors.Is(err, ErrNoFiles) {
 		t.Errorf("empty dir err = %v", err)
 	}
+}
 
-	// 不存在的目录。
+// checkMissingDir 不存在的目录直接报错。
+func checkMissingDir(t *testing.T, ctx context.Context, st *store.Store) {
+	t.Helper()
+	empty := t.TempDir()
 	if _, err := Run(ctx, st, opts(filepath.Join(empty, "nope")), nil); err == nil {
 		t.Errorf("missing dir 应报错")
 	}
+}
 
-	// 损坏的符号链接 → 单文件失败，任务 completed_with_errors。
+// checkBrokenSymlink 损坏的符号链接 → 单文件失败，任务 completed_with_errors。
+func checkBrokenSymlink(t *testing.T, ctx context.Context, st *store.Store) {
+	t.Helper()
 	dir := t.TempDir()
 	writeTxt(t, dir, "ok.txt", sampleText("正常书", "作者"))
 	if err := os.Symlink(filepath.Join(dir, "missing-target"), filepath.Join(dir, "broken.txt")); err != nil {
@@ -256,16 +245,28 @@ func TestRunErrorsAndEdgeCases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	checkBrokenSymlinkResult(t, res)
+	checkBrokenSymlinkJob(t, ctx, st, res.Job)
+}
+
+// checkBrokenSymlinkResult 校验失败计数与错误明细指向损坏文件。
+func checkBrokenSymlinkResult(t *testing.T, res *Result) {
+	t.Helper()
 	if res.Failed != 1 || len(res.Imported) != 1 {
 		t.Fatalf("result = %+v", res)
 	}
 	if len(res.Errors) != 1 || !strings.Contains(res.Errors[0].FilePath, "broken.txt") {
 		t.Errorf("errors = %+v", res.Errors)
 	}
-	if res.Job == nil {
+}
+
+// checkBrokenSymlinkJob 校验任务落成 completed_with_errors 并带 1 条失败明细。
+func checkBrokenSymlinkJob(t *testing.T, ctx context.Context, st *store.Store, job *store.ImportJob) {
+	t.Helper()
+	if job == nil {
 		t.Fatalf("job 为空")
 	}
-	detail, err := st.GetImportJob(ctx, res.Job.ID)
+	detail, err := st.GetImportJob(ctx, job.ID)
 	if err != nil {
 		t.Fatalf("GetImportJob: %v", err)
 	}

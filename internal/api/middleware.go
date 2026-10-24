@@ -203,14 +203,23 @@ func (w *gzipResponseWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// compressibleMIMEs 是明确值得压缩的精确 MIME 类型；其余按 text/* 前缀兜底。
+var compressibleMIMEs = map[string]bool{
+	"application/json":          true,
+	"application/javascript":    true,
+	"application/xml":           true,
+	"application/xhtml+xml":     true,
+	"application/manifest+json": true,
+	"image/svg+xml":             true,
+}
+
 // canCompress 依据已设置的响应头判断是否值得压缩。
 func (w *gzipResponseWriter) canCompress() bool {
 	h := w.Header()
 	if h.Get("Content-Encoding") != "" {
 		return false
 	}
-	if w.status < 200 || w.status == http.StatusNoContent || w.status == http.StatusNotModified ||
-		w.status == http.StatusPartialContent || (w.status >= 300 && w.status < 400) {
+	if !compressibleStatus(w.status) {
 		return false
 	}
 	if cl := h.Get("Content-Length"); cl != "" {
@@ -218,14 +227,31 @@ func (w *gzipResponseWriter) canCompress() bool {
 			return false
 		}
 	}
-	ct := h.Get("Content-Type")
+	return compressibleContentType(h.Get("Content-Type"))
+}
+
+// compressibleStatus 判断状态码是否允许压缩：2xx 里只排除无正文/分段响应，
+// 3xx 整体不压缩（多为跳转，正文很小）。
+func compressibleStatus(status int) bool {
+	switch {
+	case status < 200:
+		return false
+	case status == http.StatusNoContent, status == http.StatusNotModified, status == http.StatusPartialContent:
+		return false
+	case status >= 300 && status < 400:
+		return false
+	}
+	return true
+}
+
+// compressibleContentType 按 MIME 类型判断是否值得压缩：已知文本类精确匹配，
+// 其余以 text/ 开头的一律认为可压缩。
+func compressibleContentType(ct string) bool {
 	if ct == "" {
 		return false
 	}
 	mime := strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
-	switch mime {
-	case "application/json", "application/javascript", "application/xml",
-		"application/xhtml+xml", "application/manifest+json", "image/svg+xml":
+	if compressibleMIMEs[mime] {
 		return true
 	}
 	return strings.HasPrefix(mime, "text/")

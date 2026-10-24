@@ -37,45 +37,83 @@ type importRequest struct {
 }
 
 func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeImportRequest(w, r)
+	if !ok {
+		return
+	}
+	dir, ok := validateImportDir(w, req)
+	if !ok {
+		return
+	}
+	job, ok := s.acquireImportJob(w, r, dir)
+	if !ok {
+		return
+	}
+	opts := importOptions(req, dir, job.ID)
+
+	// 导入任务随服务退出而取消（Config.Context 由 serve 的 signal ctx 注入）。
+	ctx, cancel := context.WithCancel(s.baseContext())
+	go s.runImport(ctx, cancel, job.ID, dir, opts)
+
+	writeJSON(w, http.StatusAccepted, struct {
+		JobID int64 `json:"jobId"`
+	}{JobID: job.ID})
+}
+
+// decodeImportRequest 解析并校验请求体：只允许一个 JSON 对象，且不超过 importBodyLimit。
+// 出错时已写好 400 响应，返回 ok=false。
+func decodeImportRequest(w http.ResponseWriter, r *http.Request) (importRequest, bool) {
 	var req importRequest
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, importBodyLimit))
 	if err := dec.Decode(&req); err != nil {
 		if errors.Is(err, io.EOF) {
 			writeError(w, http.StatusBadRequest, codeInvalidParam, "请求体不能为空")
-			return
+			return req, false
 		}
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "请求体必须是合法 JSON 对象")
-		return
+		return req, false
 	}
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "请求体只能包含一个 JSON 对象")
-		return
+		return req, false
 	}
+	return req, true
+}
 
+// validateImportDir 校验 dir 与 workers，并把 dir 归一化为绝对路径。
+// 出错时已写好 400 响应，返回 ok=false。
+func validateImportDir(w http.ResponseWriter, req importRequest) (string, bool) {
 	dir := strings.TrimSpace(req.Dir)
 	if dir == "" {
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "dir 必填")
-		return
+		return "", false
 	}
 	info, err := os.Stat(dir)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "目录不存在或不可读: "+dir)
-		return
+		return "", false
 	}
 	if !info.IsDir() {
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "dir 不是目录: "+dir)
-		return
+		return "", false
 	}
 	if req.Workers < 0 || req.Workers > maxImportWorkers {
-		writeError(w, http.StatusBadRequest, codeInvalidParam, "workers 必须在 0~32 之间")
-		return
+		writeError(w, http.StatusBadRequest, codeInvalidParam,
+			fmt.Sprintf("workers 必须在 0~%d 之间", maxImportWorkers))
+		return "", false
 	}
 	if abs, absErr := filepath.Abs(dir); absErr == nil {
 		dir = abs
 	}
+	return dir, true
+}
 
-	// 409 以库中任务状态为准（进程重启后仍然一致）；
-	// 查库与建任务放在同一临界区，避免并发 POST 各建一个任务。
+// acquireImportJob 在临界区内查运行中任务并建新任务，返回新建的任务。
+// 出错时已写好响应（409/500），返回 ok=false。
+//
+// 409 以库中任务状态为准（进程重启后仍然一致）；
+// 查库与建任务放在同一临界区，避免并发 POST 各建一个任务。
+func (s *Server) acquireImportJob(w http.ResponseWriter, r *http.Request, dir string) (*store.ImportJob, bool) {
 	s.importMu.Lock()
 	running, runErr := s.runningImportJob(r.Context())
 	var job *store.ImportJob
@@ -88,37 +126,33 @@ func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case runErr != nil:
 		s.fail(w, r, runErr, "")
-		return
+		return nil, false
 	case running != nil:
 		writeError(w, http.StatusConflict, codeConflict,
 			fmt.Sprintf("已有导入任务正在运行（job %d，目录 %s）", running.ID, running.SourceDir))
-		return
+		return nil, false
 	case createErr != nil:
 		s.fail(w, r, createErr, "")
-		return
+		return nil, false
 	}
+	return job, true
+}
 
+// importOptions 把请求体翻译成 importer.Options（recursive 缺省为 true）。
+func importOptions(req importRequest, dir string, jobID int64) importer.Options {
 	recursive := true
 	if req.Recursive != nil {
 		recursive = *req.Recursive
 	}
-	opts := importer.Options{
+	return importer.Options{
 		Dir:        dir,
 		Recursive:  recursive,
 		Force:      req.Force,
 		DryRun:     req.DryRun,
 		Workers:    req.Workers,
 		ParserOpts: parser.DefaultOptions(),
-		JobID:      job.ID,
+		JobID:      jobID,
 	}
-
-	// 导入任务随服务退出而取消（Config.Context 由 serve 的 signal ctx 注入）。
-	ctx, cancel := context.WithCancel(s.baseContext())
-	go s.runImport(ctx, cancel, job.ID, dir, opts)
-
-	writeJSON(w, http.StatusAccepted, struct {
-		JobID int64 `json:"jobId"`
-	}{JobID: job.ID})
 }
 
 // runningImportJob 返回库中正在运行的任务；僵尸任务（超过 staleImportJobAfter）会被标记失败并跳过。

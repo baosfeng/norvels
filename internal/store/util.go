@@ -52,19 +52,24 @@ func escapeLike(s string) string {
 	return s
 }
 
+// cjkRanges 是需要逐字分词的字符区间（含端点）：
+// 0x4E00-0x9FFF CJK 统一表意文字、0x3400-0x4DBF 扩展 A、0xF900-0xFAFF 兼容表意文字、
+// 0x3040-0x30FF 日文假名、0xAC00-0xD7AF 谚文。
+var cjkRanges = [...][2]rune{
+	{0x4E00, 0x9FFF},
+	{0x3400, 0x4DBF},
+	{0xF900, 0xFAFF},
+	{0x3040, 0x30FF},
+	{0xAC00, 0xD7AF},
+}
+
 // isCJK 判断是否是需要逐字分词的 CJK 字符（汉字、假名、谚文）。
+// 区间集中放在 cjkRanges，新增区系只改表不动判定逻辑。
 func isCJK(r rune) bool {
-	switch {
-	case r >= 0x4E00 && r <= 0x9FFF: // CJK 统一表意文字
-		return true
-	case r >= 0x3400 && r <= 0x4DBF: // 扩展 A
-		return true
-	case r >= 0xF900 && r <= 0xFAFF: // 兼容表意文字
-		return true
-	case r >= 0x3040 && r <= 0x30FF: // 日文假名
-		return true
-	case r >= 0xAC00 && r <= 0xD7AF: // 谚文
-		return true
+	for _, rg := range cjkRanges {
+		if r >= rg[0] && r <= rg[1] {
+			return true
+		}
 	}
 	return false
 }

@@ -67,6 +67,14 @@ func TestListBooks(t *testing.T) {
 	id := env.seedBook("测试之书", "测试作者")
 	env.seedBook("第二本书", "另一位作者")
 
+	t.Run("首页分页与目标书", func(t *testing.T) { checkBookListPage(t, env, id) })
+	t.Run("书名过滤", func(t *testing.T) { checkBookListFilter(t, env, id) })
+	t.Run("分页边界", func(t *testing.T) { checkBookListSecondPage(t, env) })
+}
+
+// checkBookListPage 校验首页条数、分页回填字段与目标书是否在列表中。
+func checkBookListPage(t *testing.T, env *testEnv, id int64) {
+	t.Helper()
 	rr := env.get("/api/books?page=1&size=10")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("状态码 = %d，body=%s", rr.Code, rr.Body.String())
@@ -78,23 +86,26 @@ func TestListBooks(t *testing.T) {
 	if page.Page != 1 || page.Size != 10 {
 		t.Fatalf("分页回填 = page %d size %d，期望 1/10", page.Page, page.Size)
 	}
-	var found bool
 	for _, item := range page.Items {
 		if item.ID == id && item.Title == "测试之书" && item.AuthorName == "测试作者" {
-			found = true
+			return
 		}
 	}
-	if !found {
-		t.Fatalf("列表中未找到 book %d，items=%+v", id, page.Items)
-	}
+	t.Fatalf("列表中未找到 book %d，items=%+v", id, page.Items)
+}
 
-	// 书名过滤
+// checkBookListFilter 书名过滤只返回目标书。
+func checkBookListFilter(t *testing.T, env *testEnv, id int64) {
+	t.Helper()
 	filtered := decodeBody[store.Page[store.BookSummary]](t, env.get("/api/books?q=测试之书"))
 	if filtered.Total != 1 || filtered.Items[0].ID != id {
 		t.Fatalf("q=测试之书 结果 = %+v", filtered)
 	}
+}
 
-	// 分页边界：size=1 的第二页
+// checkBookListSecondPage size=1 的第二页只有 1 条且回填字段正确。
+func checkBookListSecondPage(t *testing.T, env *testEnv) {
+	t.Helper()
 	second := decodeBody[store.Page[store.BookSummary]](t, env.get("/api/books?page=2&size=1"))
 	if second.Page != 2 || second.Size != 1 || len(second.Items) != 1 {
 		t.Fatalf("第二页 = %+v", second)
