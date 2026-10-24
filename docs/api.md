@@ -118,7 +118,8 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 | code | HTTP | 含义 |
 |---|---|---|
-| `invalid_param` | 400 | 参数缺失/格式错（page/size/id/dir 等） |
+| `invalid_param` | 400 | 参数缺失/格式错（page/size/id/dir/percent 等） |
+| `unauthorized` | 401 | 启用鉴权后未提供或提供了错误的令牌 |
 | `query_too_short` | 400 | 搜索关键词少于 2 字符 |
 | `not_found` | 404 | 书籍/章节/作者/任务不存在，或未知 `/api/*` 路径 |
 | `method_not_allowed` | 405 | 路径存在但方法不对（带 `Allow` 头） |
@@ -155,9 +156,9 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 - 章节正文为纯文本，前端按段渲染（`\n` 分段），不做富文本。
 - 搜索高亮：后端返回的 `snippet` 中只有 `<b>` 标签合法，其余 HTML 字符已转义。
 
-## 8. 驾驶舱端点（规划中，随地基任务一起实现）
+## 8. 驾驶舱端点（已实现）
 
-驾驶舱（仅 PC 可见）需要下列端点。原型阶段用假数据占位，路径按本契约实现。
+驾驶舱（仅 PC 可见）的配套端点，2026-10 起已实现（迁移 `0003_reading_progress.sql`）。
 
 ### GET /api/reading/progress
 最近在读（按更新时间倒序，默认 5 条）。
@@ -191,14 +192,55 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36 }`，upsert，204。
 在现有作者列表上加 `sort=words`，用于「字数 Top 10 作者」横条图。
 
 ### GET /api/stats（扩展）
-增加体积构成估算：`textBytes` / `indexBytes` / `otherBytes`（用 `PRAGMA page_count` 与各表
-`SUM(length(...))` 估算，契约里标注「估算值」）。
+增加体积构成估算（**估算值**，非精确页级拆解）：
+
+```json
+{ "books": 865, "chapters": 23675, "authors": 120, "words": 123456789, "dbBytes": 155648,
+  "textBytes": 131072, "indexBytes": 16384, "otherBytes": 8192, "lastImportAt": "…" }
+```
+
+- `textBytes`：各表 TEXT 列字节数汇总（正文 + 标题 + 字级分词镜像列 + 简介/路径等）；
+- `indexBytes`：FTS5 影子表（`chapters_fts_data` / `_idx` / `_docsize` / `_config`）字节数；
+- `otherBytes` = `dbBytes` − 前两者（含 btree 页填充、表头、空闲页）；**三者之和恒等于 `dbBytes`**，
+  可直接画堆叠条，不会出现负值。
+
+### 实现要点
+
+- 阅读进度存 `reading_progress(book_id PK, chapter_id, chapter_idx, percent, updated_at)`，
+  `book_id` 外键 `ON DELETE CASCADE`（删书自动清进度），按 `updated_at` 倒序取最近在读；
+- `PUT /api/reading/progress` 校验顺序：JSON 形状 → `bookId`/`chapterId` 为正 → `percent ∈ [0,1]`
+  → 章节存在且属于该书。分别返回 400 / 400 / 400 / 404，不做静默截断；
+- `GET /api/health/report` 的每项统计**独立查询**：单项失败该字段为 `null` 并追加进 `warnings`，
+  整体仍 200；分桶边界写死在 `internal/store/health.go`：
+  - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+
+  - 章节字数：<1千 / 1千-5千 / 5千-2万 / 2万-10万 / 10万+
+- `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），
+  时区取服务器本地时区，无数据日期补 0；`days` 默认 14、上限 366；
+- `GET /api/authors?sort=words` 复用列表接口，`ORDER BY SUM(word_count) DESC`，`size=10` 即「字数 Top 10」；
+- 新增端点的 `limit` / `days` 越界一律 400（不静默夹紧）。
+
+```bash
+# curl 示例（开放模式；启用鉴权时加 -H 'Authorization: Bearer <token>'）
+curl -s 'http://127.0.0.1:8080/api/reading/progress?limit=5'
+curl -s -X PUT -d '{"bookId":1,"chapterId":42,"percent":0.36}' \
+     http://127.0.0.1:8080/api/reading/progress -w '%{http_code}\n'   # → 204
+curl -s 'http://127.0.0.1:8080/api/health/report'
+curl -s 'http://127.0.0.1:8080/api/stats/import-trend?days=14'
+curl -s 'http://127.0.0.1:8080/api/authors?sort=words&size=10'
+curl -s 'http://127.0.0.1:8080/api/stats'
+```
 
 ## 9. 鉴权（可选）
 
 默认开放模式（单人本地/内网使用）。设置环境变量 `NORVELS_AUTH_TOKEN` 后：
-- 所有 `/api/*` 与页面要求 `Authorization: Bearer <token>` 或同名 Cookie
-- `/api/health` 免鉴权（供容器健康检查）
-- 未设置时启动日志打印 WARN，提示不要暴露到公网
+
+- 所有 `/api/*` 与页面要求 `Authorization: Bearer <token>` 或 Cookie
+- 免鉴权路径：`/api/health`（容器健康检查）、`GET|POST /login`、`POST /logout`
+- 未通过时：`/api/*` 返回 `401 {"error":{"code":"unauthorized",…}}` 并带 `WWW-Authenticate`；
+  页面请求 303 跳到 `/login?next=<原路径>`
+- `GET /login` 是服务端渲染的内联 HTML 表单；`POST /login` 用 `token` 字段提交，
+  成功后下发 `norvels_auth` Cookie（HttpOnly + SameSite=Lax + Path=/，30 天）并跳回 `next`
+- 令牌用 `crypto/subtle.ConstantTimeCompare` 恒定时间比较；`next` 只接受站内相对路径（防开放重定向）
+- 未设置时启动日志打印 `WARN: 未启用鉴权，请勿暴露到公网`
 
 **公开部署（公网 VPS）必须先设 `NORVELS_AUTH_TOKEN`**，详见 [ADR-0001](adr/0001-public-release.md)。

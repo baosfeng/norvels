@@ -28,7 +28,13 @@ type Config struct {
 	// Context 是导入任务的父 context；serve 关闭时应取消它以优雅停止导入。
 	// 为空时使用 context.Background()。
 	Context context.Context
+	// AuthToken 非空时启用鉴权：/api/* 与页面要求 Bearer Token 或 Cookie，
+	// /api/health 与 /login 免鉴权。空 = 开放模式（启动时由调用方打 WARN）。
+	AuthToken string
 }
+
+// AuthEnabled 报告是否启用鉴权。
+func (c Config) AuthEnabled() bool { return c.AuthToken != "" }
 
 // Server 是 API 聚合器。
 type Server struct {
@@ -76,6 +82,14 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("GET /api/import/jobs", s.handleListImportJobs)
 	mux.HandleFunc("GET /api/import/jobs/{id}", s.handleGetImportJob)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
+	// 驾驶舱（docs/api.md §8）
+	mux.HandleFunc("GET /api/health/report", s.handleHealthReport)
+	mux.HandleFunc("GET /api/stats/import-trend", s.handleImportTrend)
+	mux.HandleFunc("GET /api/reading/progress", s.handleListProgress)
+	mux.HandleFunc("PUT /api/reading/progress", s.handleSaveProgress)
+	mux.HandleFunc("GET "+LoginPath, s.handleLoginPage)
+	mux.HandleFunc("POST "+LoginPath, s.handleLoginSubmit)
+	mux.HandleFunc("POST "+logoutPath, s.handleLogout)
 	// 未命中任何 API 路由时统一返回 JSON 错误（否则 mux 会写纯文本）。
 	mux.HandleFunc("/api", s.handleAPINotFound)
 	mux.HandleFunc("/api/", s.handleAPINotFound)

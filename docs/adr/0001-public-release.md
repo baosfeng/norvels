@@ -7,7 +7,9 @@
 
 | 项 | 决定 |
 |---|---|
-| 分发渠道 | Docker Hub 单一公开镜像（`<owner>/norvels`），多架构 amd64 + arm64 |
+| GitHub 仓库 | `baosfeng/norvels`（公开） |
+| Docker Hub | `bsfeng/norvels`（**注意 Docker Hub 用户名是 bsfeng，与 GitHub 的 baosfeng 不同**） |
+| 分发渠道 | Docker Hub 单一公开镜像，多架构 amd64 + arm64 |
 | 部署模型 | 单容器 + 一个 `/data` 卷；前端 embed 进二进制，不分开发布 |
 | 版本号 | 语义化版本；git tag → 镜像 tag；`main` 分支 → `edge` |
 | 数据库 | 单 SQLite 文件，随卷持久化；升级时原地迁移 |

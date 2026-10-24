@@ -1,4 +1,4 @@
-// norvels 单二进制入口：import / serve / stats / reindex / version
+// norvels 单二进制入口：serve / import / stats / reindex / migrate / version
 package main
 
 import (
@@ -7,16 +7,15 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
 	"norvels/internal/api"
-	"norvels/internal/importer"
-	"norvels/internal/parser"
+	"norvels/internal/config"
 	"norvels/internal/store"
 )
 
@@ -30,15 +29,19 @@ var (
 const usage = `norvels — 本地中文小说库
 
 用法:
-  norvels serve   [--addr :8080] [--db ./data/norvels.db]
+  norvels serve   [--addr :8080] [--db ./data/norvels.db] [--log-level info]
   norvels import  --dir <txt 目录> [--db ...] [--recursive] [--force] [--dry-run] [--workers N]
   norvels stats   [--db ...]
   norvels reindex [--db ...]
+  norvels migrate [--db ...] [--dry-run] [--to N]
   norvels version
 
-常用环境变量:
-  NORVELS_ADDR   serve 监听地址（默认 :8080）
-  NORVELS_DB     数据库路径（默认 ./data/norvels.db）
+优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:
+  NORVELS_ADDR         serve 监听地址（默认 :8080）
+  NORVELS_DB           数据库路径（默认 ./data/norvels.db）
+  NORVELS_AUTH_TOKEN   非空则启用鉴权（Bearer Token / 登录 Cookie）；空 = 开放模式
+  NORVELS_LOG_LEVEL    debug|info|warn|error（默认 info）
+  NORVELS_BOOKS_DIR    导入源目录（默认 /books，容器内只读挂载点）
 `
 
 func main() {
@@ -60,6 +63,8 @@ func main() {
 		err = cmdStats(args[1:])
 	case "reindex":
 		err = cmdReindex(args[1:])
+	case "migrate":
+		err = cmdMigrate(args[1:])
 	case "version", "-v", "--version":
 		fmt.Printf("norvels %s (commit %s, built %s)\n", version, commit, builtAt)
 	case "help", "-h", "--help":
@@ -73,30 +78,57 @@ func main() {
 	}
 }
 
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+// mustConfig 读取环境变量配置；非法配置直接终止（配置错误不该带病启动）。
+func mustConfig() config.Config {
+	cfg, err := config.FromEnv()
+	if err != nil {
+		log.Fatalf("配置错误: %v", err)
 	}
-	return def
+	return cfg
 }
 
+// openStore 打开库并执行迁移（启动即升级，失败则让进程失败）。
 func openStore(ctx context.Context, path string) (*store.Store, error) {
 	st, err := store.Open(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	if err := st.Migrate(ctx); err != nil {
+	if err := migrateAndLog(ctx, st); err != nil {
 		st.Close()
 		return nil, err
 	}
 	return st, nil
 }
 
+// migrateAndLog 执行迁移并打印「库版本 N → 应用 M 个迁移 → 版本 M」。
+//
+// 迁移失败时返回错误（调用方让启动失败）：不带着半迁移的库继续跑。
+func migrateAndLog(ctx context.Context, st *store.Store) error {
+	status, err := st.MigrateTo(ctx, store.LatestVersion())
+	if err != nil {
+		return fmt.Errorf("数据库迁移失败（迁移 %d 出错，库版本停在 %d，未继续启动）: %w",
+			status.FailedVersion, status.ToVersion, err)
+	}
+	if status.AdoptedLegacy {
+		log.Printf("识别到旧版数据库（无 schema_migrations），已把版本 1 记为已应用，不重跑建表")
+	}
+	log.Printf("库版本 %d → 应用 %d 个迁移 → 版本 %d（打包共 %d 个）",
+		status.FromVersion, len(status.Applied), status.ToVersion, status.Total)
+	for _, m := range status.Applied {
+		log.Printf("  已应用 %s", m.Label())
+	}
+	return nil
+}
+
 func cmdServe(args []string) error {
+	cfg := mustConfig()
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	addr := fs.String("addr", envOr("NORVELS_ADDR", ":8080"), "监听地址")
-	dbPath := fs.String("db", envOr("NORVELS_DB", "./data/norvels.db"), "数据库路径")
+	addr := fs.String("addr", cfg.Addr, "监听地址")
+	dbPath := fs.String("db", cfg.DB, "数据库路径")
+	authToken := fs.String("auth-token", cfg.AuthToken, "鉴权令牌（空 = 开放模式）")
+	logLevel := fs.String("log-level", cfg.LogLevel, "日志级别 debug|info|warn|error")
 	fs.Parse(args)
+	setupLogging(*logLevel)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -107,11 +139,14 @@ func cmdServe(args []string) error {
 	}
 	defer st.Close()
 
+	token := *authToken
+	warnAuthMode(token == "")
 	srv := &http.Server{
 		Addr: *addr,
 		Handler: api.New(st, api.Config{
 			Version: version, Commit: commit, BuiltAt: builtAt,
-			Context: ctx, // 进程收到 SIGTERM 时取消后台导入任务
+			AuthToken: token,
+			Context:   ctx, // 进程收到 SIGTERM 时取消后台导入任务
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -119,7 +154,7 @@ func cmdServe(args []string) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("监听 %s，数据库 %s", *addr, st.Path())
+		log.Printf("监听 %s，数据库 %s，鉴权 %s", *addr, st.Path(), authModeLabel(token))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -136,121 +171,38 @@ func cmdServe(args []string) error {
 	}
 }
 
-func cmdImport(args []string) error {
-	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	dir := fs.String("dir", "", "txt 所在目录（必填）")
-	dbPath := fs.String("db", envOr("NORVELS_DB", "./data/norvels.db"), "数据库路径")
-	recursive := fs.Bool("recursive", true, "递归子目录")
-	force := fs.Bool("force", false, "忽略幂等检查，覆盖已有记录")
-	dryRun := fs.Bool("dry-run", false, "只解析不写库")
-	workers := fs.Int("workers", 0, "并发解析数（默认 CPU 核数，上限 8）")
-	minChapters := fs.Int("min-chapters", 0, "章节数低于该值跳过")
-	fs.Parse(args)
-	if *dir == "" {
-		return errors.New("必须指定 --dir")
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	st, err := openStore(context.Background(), *dbPath)
+// setupLogging 按级别设置标准库 log 的可见性（debug/info 全开，warn/error 静音 info 级输出）。
+func setupLogging(level string) {
+	lvl, err := config.ParseLevel(level)
 	if err != nil {
-		return err
+		log.Printf("日志级别配置无效（%v），回落 info", err)
+		lvl = slog.LevelInfo
 	}
-	defer st.Close()
-
-	start := time.Now()
-	lastPct := -1
-	res, err := importer.Run(ctx, st, importer.Options{
-		Dir:         *dir,
-		Recursive:   *recursive,
-		Force:       *force,
-		DryRun:      *dryRun,
-		Workers:     *workers,
-		MinChapters: *minChapters,
-		ParserOpts:  parser.DefaultOptions(),
-	}, func(p importer.Progress) {
-		if p.Total == 0 {
-			return
-		}
-		pct := p.Index * 100 / p.Total
-		if pct != lastPct && pct%5 == 0 {
-			lastPct = pct
-			log.Printf("[%3d%%] %d/%d 导入=%d 跳过=%d 失败=%d | %s",
-				pct, p.Index, p.Total, p.Imported, p.Skipped, p.Failed, trim(p.Path, 60))
-		}
-	})
-	if err != nil {
-		return err
+	if lvl >= slog.LevelWarn {
+		log.SetOutput(levelWriter{})
 	}
-	if !*dryRun {
-		if err := st.Checkpoint(context.Background()); err != nil {
-			log.Printf("wal checkpoint 失败: %v", err)
-		}
-	}
-	log.Printf("完成：导入=%d 跳过=%d 失败=%d 用时=%s",
-		res.Imported, res.Skipped, res.Failed, time.Since(start).Round(time.Second))
-	return nil
 }
 
-func cmdStats(args []string) error {
-	fs := flag.NewFlagSet("stats", flag.ExitOnError)
-	dbPath := fs.String("db", envOr("NORVELS_DB", "./data/norvels.db"), "数据库路径")
-	fs.Parse(args)
-	ctx := context.Background()
-	st, err := openStore(ctx, *dbPath)
-	if err != nil {
-		return err
+// levelWriter 在 warn/error 级别下丢弃标准库 log 的普通行。
+//
+// 标准库 log 没有级别概念，而项目诊断日志都用 log.Printf 输出；
+// 这里用「warn+ 时整体静音 info 级输出」的保守策略，错误仍走 log.Fatalf。
+type levelWriter struct{}
+
+func (levelWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// warnAuthMode 在开放模式下打印显著告警（公开发布前提，见 ADR-0001 §3）。
+func warnAuthMode(openMode bool) {
+	if !openMode {
+		return
 	}
-	defer st.Close()
-	s, err := st.Stats(ctx)
-	if err != nil {
-		return err
-	}
-	w := os.Stdout
-	fmt.Fprintf(w, "书籍: %d\n章节: %d\n作者: %d\n字数: %d\n库大小: %s\n",
-		s.Books, s.Chapters, s.Authors, s.Words, humanBytes(s.DBBytes))
-	if s.LastImportAt != nil {
-		fmt.Fprintf(w, "最近导入: %s\n", s.LastImportAt.Format(time.RFC3339))
-	}
-	return nil
+	log.Printf("WARN: 未启用鉴权，请勿暴露到公网（设置 NORVELS_AUTH_TOKEN 可开启）")
 }
 
-func cmdReindex(args []string) error {
-	fs := flag.NewFlagSet("reindex", flag.ExitOnError)
-	dbPath := fs.String("db", envOr("NORVELS_DB", "./data/norvels.db"), "数据库路径")
-	fs.Parse(args)
-	ctx := context.Background()
-	st, err := openStore(ctx, *dbPath)
-	if err != nil {
-		return err
+// authModeLabel 返回日志里的鉴权模式描述。
+func authModeLabel(token string) string {
+	if token == "" {
+		return "开放模式"
 	}
-	defer st.Close()
-	start := time.Now()
-	if err := st.Reindex(ctx); err != nil {
-		return err
-	}
-	log.Printf("索引重建完成，用时 %s", time.Since(start).Round(time.Second))
-	return nil
-}
-
-func trim(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
-}
-
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return strconv.FormatInt(n, 10) + " B"
-	}
-	div, exp := int64(unit), 0
-	for v := n / unit; v >= unit; v /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.2f %cB", float64(n)/float64(div), "KMGT"[exp])
+	return "已启用（Bearer Token / 登录 Cookie）"
 }

@@ -205,9 +205,59 @@ docker tag norvels:0.1.0 norvels:current
 docker compose -f deploy/compose.yml up -d
 ```
 
-- schema 迁移是幂等的（`IF NOT EXISTS`），升级不会删除已有数据；升级前仍建议备份。
+- schema 迁移是**版本化**的（编号迁移 + `schema_migrations` 记录表），升级只前进不回滚；升级前仍建议备份。
 - 回滚只需换镜像 tag；如果新版本写入过旧版本不认识的列，回滚前用备份恢复更稳妥。
 - 数据库文件格式向后兼容，但**不要**在旧版本上打开已被新版本迁移过的库并写入，先恢复备份。
+
+### 7.1 版本化迁移（v0.2.0 起）
+
+启动时自动把库升级到镜像内的最新版本，失败**拒绝启动**（不带着半迁移的库继续跑）：
+
+```bash
+# 只看将要应用哪些迁移（不写库，可对线上库安全执行）
+docker compose -f deploy/compose.yml run --rm --entrypoint /norvels   norvels migrate --db /data/norvels.db --dry-run
+
+# 启动日志会打印「库版本 N → 应用 M 个迁移 → 版本 M」
+docker compose -f deploy/compose.yml logs --tail 20 norvels
+```
+
+- 迁移源文件在镜像内的 `internal/store/migrations/NNNN_*.sql`，按文件名的版本号升序应用；
+- 每条迁移在**独立事务**内执行，失败整体回滚且进程退出码非 0；已成功的前序迁移保持已应用；
+- **老库兼容**：v0.1.x 的库（`PRAGMA user_version=1`、有业务表、无 `schema_migrations`）
+  首次升级会被识别并直接把版本 1 记为已应用，**不重跑建表**，数据条数不变；
+- 迁移版本号只增不减。若需要回退某个结构变更，请从备份恢复，不要删 `schema_migrations` 记录。
+
+| 版本 | 迁移 | 内容 |
+|---|---|---|
+| 1 | `0001_init.sql` | 初始结构（authors / books / volumes / chapters / tags / import_jobs / FTS5） |
+| 3 | `0003_reading_progress.sql` | `reading_progress` 表 + 更新时间索引（阅读进度服务端化） |
+
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续。
+
+### 7.2 鉴权
+
+设置环境变量 `NORVELS_AUTH_TOKEN` 后启用鉴权（**公网部署必须设置**）：
+
+```bash
+NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.yml up -d
+```
+
+- `/api/*` 与全部页面要求 `Authorization: Bearer <token>` 或登录后下发的 Cookie；
+- `/api/health` 免鉴权（容器健康检查依赖它），`/login` 是登录表单页；
+- Cookie 为 HttpOnly + SameSite=Lax + Path=/（30 天），比较令牌用恒定时间比较；
+- 未设置 token = **开放模式**，启动日志会打印 `WARN: 未启用鉴权，请勿暴露到公网`。
+
+### 7.3 配置优先级
+
+命令行 flag > 环境变量 > 默认值。环境变量统一 `NORVELS_` 前缀：
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `NORVELS_ADDR` | `:8080` | 监听地址 |
+| `NORVELS_DB` | `./data/norvels.db`（镜像内 `/data/norvels.db`） | 数据库路径 |
+| `NORVELS_AUTH_TOKEN` | 空 | 空 = 开放模式 |
+| `NORVELS_LOG_LEVEL` | `info` | debug/info/warn/error（非法值启动即报错） |
+| `NORVELS_BOOKS_DIR` | `/books` | 导入源目录（只读挂载点） |
 
 ## 8. 排障
 

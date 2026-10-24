@@ -36,6 +36,7 @@ type pkgJSON struct {
 
 // allowedDeps 是内置包允许依赖的内置包（正向白名单）。
 var allowedDeps = map[string][]string{
+	"norvels/internal/config":   {}, // 配置收敛包：只读环境变量 + 纯函数，不依赖任何内置包
 	"norvels/internal/model":    {},
 	"norvels/internal/webui":    {},
 	"norvels/internal/parser":   {"norvels/internal/model"},
@@ -46,7 +47,7 @@ var allowedDeps = map[string][]string{
 		"norvels/internal/store", "norvels/internal/webui",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
-	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui"},
+	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config"},
 	"norvels/cmd/healthcheck": {},
 }
 

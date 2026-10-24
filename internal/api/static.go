@@ -238,6 +238,12 @@ var apiRoutes = []struct {
 	{"/api/import/jobs", http.MethodGet},
 	{"/api/import/jobs/{id}", http.MethodGet},
 	{"/api/version", http.MethodGet},
+	{"/api/health/report", http.MethodGet},
+	{"/api/stats/import-trend", http.MethodGet},
+	{"/api/reading/progress", http.MethodGet},
+	{"/api/reading/progress", http.MethodPut},
+	{"/login", http.MethodGet},
+	{"/login", http.MethodPost},
 }
 
 // handleAPINotFound 处理未命中的 /api 请求，统一返回 JSON 错误。

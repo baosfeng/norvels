@@ -3,18 +3,13 @@ package store
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // 纯 Go SQLite 驱动（CGO-free）
 )
-
-//go:embed schema.sql
-var schemaSQL string
 
 // Store 包装一个 SQLite 连接池。
 type Store struct {
@@ -61,17 +56,6 @@ func (s *Store) Path() string { return s.path }
 
 // Close 关闭数据库。
 func (s *Store) Close() error { return s.db.Close() }
-
-// Migrate 应用 schema（幂等：全部使用 IF NOT EXISTS）。
-func (s *Store) Migrate(ctx context.Context) error {
-	if strings.TrimSpace(schemaSQL) == "" {
-		return fmt.Errorf("store: schema.sql is empty")
-	}
-	if _, err := s.db.ExecContext(ctx, schemaSQL); err != nil {
-		return fmt.Errorf("store: migrate: %w", err)
-	}
-	return nil
-}
 
 // Ping 用于健康检查。
 func (s *Store) Ping(ctx context.Context) error {

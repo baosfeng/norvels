@@ -30,6 +30,7 @@ const (
 	codeInternal         = "internal"
 	codeMethodNotAllowed = "method_not_allowed"
 	codeQueryTooShort    = "query_too_short"
+	codeUnauthorized     = "unauthorized"
 )
 
 // writeJSON 以 JSON 写响应；序列化失败时退化为 500。

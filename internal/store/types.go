@@ -141,6 +141,11 @@ type SearchResult struct {
 }
 
 // Stats 是库级统计。
+//
+// TextBytes / IndexBytes / OtherBytes 是「库体积构成」的**估算值**（精确拆解需要
+// 逐页解析 btree，代价太高）：正文类数据量按各表 TEXT/BLOB 列字节数汇总，
+// 索引类按 FTS 影子表字节数汇总，其余 = 文件总大小 − 前两者。
+// 三者之和等于 DBBytes，可直接用于堆叠条。
 type Stats struct {
 	Books        int        `json:"books"`
 	Chapters     int        `json:"chapters"`
@@ -148,6 +153,10 @@ type Stats struct {
 	Words        int64      `json:"words"`
 	DBBytes      int64      `json:"dbBytes"`
 	LastImportAt *time.Time `json:"lastImportAt"`
+	// 体积构成估算（字节）。
+	TextBytes  int64 `json:"textBytes"`
+	IndexBytes int64 `json:"indexBytes"`
+	OtherBytes int64 `json:"otherBytes"`
 }
 
 // ImportJob 是一次导入任务的记录。

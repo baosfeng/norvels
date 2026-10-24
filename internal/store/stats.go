@@ -28,6 +28,10 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		}
 	}
 	st.DBBytes = s.diskUsage()
+	// 体积构成是估算值；估算失败不影响主统计（前端仍能画「未知」退化）。
+	if textBytes, indexBytes, cerr := s.estimateComposition(ctx); cerr == nil {
+		fillComposition(&st, textBytes, indexBytes)
+	}
 	return st, nil
 }
 

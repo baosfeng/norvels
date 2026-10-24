@@ -9,10 +9,15 @@ import (
 )
 
 // authorOrder 把排序键映射为 ORDER BY 子句。
+//
+// books = 按作品数（默认）；words = 按总字数（驾驶舱「字数 Top 10」）；
+// name = 按作者名。三者都追加 name/id 兜底，保证分页稳定。
 func authorOrder(sortKey string) string {
 	switch sortKey {
 	case "name":
 		return "a.name COLLATE NOCASE ASC, a.id ASC"
+	case "words":
+		return "COALESCE(SUM(b.word_count), 0) DESC, a.name COLLATE NOCASE ASC, a.id ASC"
 	default: // books
 		return "COUNT(b.id) DESC, a.name COLLATE NOCASE ASC, a.id ASC"
 	}

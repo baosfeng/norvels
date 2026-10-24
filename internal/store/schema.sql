@@ -1,5 +1,7 @@
--- norvels 数据库结构
--- 幂等：全部 IF NOT EXISTS；Migrate 每次启动执行整份文件。
+-- norvels 数据库结构 v1（历史快照）
+-- 本文件已冻结：实际启动迁移读取 internal/store/migrations/NNNN_*.sql，
+-- v1 的 DDL 原样保留在 migrations/0001_init.sql，此处仅作 v1 结构的阅读参考。
+-- 幂等：全部 IF NOT EXISTS；旧版 Migrate 每次启动执行整份文件。
 -- 时间字段统一存 UTC ISO-8601 文本（2006-01-02T15:04:05.000Z）。
 -- 全文检索采用「字级分词」：chapters.title_seg / content_seg 是原文经 store.Segment()
 -- 逐字加空格后的镜像列，chapters_fts 用 unicode61 分词，支持 2 字及以上中文检索。

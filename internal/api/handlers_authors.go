@@ -8,7 +8,9 @@ import (
 )
 
 // authorSorts 是 GET /api/authors 支持的排序字段。
-var authorSorts = map[string]bool{"books": true, "name": true}
+//
+// words 用于驾驶舱「字数 Top 10 作者」横条图（GET /api/authors?sort=words&size=10）。
+var authorSorts = map[string]bool{"books": true, "words": true, "name": true}
 
 func (s *Server) handleListAuthors(w http.ResponseWriter, r *http.Request) {
 	page, size, err := parsePagination(r)
@@ -16,12 +18,9 @@ func (s *Server) handleListAuthors(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
-	sort := strings.TrimSpace(r.URL.Query().Get("sort"))
-	if sort == "" {
-		sort = "books"
-	}
-	if !authorSorts[sort] {
-		s.badRequest(w, badParam("参数 sort 只支持 books|name"), codeInvalidParam)
+	sort, ok := normalizeSort(r.URL.Query().Get("sort"), "books", authorSorts)
+	if !ok {
+		s.badRequest(w, badParam("参数 sort 只支持 books|words|name"), codeInvalidParam)
 		return
 	}
 	res, err := s.st.ListAuthors(r.Context(), store.AuthorQuery{
