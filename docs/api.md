@@ -151,6 +151,54 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 ## 7. 前端约定
 
-- 阅读进度 v1 存 `localStorage`（`norvels:progress:{bookId}`），v2 可加服务端同步。
+- 阅读进度：**服务端为准**（见 §8 `/api/reading/progress`），`localStorage` 降级为离线缓存。
 - 章节正文为纯文本，前端按段渲染（`\n` 分段），不做富文本。
 - 搜索高亮：后端返回的 `snippet` 中只有 `<b>` 标签合法，其余 HTML 字符已转义。
+
+## 8. 驾驶舱端点（规划中，随地基任务一起实现）
+
+驾驶舱（仅 PC 可见）需要下列端点。原型阶段用假数据占位，路径按本契约实现。
+
+### GET /api/reading/progress
+最近在读（按更新时间倒序，默认 5 条）。
+```json
+{ "items": [{ "bookId": 1, "bookTitle": "…", "chapterId": 42, "chapterIdx": 42, "chapterTitle": "第42章 …", "percent": 0.36, "updatedAt": "…" }] }
+```
+
+### PUT /api/reading/progress
+body `{ "bookId": 1, "chapterId": 42, "percent": 0.36 }`，upsert，204。
+无账号体系：单用户，进度直接挂 book/chapter（见 [ADR-0001](adr/0001-public-release.md)）。
+
+### GET /api/health/report
+库健康状况（人话指标，供驾驶舱状态卡与直方图）。
+```json
+{
+  "totalBooks": 865, "thinBooks": 3, "missingAuthor": 12, "missingIntro": 40, "hugeChapters": 0,
+  "chapterBuckets": [{ "label": "1", "count": 0 }, { "label": "2-9", "count": 12 }],
+  "chapterLengthBuckets": [{ "label": "<1千字", "count": 120 }],
+  "warnings": []
+}
+```
+单项统计失败返回 `null` 并写入 `warnings`，不让整个接口 500。
+
+### GET /api/stats/import-trend?days=14
+近 N 天导入量（无数据的日期补 0，前端需要连续 x 轴）。
+```json
+[{ "date": "2026-10-24", "books": 12, "chapters": 1234 }]
+```
+
+### GET /api/authors?sort=words&size=10
+在现有作者列表上加 `sort=words`，用于「字数 Top 10 作者」横条图。
+
+### GET /api/stats（扩展）
+增加体积构成估算：`textBytes` / `indexBytes` / `otherBytes`（用 `PRAGMA page_count` 与各表
+`SUM(length(...))` 估算，契约里标注「估算值」）。
+
+## 9. 鉴权（可选）
+
+默认开放模式（单人本地/内网使用）。设置环境变量 `NORVELS_AUTH_TOKEN` 后：
+- 所有 `/api/*` 与页面要求 `Authorization: Bearer <token>` 或同名 Cookie
+- `/api/health` 免鉴权（供容器健康检查）
+- 未设置时启动日志打印 WARN，提示不要暴露到公网
+
+**公开部署（公网 VPS）必须先设 `NORVELS_AUTH_TOKEN`**，详见 [ADR-0001](adr/0001-public-release.md)。
