@@ -16,65 +16,65 @@ var cnDigitValue = map[rune]int{
 }
 
 // parseNumeral 解析行首数字（阿拉伯数字/全角数字/中文数字），返回数值与消耗的字节数。
+//
+// 三层依次尝试：ASCII 数字最便宜，其次全角数字，最后中文数字（最复杂）。
+// 任一层命中即返回，全部不命中返回 ok=false。
 func parseNumeral(s string) (num int, n int, ok bool) {
 	if s == "" {
 		return 0, 0, false
 	}
-	c := s[0]
-	if c >= '0' && c <= '9' {
-		i, v := 0, 0
-		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-			v = v*10 + int(s[i]-'0')
-			i++
-			if i >= 7 {
-				break
-			}
-		}
-		return v, i, v > 0
+	if c := s[0]; c >= '0' && c <= '9' {
+		return parseASCIINumeral(s)
 	}
-	if c >= 0xEF && c <= 0xEF {
-		// 全角数字 ０-９：UTF-8 为 EF BC 90 ~ EF BC 99
-		i, v, cnt := 0, 0, 0
-		for i+2 < len(s) && s[i] == 0xEF && s[i+1] == 0xBC && s[i+2] >= 0x90 && s[i+2] <= 0x99 {
-			v = v*10 + int(s[i+2]-0x90)
-			i += 3
-			cnt++
-			if cnt >= 7 {
-				break
-			}
+	if s[0] == 0xEF {
+		return parseFullWidthNumeral(s)
+	}
+	return parseCNDNumeral(s)
+}
+
+// parseASCIINumeral 解析行首的 ASCII 数字串（最多 7 位）。
+func parseASCIINumeral(s string) (num int, n int, ok bool) {
+	v, i := 0, 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		v = v*10 + int(s[i]-'0')
+		i++
+		if i >= 7 {
+			break
 		}
-		if cnt > 0 {
-			return v, i, v > 0
+	}
+	return v, i, v > 0
+}
+
+// parseFullWidthNumeral 解析行首的全角数字串 ０-９（UTF-8 为 EF BC 90 ~ EF BC 99）。
+func parseFullWidthNumeral(s string) (num int, n int, ok bool) {
+	v, i, cnt := 0, 0, 0
+	for i+2 < len(s) && s[i] == 0xEF && s[i+1] == 0xBC && s[i+2] >= 0x90 && s[i+2] <= 0x99 {
+		v = v*10 + int(s[i+2]-0x90)
+		i += 3
+		cnt++
+		if cnt >= 7 {
+			break
 		}
+	}
+	if cnt == 0 {
 		return 0, 0, false
 	}
-	// 中文数字
-	value := func(r rune) (int, bool) {
-		v, ok := cnDigitValue[r]
-		return v, ok
-	}
-	unit := func(r rune) int {
-		switch r {
-		case '十':
-			return 10
-		case '百':
-			return 100
-		case '千':
-			return 1000
-		}
-		return 0
-	}
+	return v, i, v > 0
+}
+
+// parseCNDNumeral 解析行首的中文数字（支持十/百/千/万的分段累加）。
+func parseCNDNumeral(s string) (num int, n int, ok bool) {
 	total, section, number, cnt := 0, 0, 0, 0
 	i := 0
 	for i < len(s) {
 		r, sz := utf8.DecodeRuneInString(s[i:])
-		if d, ok := value(r); ok {
+		if d, hit := cnDigitValue[r]; hit {
 			number = d
 			i += sz
 			cnt++
 			continue
 		}
-		if u := unit(r); u > 0 {
+		if u := cnUnitValue(r); u > 0 {
 			if number == 0 {
 				number = 1
 			}
@@ -104,6 +104,19 @@ func parseNumeral(s string) (num int, n int, ok bool) {
 		return 0, 0, false
 	}
 	return total, i, true
+}
+
+// cnUnitValue 返回中文数位字符的权值（十/百/千），非数位返回 0。
+func cnUnitValue(r rune) int {
+	switch r {
+	case '十':
+		return 10
+	case '百':
+		return 100
+	case '千':
+		return 1000
+	}
+	return 0
 }
 
 // cutDiNum 解析行首的「第」+ 数字。

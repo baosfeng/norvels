@@ -29,10 +29,36 @@ func headingLeadOK(s string) bool {
 
 // parseInlineHeading 处理「标题与正文挤在同一行」的情况，例如：
 //
-//	"  第三章   女歌手   一位身穿白色短裙…"
+//	"  第三章   女歌手   一位身穿白色短裙…"
 //
 // 返回解析出的标题以及「正文从本行第几个字节开始」。
 func parseInlineHeading(line string) (heading, int, bool) {
+	skip := skipLeadDecor(line)
+	if skip >= len(line) {
+		return heading{}, 0, false
+	}
+	h, consumed, ok := parseInlineMarker(line[skip:])
+	if !ok {
+		return heading{}, 0, false
+	}
+	pos := skip + consumed
+	for pos < len(line) {
+		r, sz := utf8.DecodeRuneInString(line[pos:])
+		if !isPadRune(r) && !isTitleSep(r) {
+			break
+		}
+		pos += sz
+	}
+	titleEnd := scanInlineTitle(line, pos)
+	h.title = strings.Trim(line[pos:titleEnd], " \t\u3000")
+	if strings.Contains(h.title, "。") {
+		h.title = ""
+	}
+	return h, skipInlineSep(line, titleEnd), true
+}
+
+// skipLeadDecor 跳过行首装饰字符，返回正文开始的下标。
+func skipLeadDecor(line string) int {
 	skip := 0
 	for skip < len(line) {
 		r, sz := utf8.DecodeRuneInString(line[skip:])
@@ -41,54 +67,39 @@ func parseInlineHeading(line string) (heading, int, bool) {
 		}
 		skip += sz
 	}
-	if skip >= len(line) {
-		return heading{}, 0, false
-	}
-	rest := line[skip:]
-	var h heading
-	consumed := 0
-	if num, numText, r2, ok := cutDiNum(rest); ok {
-		if u, sz := utf8.DecodeRuneInString(r2); isVolumeUnit(u) {
-			consumed = len("第") + len(numText) + sz
-			h = heading{kind: headVolume, volNum: num, volTitle: "第" + numText + string(u), strong: true}
-		} else if isChapterUnit(u) {
-			consumed = len("第") + len(numText) + sz
-			h = heading{kind: headChapter, num: num, hasNum: true, strong: true,
-				marker: "第" + numText + string(u)}
-		}
-	}
-	if consumed == 0 {
-		for _, m := range specialMarkers {
-			if strings.HasPrefix(rest, m) {
-				consumed = len(m)
-				h = heading{kind: headSpecial, strong: true, marker: m}
-				break
-			}
-		}
-	}
-	if consumed == 0 {
-		return heading{}, 0, false
-	}
+	return skip
+}
 
-	pos := skip + consumed
-	// 跳过标题前的填充
-	for pos < len(line) {
-		r, sz := utf8.DecodeRuneInString(line[pos:])
-		if !isPadRune(r) && !isTitleSep(r) {
-			break
+// parseInlineMarker 解析行内标题的标记部分（第N章 / 序章 / 楔子…）。
+func parseInlineMarker(rest string) (heading, int, bool) {
+	if num, numText, after, ok := cutDiNum(rest); ok {
+		u, sz := utf8.DecodeRuneInString(after)
+		consumed := len("第") + len(numText) + sz
+		switch {
+		case isVolumeUnit(u):
+			return heading{kind: headVolume, volNum: num, volTitle: "第" + numText + string(u), strong: true}, consumed, true
+		case isChapterUnit(u):
+			return heading{kind: headChapter, num: num, hasNum: true, strong: true,
+				marker: "第" + numText + string(u)}, consumed, true
 		}
-		pos += sz
 	}
-	titleStart := pos
-	titleEnd := pos
-	runes := 0
+	for _, m := range specialMarkers {
+		if strings.HasPrefix(rest, m) {
+			return heading{kind: headSpecial, strong: true, marker: m}, len(m), true
+		}
+	}
+	return heading{}, 0, false
+}
+
+// scanInlineTitle 从 start 开始扫标题的结束位置：遇句末标点或连续填充即止。
+func scanInlineTitle(line string, start int) int {
+	titleEnd, runes := start, 0
 	for titleEnd < len(line) && runes < 20 {
 		r, sz := utf8.DecodeRuneInString(line[titleEnd:])
 		if isSentenceTail(r) {
 			break
 		}
 		if isPadRune(r) || isTitleSep(r) {
-			// 连续填充 → 标题结束
 			if nr, _ := utf8.DecodeRuneInString(line[titleEnd+sz:]); isPadRune(nr) || isTitleSep(nr) {
 				break
 			}
@@ -96,22 +107,19 @@ func parseInlineHeading(line string) (heading, int, bool) {
 		titleEnd += sz
 		runes++
 	}
-	h.title = strings.Trim(line[titleStart:titleEnd], " 	 　")
-	if h.title != "" && strings.Contains(h.title, "。") {
-		h.title = ""
-	}
-	bodyPos := titleEnd
-	for bodyPos < len(line) {
-		r, sz := utf8.DecodeRuneInString(line[bodyPos:])
+	return titleEnd
+}
+
+// skipInlineSep 跳过标题与正文之间的分隔填充，返回正文起点。
+func skipInlineSep(line string, from int) int {
+	for from < len(line) {
+		r, sz := utf8.DecodeRuneInString(line[from:])
 		if !isPadRune(r) && !isTitleSep(r) {
 			break
 		}
-		bodyPos += sz
+		from += sz
 	}
-	if h.title == "" {
-		h.title = ""
-	}
-	return h, bodyPos, true
+	return from
 }
 
 // parsePrefixedHeading 解析「书名/篇名 + 第N章」这类带短前缀的标题行。

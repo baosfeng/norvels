@@ -45,52 +45,57 @@ func decodeBytes(b []byte) (string, string, []string) {
 	if len(b) == 0 {
 		return EncUTF8, "", nil
 	}
+	if enc, text, warns, ok := decodeByBOM(b); ok {
+		return enc, text, warns
+	}
+	if enc, text, warns, ok := decodeUTF16NoBOM(b); ok {
+		return enc, text, warns
+	}
+	return decodeByLegality(b)
+}
 
-	// 1) BOM
+// decodeByBOM 按 BOM 判定编码（确定性特征，优先级最高）。
+func decodeByBOM(b []byte) (string, string, []string, bool) {
 	switch {
 	case len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF:
-		return EncUTF8BOM, decodeUTF8(b[3:]), nil
+		return EncUTF8BOM, decodeUTF8(b[3:]), nil, true
 	case len(b) >= 4 && b[0] == 0xFF && b[1] == 0xFE && b[2] == 0x00 && b[3] == 0x00,
 		len(b) >= 4 && b[0] == 0x00 && b[1] == 0x00 && b[2] == 0xFE && b[3] == 0xFF:
-		return EncUTF16LE, decodeUTF16(b[4:], true).text, []string{"检测到 UTF-32 BOM，按 UTF-16LE 尽力解码"}
+		return EncUTF16LE, decodeUTF16(b[4:], true).text, []string{"检测到 UTF-32 BOM，按 UTF-16LE 尽力解码"}, true
 	case len(b) >= 2 && b[0] == 0xFF && b[1] == 0xFE:
-		u := decodeUTF16(b[2:], true)
-		var w []string
-		if u.bad > 0 {
-			w = append(w, "utf-16le: 存在孤立代理项或奇数尾字节")
-		}
-		return EncUTF16LE, u.text, w
+		return EncUTF16LE, decodeUTF16(b[2:], true).text, utf16Warn(b[2:], true), true
 	case len(b) >= 2 && b[0] == 0xFE && b[1] == 0xFF:
-		u := decodeUTF16(b[2:], false)
-		var w []string
-		if u.bad > 0 {
-			w = append(w, "utf-16be: 存在孤立代理项或奇数尾字节")
-		}
-		return EncUTF16BE, u.text, w
+		return EncUTF16BE, decodeUTF16(b[2:], false).text, utf16Warn(b[2:], false), true
 	}
+	return "", "", nil, false
+}
 
-	// 2) 无 BOM 的 UTF-16：纯 ASCII 的 UTF-16 文本可能是合法 UTF-8，
-	//    所以要在 UTF-8 判定之前用 NUL 分布排除。
-	if looksUTF16(b) {
-		le := decodeUTF16(b, true)
-		be := decodeUTF16(b, false)
-		if le.bad*8 < len(b)/2 || be.bad*8 < len(b)/2 {
-			if textQuality(le.text) >= textQuality(be.text) {
-				return EncUTF16LE, le.text, []string{"无 BOM，按 UTF-16LE 解码"}
-			}
-			return EncUTF16BE, be.text, []string{"无 BOM，按 UTF-16BE 解码"}
-		}
+// decodeUTF16NoBOM 处理没有 BOM 的 UTF-16。
+//
+// 纯 ASCII 的 UTF-16 文本可能是合法 UTF-8，所以要在 UTF-8 判定之前用 NUL 分布排除。
+func decodeUTF16NoBOM(b []byte) (string, string, []string, bool) {
+	if !looksUTF16(b) {
+		return "", "", nil, false
 	}
+	le := decodeUTF16(b, true)
+	be := decodeUTF16(b, false)
+	if le.bad*8 >= len(b)/2 && be.bad*8 >= len(b)/2 {
+		return "", "", nil, false
+	}
+	if textQuality(le.text) >= textQuality(be.text) {
+		return EncUTF16LE, le.text, []string{"无 BOM，按 UTF-16LE 解码"}, true
+	}
+	return EncUTF16BE, be.text, []string{"无 BOM，按 UTF-16BE 解码"}, true
+}
 
-	// 3) UTF-8
+// decodeByLegality 按「整文件合法性」依次尝试 UTF-8 / GB18030 / Big5，全不合法时打分兜底。
+func decodeByLegality(b []byte) (string, string, []string) {
 	if utf8.Valid(b) {
 		return EncUTF8, string(b), nil
 	}
-
-	// 4) GB18030
 	gbText, gbOK := decodeGB18030(b)
 	if gbOK {
-		// GB18030 与 Big5 的字节空间有重叠：若 GB18030 解出的文本质量偏低，
+		// GB18030 与 Big5 的字节空间有重叠：若 GB 解出的文本质量偏低，
 		// 再看 Big5 能否解得更像正常中文。
 		if q := textQuality(gbText); q < 150 {
 			if bt, bigOK := decodeBig5(b); bigOK && textQuality(bt) > q+20 {
@@ -99,13 +104,14 @@ func decodeBytes(b []byte) (string, string, []string) {
 		}
 		return EncGB18030, gbText, nil
 	}
-
-	// 5) Big5
 	if bt, ok := decodeBig5(b); ok {
 		return EncBig5, bt, nil
 	}
+	return decodeBestEffort(b, gbText)
+}
 
-	// 6) 都不合法：按文本质量挑最优，尽力解码并告警。
+// decodeBestEffort 在所有候选都不合法时按文本质量挑最优，尽力解码并告警。
+func decodeBestEffort(b []byte, gbText string) (string, string, []string) {
 	bestEnc, bestText := EncUnknown, decodeUTF8(b)
 	bestScore := textQuality(bestText)
 	if s := textQuality(gbText); s > bestScore {
@@ -117,6 +123,17 @@ func decodeBytes(b []byte) (string, string, []string) {
 		}
 	}
 	return bestEnc, bestText, []string{"编码无法严格识别，已按最优候选尽力解码（可能含乱码）"}
+}
+
+// utf16Warn 在 UTF-16 解码出现异常字节时返回告警。
+func utf16Warn(b []byte, little bool) []string {
+	if decodeUTF16(b, little).bad > 0 {
+		if little {
+			return []string{"utf-16le: 存在孤立代理项或奇数尾字节"}
+		}
+		return []string{"utf-16be: 存在孤立代理项或奇数尾字节"}
+	}
+	return nil
 }
 
 // looksUTF16 用 NUL 字节的位置分布判断是否可能是无 BOM 的 UTF-16。

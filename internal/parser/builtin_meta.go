@@ -43,6 +43,11 @@ func (preambleMeta) Weight() int  { return 60 }
 func (preambleMeta) Extract(d *Doc) (Meta, int) {
 	pre := d.preamble()
 	title, author, intro := metaFromPreamble(pre)
+	if author == "" {
+		// 头部元信息块可能被超长的「书名/简介」挤到很后面，也可能写在文末版权块里。
+		// 这时用「短行 + 作者标记」的特征在文档两端再捞一次。
+		author = authorFromEdges(d.Text)
+	}
 	m := Meta{}
 	if title != "" {
 		m.Title, m.TitleScore = title, 70

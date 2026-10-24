@@ -21,6 +21,10 @@ raw bytes
 
 各层只依赖 `Doc`，层间不直接互调；执行顺序与启停由 `Pipeline` 决定。
 
+**降级语义（必须遵守）**：任何单个策略 panic 或返回 error，都只是记一条 warning
+并跳到下一个候选，绝不把整篇解析带崩。切章层尤其如此——选中的策略失败时回退到
+`unmarked` 兜底，保证「至少能入库」。实现上由 `guard()` 统一包 recover。
+
 ## 2. 契约（internal/parser/strategy.go）
 
 ```go
@@ -80,7 +84,12 @@ func Metas() []MetaExtractor
 func Splitters() []Splitter
 ```
 
-- 内置策略在包初始化时注册（`init()` 集中在一个文件里，便于总览）
+- 内置策略在包初始化时注册：`registry.go` 的 `init()` 调四个 `registerBuiltin*`，
+  各自定义在对应的 `builtin_*.go` 里（一屏可见本层支持哪些格式）
+- 文件布局：`strategy.go`（契约 + `guard` 降级）· `registry.go`（注册表）·
+  `builtin_codec.go` / `builtin_filter.go` / `builtin_meta.go` / `builtin_splitter.go`（内置策略）·
+  `postprocess.go`（超长章再切）· `heading*.go` / `split_*.go` / `cleaner.go` /
+  `meta_filename*.go` / `meta_preamble.go` / `normalize.go`（各层实现体）
 - 第三方 / 灰度策略通过 `Options.ExtraFilters` / `ExtraSplitters` 注入，不改全局
 - `Options` 增加启停与强制项，便于排障与按来源定制：
 
@@ -90,6 +99,7 @@ func Splitters() []Splitter
 | `ForceSplitter string` | 跳过 Detect，强制指定切章策略 |
 | `ForceEncoding string` | 跳过打分，强制指定编码 |
 | `ExtraFilters/ExtraMetas/ExtraSplitters` | 单次解析注入策略，不污染全局注册表 |
+| `MaxChapterChars` | 单章字符上限，超过则按段落边界再切（默认 30000，0 关闭） |
 
 ## 4. 内置策略清单
 
@@ -103,6 +113,7 @@ func Splitters() []Splitter
 | Meta | `filename`（weight 80） | 文件名规则优先 |
 | Meta | `preamble`（weight 60） | 正文头部元信息块 |
 | Meta | `heading-reverse`（weight 40） | 由章节标题反推（头部信息缺失时兜底） |
+| Meta | `stem`（weight 10） | 兜底：文件名主干即书名，保证书名永不落空 |
 | Splitter | `di-unit` | 「第N章/节/回/篇/话/卷/部」 |
 | Splitter | `special` | 序章 / 楔子 / 引子 / 尾声 / 番外 |
 | Splitter | `numeric` | 纯数字行 / `1、标题` |
@@ -121,7 +132,7 @@ func Splitters() []Splitter
 
 ## 6. 验证口径
 
-- `go test ./internal/parser/ -cover`：parser 包覆盖率 ≥ 85%
+- `go test ./internal/parser/ -cover`：parser 包覆盖率 ≥ 85%（当前 85.8%）
 - 每个内置策略至少一条定向测试（正常 + 边界 + 放弃/降级路径）
 - 策略叠加的回归用例：同一 fixture 在不同 `ForceSplitter` / `ForceEncoding` 下结果可预期
 - 真实语料抽检仍走 `TestSampleRealCorpus`（`NORVELS_SAMPLE_DIR` 环境变量，默认跳过）

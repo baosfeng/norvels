@@ -74,7 +74,7 @@ func TestTitleFromFilenameNoResidue(t *testing.T) {
 
 // TestTitleFromFilenameEdge 覆盖空文件名、纯扩展名等边界。
 func TestTitleFromFilenameEdge(t *testing.T) {
-	if title, author, _ := titleFromFilename("   .txt"); title != "" {
+	if title, _, _ := titleFromFilename("   .txt"); title != "" {
 		t.Errorf("空主干书名 = %q", title)
 	}
 	if title, _, _ := titleFromFilename(""); title != "" {

@@ -138,3 +138,95 @@ func hasHan(s string) bool {
 	}
 	return false
 }
+
+// reLooseAuthor 匹配「短行里的作者署名」。
+//
+// 与 reBodyAuthor 的差别：允许「作者」前有一个短前缀（常见于
+// 「【书名】作者：某人」这种书名与署名同行的写法），但要求整行以署名结尾，
+// 且前缀必须紧跟着闭括号——正文句子里的「作者」不会满足这两条。
+var reLooseAuthor = regexp.MustCompile("^(?:[^\\s]{0,20}[】\\]）)>》])?\\s*(?:作\\s*者|著\\s*者|作\\s*家|编\\s*者)\\s*[:：]\\s*(\\S{1,24})$")
+
+// reBracketAuthor 匹配「【作者：X】」这种署名被包在括号里的写法。
+//
+// 这类语料常把署名与章节标题写在同一行（「某书名【作者：某人】 第一章」），
+// 所以不能要求整行以署名结尾，只能要求括号内就是署名。
+var reBracketAuthor = regexp.MustCompile("【\\s*(?:作\\s*者|著\\s*者|作\\s*家|编\\s*者)\\s*[:：]\\s*([^】\\s]{1,24})\\s*】")
+
+// authorFromEdges 在文档两端扫「像署名的短行」。
+//
+// 真实语料里署名有三种位置：正文头部元信息块、头部广告堆之后、文末版权块。
+// 元信息块抽取只覆盖第一种，这里补后两种：
+//   - 只看 ≤ 40 个字符的短行（正文段落几乎都更长）；
+//   - 只认「作者：X」这类以署名收尾的行；
+//   - 候选名要做状态词 / 广告词 / 数字过滤。
+func authorFromEdges(text string) string {
+	lines := strings.Split(text, "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	const window = 1500
+	const maxScan = 4000
+	head := lines
+	if len(head) > maxScan {
+		head = head[:maxScan]
+	}
+	if a := authorFromLines(head[:min(len(head), window)]); a != "" {
+		return a
+	}
+	tail := lines
+	if len(tail) > maxScan {
+		tail = tail[len(tail)-maxScan:]
+	}
+	start := len(tail) - window
+	if start < 0 {
+		start = 0
+	}
+	return authorFromLines(tail[start:])
+}
+
+// authorFromLines 从一组行里取第一个可信的作者名。
+func authorFromLines(lines []string) string {
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if ln == "" || runeLen(ln) > 40 {
+			continue
+		}
+		name := ""
+		if mm := reLooseAuthor.FindStringSubmatch(ln); mm != nil {
+			name = mm[1]
+		} else if mm := reBracketAuthor.FindStringSubmatch(ln); mm != nil {
+			name = mm[1]
+		}
+		if name == "" {
+			continue
+		}
+		if name = cleanAuthorName(name); isPlausibleAuthor(name) {
+			return name
+		}
+	}
+	return ""
+}
+
+// isPlausibleAuthor 判断候选作者名是否可信。
+func isPlausibleAuthor(name string) bool {
+	if name == "" || runeLen(name) > 24 {
+		return false
+	}
+	if containsAdWord(name) || isAdTagText(name) {
+		return false
+	}
+	for _, w := range statusWords {
+		if strings.Contains(name, w) {
+			return false
+		}
+	}
+	for _, r := range name {
+		if r >= '0' && r <= '9' {
+			return false
+		}
+		if strings.ContainsRune("。！？；，、：:", r) {
+			return false
+		}
+	}
+	return true
+}
