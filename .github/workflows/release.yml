@@ -1,0 +1,100 @@
+# 发布：推 v* tag → 先跑完整 CI → buildx 多架构构建 → 推 Docker Hub。
+#
+# 只依赖一个仓库 secret（仓库 → Settings → Secrets and variables → Actions）：
+#   DOCKER_HUB_TOKEN  Docker Hub Access Token（Read & Write），不是登录密码
+# 注意名字中间有下划线：DOCKER_HUB_TOKEN。
+# 配错位置的典型：建在 Settings → Codespaces → Secrets 里 —— 那是另一套独立系统，
+# Actions 完全读不到（workflow 里会解析成空串，登录时报 unauthorized）。
+#
+# Docker Hub 用户名 bsfeng 写死：它本来就公开（镜像名 bsfeng/norvels 出现在 README
+# 与文档里），不是秘密；少一条 secret = 少一处配置出错的机会。
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  # 同一 tag 只保留一次发布；不取消进行中的（避免半推送的 manifest）。
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: bsfeng/norvels
+
+jobs:
+  # 复用 ci.yml 的全部检查（lint / test / gates / privacy）。
+  # docker job 用 needs 依赖本 job：CI 红 → 不出镜像，不存在跳过测试直接发版。
+  ci:
+    name: CI（发布前门禁）
+    uses: ./.github/workflows/ci.yml
+
+  docker:
+    name: 构建并推送多架构镜像
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # arm64 在 amd64 runner 上靠 QEMU 模拟；buildx 负责多平台交叉构建。
+      - name: 启用 QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: 启用 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: bsfeng
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      # 构建时间戳：与 Makefile 的 BUILTAT 同口径（UTC RFC3339）。
+      # 不用 metadata-action 的输出——它没有 created 字段（actionlint 会报）。
+      - name: 计算构建时间戳
+        id: buildinfo
+        run: echo "builtat=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # tag 规则（逐条对应 docs/release.md 的语义表）：
+      #   v1.2.3 -> 1.2.3 / 1.2 / 1 / latest / sha-<短sha>
+      #   v1.2.3-rc1（含 "-" 视为预发布）-> 1.2.3-rc1 / 1.2 / 1 / sha-<短sha>，不动 latest
+      - name: 生成镜像元数据
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          # latest 完全由下面那条 raw 规则显式决定（含预发布判断），
+          # 关掉 semver 类型自带的 latest 自动生成，避免同一 tag 两条来源。
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=norvels
+            org.opencontainers.image.description=本地中文小说库：导入、阅读、全文搜索
+            org.opencontainers.image.url=https://hub.docker.com/r/bsfeng/norvels
+
+      - name: 构建并推送（amd64 + arm64）
+        uses: docker/build-push-action@v6
+        with:
+          # 构建上下文必须是仓库根目录：Dockerfile 要读 web/ 与 go.mod。
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILTAT=${{ steps.buildinfo.outputs.builtat }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

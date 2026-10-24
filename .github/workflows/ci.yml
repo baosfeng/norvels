@@ -1,0 +1,90 @@
+# CI：PR 与 main 分支的质量门禁。
+#
+# 同时声明 workflow_call，供 release.yml / edge.yml 复用——发布镜像前必须先过
+# 同一套检查（release 的 docker job 用 needs 依赖它，不存在「跳过测试直接发镜像」）。
+#
+# 不在 CI 里跑需要真实语料的测试：TestSampleRealCorpus 靠 NORVELS_SAMPLE_DIR 判断，
+# 这里刻意不设置该变量，测试自动跳过。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+# 只读：CI 不写仓库任何内容（发布凭据只在 release.yml / edge.yml 里用）。
+permissions:
+  contents: read
+
+# 同一 ref 的新推送取消旧运行，避免排队浪费。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 纯 Go 构建（modernc.org/sqlite 无需 CGO），与 deploy/Dockerfile 保持一致。
+  CGO_ENABLED: "0"
+
+jobs:
+  lint:
+    name: lint（gofmt + go vet）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # 版本从 go.mod 读（当前 go 1.26.0），不在 workflow 里重复硬编码。
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt 检查
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal ./tests)
+          if [ -n "$unformatted" ]; then
+            echo "::error::以下文件未格式化，本地执行 make fmt 后再提交："
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+          echo "gofmt：全部干净"
+      - name: go vet
+        run: go vet ./...
+
+  test:
+    name: test（go test ./...）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 单元测试 + Gherkin 验收测试
+        run: go test ./... -count=1
+
+  gates:
+    name: gates（scripts/gate-all.sh）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # 门禁脚本自身在 golangci-lint 缺失时回退到 tests/tools/gostats（纯 Go、标准库，
+      # 随仓库一起编译），因此这里不额外安装第三方 lint 二进制——避免 CI 因下载失败
+      # 或版本漂移而红。覆盖率不足会让本步如实失败（脚本内没有 || true）。
+      - name: 质量门禁（单元/验收/复杂度/大小/依赖/覆盖率）
+        run: scripts/gate-all.sh
+
+  privacy:
+    name: privacy（scripts/privacy-scan.sh --all）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 隐私扫描（本机路径 / 内网地址 / 真实书目 / 密钥）
+        run: scripts/privacy-scan.sh --all

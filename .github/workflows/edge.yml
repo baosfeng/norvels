@@ -1,0 +1,82 @@
+# Edge：main 分支每次通过 CI 后推 bsfeng/norvels:edge（给想尝鲜的人）。
+#
+# 触发链是硬依赖：ci job 复用 ci.yml（workflow_call），docker job 用 needs 依赖 ci。
+# CI 红 → 不推 edge。在仓库 Actions 页面可停用本 workflow 来关闭尝鲜通道，不影响发版。
+#
+# 只用一个 secret：DOCKER_HUB_TOKEN（仓库 → Settings → Secrets and variables → Actions）。
+# 用户名 bsfeng 写死，它本来公开。
+name: Edge
+
+on:
+  push:
+    branches: [main]
+  # 支持手动补推（例如需要把某个历史提交重推为 edge 时由维护者触发）。
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# main 上连续推送时只保留最新一次，避免旧提交把 edge 覆盖回去。
+concurrency:
+  group: edge
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: bsfeng/norvels
+
+jobs:
+  ci:
+    name: CI（edge 前门禁）
+    uses: ./.github/workflows/ci.yml
+
+  docker:
+    name: 推送 edge 镜像
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 启用 QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: 启用 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: bsfeng
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: 计算构建时间戳
+        id: buildinfo
+        run: echo "builtat=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: 生成镜像元数据
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=edge
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=norvels
+            org.opencontainers.image.version=edge
+            org.opencontainers.image.description=本地中文小说库：导入、阅读、全文搜索
+
+      - name: 构建并推送（amd64 + arm64）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=edge
+            COMMIT=${{ github.sha }}
+            BUILTAT=${{ steps.buildinfo.outputs.builtat }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
