@@ -1,23 +1,17 @@
 // Package parser 把任意编码的中文 txt 解析为结构化的 *model.ParsedBook。
 //
-// 职责边界（纯函数，不做 IO 之外的副作用，不依赖 store/db）：
-//  1. 编码探测：UTF-8 / UTF-8 BOM / GB18030(GBK) / UTF-16LE/BE(BOM 与无 BOM) / Big5 候选，
-//     对整文件做合法性校验，都不合法时按「常用字命中率 - 替换字符惩罚」打分选最优。
-//  2. 文本规范化：去 BOM、CRLF/CR→LF、全角空格、零宽字符。
-//  3. 噪声清洗：书源广告（"更多小说资源尽在…"、"搜书吧"、"TXT下载"）、群号/网址行、
-//     分隔线（==== ---- ****）、HTML 标签；行内广告片段也会从句子中间剥掉。
-//  4. 元数据抽取：书名（文件名《》/正文「书名：」/清洗后的文件名）与作者
-//     （文件名或正文的「作者：」），简介取「内容简介」块或正文首段，最多 500 字。
-//  5. 章节切分：
-//     - 标题候选行判定（行长阈值 + 手写解析器，避免正则回溯与误判）：
-//     第N章/节/回/篇/话 + 标题；正文 第N章；正文 NNN；0001 / 1、标题；Chapter N；
-//     序章/楔子/引子/尾声/后记/番外N；[第N章]；「书名 第N章 标题」这类带前缀的写法。
-//     - 卷/部/集作为分组层（第N卷 / 第N部 / 第N集），章归属到最近的前置卷，未分卷为 -1。
-//     - 无任何标记的短篇：整篇作为单章「全文」；长文按字数等分兜底（阈值可配）。
-//     - 合集文件（单文件包含多部作品）：标记 model.MultiBook=true，v1 不拆分。
-//  6. 字数统计：CJK 字符逐字计 1，连续 ASCII 单词计 1。
+// 解析是一条可插拔的策略管线，每一层都可以独立扩展（新增编码 / 广告形态 /
+// 书名写法 / 章节写法都只需新增一个策略并注册，不改动已有代码）：
 //
-// 稳定性要求：解析绝不 panic；单文件失败要返回可读错误，由 importer 记录到 import_errors。
+//	raw bytes
+//	   ├─ Codec 层      编码候选解码，按置信分选最优
+//	   ├─ Filter 链     有序文本变换（BOM / 换行 / 噪声 / 全角）
+//	   ├─ Meta 层       元数据抽取，逐字段投票
+//	   ├─ Splitter      切章策略：Detect 打分选一个执行
+//	   └─ PostProcess   空章清理 / 超长章再切 / 卷重排
+//
+// 稳定性要求：解析绝不 panic。任何单个策略的 panic 或 error 都只记 warning
+// 并继续，不把整篇解析带崩——真实语料格式千奇百怪，宁可少抽一个字段也要能入库。
 package parser
 
 import (
@@ -43,11 +37,29 @@ type Options struct {
 	FallbackChunkChars int
 	// KeepNoiseLines 是否保留原始噪声行（调试用）。
 	KeepNoiseLines bool
+	// MaxChapterChars 单章字符数上限，超过则按段落边界再切（默认 30000，0 表示不切）。
+	MaxChapterChars int
+
+	// DisableFilters 按名关闭内置过滤器（排障 / 特殊语料）。
+	DisableFilters []string
+	// ForceSplitter 跳过 Detect 打分，强制指定切章策略名。
+	ForceSplitter string
+	// ForceEncoding 跳过编码打分，强制指定编码名。
+	ForceEncoding string
+	// ExtraFilters / ExtraMetas / ExtraSplitters 单次解析注入策略，不污染全局注册表。
+	ExtraFilters   []Filter
+	ExtraMetas     []MetaExtractor
+	ExtraSplitters []Splitter
 }
 
 // DefaultOptions 返回推荐默认配置。
 func DefaultOptions() Options {
-	return Options{MinChapterLen: 0, AllowFallbackSplit: true, FallbackChunkChars: 8000}
+	return Options{
+		MinChapterLen:      0,
+		AllowFallbackSplit: true,
+		FallbackChunkChars: 8000,
+		MaxChapterChars:    30000,
+	}
 }
 
 // Parser 是可复用的解析器（内部无状态，可并发使用）。
@@ -82,105 +94,114 @@ func (p *Parser) ParseBytes(name string, b []byte) (book *model.ParsedBook, err 
 	if len(b) == 0 {
 		return nil, fmt.Errorf("parser: %q 内容为空", name)
 	}
+	d := &Doc{Name: name, Raw: b, opts: p.Opts}
 
-	enc, text, warns := decodeBytes(b)
-	text = normalizeText(text)
-	if strings.TrimSpace(text) == "" {
-		return nil, fmt.Errorf("parser: %q 解码后无有效文本（编码 %s）", name, enc)
+	if err := decodeStage(d); err != nil {
+		return nil, err
 	}
+	runFilters(d, disableSet(p.Opts.DisableFilters), p.Opts.ExtraFilters)
+	if strings.TrimSpace(d.Text) == "" {
+		return nil, fmt.Errorf("parser: %q 解码后无有效文本（编码 %s）", name, d.Encoding)
+	}
+	// 先扫描标题候选：元数据策略需要「首个标题之前的正文头部」作为输入，
+	// 扫描结果会被切章层复用，不产生额外开销。
+	d.titleCandidates()
+	runMetas(d, p.Opts.ExtraMetas)
+	runSplitter(d, p.Opts.ForceSplitter, p.Opts.ExtraSplitters)
+	if len(d.Chapters) == 0 {
+		// 极小文件 / 全是噪声的文件：整篇作为一章，保证能入库。
+		fillWholeText(d)
+	}
+	postProcessDoc(d)
 
 	sum := sha256.Sum256(b)
+	return assembleBook(d, name, sum), nil
+}
 
-	res := p.splitBook(text)
-	p.postProcess(&res)
-	if len(res.chapters) == 0 {
-		// 极小文件 / 全是噪声的文件：整篇作为一章，保证能入库。
-		body := strings.TrimSpace(text)
-		if body == "" {
-			return nil, fmt.Errorf("parser: %q 解码后无有效文本（编码 %s，%d 字节）", name, enc, len(b))
-		}
-		res.chapters = []model.ParsedChapter{{
-			Title: "全文", VolumeIdx: -1, Content: body, WordCount: countWords(body),
-		}}
-		warns = append(warns, "low_content")
+// decodeStage 跑 Codec 层并写入 Doc。
+func decodeStage(d *Doc) error {
+	text, enc, score := decodeByCodecs(d.Raw, d.opts.ForceEncoding, d.Stat)
+	text = trimCodecText(text)
+	if text == "" && len(d.Raw) > 0 {
+		return fmt.Errorf("parser: %q 解码失败", d.Name)
 	}
+	d.Text, d.Encoding, d.EncScore = text, enc, score
+	d.Stat("encoding", enc)
+	return nil
+}
 
-	preamble := res.preamble
-	if strings.TrimSpace(preamble) == "" {
-		preamble = text
+// fillWholeText 在切分一无所获时把全文当作一章。
+func fillWholeText(d *Doc) {
+	body := strings.TrimSpace(d.Text)
+	if body == "" {
+		return
 	}
-	bodyTitle, bodyAuthor, intro := metaFromPreamble(preamble)
-	fnTitle, fnAuthor, fromMark := titleFromFilename(name)
+	d.Chapters = []model.ParsedChapter{{
+		Title: "全文", VolumeIdx: -1, Content: body, WordCount: countWords(body),
+	}}
+	d.Warn("low_content")
+}
 
-	title := ""
-	switch {
-	case fromMark:
-		title = fnTitle
-	case fnTitle != "" && !nameIsNoisy(name):
-		title = fnTitle
-	case bodyTitle != "":
-		title = bodyTitle
-	case fnTitle != "":
-		title = fnTitle
-	default:
-		title = strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+// postProcessDoc 跑后处理（空章合并、超长章再切、卷重排）。
+func postProcessDoc(d *Doc) {
+	minLen := d.opts.MinChapterLen
+	if minLen < 0 {
+		minLen = 0
 	}
-	if title == "" {
+	res := splitResult{volumes: d.Volumes, chapters: d.Chapters}
+	postProcess(&res, minLen)
+	d.Volumes, d.Chapters = res.volumes, res.chapters
+	splitOversized(d)
+}
+
+// assembleBook 把 Doc 组装成对外产物。
+func assembleBook(d *Doc, name string, sum [32]byte) *model.ParsedBook {
+	title := d.Meta.Title
+	if strings.TrimSpace(title) == "" {
 		title = "未命名"
-		warns = append(warns, "未能推断书名，使用占位名")
+		d.Warn("未能推断书名，使用占位名")
 	}
-
-	author := fnAuthor
-	if author == "" {
-		author = bodyAuthor
-	}
+	author := strings.TrimSpace(d.Meta.Author)
 	if author == "" {
 		author = "佚名"
-		warns = append(warns, "author_missing")
+		d.Warn("author_missing")
 	}
-
 	total := 0
-	for _, c := range res.chapters {
+	for _, c := range d.Chapters {
 		total += c.WordCount
 	}
-	if bad := strings.Count(text, "\uFFFD"); bad > len(text)/200 {
-		warns = append(warns, fmt.Sprintf("文本含 %d 个无法解码的字符（疑似乱码或混用编码）", bad))
+	if bad := strings.Count(d.Text, "\uFFFD"); bad > len(d.Text)/200 {
+		d.Warn("文本含 %d 个无法解码的字符（疑似乱码或混用编码）", bad)
 	}
-	if res.restarts >= 2 {
-		warns = append(warns, fmt.Sprintf("章号重置 %d 次，疑似多书合集", res.restarts))
+	if d.restarts >= 2 {
+		d.Warn("章号重置 %d 次，疑似多书合集", d.restarts)
 	}
-	warns = append(warns, res.warnings...)
-
-	book = &model.ParsedBook{
+	return &model.ParsedBook{
 		Title:      title,
 		Author:     author,
 		SourceName: filepath.Base(name),
-		Encoding:   enc,
-		FileSize:   int64(len(b)),
+		Encoding:   d.Encoding,
+		FileSize:   int64(len(d.Raw)),
 		SHA256:     hex.EncodeToString(sum[:]),
 		WordCount:  total,
-		Intro:      intro,
-		Volumes:    res.volumes,
-		Chapters:   res.chapters,
-		MultiBook:  detectMultiBook(preamble, res.restarts, len(res.chapters)),
-		Warnings:   dedupeWarnings(warns),
+		Intro:      d.Meta.Intro,
+		Volumes:    d.Volumes,
+		Chapters:   d.Chapters,
+		MultiBook:  detectMultiBook(d.preamble(), d.restarts, len(d.Chapters)),
+		Warnings:   dedupeWarnings(d.Warnings),
 	}
-	return book, nil
 }
 
-// nameIsNoisy 判断文件名是否带较重的广告/标签痕迹。
-func nameIsNoisy(name string) bool {
-	base := filepath.Base(name)
-	for _, w := range []string{"搜书吧", "soushu", "Soushu", "付费", "整理", "未删节", "未刪節",
-		"无删减", "無刪減", "全本", "完结", "精校", "加料", "高H", "高h", "合集", "网址"} {
-		if strings.Contains(base, w) {
-			return true
-		}
+// disableSet 把过滤器的禁用名单转成查表结构。
+func disableSet(names []string) map[string]bool {
+	if len(names) == 0 {
+		return nil
 	}
-	if len(reTagBlock.FindAllString(base, -1)) >= 2 {
-		return true
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[n] = true
 	}
-	return false
+	return m
 }
 
 func dedupeWarnings(in []string) []string {
