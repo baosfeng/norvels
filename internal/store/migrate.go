@@ -78,6 +78,12 @@ func (s *Store) MigrateTo(ctx context.Context, target int) (migrationStatus, err
 	if target <= 0 || target > latest {
 		target = latest
 	}
+	// 版本守卫：在动任何 DDL 之前只读比较。必须在 ensureMigrationTable 之前——
+	// 拒绝路径（库由更新版本迁移过）上不能往磁盘写一个字节，否则用户连
+	// 「这个库原本是什么版本」都失去了判断依据，也谈不上回滚取证。
+	if err := s.ensureSchemaNotNewer(ctx, latest); err != nil {
+		return st, err
+	}
 	if err := s.ensureMigrationTable(ctx); err != nil {
 		return st, err
 	}

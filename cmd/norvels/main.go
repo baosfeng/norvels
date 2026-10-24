@@ -106,6 +106,11 @@ func openStore(ctx context.Context, path string) (*store.Store, error) {
 func migrateAndLog(ctx context.Context, st *store.Store) error {
 	status, err := st.MigrateTo(ctx, store.LatestVersion())
 	if err != nil {
+		// 版本守卫的拒绝要原样透出：包装成「迁移失败」会让用户以为库坏了、
+		// 去折腾迁移参数，而真实出路是升级镜像或从备份恢复。
+		if errors.Is(err, store.ErrSchemaTooNew) {
+			return err
+		}
 		return fmt.Errorf("数据库迁移失败（迁移 %d 出错，库版本停在 %d，未继续启动）: %w",
 			status.FailedVersion, status.ToVersion, err)
 	}

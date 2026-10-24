@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -34,6 +35,10 @@ func cmdMigrate(args []string) error {
 	}
 	status, err := st.MigrateTo(ctx, target)
 	if err != nil {
+		// 版本守卫拒绝时直接透出原文（见 main.go 同处注释）。
+		if errors.Is(err, store.ErrSchemaTooNew) {
+			return err
+		}
 		return fmt.Errorf("迁移失败（迁移 %d 出错，库版本停在 %d，未前进）: %w",
 			status.FailedVersion, status.ToVersion, err)
 	}
@@ -42,10 +47,19 @@ func cmdMigrate(args []string) error {
 }
 
 // runMigrateDryRun 打印待应用迁移，不建表也不写版本。
+//
+// 版本过新的库仍是只读诊断：先把「库版本 / 二进制支持版本」两个数摆出来，
+// 再按守卫口径报错退出。不能只说「待应用 0 个，已是最新版本」——那句话在
+// 库比二进制新的时候是错的，会把用户引向「没问题，直接启动」。
 func runMigrateDryRun(ctx context.Context, st *store.Store, dbPath string) error {
 	pending, info, err := st.PendingMigrations(ctx)
 	if err != nil {
 		return err
+	}
+	if guardErr := st.EnsureSchemaNotNewer(ctx); guardErr != nil {
+		fmt.Fprintf(os.Stdout, "数据库: %s\n当前版本: %d\n当前二进制支持到: %d\n",
+			dbPath, info.Version, store.LatestVersion())
+		return guardErr
 	}
 	fmt.Fprintf(os.Stdout, "数据库: %s\n当前版本: %d%s\n待应用: %d 个\n",
 		dbPath, info.Version, legacyNote(info), len(pending))
