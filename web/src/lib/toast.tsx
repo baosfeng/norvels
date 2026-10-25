@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { TOAST_MS, clearToast, clearToastIf, useToast } from "./toastStore";
 
-/** 全局唯一的 toast 容器：挂在 AppShell，路由切换不丢。 */
+/** 全局唯一的 toast 容器：挂在 App 根（路由之外），路由切换不丢，阅读器里也可见。 */
 export function ToastHost() {
   const toast = useToast();
   const id = toast?.id;

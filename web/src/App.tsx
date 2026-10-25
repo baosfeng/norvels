@@ -2,6 +2,7 @@ import { BrowserRouter, useRoutes } from "react-router-dom";
 import { routeTable } from "./routes";
 import { TierProvider, useTierMedia } from "./lib/tier";
 import { useTheme } from "./lib/theme";
+import { ToastHost } from "./lib/toast";
 
 function Routes() {
   return useRoutes(routeTable);
@@ -20,6 +21,9 @@ export function App() {
     <TierProvider value={tier}>
       <BrowserRouter>
         <Routes />
+        {/* toast 的唯一渲染点：挂在路由之外，/read（阅读器是独立外壳，不在 AppShell 内）也能看见；
+            放在这张图里之前它挂在 AppShell，阅读器里的操作结果一律永不渲染。 */}
+        <ToastHost />
       </BrowserRouter>
     </TierProvider>
   );

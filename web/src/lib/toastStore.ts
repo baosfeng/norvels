@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 /**
  * 极简全局 toast 的状态层：跨路由的操作结果（例如「已删除《书名》」）需要在跳页之后仍然可见，
- * 所以状态放在模块级 store，由 AppShell 里的 ToastHost 单点渲染，不发请求、不加依赖。
+ * 所以状态放在模块级 store，由 App 根（路由之外）的 ToastHost 单点渲染，不发请求、不加依赖。
  */
 
 export type ToastTone = "info" | "error";
