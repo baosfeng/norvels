@@ -39,6 +39,7 @@ func TestCancelStopsRunningImport(t *testing.T) {
 	const files = 200
 	requireCanceledOutcome(t, done, files)
 	requireJobStatus(t, st, jobID, "canceled")
+	requireBooksKept(t, st)
 
 	// 注销（api 的 spawnImport 在 goroutine 退出时做的事）之后再取消：返回 false。
 	unregister()
@@ -47,6 +48,56 @@ func TestCancelStopsRunningImport(t *testing.T) {
 	}
 	if Cancel(0) {
 		t.Error("jobID=0 不该命中")
+	}
+}
+
+// TestCancelStopsUploadImport 覆盖上传管线的取消：RunUpload 走的是 run.go 的
+// startParseWorkers，同样要能停下、带上 Canceled，并保留已入库的书。
+func TestCancelStopsUploadImport(t *testing.T) {
+	st := newStore(t)
+	dir := writeHeavyDir(t, 200)
+	jobID, unregister, done := runUploadAndTrack(t, st, dir)
+	defer unregister()
+
+	waitForFirstImport(t, st)
+	if !Cancel(jobID) {
+		t.Fatal("Cancel 未命中运行中的上传任务")
+	}
+	const files = 200
+	requireCanceledOutcome(t, done, files)
+	requireJobStatus(t, st, jobID, "canceled")
+	requireBooksKept(t, st)
+}
+
+// runUploadAndTrack 与 runAndTrack 同构，但跑 RunUpload（上传管线）。
+func runUploadAndTrack(t *testing.T, st *store.Store, dir string) (int64, func(), chan runOutcome) {
+	t.Helper()
+	job, err := st.CreateImportJob(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("CreateImportJob: %v", err)
+	}
+	opt := opts(dir)
+	opt.JobID = job.ID
+
+	ctx, cancel := context.WithCancel(context.Background())
+	unregister := Track(job.ID, cancel)
+	done := make(chan runOutcome, 1)
+	go func() {
+		res, runErr := RunUpload(ctx, st, opt)
+		done <- runOutcome{res: res, err: runErr}
+	}()
+	return job.ID, unregister, done
+}
+
+// requireBooksKept 断言取消后已入库的书仍在书架（不回滚、不删除）。
+func requireBooksKept(t *testing.T, st *store.Store) {
+	t.Helper()
+	page, err := st.ListBooks(context.Background(), store.BookQuery{Page: 1, Size: 10})
+	if err != nil {
+		t.Fatalf("ListBooks: %v", err)
+	}
+	if page.Total < 1 {
+		t.Error("取消后已入库的书应保留，实际书架为空")
 	}
 }
 
@@ -78,8 +129,14 @@ func requireCanceledOutcome(t *testing.T, done chan runOutcome, total int) {
 		if !errors.Is(got.err, context.Canceled) {
 			t.Fatalf("Run err = %v，期望 context.Canceled", got.err)
 		}
-		if got.res == nil || len(got.res.Imported) >= total {
-			t.Errorf("取消后仍导入了 %v 本（总数 %d）", got.res, total)
+		if got.res == nil {
+			t.Fatal("取消应返回可读的 Result（含已入库列表）")
+		}
+		if !got.res.Canceled {
+			t.Error("取消提前结束时 Result.Canceled 应为 true")
+		}
+		if len(got.res.Imported) >= total {
+			t.Errorf("取消后仍导入了 %d 本（总数 %d）", len(got.res.Imported), total)
 		}
 	case <-time.After(30 * time.Second):
 		t.Fatal("取消失败：导入未在 30s 内停止")

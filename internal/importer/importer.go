@@ -60,6 +60,10 @@ type Result struct {
 	Skipped  int
 	Failed   int
 	Errors   []store.ImportError
+	// Canceled 表示本次导入因 ctx 取消而提前结束：已入库的书保留，未处理的
+	// 文件不再处理。任务终态由 closing 写成 canceled，api 也会按错误映射，
+	// 这里让调用方可以直接从结果里读到取消标记。
+	Canceled bool
 }
 
 // ErrNoFiles 表示目录中没有可导入的文件（支持格式见 SupportedExt）。

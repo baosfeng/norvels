@@ -213,12 +213,17 @@ func feedUnits(ctx context.Context, tasks chan<- importUnit, units []importUnit)
 	}
 }
 
-// unitWorker 逐个取单元解析；ctx 取消后立即退出。
+// unitWorker 逐个取单元解析；ctx 取消后立即退出（目录导入管线）。
+//
+// 取消语义：命中 ctx.Done 就停止取任务、不再投递解析结果——未处理的文件不再
+// 处理，已入库的书保留；取消标记由 consume（跳过写库）与 closing（置
+// Result.Canceled）负责落到结果上。
 func unitWorker(ctx context.Context, wg *sync.WaitGroup, tasks <-chan importUnit,
 	outcomes chan<- parseOutcome, st *store.Store, p *parser.Parser, opt Options) {
 	defer wg.Done()
 	for u := range tasks {
 		if ctx.Err() != nil {
+			// 已取消：停止取任务，未处理的文件不再处理。
 			return
 		}
 		select {

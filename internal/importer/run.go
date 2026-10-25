@@ -78,6 +78,12 @@ func (r *runState) consume(ctx context.Context, outcomes <-chan parseOutcome, to
 	cb func(Progress), opt Options) {
 	processed := 0
 	for oc := range outcomes {
+		if ctx.Err() != nil {
+			// 已取消：worker 正在退出，这里只把通道排空，不再写库/回调——
+			// 「已入库的书保留，未处理的文件不再处理」。
+			r.res.Canceled = true
+			continue
+		}
 		processed++
 		title := r.applyOutcome(ctx, oc, opt)
 		if cb != nil {
@@ -194,6 +200,7 @@ func (r *runState) persistProgress(ctx context.Context) {
 // 否则按汇总结果落终态。
 func (r *runState) closing(ctx context.Context) (*Result, error) {
 	if cerr := ctx.Err(); cerr != nil {
+		r.res.Canceled = true
 		if r.job != nil {
 			r.job.Status = "canceled"
 			finishJob(ctx, r.st, r.job, r.res, r.lastErr)
@@ -291,12 +298,16 @@ func feedTasks(ctx context.Context, tasks chan<- fileTask, cands []candidate) {
 	}
 }
 
-// parseWorker 逐个取任务解析，并把结果写回结果通道；ctx 取消后立即退出。
+// parseWorker 逐个取任务解析，并把结果写回结果通道；ctx 取消后立即退出（上传管线）。
+//
+// 取消语义：命中 ctx.Done 就停止取任务、不再投递解析结果——未处理的文件不再
+// 处理，已入库的书保留；取消标记由 consume 与 closing 落到 Result.Canceled。
 func parseWorker(ctx context.Context, wg *sync.WaitGroup, tasks <-chan fileTask, outcomes chan<- parseOutcome,
 	st *store.Store, p *parser.Parser, opt Options) {
 	defer wg.Done()
 	for t := range tasks {
 		if ctx.Err() != nil {
+			// 已取消：停止取任务，未处理的文件不再处理。
 			return
 		}
 		select {
