@@ -203,25 +203,13 @@ func nextBlockSeq(ctx context.Context, tx *sql.Tx, bookID int64) (int, error) {
 	return seq, nil
 }
 
-// insertMergeBlock 写入合并后的新块，返回块 id。
+// insertMergeBlock 写入合并后的新块（块覆盖首章到末章的序号范围），返回块 id。
+//
+// 写块本身与整章替换共用 insertTextBlock（chapter_content.go）：chapter_blocks 的列
+// 只有一套口径，合并不会因为「自己的 SQL」而在 raw_bytes / seq 上漂移。
 func insertMergeBlock(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan,
 	raw, packed []byte) (int64, error) {
-	seq, err := nextBlockSeq(ctx, tx, bookID)
-	if err != nil {
-		return 0, err
-	}
-	res, err := tx.ExecContext(ctx,
-		"INSERT INTO chapter_blocks(book_id, seq, first_idx, last_idx, raw_bytes, packed) "+
-			"VALUES (?, ?, ?, ?, ?, ?)",
-		bookID, seq, spans[0].idx, spans[len(spans)-1].idx, len(raw), packed)
-	if err != nil {
-		return 0, fmt.Errorf("store: merge block insert: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("store: merge block id: %w", err)
-	}
-	return id, nil
+	return insertTextBlock(ctx, tx, bookID, spans[0].idx, spans[len(spans)-1].idx, raw, packed)
 }
 
 // rewriteMergedHead 把首章指向合并后的 span，字数取各章 word_count 之和。

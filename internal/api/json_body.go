@@ -19,7 +19,16 @@ const defaultJSONBodyLimit = 64 << 10 // 64 KiB
 //
 // 出错时已写好 400 响应，返回 false。
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, invalidMsg string) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, defaultJSONBodyLimit))
+	return decodeJSONBodyLimit(w, r, dst, invalidMsg, defaultJSONBodyLimit)
+}
+
+// decodeJSONBodyLimit 与 decodeJSONBody 同一套约束，只是请求体上限可调。
+//
+// 供「正文可以明显大于 64 KiB」的端点使用（整章正文上限 1 MiB）：上限留在调用方
+// 而不是全库调大，否则每个小 JSON 端点都跟着放宽，跨信任边界的护栏就失效了。
+func decodeJSONBodyLimit(w http.ResponseWriter, r *http.Request, dst any, invalidMsg string,
+	limit int64) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	if err := dec.Decode(dst); err != nil {
 		if errors.Is(err, io.EOF) {
 			writeError(w, http.StatusBadRequest, codeInvalidParam, "请求体不能为空")

@@ -92,6 +92,8 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("PATCH /api/books/{id}/chapters/{cid}", s.handlePatchChapter)
 	mux.HandleFunc("DELETE /api/books/{id}/chapters/{cid}", s.handleDeleteChapter)
 	mux.HandleFunc("POST /api/books/{id}/chapters/{cid}/split", s.handleSplitChapter)
+	// 正文编辑（M1）：整章替换，单事务写新块 + 重算计数 + 回收旧块。
+	mux.HandleFunc("PUT /api/books/{id}/chapters/{cid}/content", s.handlePutChapterContent)
 	// 章节批量编辑（M2）：批量删除 / 合并 / 重编号。单事务，不做「部分成功」。
 	mux.HandleFunc("POST /api/books/{id}/chapters/batch-delete", s.handleBatchDeleteChapters)
 	mux.HandleFunc("POST /api/books/{id}/chapters/merge", s.handleMergeChapters)
