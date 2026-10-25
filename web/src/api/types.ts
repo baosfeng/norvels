@@ -16,13 +16,19 @@ export interface BookMeta {
   format?: string;
 }
 
-/** PATCH /api/books/{id} 的请求体：任意子集；tags 是全量替换。 */
+/** PATCH /api/books/{id} 的请求体：任意子集；tags 与 authors 是全量替换。 */
 export interface BookMetaPatch {
   title?: string;
+  /** 主作者。改作者请用 authors：后端 authors 优先，两者同时出现时 author 被忽略。 */
   author?: string;
+  /** 有序作者列表，全量替换；空数组后端 400（至少一个作者）。 */
+  authors?: string[];
+  /** 简介；传 "" 即清空。 */
   intro?: string;
   tags?: string[];
+  /** 系列名；传 "" 即清空。 */
   series?: string;
+  /** 系列序号；传 0 即清空。 */
   seriesIndex?: number;
 }
 
@@ -82,6 +88,8 @@ export interface Volume {
 }
 
 export interface BookDetail extends BookSummary {
+  /** 有序作者列表；存量书按主作者兜底，所以通常至少一项。authorName 仍是主作者。 */
+  authors: string[];
   encoding?: string;
   sourceName?: string;
   fileSize?: number;

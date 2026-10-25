@@ -180,7 +180,7 @@ describe("api 其余端点都走同一出口", () => {
     });
 
     const file = new File(["正文"], "示例书简.txt", { type: "text/plain" });
-    const result = await api.uploadImport([file], { force: true });
+    const result = await api.uploadImport([file], { force: true, update: true });
 
     expect(urls[0]).toBe("/api/import/upload");
     expect(result.jobId).toBe(7);
@@ -191,6 +191,7 @@ describe("api 其余端点都走同一出口", () => {
     expect(body).toBeInstanceOf(FormData);
     expect(body.getAll("files")).toHaveLength(1);
     expect(body.get("force")).toBe("true");
+    expect(body.get("update")).toBe("true");
   });
 
   it("updateBook 用 PATCH 提交元数据子集并返回详情", async () => {

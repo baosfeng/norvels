@@ -159,9 +159,10 @@ export interface BookQuery {
   size?: number;
 }
 
-/** 上传选项：force 对应「重新导入已入库的文件」。 */
+/** 上传选项：force 对应「重新导入已入库的文件」，update 对应「追更（只追加新章节）」。 */
 export interface UploadOptions {
   force?: boolean;
+  update?: boolean;
   signal?: AbortSignal;
   timeoutMs?: number;
 }
@@ -190,13 +191,14 @@ export const api = {
   importJobs: (opts?: RequestOptions) => request<{ items: ImportJob[] }>("/import/jobs", opts),
   tags: (opts?: RequestOptions) => request<{ items: TagSummary[] }>("/tags", opts),
   importJob: (id: number, opts?: RequestOptions) => request<ImportJob>(`/import/jobs/${id}`, opts),
-  startImport: (body: { dir: string; recursive?: boolean; force?: boolean; workers?: number; dryRun?: boolean }, opts?: RequestOptions) =>
+  startImport: (body: { dir: string; recursive?: boolean; force?: boolean; update?: boolean; workers?: number; dryRun?: boolean }, opts?: RequestOptions) =>
     request<{ jobId: number }>("/import", { ...opts, method: "POST", body }),
   /** 上传文件：multipart；部分文件被拒仍算成功，逐文件原因在 rejected 里。 */
   uploadImport: (files: File[], opts: UploadOptions = {}) => {
     const form = new FormData();
     for (const file of files) form.append("files", file, file.name);
     form.append("force", opts.force ? "true" : "false");
+    form.append("update", opts.update ? "true" : "false");
     return request<UploadResult>("/import/upload", {
       method: "POST",
       rawBody: form,

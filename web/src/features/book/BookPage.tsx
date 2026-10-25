@@ -129,8 +129,8 @@ export function BookPage() {
 
         <div className="book-main">
           <h1>{book.title}</h1>
-          <p className="byline">
-            <Link to="/authors">{book.authorName || "佚名"}</Link> ·{" "}
+          <p className="byline" data-testid="book-byline">
+            <Link to="/authors">{authorsOf(book).join("、") || "佚名"}</Link> ·{" "}
             <span className="meta">{book.status === "parsed" ? "已入库" : "处理中"}</span>
           </p>
 
@@ -255,23 +255,48 @@ function volumeLabel(volume: Volume): string {
 }
 interface MetaDraft {
   title: string;
-  author: string;
+  authors: string;
   intro: string;
   tags: string;
   series: string;
   seriesIndex: string;
 }
 
-/** 表单初值：标签用「，」拼成一行；系列序号只在有值时显示。 */
+/** 作者列表：新契约带 authors；老数据只有主作者时按它兜底，两者都没有就是空。 */
+function authorsOf(book: BookDetail): string[] {
+  const list = (book.authors ?? []).map((name) => name.trim()).filter(Boolean);
+  if (list.length > 0) return list;
+  return book.authorName ? [book.authorName] : [];
+}
+
+/** 表单初值：作者与标签用「，」拼成一行；系列序号只在有值时显示。 */
 function draftOf(book: BookDetail): MetaDraft {
   return {
     title: book.title ?? "",
-    author: book.authorName ?? "",
+    authors: authorsOf(book).join("，"),
     intro: stripTags(book.intro),
     tags: (book.tags ?? []).join("，"),
     series: book.series ?? "",
     seriesIndex: book.seriesIndex ? String(book.seriesIndex) : "",
   };
+}
+
+/** 作者按逗号/顿号/分号/换行分隔，去空白并按输入顺序去重。 */
+function parseAuthors(value: string): string[] {
+  const seen = new Set<string>();
+  for (const raw of value.split(/[,，、;；\n\r]+/)) {
+    const name = raw.trim();
+    if (name) seen.add(name);
+  }
+  return [...seen];
+}
+
+/** 系列序号：空串即 0（清空）；填了非数字或负数返回 NaN，由表单拦下。 */
+function parseSeriesIndex(value: string): number {
+  const text = value.trim();
+  if (!text) return 0;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : Number.NaN;
 }
 
 /** 标签按逗号或换行分隔，去空白并自动去重。 */
@@ -285,23 +310,22 @@ function parseTags(value: string): string[] {
 }
 
 /**
- * 只提交「改过且非空」的字段：后端空 body 会 400，空字符串等于没填；
- * 没改的字段不出现，未知键也不带。
+ * 只提交「改过」的字段：后端空 body 会 400；与初值不同就下发，
+ * 空串与 0 也照发（契约里 ""/0 就是清空），没改的字段不出现。
+ * 作者统一走 authors（后端 authors 优先，author 只读展示）。
  */
 function buildPatch(draft: MetaDraft, origin: MetaDraft): BookMetaPatch {
   const patch: BookMetaPatch = {};
   const title = draft.title.trim();
   if (title && title !== origin.title.trim()) patch.title = title;
-  const author = draft.author.trim();
-  if (author && author !== origin.author.trim()) patch.author = author;
+  const authors = parseAuthors(draft.authors);
+  if (authors.join("\u0000") !== parseAuthors(origin.authors).join("\u0000")) patch.authors = authors;
   const intro = draft.intro.trim();
-  if (intro && intro !== origin.intro.trim()) patch.intro = intro;
+  if (intro !== origin.intro.trim()) patch.intro = intro;
   const series = draft.series.trim();
-  if (series && series !== origin.series.trim()) patch.series = series;
-  const seriesIndex = Number(draft.seriesIndex);
-  if (Number.isFinite(seriesIndex) && seriesIndex > 0 && String(seriesIndex) !== origin.seriesIndex.trim()) {
-    patch.seriesIndex = Math.trunc(seriesIndex);
-  }
+  if (series !== origin.series.trim()) patch.series = series;
+  const seriesIndex = parseSeriesIndex(draft.seriesIndex);
+  if (seriesIndex !== parseSeriesIndex(origin.seriesIndex)) patch.seriesIndex = seriesIndex;
   const tags = parseTags(draft.tags);
   if (tags.join("\u0000") !== parseTags(origin.tags).join("\u0000")) patch.tags = tags;
   return patch;
@@ -345,6 +369,14 @@ function BookEditForm({
       setErrorText("书名不能为空。");
       return;
     }
+    if (parseAuthors(draft.authors).length === 0) {
+      setErrorText("作者不能为空，至少填一个。");
+      return;
+    }
+    if (Number.isNaN(parseSeriesIndex(draft.seriesIndex))) {
+      setErrorText("系列序号要填 0 或正整数，留空表示清空。");
+      return;
+    }
     const patch = buildPatch(draft, origin);
     if (Object.keys(patch).length === 0) {
       setErrorText("还没有改动，改一项再保存。");
@@ -371,7 +403,13 @@ function BookEditForm({
       </div>
       <div className="field">
         <label htmlFor="meta-author">作者</label>
-        <input className="input" id="meta-author" value={draft.author} onChange={(e) => update("author", e.target.value)} />
+        <input
+          className="input"
+          id="meta-author"
+          value={draft.authors}
+          placeholder="多位作者用「、」或逗号分隔，例如 张三、李四"
+          onChange={(e) => update("authors", e.target.value)}
+        />
       </div>
       <div className="field">
         <label htmlFor="meta-intro">简介</label>
@@ -404,7 +442,8 @@ function BookEditForm({
           className="input"
           id="meta-series-index"
           type="number"
-          min={1}
+          min={0}
+          placeholder="留空表示清空"
           value={draft.seriesIndex}
           onChange={(e) => update("seriesIndex", e.target.value)}
         />
@@ -417,7 +456,9 @@ function BookEditForm({
           取消
         </button>
       </div>
-      <p className="meta">标签留空表示清空这本书的标签；没改的项不会被提交。</p>
+      <p className="meta">
+        简介、系列留空即清空，系列序号留空或填 0 即清空；标签留空即清空。没改的项不会被提交。
+      </p>
       {errorText ? (
         <p className="meta" role="alert" data-testid="book-edit-error">
           {errorText}

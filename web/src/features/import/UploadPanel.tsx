@@ -7,7 +7,10 @@ import { formatBytes } from "../../lib/format";
 const MAX_FILES = 20;
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
-const SUPPORTED_FORMATS = ["txt", "epub"] as const;
+const SUPPORTED_FORMATS = ["txt", "epub", "zip"] as const;
+
+/** 选中压缩包时的说明：包内条目逐条导入，结果名带「包名.zip:内部路径」前缀。 */
+const ZIP_HINT = "压缩包会解包后逐条导入：包内 txt/epub 各成一条，结果按「包名.zip:内部路径」列出。";
 
 type Rejection = UploadRejected;
 type Phase = "idle" | "uploading" | "done" | "error";
@@ -32,7 +35,7 @@ function screenFiles(files: File[]): { accepted: File[]; rejected: Rejection[] }
       rejected.push({
         name: file.name,
         code: "unsupported_format",
-        message: `暂不支持 ${format ? `.${format}` : "这个文件"}，目前支持 TXT 与 EPUB`,
+        message: `暂不支持 ${format ? `.${format}` : "这个文件"}，目前支持 TXT、EPUB、ZIP`,
       });
       continue;
     }
@@ -55,7 +58,13 @@ function rejectionText(item: Rejection): string {
   if (item.message) return item.message;
   switch (item.code) {
     case "unsupported_format":
-      return "暂不支持这个文件，目前支持 TXT 与 EPUB";
+      return "暂不支持这个文件，目前支持 TXT、EPUB、ZIP";
+    case "invalid_zip":
+      return "这个压缩包打不开，确认是标准 zip 后再试";
+    case "empty_zip":
+      return "压缩包里没有可导入的 txt 或 epub";
+    case "zip_too_large":
+      return "压缩包内容超过上限（最多 1000 条、解压后 512 MB）";
     case "payload_too_large":
       return "文件超过 64 MB 上限";
     case "too_many_files":
@@ -75,12 +84,15 @@ function uploadErrorText(error: unknown): string {
   if (error.status === 413 || error.code === "payload_too_large") return "文件太大：单本 64 MB、一批 256 MB 以内";
   if (error.code === "too_many_files") return "一次最多 20 个文件";
   if (error.code === "encrypted_epub") return "EPUB 已加密，暂时无法导入";
-  if (error.code === "unsupported_format") return "这批文件都不支持，目前支持 TXT 与 EPUB";
+  if (error.code === "invalid_zip") return "压缩包打不开，确认是标准 zip 后再试";
+  if (error.code === "empty_zip") return "压缩包里没有可导入的 txt 或 epub";
+  if (error.code === "zip_too_large") return "压缩包内容超过上限（最多 1000 条、解压后 512 MB）";
+  if (error.code === "unsupported_format") return "这批文件都不支持，目前支持 TXT、EPUB、ZIP";
   return "上传没能完成，稍后再试";
 }
 
 /**
- * 文件上传区：选择或拖入 txt / epub，逐文件报告接收与被拒的原因。
+ * 文件上传区：选择或拖入 txt / epub / zip，逐条报告接收与被拒的原因。
  * 四态由 phase + picked + result 决定：空 / 上传中 / 失败 / 有结果。
  */
 export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: () => void; disabled?: boolean }) {
@@ -88,6 +100,7 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
   const [note, setNote] = useState("");
   const [dragging, setDragging] = useState(false);
   const [force, setForce] = useState(false);
+  const [update, setUpdate] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
   const [rejected, setRejected] = useState<Rejection[]>([]);
@@ -97,6 +110,7 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
   const screened = screenFiles(picked);
   const uploading = phase === "uploading";
   const canSubmit = picked.length > 0 && !uploading && !disabled;
+  const hasZip = picked.some((file) => formatOf(file.name) === "zip");
 
   function resetOutcome() {
     setResult(null);
@@ -124,7 +138,7 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
     if (!canSubmit) return;
     if (screened.accepted.length === 0) {
       setRejected(screened.rejected);
-      setErrorText("这批文件都不支持，目前支持 TXT 与 EPUB");
+      setErrorText("这批文件都不支持，目前支持 TXT、EPUB、ZIP");
       setPhase("error");
       return;
     }
@@ -133,7 +147,7 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
     setRejected([]);
     setErrorText("");
     try {
-      const data = await api.uploadImport(screened.accepted, { force });
+      const data = await api.uploadImport(screened.accepted, { force, update });
       setResult(data);
       setRejected([...screened.rejected, ...(data.rejected ?? [])]);
       setPhase("done");
@@ -150,7 +164,7 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
   return (
     <div className="import-form" data-testid="upload-panel">
       <h2>上传文件</h2>
-      <p className="meta">一次最多 20 个，单本 64 MB 以内，一批 256 MB 以内；目前支持 TXT 与 EPUB。</p>
+      <p className="meta">一次最多 20 个，单本 64 MB 以内，一批 256 MB 以内；目前支持 TXT、EPUB 与 ZIP 压缩包。</p>
       <DropZone
         dragging={dragging}
         disabled={uploading || disabled}
@@ -163,7 +177,7 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
         type="file"
         hidden
         multiple
-        accept=".txt,.epub,text/plain,application/epub+zip"
+        accept=".txt,.epub,.zip,text/plain,application/epub+zip,application/zip"
         data-testid="upload-input"
         onChange={(event) => {
           addFiles(event.target.files);
@@ -177,6 +191,11 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
           还没有选文件。拖进来，或者点上面的区域挑文件。
         </p>
       )}
+      {hasZip ? (
+        <p className="meta" data-testid="upload-zip-hint">
+          {ZIP_HINT}
+        </p>
+      ) : null}
       {note ? (
         <p className="meta" role="status">
           {note}
@@ -186,6 +205,15 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
         <input id="upload-force" type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
         <label htmlFor="upload-force">已入库的书也重新导入</label>
       </div>
+      <div className="check-row">
+        <input id="upload-update" type="checkbox" checked={update} onChange={(e) => setUpdate(e.target.checked)} />
+        <label htmlFor="upload-update">追更（只追加新章节）</label>
+      </div>
+      {update ? (
+        <p className="meta" data-testid="upload-update-hint">
+          同一本书再次导入时只追加新章节，已有章节与阅读进度保留；章节对不上时后端会拒绝，不会覆盖。
+        </p>
+      ) : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button className="btn btn-primary" type="button" onClick={submit} disabled={!canSubmit} data-testid="upload-submit">
           {uploading ? "正在上传…" : picked.length > 0 ? `上传文件（${screened.accepted.length}）` : "上传文件"}
@@ -261,7 +289,7 @@ function DropZone({
       }}
     >
       <strong style={{ fontSize: 13 }}>拖文件到这里，或点击选择</strong>
-      <span className="meta">支持 TXT、EPUB，可一次选多个</span>
+      <span className="meta">支持 TXT、EPUB、ZIP，可一次选多个</span>
     </div>
   );
 }
@@ -287,12 +315,33 @@ function PickedTable({ files }: { files: File[] }) {
   );
 }
 
+/**
+ * 上传结果：逐个列已接收条目。压缩包里的条目 name 是「包名.zip:内部路径」，
+ * 原样列出即可区分它来自哪个包、包内哪一层。
+ */
 function ResultSummary({ result }: { result: UploadResult }) {
   const accepted = result.accepted ?? [];
   return (
     <div data-testid="upload-accepted" role="status" style={{ display: "grid", gap: 4 }}>
       <p className="meta">已提交 {accepted.length} 个文件，任务 #{result.jobId} 已排队，进度看右侧进度卡。</p>
-      {accepted.length > 0 ? <p className="meta">已接收：{accepted.map((item) => item.name).join("、")}</p> : null}
+      {accepted.length > 0 ? (
+        <table className="table" data-testid="upload-accepted-table">
+          <thead>
+            <tr>
+              <th>已接收</th>
+              <th>格式</th>
+            </tr>
+          </thead>
+          <tbody>
+            {accepted.map((item, index) => (
+              <tr key={`${item.name}:${index}`}>
+                <td style={{ wordBreak: "break-all" }}>{item.name}</td>
+                <td>{item.format}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
     </div>
   );
 }

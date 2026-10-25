@@ -12,7 +12,7 @@ const jobState = {
   reload: vi.fn(),
 };
 
-const uploadImport = vi.fn<(files: File[], opts?: { force?: boolean }) => Promise<UploadResult>>();
+const uploadImport = vi.fn<(files: File[], opts?: { force?: boolean; update?: boolean }) => Promise<UploadResult>>();
 const startImport = vi.fn(async () => ({ jobId: 1 }));
 
 vi.mock("../../api/hooks", () => ({ useImportJobs: () => jobState }));
@@ -57,7 +57,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
     render(<ImportPage />);
 
     expect(screen.getByTestId("upload-panel")).toBeTruthy();
-    expect(screen.getByText("支持 TXT、EPUB，可一次选多个")).toBeTruthy();
+    expect(screen.getByText("支持 TXT、EPUB、ZIP，可一次选多个")).toBeTruthy();
     expect(screen.getByTestId("upload-empty").textContent).toContain("还没有选文件");
     expect((screen.getByTestId("upload-submit") as HTMLButtonElement).disabled).toBe(true);
     // 没有进行中的任务时给空态，而不是一片空白
@@ -79,10 +79,10 @@ describe("导入页：文件上传与逐文件友好报错", () => {
     const [files, opts] = uploadImport.mock.calls[0];
     expect(files).toHaveLength(1);
     expect(files[0].name).toBe("示例书简.txt");
-    expect(opts).toEqual({ force: false });
+    expect(opts).toEqual({ force: false, update: false });
 
     expect(screen.getByTestId("upload-accepted").textContent).toContain("任务 #7 已排队");
-    expect(screen.getByTestId("upload-rejected").textContent).toContain("暂不支持 .pdf，目前支持 TXT 与 EPUB");
+    expect(screen.getByTestId("upload-rejected").textContent).toContain("暂不支持 .pdf，目前支持 TXT、EPUB、ZIP");
     expect(jobState.reload).toHaveBeenCalled();
   });
 
@@ -99,7 +99,51 @@ describe("导入页：文件上传与逐文件友好报错", () => {
     clickUpload();
 
     await waitFor(() => expect(uploadImport).toHaveBeenCalledTimes(1));
-    expect(uploadImport.mock.calls[0][1]).toEqual({ force: true });
+    expect(uploadImport.mock.calls[0][1]).toEqual({ force: true, update: false });
+  });
+
+  it("zip 预检放行并提示包内逐条导入，结果表按「包名.zip:内部路径」列出条目", async () => {
+    uploadImport.mockResolvedValueOnce({
+      jobId: 9,
+      accepted: [
+        { name: "示例合集.zip:第一本.txt", format: "txt" },
+        { name: "示例合集.zip:第二本.epub", format: "epub" },
+      ],
+      rejected: [
+        { name: "示例合集.zip:说明.pdf", code: "unsupported_format", message: "暂不支持 .pdf，目前支持 TXT、EPUB、ZIP" },
+      ],
+    });
+    render(<ImportPage />);
+
+    pickFiles(sample("示例合集.zip"));
+    const hint = screen.getByTestId("upload-zip-hint").textContent ?? "";
+    expect(hint).toContain("包内 txt/epub 各成一条");
+    expect(hint).toContain("包名.zip:内部路径");
+    expect((screen.getByTestId("upload-submit") as HTMLButtonElement).textContent).toContain("上传文件（1）");
+    expect(screen.queryByTestId("upload-rejected")).toBeNull();
+
+    clickUpload();
+
+    await waitFor(() => expect(screen.getByTestId("upload-accepted")).toBeTruthy());
+    const [files] = uploadImport.mock.calls[0];
+    expect(files.map((file) => file.name)).toEqual(["示例合集.zip"]);
+    const acceptedText = screen.getByTestId("upload-accepted-table").textContent ?? "";
+    expect(acceptedText).toContain("示例合集.zip:第一本.txt");
+    expect(acceptedText).toContain("示例合集.zip:第二本.epub");
+    expect(screen.getByTestId("upload-rejected").textContent).toContain("示例合集.zip:说明.pdf");
+  });
+
+  it("勾选追更后 update 随上传提交，不误带 force", async () => {
+    uploadImport.mockResolvedValueOnce(acceptedTxt);
+    render(<ImportPage />);
+
+    pickFiles(sample("示例书简.txt"));
+    fireEvent.click(screen.getByLabelText("追更（只追加新章节）"));
+    expect(screen.getByTestId("upload-update-hint").textContent).toContain("只追加新章节");
+    clickUpload();
+
+    await waitFor(() => expect(uploadImport).toHaveBeenCalledTimes(1));
+    expect(uploadImport.mock.calls[0][1]).toEqual({ force: false, update: true });
   });
 
   it("整批都不支持：不发请求，直接说明目前支持什么", () => {
@@ -109,7 +153,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
     clickUpload();
 
     expect(uploadImport).not.toHaveBeenCalled();
-    expect(screen.getByTestId("upload-error").textContent).toContain("目前支持 TXT 与 EPUB");
+    expect(screen.getByTestId("upload-error").textContent).toContain("目前支持 TXT、EPUB、ZIP");
     expect(screen.getByTestId("upload-rejected").textContent).toContain("暂不支持 .pdf");
   });
 

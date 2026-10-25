@@ -8,6 +8,7 @@ const book: BookDetail = {
   title: "示例书简",
   authorId: 1,
   authorName: "示例作者",
+  authors: ["示例作者"],
   chapterCount: 2,
   wordCount: 34000,
   volumeCount: 1,
@@ -107,7 +108,7 @@ describe("书籍详情：元数据编辑", () => {
     updateBook.mockReset();
   });
 
-  it("编辑表单回填当前值，保存只提交改过的非空字段", async () => {
+  it("编辑表单回填当前值，保存只提交改过的字段（清空的系列下发空串）", async () => {
     updateBook.mockResolvedValueOnce({ ...book, title: "示例书简 新版", updatedAt: "2026-10-25T03:00:00.000Z" });
     renderPage();
 
@@ -124,10 +125,11 @@ describe("书籍详情：元数据编辑", () => {
 
     await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
     expect(updateBook.mock.calls[0][0]).toBe(7);
-    // 重复的「武侠」被去掉，新加的「悬疑」进 payload，空的「系列」不提交
+    // 重复的「武侠」被去掉；清空的「系列」按契约下发空串，序号改成 3
     expect(updateBook.mock.calls[0][1]).toEqual({
       title: "示例书简 新版",
       tags: ["武侠", "连载", "悬疑"],
+      series: "",
       seriesIndex: 3,
     });
     expect(bookState.reload).toHaveBeenCalled();
@@ -176,5 +178,57 @@ describe("书籍详情：元数据编辑", () => {
     bookState.data = { ...book, tags: [] };
     renderPage();
     expect(screen.queryByTestId("book-tags")).toBeNull();
+  });
+
+  it("清空简介时下发空串，后端据此真的清掉", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
+    fireEvent.change(screen.getByLabelText("简介"), { target: { value: "   " } });
+    fireEvent.click(screen.getByTestId("book-edit-save"));
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
+    expect(updateBook.mock.calls[0][1]).toEqual({ intro: "" });
+  });
+
+  it("清空系列名与系列序号时分别下发空串与 0", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
+    fireEvent.change(screen.getByLabelText("系列"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("系列序号"), { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("book-edit-save"));
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
+    expect(updateBook.mock.calls[0][1]).toEqual({ series: "", seriesIndex: 0 });
+  });
+
+  it("作者按顿号拆成多个，去空后提交 authors", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
+    fireEvent.change(screen.getByLabelText("作者"), { target: { value: "张三、李四" } });
+    fireEvent.click(screen.getByTestId("book-edit-save"));
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
+    expect(updateBook.mock.calls[0][1]).toEqual({ authors: ["张三", "李四"] });
+  });
+
+  it("作者被清空时先拦下，不下发空数组", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
+    fireEvent.change(screen.getByLabelText("作者"), { target: { value: " 、 ， " } });
+    fireEvent.click(screen.getByTestId("book-edit-save"));
+
+    expect(screen.getByTestId("book-edit-error").textContent).toContain("作者不能为空");
+    expect(updateBook).not.toHaveBeenCalled();
+  });
+
+  it("多作者在页头用顿号连起来展示", () => {
+    bookState.data = { ...book, authors: ["张三", "李四"] };
+    renderPage();
+
+    expect(screen.getByTestId("book-byline").textContent).toContain("张三、李四");
   });
 });
