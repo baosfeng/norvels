@@ -178,12 +178,13 @@ describe("库体积构成：正文改成压缩后口径", () => {
   it("正文压缩率用一句人话写出来，且不含实现词", () => {
     render(<StorageChart stats={compressedStats} {...idle} />);
     const detail = screen.getByTestId("chart:storage:detail");
-    expect(detail.textContent).toBe("正文约为原始文字的 34%，比不压缩省下 3.2 GB");
+    // 实测 34.6763% → 一位小数 34.7%；取整会显示 35%，与真实压缩率对不上
+    expect(detail.textContent).toBe("正文约为原始文字的 34.7%，比不压缩省下 3.0 GB");
     expect(findForbiddenTerms(detail.textContent ?? "")).toEqual([]);
-    // 同一张卡片里不重复「1.7 GB」：图例已经有一份
+    // 同一张卡片里不重复正文体积：图例已经有一份
     const legend = document.querySelector(".stack-legend") as HTMLElement;
-    expect(legend.textContent).toContain("正文 1.7 GB");
-    expect(detail.textContent).not.toContain("1.7 GB");
+    expect(legend.textContent).toContain("正文 1.6 GB");
+    expect(detail.textContent).not.toContain("1.6 GB");
     // 卡片全部可见文案都不出现实现词
     const card = document.querySelector('[data-testid="chart:storage"]') as HTMLElement;
     expect(findForbiddenTerms(card.textContent ?? "")).toEqual([]);
@@ -198,7 +199,7 @@ describe("库体积构成：正文改成压缩后口径", () => {
   it("正文还在统计（textBytes=0）时也说不出压缩率，且三段仍然铺满", () => {
     const { container } = render(
       <StorageChart
-        stats={{ ...compressedStats, textBytes: 0, textBytesRaw: 5_228_281_856, indexBytes: 0, otherBytes: 3_000_000_000 }}
+        stats={{ ...compressedStats, textBytes: 0, indexBytes: 0, otherBytes: 1_743_683_584 }}
         {...idle}
       />,
     );

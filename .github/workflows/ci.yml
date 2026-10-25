@@ -64,6 +64,23 @@ jobs:
       - name: 单元测试 + Gherkin 验收测试
         run: go test ./... -count=1
 
+  frontend:
+    name: frontend（vitest + tsc + vite build）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # 用 corepack 走 package.json 里锁定的 pnpm 版本，
+      # 避免 CI 与 Dockerfile 各写一个版本号后漂移（这个坑在镜像构建上踩过两次）。
+      - name: 启用 pnpm
+        run: corepack enable && corepack prepare pnpm@11 --activate
+      - name: 安装依赖
+        run: cd web && pnpm install --frozen-lockfile
+      - name: 单元测试
+        run: cd web && pnpm test
+      - name: 类型检查与构建
+        run: cd web && pnpm build
+
   gates:
     name: gates（scripts/gate-all.sh）
     runs-on: ubuntu-latest
