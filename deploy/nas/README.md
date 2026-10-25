@@ -78,7 +78,7 @@ sudo chown 65532:65532 /vol1/norvels/data/norvels.db
 ```bash
 cd /vol1/norvels
 sudo ./update.sh --latest         # 一条命令升到最新正式版（推荐）
-sudo ./update.sh 0.3.0            # 切到指定版本（会写回 .env）
+sudo ./update.sh 0.3.1            # 切到指定版本（会写回 .env）
 sudo ./update.sh --check          # 只看本地状态
 sudo ./update.sh --check-updates  # 问上游有没有新版本（不升级、不重启）
 ```
