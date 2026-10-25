@@ -9,7 +9,14 @@
 .reader-shell {
   display: flex;
   flex-direction: column;
+  /* 移动端地址栏会吃掉视口高度的一截：用 dvh，老浏览器回退到 vh */
   min-height: 100vh;
+  min-height: 100dvh;
+  /* 刘海屏 / 手势条：外层让出安全区，正文与按钮不被遮挡 */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   background: var(--r-bg);
   color: var(--r-fg);
 }
@@ -99,4 +106,99 @@ body {
     padding-top: 0;
     padding-bottom: 0;
   }
+}
+
+/* 触屏底子：控件不做文本选中、不出现点按延迟与蓝色高亮；正文仍可选中 */
+.btn,
+.chip,
+.sheet-option,
+.side-nav a,
+.shelf-sort-trigger,
+.pagination button,
+nav a,
+[role="button"],
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn,
+.chip,
+.sheet-option,
+.shelf-sort-trigger,
+.side-nav a,
+.pagination button,
+.seg button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* H5 书架：排序入口与底部弹层（PC 用下拉，不渲染这段） */
+.shelf-sort-trigger {
+  flex: none;
+  align-self: flex-start;
+}
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  padding: 6px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 2px;
+}
+.sheet-list {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 6px;
+}
+.sheet-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--fg);
+  font-size: 15px;
+  text-align: left;
+}
+.sheet-option.is-active {
+  border-color: var(--accent);
+  background: var(--bg);
+  font-weight: 600;
+}
+.sheet-option.is-active::after {
+  content: "✓";
+  color: var(--accent);
+}
+.shelf-more {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 18px 0 calc(18px + env(safe-area-inset-bottom));
+}
+.shelf-more-error {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
 }

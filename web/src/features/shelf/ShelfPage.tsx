@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useAuthors, useBooks, useTags } from "../../api/hooks";
+import { useAuthors, useTags } from "../../api/hooks";
 import type { BookSummary } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { CardSkeleton, EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
@@ -8,6 +8,7 @@ import { useShelfMode } from "../../layouts/shelfMode";
 import { formatCount } from "../../lib/format";
 import { stripTags } from "../../lib/text";
 import { useIsH5 } from "../../lib/tier";
+import { useBookFeed } from "../../lib/useBookFeed";
 
 const SORTS = [
   { value: "updated", label: "最近更新" },
@@ -17,45 +18,85 @@ const SORTS = [
   { value: "words", label: "字数" },
 ] as const;
 
+type SortValue = (typeof SORTS)[number]["value"];
+
 const PAGE_SIZE = 24;
+/** H5 首屏 30 本，之后每次再取 30 本追加；PC 仍按 PAGE_SIZE 分页 */
+const H5_PAGE_SIZE = 30;
 
 /**
  * 书架：PC 是工作台（排序 / 作者筛选 / 标签筛选 / 视图切换 / 分页），
- * H5 是单列简表——工具栏整体不渲染（筛选属于管理能力，见 00-brief §0.6）。
+ * H5 是单列简表——不做筛选与分页，但保留排序（底部弹层）与无限滚动。
+ * 管理类入口（导入 / 作者 / 驾驶舱）仍是 PC 专属，见 00-brief §0.6。
  */
 export function ShelfPage() {
   const isH5 = useIsH5();
   const { mode } = useShelfMode();
-  const [sort, setSort] = useState<(typeof SORTS)[number]["value"]>("updated");
+  const [sort, setSort] = useState<SortValue>("updated");
   const [authorId, setAuthorId] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // 筛选项的候选：作者与标签都是 PC 专属，H5 不发这两个请求
   const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: !isH5 });
   const tagOptions = useTags({ enabled: !isH5 });
 
-  const params = useMemo(
-    () => ({
-      sort,
-      page,
-      size: isH5 ? 30 : PAGE_SIZE,
-      authorId: authorId ?? undefined,
-      tag: tag ?? undefined,
-    }),
-    [sort, page, isH5, authorId, tag],
-  );
-  const { data, loading, error, reload } = useBooks(params);
+  const pageSize = isH5 ? H5_PAGE_SIZE : PAGE_SIZE;
+  const feed = useBookFeed({
+    sort,
+    authorId: authorId ?? undefined,
+    tag: tag ?? undefined,
+    size: pageSize,
+    mode: isH5 ? "infinite" : "paged",
+  });
 
-  const total = data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / (isH5 ? 30 : PAGE_SIZE)));
-  const items = data?.items ?? [];
+  const { items, total, loading, error, reload, loadMore, hasMore } = feed;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
   const filtering = authorId !== null || tag !== null;
+  const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "";
+  // 老浏览器 / 测试环境没有 IntersectionObserver：改用底部「加载更多」按钮兜底
+  const canObserve = typeof IntersectionObserver !== "undefined";
+
+  // H5：滚到底自动取下一页。换排序/筛选会换查询键，钩子自己丢弃在途响应并回到第 1 页。
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!isH5 || !node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isH5, loadMore, items.length, hasMore]);
+
+  // 底部弹层：Esc 收起（点遮罩与「关闭」同理）
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSheetOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sheetOpen]);
+
+  function chooseSort(next: SortValue) {
+    setSheetOpen(false);
+    if (next === sort) return;
+    setSort(next);
+    // 换了排序就是一份新列表：回到顶部，页码由钩子重置为 1
+    try {
+      window.scrollTo({ top: 0 });
+    } catch {
+      /* 老浏览器与测试环境可能没有 scrollTo：不影响排序结果 */
+    }
+  }
 
   function resetFilters() {
     setAuthorId(null);
     setTag(null);
-    setPage(1);
   }
 
   return (
@@ -66,25 +107,30 @@ export function ShelfPage() {
           <h1>{isH5 ? "书架" : "最近入库"}</h1>
           {isH5 ? null : (
             <p className="sub">
-              按{SORTS.find((s) => s.value === sort)?.label}排序 · 共 {formatCount(total)} 本
+              按{sortLabel}排序 · 共 {formatCount(total)} 本
               {filtering ? "（已筛选）" : ""}
             </p>
           )}
         </div>
+        {isH5 ? (
+          <button
+            className="btn shelf-sort-trigger"
+            type="button"
+            data-testid="shelf-sort-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            onClick={() => setSheetOpen(true)}
+          >
+            排序：{sortLabel}
+          </button>
+        ) : null}
       </div>
 
       {isH5 ? null : (
         <div className="toolbar" data-testid="shelf-toolbar">
           <label>
             排序
-            <select
-              className="select"
-              value={sort}
-              onChange={(e) => {
-                setSort(e.target.value as typeof sort);
-                setPage(1);
-              }}
-            >
+            <select className="select" value={sort} onChange={(e) => setSort(e.target.value as SortValue)}>
               {SORTS.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
@@ -98,10 +144,7 @@ export function ShelfPage() {
             <select
               className="select"
               value={authorId ?? ""}
-              onChange={(e) => {
-                setAuthorId(e.target.value ? Number(e.target.value) : null);
-                setPage(1);
-              }}
+              onChange={(e) => setAuthorId(e.target.value ? Number(e.target.value) : null)}
               data-testid="filter-author"
             >
               <option value="">全部作者</option>
@@ -114,7 +157,7 @@ export function ShelfPage() {
           </label>
 
           <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags">
-            <button type="button" className={`chip${tag === null ? " is-active" : ""}`} onClick={() => { setTag(null); setPage(1); }}>
+            <button type="button" className={`chip${tag === null ? " is-active" : ""}`} onClick={() => setTag(null)}>
               全部
             </button>
             {(tagOptions.data?.items ?? []).map((item) => (
@@ -122,10 +165,7 @@ export function ShelfPage() {
                 key={item.id}
                 type="button"
                 className={`chip${tag === item.name ? " is-active" : ""}`}
-                onClick={() => {
-                  setTag(item.name);
-                  setPage(1);
-                }}
+                onClick={() => setTag(item.name)}
               >
                 {item.name}
               </button>
@@ -182,23 +222,56 @@ export function ShelfPage() {
               <BookCard key={book.id} book={book} compact={isH5} />
             ))}
           </div>
-          {isH5 || pages <= 1 ? null : (
+
+          {isH5 ? (
+            <div className="shelf-more" data-testid="shelf-more">
+              {feed.loadingMore ? (
+                <p className="meta" role="status" data-testid="shelf-more-loading">
+                  正在加载更多…
+                </p>
+              ) : null}
+              {feed.errorMore ? (
+                <div className="shelf-more-error" data-testid="shelf-more-error">
+                  <p className="meta" role="alert">
+                    后面的书没取回来，检查网络后再试一次。
+                  </p>
+                  <button className="btn" type="button" onClick={feed.loadMore}>
+                    重试
+                  </button>
+                </div>
+              ) : null}
+              {feed.hasMore ? (
+                <>
+                  <div ref={sentinelRef} data-testid="shelf-sentinel" aria-hidden="true" style={{ height: 1 }} />
+                  {canObserve ? null : (
+                    <button className="btn" type="button" onClick={feed.loadMore} data-testid="shelf-load-more">
+                      加载更多
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="meta" data-testid="shelf-end">
+                  没有更多了 · 共 {formatCount(total)} 本
+                </p>
+              )}
+            </div>
+          ) : pages <= 1 ? null : (
             <nav className="pagination" aria-label="分页">
               <button
                 type="button"
                 aria-label="上一页"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={feed.page <= 1}
+                onClick={() => feed.setPage(feed.page - 1)}
               >
                 ←
               </button>
-              <span className="is-current num">{page}</span>
+              <span className="is-current num">{feed.page}</span>
               <span className="meta">/ {pages}</span>
               <button
                 type="button"
                 aria-label="下一页"
-                disabled={page >= pages}
-                onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                disabled={feed.page >= pages}
+                onClick={() => feed.setPage(feed.page + 1)}
               >
                 →
               </button>
@@ -206,6 +279,39 @@ export function ShelfPage() {
           )}
         </>
       )}
+
+      {isH5 && sheetOpen ? (
+        <div className="sheet-backdrop" data-testid="shelf-sort-sheet" onClick={() => setSheetOpen(false)}>
+          <div
+            className="sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="排序方式"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sheet-head">
+              <strong>排序方式</strong>
+              <button className="btn btn-ghost" type="button" onClick={() => setSheetOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <div className="sheet-list">
+              {SORTS.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  className={`sheet-option${s.value === sort ? " is-active" : ""}`}
+                  data-testid={`sort-option-${s.value}`}
+                  aria-pressed={s.value === sort}
+                  onClick={() => chooseSort(s.value)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
