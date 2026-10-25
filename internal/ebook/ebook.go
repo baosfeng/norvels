@@ -1,6 +1,7 @@
-// Package ebook 解析 EPUB：解包、读 OPF 元数据、按 spine 抽章节、取封面。
+// Package ebook 解析 EPUB：解包、读 OPF 元数据、按 spine 抽章节、按目录分卷、取封面。
 //
-// 解析契约见 docs/specs/2026-10-25-import-formats.md §4。产物是 package 自有类型，
+// 解析契约见 docs/specs/2026-10-25-import-formats.md §4 与
+// docs/specs/2026-10-25-import-p1.md §1。产物是 package 自有类型，
 // 不依赖 model——由 importer 负责转换成 model.ParsedBook，解析层不被存储字段牵着走。
 //
 // 只依赖标准库与 golang.org/x/net/html（纯 Go，CGO_ENABLED=0 下可用）。
@@ -31,7 +32,8 @@ type Book struct {
 	SeriesIndex int
 	Subjects    []string
 	Cover       *Cover
-	Chapters    []Chapter
+	Chapters    []Chapter // 扁平章节列表，spine 顺序
+	Volumes     []Volume  // 目录里的顶层分组（卷/部）；无层级时为空
 	Warnings    []string
 
 	// spineCount 是 OPF spine 的条目数：用它判断「整本书只有一两个 XHTML」，
@@ -49,6 +51,22 @@ type Cover struct {
 type Chapter struct {
 	Title   string
 	Content string
+	// VolumeIdx 是所属卷在 Book.Volumes 中的下标 +1；0 表示未分卷。
+	//
+	// 与 model.ParsedChapter 的 -1 口径不同：这里的 0 既表示「无 TOC」也表示
+	// 「有 TOC 但没有层级」，由 importer 转换时统一映射成 -1。
+	VolumeIdx int
+	// Level 是本章标题在 TOC 中的层级（1~3）；0 表示标题不是来自 TOC。
+	Level int
+}
+
+// Volume 是目录顶层分组（卷/部/集）。
+//
+// 章序仍以 spine 为准：Volumes[i].Chapters 是按 spine 顺序取出的章节副本，
+// 与 Book.Chapters 里的对应元素值相同（正文底层字符串共享）。
+type Volume struct {
+	Title    string
+	Chapters []Chapter
 }
 
 // longTextChars 是「整本 epub 就是一大段文本」的字数阈值（spec §4）。
