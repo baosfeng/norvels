@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -148,9 +149,26 @@ func (w *world) assertNewChapters(want int) error {
 		return fmt.Errorf("GET 书详情状态码 = %d，body=%s", code, body)
 	}
 	if detail.NewChapters != want {
-		return fmt.Errorf("追更角标 = %d，期望 %d", detail.NewChapters, want)
+		return fmt.Errorf("追更角标 = %d，期望 %d（书架快照：%s）", detail.NewChapters, want, w.shelfSnapshot())
 	}
 	return nil
+}
+
+// shelfSnapshot 在角标断言失败时留一份书架现场：书 id/书名/章数/角标。
+// 追更偶发不累加时，用来区分「没追加」和「角标落在另一本书上」。
+func (w *world) shelfSnapshot() string {
+	var page struct {
+		Items []map[string]any `json:"items"`
+	}
+	code, body, err := w.getJSON("/api/books?size=10", &page)
+	if err != nil || code != http.StatusOK {
+		return fmt.Sprintf("读取书架失败(code=%d, body=%s)", code, body)
+	}
+	parts := make([]string, 0, len(page.Items))
+	for _, it := range page.Items {
+		parts = append(parts, fmt.Sprintf("%v:%v:c%v:n%v:u%v:i%v", it["id"], it["title"], it["chapterCount"], it["newChapters"], it["updatedAt"], it["importedAt"]))
+	}
+	return fmt.Sprintf("lastBookID=%d [%s]", w.lastBookID, strings.Join(parts, " | "))
 }
 
 func (w *world) ackNewChapters() error {

@@ -209,6 +209,11 @@ func (w *world) importUpdateVersion(n int, update bool) error {
 		return err
 	}
 	w.lastJobStatus = status
+	// 追更/首次导入都必须真的成功：否则后面的角标断言会把「导入失败」
+	// 误报成「角标没累加」，排查时看不出根因。
+	if status != "completed" {
+		return fmt.Errorf("导入任务 %d 状态 = %q，期望 completed（update=%v）", resp.JobID, status, update)
+	}
 	return w.captureBook()
 }
 
