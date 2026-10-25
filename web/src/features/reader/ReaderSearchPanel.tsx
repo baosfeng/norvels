@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useFocusTrap } from "../../lib/focusTrap";
 
 /**
  * 章节内搜索面板：贴正文顶部，纯前端（正文已整章在前端，不新增请求）。
@@ -31,6 +32,9 @@ export function ReaderSearchPanel({
   onClose: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // 搜索面板同样是覆盖层：焦点循环留在面板内，Esc 关闭后回到「搜索」按钮
+  useFocusTrap(open, panelRef, onClose);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -40,7 +44,7 @@ export function ReaderSearchPanel({
   const searching = query.trim().length > 0;
 
   return (
-    <div className="reader-search" role="search" data-testid="reader-search">
+    <div className="reader-search" role="search" data-testid="reader-search" ref={panelRef}>
       <input
         ref={inputRef}
         className="input"
