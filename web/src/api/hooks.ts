@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { api, type BookQuery, type RequestOptions } from "../api/client";
+import type { ReadingSessionInput } from "./types";
 import { useResource } from "../lib/useResource";
 import { subscribeStatsRevision } from "../lib/statsRevision";
 
@@ -125,9 +126,89 @@ export function useFailedFiles(jobId: number | null) {
 
 /** 进度写入：失败不打断阅读，返回是否落库成功，供 UI 决定是否展示离线提示。 */
 export function useSaveProgress() {
-  return useCallback(async (body: { bookId: number; chapterId: number; percent: number }, options?: RequestOptions) => {
+  return useCallback(
+    async (
+      body: { bookId: number; chapterId: number; percent: number; paraIndex?: number },
+      options?: RequestOptions,
+    ) => {
+      try {
+        await api.saveProgress(body, options);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+}
+
+// --- P3 契约（docs/specs/2026-10-25-p3-contract.md）：发现域取数 + 阅读时长写入口 ---
+
+/**
+ * 随机一本（书架「换一本」）：每点一次 reload 换一本；params 变即重新取（key 进依赖）。
+ * 没有符合条件的书时后端 404，这里照常是 error 态（api.randomBook 的注释），
+ * 调用方按「没有符合条件的书」展示，不要当故障重试。
+ */
+export function useRandomBook(
+  params: { authorId?: number; tag?: string; collection?: number } = {},
+  options: { enabled?: boolean } = {},
+) {
+  const key = JSON.stringify(params);
+  return useResource((signal: AbortSignal) => api.randomBook(params, { signal }), [key], options);
+}
+
+/** 系列列表（PC 专属页）：q 匹配系列名，翻页与书架同一套 page/size 口径。 */
+export function useSeries(
+  params: { q?: string; page?: number; size?: number },
+  options: { enabled?: boolean } = {},
+) {
+  const key = JSON.stringify(params);
+  return useResource((signal: AbortSignal) => api.seriesList(params, { signal }), [key], options);
+}
+
+/** 系列详情：name 为空 / 未定时不发请求（路由参数还没解析出来的那一帧）。 */
+export function useSeriesDetail(name: string | null) {
+  const enabled = !!name;
+  return useResource(
+    (signal: AbortSignal) => api.seriesDetail(name as string, { signal }),
+    [name],
+    { enabled },
+  );
+}
+
+/** 书单列表：改名/增删成员后 reload 刷新（接口不回传聚合值）。 */
+export function useCollections(options: { enabled?: boolean } = {}) {
+  return useResource((signal: AbortSignal) => api.collections({ signal }), [], options);
+}
+
+/** 阅读历史（分页，按书聚合）；page/size 进依赖，翻页即重新取。 */
+export function useReadingHistory(params: { page?: number; size?: number }) {
+  const key = JSON.stringify(params);
+  return useResource((signal: AbortSignal) => api.readingHistory(params, { signal }), [key]);
+}
+
+/** 阅读时长统计（今日/本周/累计/连续天数/近 N 天热力图）。 */
+export function useReadingStats(days = 90) {
+  return useResource((signal: AbortSignal) => api.readingStats(days, { signal }), [days]);
+}
+
+/** 上报一次阅读时长：失败不打断阅读（离线只丢这一次的计数），返回是否落库成功。 */
+export function useRecordReadingSession() {
+  return useCallback(async (body: ReadingSessionInput, options?: RequestOptions) => {
     try {
-      await api.saveProgress(body, options);
+      await api.addReadingSession(body, options);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+}
+
+/** 追更角标清零（读到最后一章）：失败只影响角标数字，不打断阅读。 */
+export function useAckNewChapters() {
+  return useCallback(async (bookId: number, options?: RequestOptions) => {
+    try {
+      await api.ackNewChapters(bookId, options);
       return true;
     } catch {
       return false;
