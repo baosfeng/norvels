@@ -164,6 +164,7 @@ body 为任意子集：`title`、`author`、`authors`（字符串数组，**全�
 - 路径既不是目录也不是支持的文件 → 400 `invalid_param`，不会建任务。
 - `update`（布尔，默认 false）：追更，只追加新章节；对不上已有章节序列 → `not_appendable`，绝不覆盖。
 - `.zip` 按包内条目逐条导入，条目名为 `包名.zip:包内路径`；四道闸：条目 ≤1000、解压总量 ≤512 MiB、单条目 ≤64 MiB、拒绝绝对路径/../符号链接；嵌套 zip 按不支持条目记 `import_errors`。
+- 包内被跳过的条目（不支持的扩展名、嵌套 zip）会**逐条列入任务失败明细**，所以任务状态可能是 `completed_with_errors`——部分成功必须对用户可见，不静默吞掉。
 
 ### POST /api/import/upload
 `multipart/form-data`：`files`（可重复，最多 20 个）+ `force` / `update`（文本 true/false）。服务端流式读取，文件落到数据卷 `uploads/` 后建一个导入任务，任务结束整目录删除。
@@ -195,6 +196,8 @@ zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包�
 
 上限可用 `Config` 的 `MaxUploadFileBytes` / `MaxUploadTotalBytes` / `MaxUploadFiles` 调整（0 值回落默认）。
 只做字体混淆（仅加密 `.ttf/.otf/.woff`）的 EPUB 会放行，正文仍可读。
+
+加密预检只覆盖**顶层**上传的 `.epub`：zip 整包上传时不预先解包，包内的加密 EPUB 会在导入阶段被拒绝，并以失败条目出现在任务明细里。
 
 ### GET /api/import/jobs
 ```json
