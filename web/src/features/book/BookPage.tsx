@@ -7,6 +7,7 @@ import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { ChapterList } from "./ChapterList";
 import { BookRating } from "./RatingStars";
+import { AddToCollectionPanel } from "./AddToCollectionPanel";
 import { formatCount, formatDate } from "../../lib/format";
 import { authorsOf } from "../../lib/metaDraft";
 import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
@@ -27,6 +28,7 @@ export function BookPage() {
   const [openVolumes, setOpenVolumes] = useState<Set<number>>(new Set());
   const [introOpen, setIntroOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [collectionOpen, setCollectionOpen] = useState(false);
   /** 状态下拉的乐观值：PATCH 成功即时回显，失败退回后端值 */
   const [readStatus, setReadStatus] = useState<ReadStatus | null>(null);
   const columns = useTocColumns(isH5);
@@ -132,6 +134,14 @@ export function BookPage() {
                 从第一章开始
               </Link>
             ) : null}
+            <button
+              className="btn btn-ghost"
+              type="button"
+              data-testid="book-add-collection"
+              onClick={() => setCollectionOpen(true)}
+            >
+              加入书单
+            </button>
             {/* 详情页只读：改信息、传封面、改章节、删书都在独立的书籍管理页（/admin） */}
             {isH5 ? null : (
               <Link className="btn btn-ghost" to={`/admin/books/${book.id}`} data-testid="book-admin-link">
@@ -329,6 +339,9 @@ export function BookPage() {
         </div>
       </div>
 
+      {collectionOpen ? (
+        <AddToCollectionPanel bookId={book.id} bookTitle={book.title} onClose={() => setCollectionOpen(false)} />
+      ) : null}
     </section>
   );
 }

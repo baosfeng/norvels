@@ -16,6 +16,7 @@ import {
 import { stripTags } from "../../lib/text";
 import { showToast } from "../../lib/toastStore";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
+import { CollectionFilter } from "./CollectionFilter";
 import { useIsH5 } from "../../lib/tier";
 import {
   SHELF_REFRESH_MIN_AGE_MS,
@@ -389,6 +390,11 @@ export function ShelfPage() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label>
+            书单
+            <CollectionFilter value={collection} onChange={setCollection} />
           </label>
 
           <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags">
