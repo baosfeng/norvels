@@ -14,7 +14,7 @@ import (
 
 // TestIsCJK 覆盖 CJK 区间的边界与非 CJK 字符。
 func TestIsCJK(t *testing.T) {
-	in := []rune{'长', '夜', 'あ', '한', 'ㄅ'}
+	in := []rune{'长', '夜', 'あ', '한', 'ㄅ', '\U00020000'}
 	for _, r := range in {
 		if r == 'ㄅ' {
 			continue // 注音符号不在计字区间内
@@ -47,6 +47,7 @@ func TestCountWords(t *testing.T) {
 		{"只有标点", "，。！？", 0},
 		{"数字", "123 456", 2},
 		{"换行分隔的长段", "长夜书简\n青川剑砚\n", 8},
+		{"扩展 B 逐字", "\U00020000\U00020001 长", 3},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
