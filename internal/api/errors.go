@@ -44,7 +44,9 @@ const (
 	codeEmptyZip    = "empty_zip"
 	// codeNotAppendable 表示追更时新文件不是已有章节的追加（章节变少或标题改了）：
 	// 拒绝覆盖，用户可换回正确文件，或显式用 force 整本重导。
-	codeNotAppendable   = "not_appendable"
+	codeNotAppendable = "not_appendable"
+	// codeTimeout 表示 dry-run 预检超过 60 秒（503）：可重试，但需要缩小范围。
+	codeTimeout         = "timeout"
 	codePayloadTooLarge = "payload_too_large"
 	codeTooManyFiles    = "too_many_files"
 	codeEncryptedEPUB   = "encrypted_epub"

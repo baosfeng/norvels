@@ -152,18 +152,15 @@ const (
 	maxAuthorNameRunes = 100
 )
 
-// validateAuthors 校验 PATCH 带来的作者列表：归一化后不能为空、条数与单名长度受限。
+// validateAuthors 校验 PATCH 带来的作者列表：条数与单名长度受限；空数组合法（= 清空作者）。
 //
-// 「什么算同一个作者」由 store.NormalizeAuthors 单点定义（去空白、去空名、保序去重），
-// 这里只判收不收：空数组按 400 拒绝，避免「编辑时把作者全删光」被当成合法操作。
+// 「什么算同一个作者」由 store.NormalizeAuthors 单点定义（去空白、去空名、保序去重）。
+// 空数组不再 400（P1-B §2.5 口径覆盖）：前端批量设作者时留空即清空，下发 [] 应当成功。
 func validateAuthors(authors *[]string) error {
 	if authors == nil {
 		return nil
 	}
 	names := store.NormalizeAuthors(*authors)
-	if len(names) == 0 {
-		return badParam("authors 不能为空数组（至少要保留一个作者）")
-	}
 	if len(names) > maxPatchAuthors {
 		return badParam("authors 最多 %d 个作者", maxPatchAuthors)
 	}

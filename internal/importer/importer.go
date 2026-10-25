@@ -33,6 +33,12 @@ type Options struct {
 	// 章节边界。api 的两个导入入口都在请求线程里读 settings 再注入（loadChapterRules）；为空
 	// 表示只用内置策略——importer 自己不读 settings，也不依赖 store 的设置表。
 	ChapterRules []parser.Rule
+	// TagRules 是词表打标规则（api 从 settings 读出注入）；空表示不打自动标签。
+	// 匹配口径见 tagrules.go：命中即写 source=auto 的标签，只增不删。
+	TagRules []store.TagRule
+	// Sources 非空表示「单文件重试」：只处理这些可重放源（绝对路径 / zip 包:包内路径），
+	// 跳过目录扫描；源不可用按文件级失败记录，不中断整批。
+	Sources []string
 	// JobID 由外部先 CreateImportJob 再传入（api 的 POST /api/import 走这条路径）。
 	// >0 时复用该任务（要求 status=running），0 表示由 Run 内部创建。
 	// DryRun 时不写任何任务记录，JobID 被忽略。
@@ -109,7 +115,7 @@ func Run(ctx context.Context, st *store.Store, opt Options, cb func(Progress)) (
 		return nil, err
 	}
 	defer func() { _ = os.RemoveAll(scratch) }()
-	cands, issues := expandRoots(files, scratch)
+	cands, issues := collectCandidates(files, opt, scratch)
 	// 同名多卷的 .txt 先归并成一个处理单元，其余候选保持一文件一个单元。
 	units := buildImportUnits(cands)
 
@@ -145,6 +151,10 @@ func prepareRun(ctx context.Context, st *store.Store, opt Options) (*runState, s
 	// 任务记录：api 可以先 CreateImportJob 拿到精确 jobId，再把 JobID 传进来复用。
 	if err := state.prepareJob(ctx, opt); err != nil {
 		return nil, "", nil, err
+	}
+	if len(opt.Sources) > 0 {
+		// 重试：源可能已被删除/移动，逐条在候选层记失败，不在这里整体失败。
+		return state, dir, nil, nil
 	}
 
 	if reason, verr := verifySource(dir); verr != nil {
@@ -210,6 +220,10 @@ func processFile(ctx context.Context, st *store.Store, p *parser.Parser, t fileT
 	}
 	fillBookSource(book, t.cand, data, sha)
 	oc.books = splitBooks(book)
+	// 词表打标在拆分后逐本算：每本书的正文范围不同，命中结果也可能不同。
+	for _, b := range oc.books {
+		b.AutoTags = matchTags(opt.TagRules, b)
+	}
 	return oc
 }
 

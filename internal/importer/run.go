@@ -99,9 +99,11 @@ func (r *runState) consume(ctx context.Context, outcomes <-chan parseOutcome, to
 func (r *runState) applyOutcome(ctx context.Context, oc parseOutcome, opt Options) string {
 	switch {
 	case oc.err != nil:
-		return r.recordFileError(ctx, oc.path, oc.err)
+		return r.recordFileError(ctx, oc.cand.source, oc.path, oc.err)
 	case oc.skipped:
 		r.res.Skipped++
+		r.recordJobFile(ctx, oc.cand.source, oc.path, store.ImportFileStatusSkipped,
+			"库中已存在同一本书（SHA-256 或源路径命中）", 0)
 		return ""
 	case len(oc.books) == 0:
 		return ""
@@ -118,6 +120,8 @@ func (r *runState) saveBooks(ctx context.Context, oc parseOutcome, opt Options) 
 		}
 		if len(book.Chapters) < opt.MinChapters {
 			r.res.Skipped++
+			r.recordJobFile(ctx, oc.cand.source, oc.path, store.ImportFileStatusSkipped,
+				fmt.Sprintf("章节数不足 %d", opt.MinChapters), 0)
 			continue
 		}
 		if opt.DryRun {
@@ -125,50 +129,70 @@ func (r *runState) saveBooks(ctx context.Context, oc parseOutcome, opt Options) 
 			r.res.Imported = append(r.res.Imported, 0)
 			continue
 		}
-		r.saveOne(ctx, oc.path, book, opt)
+		r.saveOne(ctx, oc.cand.source, oc.path, book, opt)
 	}
 	return title
 }
 
-// recordIssues 把解包阶段的问题（整包失败、条目不支持）逐条记进失败明细。
+// recordIssues 把解包阶段的问题（整包失败、条目不支持）逐条记进失败明细与文件终态。
 func (r *runState) recordIssues(ctx context.Context, issues []expandIssue) {
 	for _, issue := range issues {
-		r.recordFileError(ctx, issue.path, errors.New(issue.reason))
+		r.recordFileError(ctx, issue.source, issue.path, errors.New(issue.reason))
+		r.recordJobFile(ctx, issue.source, issue.path, statusForIssue(issue.kind), issue.reason, 0)
 	}
 }
 
-// recordFileError 记录一次文件级失败：汇总计数、错误列表，并同步写入任务明细。
-func (r *runState) recordFileError(ctx context.Context, path string, err error) string {
+// statusForIssue 把解包问题类型翻译成文件级终态。
+func statusForIssue(kind string) string {
+	if kind == issueKindUnsupported {
+		return store.ImportFileStatusUnsupported
+	}
+	return store.ImportFileStatusFailed
+}
+
+// recordFileError 记录一次文件级失败：汇总计数、错误列表、文件终态与任务明细。
+func (r *runState) recordFileError(ctx context.Context, source, display string, err error) string {
 	r.res.Failed++
-	r.res.Errors = append(r.res.Errors, store.ImportError{FilePath: path, Reason: err.Error()})
+	r.res.Errors = append(r.res.Errors, store.ImportError{FilePath: display, Reason: err.Error()})
 	r.lastErr = err.Error()
 	if r.job != nil {
-		if aerr := r.st.AddImportError(ctx, r.job.ID, path, err.Error()); aerr != nil {
+		if aerr := r.st.AddImportError(ctx, r.job.ID, display, err.Error()); aerr != nil {
 			r.lastErr = aerr.Error()
 		}
 	}
+	r.recordJobFile(ctx, source, display, store.ImportFileStatusFailed, err.Error(), 0)
 	return ""
 }
 
-// saveOne 把一本书写入库，按「新建 / 追更 / 幂等跳过 / 失败」分别计数。
+// recordJobFile 写一条文件级终态；job 为 nil（dry-run）时是空操作。
+//
+// 写失败只记 lastErr 不打断导入：文件级终态是「重试用的辅助数据」，
+// 不能因为它写不进去就让整批书导入失败。
+func (r *runState) recordJobFile(ctx context.Context, source, display, status, reason string, bookID int64) {
+	if r.job == nil || source == "" {
+		return
+	}
+	if err := r.st.UpsertImportJobFile(ctx, r.job.ID, store.ImportJobFile{
+		Source: source, DisplayPath: display, Status: status, Reason: reason, BookID: bookID,
+	}); err != nil {
+		r.lastErr = err.Error()
+	}
+}
+
+// saveOne 把一本书写入库，按「新建 / 追更 / 幂等跳过 / 失败」分别计数并记文件终态。
 //
 // Force 优先于 Update（store 的既有语义）：显式覆盖时不走追更匹配。
-func (r *runState) saveOne(ctx context.Context, path string, book *model.ParsedBook, opt Options) {
+func (r *runState) saveOne(ctx context.Context, source, display string, book *model.ParsedBook, opt Options) {
 	sr, err := r.st.SaveBook(ctx, book, store.SaveOptions{Force: opt.Force, Update: opt.Update})
 	switch {
 	case err != nil:
-		r.res.Failed++
-		r.res.Errors = append(r.res.Errors, store.ImportError{FilePath: path, Reason: err.Error()})
-		r.lastErr = err.Error()
-		if r.job != nil {
-			if aerr := r.st.AddImportError(ctx, r.job.ID, path, err.Error()); aerr != nil {
-				r.lastErr = aerr.Error()
-			}
-		}
+		r.recordFileError(ctx, source, display, err)
 	case sr.Skipped:
 		r.res.Skipped++
+		r.recordJobFile(ctx, source, display, store.ImportFileStatusSkipped, "库中已存在同一本书", 0)
 	default:
 		r.res.Imported = append(r.res.Imported, sr.BookID)
+		r.recordJobFile(ctx, source, display, store.ImportFileStatusImported, "", sr.BookID)
 	}
 }
 
@@ -224,6 +248,14 @@ func jobStatus(res *Result) string {
 	default:
 		return "completed"
 	}
+}
+
+// collectCandidates 生成候选：普通导入走目录扫描 + zip 展开；重试只处理给定源。
+func collectCandidates(files []string, opt Options, scratch string) ([]candidate, []expandIssue) {
+	if len(opt.Sources) > 0 {
+		return sourcesToCandidates(opt.Sources, scratch)
+	}
+	return expandRoots(files, scratch)
 }
 
 // resolveSourceDir 把 Options.Dir 归一化为绝对路径。

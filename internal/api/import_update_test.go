@@ -9,12 +9,12 @@ import (
 
 // TestImportOptionsCarriesUpdate POST /api/import 的 update 布尔要原样进 importer.Options。
 func TestImportOptionsCarriesUpdate(t *testing.T) {
-	on := importOptions(importRequest{Dir: "/path/to/books", Update: true}, "/path/to/books", 9, nil)
+	on := importOptions(importRequest{Dir: "/path/to/books", Update: true}, "/path/to/books", 9, nil, nil)
 	if !on.Update || on.JobID != 9 || on.Dir != "/path/to/books" {
 		t.Fatalf("importer.Options = %+v，期望 Update=true 透传", on)
 	}
 	// 默认必须是 false：追更是显式开关，缺省打开会让一次误操作就改库。
-	off := importOptions(importRequest{Dir: "/path/to/books"}, "/path/to/books", 9, nil)
+	off := importOptions(importRequest{Dir: "/path/to/books"}, "/path/to/books", 9, nil, nil)
 	if off.Update {
 		t.Fatalf("未传 update 时 Options.Update = true，期望 false")
 	}

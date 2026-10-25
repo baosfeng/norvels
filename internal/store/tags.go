@@ -61,6 +61,31 @@ func (s *Store) ListBookTags(ctx context.Context, bookID int64) ([]string, error
 	return names, nil
 }
 
+// 标签来源（0012 起）：区分「用户手改」与「导入自动打」，
+// 自动标签只增不删，绝不覆盖同书的手动标签。
+const (
+	TagSourceManual = ""     // 手动 / 历史存量
+	TagSourceAuto   = "auto" // 词表命中
+	TagSourceEPUB   = "epub" // EPUB dc:subject
+)
+
+// AddBookTagsWithSource 在事务内**只增不删**地打标签（导入链路用）。
+//
+// 与 setBookTagsInTx 的区别：不 DELETE 既有标签。原因：自动标签（词表命中 / dc:subject）
+// 不能覆盖用户手加的同名标签，覆盖导入也不该清空旧标签；已有同名标签（任意 source）
+// 不重复插入，其 source 保持不变。
+func addBookTagsWithSourceInTx(ctx context.Context, tx *sql.Tx, bookID int64, names []string, source string) error {
+	if err := ensureBookExistsInTx(ctx, tx, bookID); err != nil {
+		return err
+	}
+	for _, name := range normalizeTags(names) {
+		if err := linkTagWithSourceInTx(ctx, tx, bookID, name, source); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // setBookTagsInTx 在事务内全量替换标签；书不存在返回 ErrNotFound。
 func setBookTagsInTx(ctx context.Context, tx *sql.Tx, bookID int64, names []string) error {
 	if err := ensureBookExistsInTx(ctx, tx, bookID); err != nil {
@@ -92,8 +117,16 @@ func normalizeTags(names []string) []string {
 	return out
 }
 
-// linkTagInTx 建立「书 → 标签」关联：标签不存在就先建（tags.name 唯一）。
+// linkTagInTx 建立「书 → 标签」关联（手动来源，source 保持空串）。
 func linkTagInTx(ctx context.Context, tx *sql.Tx, bookID int64, name string) error {
+	return linkTagWithSourceInTx(ctx, tx, bookID, name, TagSourceManual)
+}
+
+// linkTagWithSourceInTx 建立「书 → 标签」关联并记录来源：标签不存在就先建（tags.name 唯一）。
+//
+// INSERT OR IGNORE 保证同名标签不会被重复插入，也就不会改写已有行的 source——
+// 这正是「手动标签不被自动标签覆盖」的落点。
+func linkTagWithSourceInTx(ctx context.Context, tx *sql.Tx, bookID int64, name, source string) error {
 	if _, err := tx.ExecContext(ctx, "INSERT INTO tags(name) VALUES (?) ON CONFLICT(name) DO NOTHING", name); err != nil {
 		return fmt.Errorf("store: ensure tag %q: %w", name, err)
 	}
@@ -101,7 +134,9 @@ func linkTagInTx(ctx context.Context, tx *sql.Tx, bookID int64, name string) err
 	if err := tx.QueryRowContext(ctx, "SELECT id FROM tags WHERE name = ?", name).Scan(&tagID); err != nil {
 		return fmt.Errorf("store: select tag %q: %w", name, err)
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO book_tags(book_id, tag_id) VALUES (?, ?)", bookID, tagID); err != nil {
+	if _, err := tx.ExecContext(ctx,
+		"INSERT OR IGNORE INTO book_tags(book_id, tag_id, source) VALUES (?, ?, ?)",
+		bookID, tagID, source); err != nil {
 		return fmt.Errorf("store: link tag %q: %w", name, err)
 	}
 	return nil

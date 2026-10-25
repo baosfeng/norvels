@@ -213,7 +213,10 @@ func writeZipEntries(entries []zipEntry, dst, zipPath string) ([]candidate, []ex
 	for _, e := range entries {
 		entry := classifyZipEntry(e.name)
 		if entry.Format == "" {
-			issues = append(issues, expandIssue{path: base + ":" + e.name, reason: entry.Reason})
+			issues = append(issues, expandIssue{
+				source: zipPath + ":" + e.name, path: base + ":" + e.name,
+				kind: issueKindUnsupported, reason: entry.Reason,
+			})
 			continue
 		}
 		target, err := uniqueEntryPath(dst, e.name, seen)

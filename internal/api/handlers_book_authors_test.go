@@ -101,18 +101,17 @@ func TestPatchBookAuthorAndAuthorsPrefersAuthors(t *testing.T) {
 	}
 }
 
-// TestPatchBookAuthorsValidation authors 的跨信任边界校验（空数组 / 条数 / 单名长度）。
+// TestPatchBookAuthorsValidation authors 的跨信任边界校验（条数 / 单名长度）。
 func TestPatchBookAuthorsValidation(t *testing.T) {
 	env := newEnv(t)
 	id := env.seedBook("作者校验示例书", "原示例作者")
 	target := bookPath(id)
 
+	// 空数组 / 只有空白名不再 400：它们是「清空作者」，见 TestPatchBookClearAuthors。
 	cases := []struct {
 		name string
 		body string
 	}{
-		{"空数组", authorsBody()},
-		{"只有空白名", authorsBody("  ", "")},
 		{"超过十个", authorsBody("作者1", "作者2", "作者3", "作者4", "作者5",
 			"作者6", "作者7", "作者8", "作者9", "作者10", "作者11")},
 		{"单名过长", authorsBody(strings.Repeat("长", 101))},

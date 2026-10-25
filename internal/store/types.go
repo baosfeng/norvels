@@ -250,6 +250,27 @@ type TagSummary struct {
 type ImportJobDetail struct {
 	ImportJob
 	Errors []ImportError `json:"errors"`
+	// FailedCount 是文件级终态里 status=failed 的条数（0012 起）。
+	// 与 Failed 的区别：Failed 是本次汇总计数，FailedCount 以 import_job_files 为准，
+	// 重试任务只含被重试的文件，两者可能不同。
+	FailedCount int `json:"failedCount"`
+}
+
+// ImportJobFile 是一条候选条目的文件级终态（0012 起，单文件重试的数据基础）。
+type ImportJobFile struct {
+	ID          int64     `json:"id"`
+	Source      string    `json:"source"`
+	DisplayPath string    `json:"displayPath"`
+	Status      string    `json:"status"`
+	Reason      string    `json:"reason"`
+	BookID      int64     `json:"bookId"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// ImportJobFiles 是 GET /api/import/jobs/{id}/files 的响应体。
+type ImportJobFiles struct {
+	Files     []ImportJobFile `json:"files"`
+	Truncated bool            `json:"truncated"`
 }
 
 // ErrNotImplemented 由未实现的桩方法返回，便于并行开发期自查。

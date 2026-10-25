@@ -21,13 +21,16 @@ type ParsedBook struct {
 	Warnings   []string        // 解析告警，便于抽样排查
 
 	// ---- 书籍身份（EPUB 等带元数据的格式才可能填，txt 走文件名规则）----
-	Language     string      // BCP-47 语言标签，如 zh-CN
-	Publisher    string      // 出版社
-	ISBN         string      // ISBN / 书号
-	PubDate      string      // 出版日期（原样保留 ISO 或原文）
-	Series       string      // 系列 / 丛书名
-	SeriesIndex  int         // 系列内序号，0 表示未知
-	Subjects     []string    // 分类 / 标签（EPUB dc:subject）
+	Language    string   // BCP-47 语言标签，如 zh-CN
+	Publisher   string   // 出版社
+	ISBN        string   // ISBN / 书号
+	PubDate     string   // 出版日期（原样保留 ISO 或原文）
+	Series      string   // 系列 / 丛书名
+	SeriesIndex int      // 系列内序号，0 表示未知
+	Subjects    []string // 分类 / 标签（EPUB dc:subject）
+	// AutoTags 是词表规则命中的标签（导入链路写入，落库时 source=auto）。
+	// 与 Subjects 分开：两者的来源标记不同，且都只增不删。
+	AutoTags     []string
 	Cover        *CoverImage // 封面；nil 表示没有
 	SourceFormat string      // 源文件格式：txt / epub
 }

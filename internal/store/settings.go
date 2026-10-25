@@ -86,6 +86,59 @@ func (s *Store) SaveChapterRules(ctx context.Context, rules []ChapterRule) error
 	return s.PutSetting(ctx, SettingKeyChapterRules, string(raw))
 }
 
+// SettingKeyTagRules 是词表打标规则在 settings 表里的键。
+const SettingKeyTagRules = "tag_rules"
+
+// TagRule 是一条词表规则：标签名 + 关键词列表（子串匹配，大小写不敏感）。
+//
+// 与 ChapterRule 一样存「用户可编辑的源数据」而不是匹配结果：关键词以后可能调整，
+// 落库的东西必须能原样还原给用户编辑。
+type TagRule struct {
+	Tag      string   `json:"tag"`
+	Keywords []string `json:"keywords"`
+}
+
+// ListTagRules 读取词表规则；未配置时返回空切片（不是 nil）。
+func (s *Store) ListTagRules(ctx context.Context) ([]TagRule, error) {
+	raw, ok, err := s.GetSetting(ctx, SettingKeyTagRules)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return []TagRule{}, nil
+	}
+	return decodeTagRules(raw)
+}
+
+// SaveTagRules 全量替换词表规则（传空切片即清空）。
+//
+// 条数/长度/重名等跨边界校验在 api 层做（只判一次），这里只负责序列化落库。
+func (s *Store) SaveTagRules(ctx context.Context, rules []TagRule) error {
+	if rules == nil {
+		rules = []TagRule{}
+	}
+	raw, err := json.Marshal(rules)
+	if err != nil {
+		return fmt.Errorf("store: encode tag rules: %w", err)
+	}
+	return s.PutSetting(ctx, SettingKeyTagRules, string(raw))
+}
+
+// decodeTagRules 解析词表规则 JSON；坏数据按「配置损坏」报错而不是静默清空。
+func decodeTagRules(raw string) ([]TagRule, error) {
+	if strings.TrimSpace(raw) == "" {
+		return []TagRule{}, nil
+	}
+	var rules []TagRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return nil, fmt.Errorf("store: decode tag rules: %w", err)
+	}
+	if rules == nil {
+		return []TagRule{}, nil
+	}
+	return rules, nil
+}
+
 // decodeChapterRules 解析规则 JSON。坏数据按「配置损坏」报错而不是静默当成空规则：
 // 静默清空等于用户的规则被无声删掉，下次导入就会退回内置策略且毫无线索。
 func decodeChapterRules(raw string) ([]ChapterRule, error) {

@@ -46,12 +46,17 @@ func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if req.DryRun {
+		// 只预检：不建任务、不占锁，同步返回报告（P1-B §2.2）。
+		s.handleDryRun(w, r, req, source)
+		return
+	}
 	job, ok := s.acquireImportJob(w, r, source)
 	if !ok {
 		return
 	}
-	// 自定义章节规则在请求线程里读一次并注入：导入 goroutine 不再回头查 settings。
-	opts := importOptions(req, source, job.ID, s.loadChapterRules(r.Context()))
+	// 自定义章节规则与词表规则在请求线程里读一次并注入：导入 goroutine 不再回头查 settings。
+	opts := importOptions(req, source, job.ID, s.loadChapterRules(r.Context()), s.loadTagRules(r.Context()))
 
 	// 导入任务随服务退出或用户主动取消而停止（Config.Context 由 serve 的 signal ctx 注入）。
 	ctx, cancel := context.WithCancel(s.baseContext())
@@ -146,7 +151,7 @@ func (s *Server) acquireImportJob(w http.ResponseWriter, r *http.Request, dir st
 // rules 由调用方从 settings 读出并编译后传入（见 loadChapterRules）：导入链路不读
 // settings，规则是显式参数——省掉这条参数就是「规则能存能读但导入不生效」。
 // dir 既可以是目录也可以是单个 .txt 文件；recursive 对文件无意义，会被扫描器忽略。
-func importOptions(req importRequest, dir string, jobID int64, rules []parser.Rule) importer.Options {
+func importOptions(req importRequest, dir string, jobID int64, rules []parser.Rule, tagRules []store.TagRule) importer.Options {
 	recursive := true
 	if req.Recursive != nil {
 		recursive = *req.Recursive
@@ -160,6 +165,7 @@ func importOptions(req importRequest, dir string, jobID int64, rules []parser.Ru
 		Workers:      req.Workers,
 		ParserOpts:   parser.DefaultOptions(),
 		ChapterRules: rules,
+		TagRules:     tagRules,
 		JobID:        jobID,
 	}
 }
