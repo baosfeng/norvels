@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# norvels 一键更新：拉新镜像 → 预跑 schema 迁移 → 重启容器 → 等健康。
+# norvels 一键更新：备份 → 拉新镜像 → 预跑 schema 迁移 → 重启 → 等健康；失败自动回滚镜像版本。
 #
 # 用法（必须有 docker 权限，飞牛上就是 root）：
 #   sudo ./update.sh              # 按 .env 里现有的 NORVELS_VERSION 更新
+#   sudo ./update.sh --latest     # 自动升级到 Docker Hub 上的最新正式版
 #   sudo ./update.sh 0.3.0        # 切到指定版本，并写回 .env
 #   sudo ./update.sh --check      # 只看当前状态，不动任何东西
 #   sudo ./update.sh --check-updates  # 问一下上游有没有新版本，不升级
 #
-# 为什么先单独跑迁移：大库迁移可能几十分钟，期间进程不监听端口，
-# 容器自带的 healthcheck 会判 unhealthy 并重启，导致迁移回滚重来。
-# 这里用一次性容器把迁移跑完，再 up -d，启动时就是"0 个迁移可应用"。
+# 环境变量：
+#   NORVELS_BACKUP_KEEP  保留几份数据库备份，默认 3
+#   NORVELS_BACKUP_DIR   备份目录，默认 <数据目录的父目录>/backup
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
@@ -20,21 +21,28 @@ die() { echo "错误：$*" >&2; exit 1; }
 # ---------- 参数 ----------
 CHECK_ONLY=0
 CHECK_UPDATES=0
+USE_LATEST=0
 NEW_VERSION=""
 for arg in "$@"; do
   case "$arg" in
     --check) CHECK_ONLY=1 ;;
     --check-updates) CHECK_UPDATES=1 ;;
+    --latest) USE_LATEST=1 ;;
     -* ) die "未知参数 $arg" ;;
     *  ) NEW_VERSION="$arg" ;;
   esac
 done
 
-# check_updates 对比「容器正在用的镜像」与「上游 latest」。
+# 对比「容器正在用的镜像」与「上游 latest」。
 #
 # 为什么不查 Docker Hub API 或 manifest：这两种都要直连 registry-1.docker.io，
 # 在国内常常超时。而 docker pull 走的是本机配置的镜像加速器——也就是部署时
 # 唯一必须打通的通道，用它判断最可靠（镜像 17 MB，层已缓存时约 2 秒）。
+pull_latest_version() {
+  docker pull -q bsfeng/norvels:latest >/dev/null 2>&1 || return 1
+  docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' bsfeng/norvels:latest 2>/dev/null || true
+}
+
 check_updates() {
   local cur_id cur_ver latest_id latest_ver
   if ! cur_id=$(docker inspect --format '{{.Image}}' norvels 2>/dev/null); then
@@ -44,19 +52,16 @@ check_updates() {
   echo "当前运行：${cur_ver:-unknown}"
 
   echo "查询最新正式版（经本机 docker 镜像加速器）…"
-  if ! docker pull -q bsfeng/norvels:latest >/dev/null 2>&1; then
-    echo "拉取失败：本机访问不了镜像仓库。检查 docker info 里的 Registry Mirrors。" >&2
-    return 1
-  fi
+  latest_ver=$(pull_latest_version) || { echo "拉取失败：本机访问不了镜像仓库。检查 docker info 里的 Registry Mirrors。" >&2; return 1; }
+  [ -n "$latest_ver" ] || { echo "读取不到 latest 的版本号" >&2; return 1; }
   latest_id=$(docker inspect --format '{{.Id}}' bsfeng/norvels:latest)
-  latest_ver=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' bsfeng/norvels:latest 2>/dev/null || true)
 
   if [ "$cur_id" = "$latest_id" ]; then
-    echo "已是最新（${latest_ver:-unknown}）"
+    echo "已是最新（$latest_ver）"
     return 0
   fi
-  echo "有新版本：${latest_ver:-unknown}（当前 ${cur_ver:-unknown}）"
-  echo "  升级命令：sudo ./update.sh ${latest_ver:-latest}"
+  echo "有新版本：$latest_ver（当前 ${cur_ver:-unknown}）"
+  echo "  升级命令：sudo ./update.sh --latest"
 }
 
 command -v docker >/dev/null || die "没有 docker"
@@ -70,7 +75,7 @@ DATA_DIR="${NORVELS_DATA_DIR:?请在 .env 里设置 NORVELS_DATA_DIR}"
 [ -d "$DATA_DIR" ] || die "数据目录不存在：$DATA_DIR"
 
 echo "== 当前状态 =="
-docker compose ps
+docker compose ps || true
 echo "当前版本：${NORVELS_VERSION:-latest}   数据目录：$DATA_DIR"
 
 if [ "$CHECK_UPDATES" = "1" ]; then
@@ -83,6 +88,51 @@ if [ "$CHECK_ONLY" = "1" ]; then
   exit 0
 fi
 
+OLD_VERSION="${NORVELS_VERSION:-latest}"
+APPLIED=0
+
+# 失败自动回滚镜像版本（数据库不回滚：schema 只前进，恢复备份按 README）。
+on_exit() {
+  local code=$?
+  if [ "$code" -ne 0 ] && [ "$APPLIED" = "1" ]; then
+    echo "!! 升级失败（退出码 $code），回滚镜像版本到 $OLD_VERSION" >&2
+    sed -i.bak "s|^NORVELS_VERSION=.*|NORVELS_VERSION=$OLD_VERSION|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+    docker compose up -d >/dev/null 2>&1 || true
+    echo "!! 数据库未回滚——若新库确认不可用，按 README「备份」一节恢复。" >&2
+  fi
+  exit $code
+}
+trap on_exit EXIT
+
+# ---------- 解析最新版本 ----------
+if [ "$USE_LATEST" = "1" ]; then
+  echo "== 查询最新正式版 =="
+  LATEST_VER=$(pull_latest_version) || die "拉取 latest 失败（检查镜像加速器）"
+  [ -n "$LATEST_VER" ] || die "读取不到 latest 的版本号"
+  echo "最新正式版：$LATEST_VER"
+  NEW_VERSION="$LATEST_VER"
+fi
+
+# ---------- 备份 ----------
+BACKUP_DIR="${NORVELS_BACKUP_DIR:-$(dirname -- "$DATA_DIR")/backup}"
+KEEP="${NORVELS_BACKUP_KEEP:-3}"
+case "$KEEP" in (''|*[!0-9]*) die "NORVELS_BACKUP_KEEP 必须是数字" ;; esac
+
+if [ -f "$DATA_DIR/norvels.db" ]; then
+  mkdir -p "$BACKUP_DIR"
+  echo "== 备份数据库（保留最近 $KEEP 份）=="
+  docker compose stop
+  BK="$BACKUP_DIR/norvels-$OLD_VERSION-$(date +%Y%m%d-%H%M).db"
+  cp -a "$DATA_DIR/norvels.db" "$BK"
+  SRC=$(stat -c %s "$DATA_DIR/norvels.db")
+  DST=$(stat -c %s "$BK")
+  [ "$SRC" = "$DST" ] || die "备份大小不一致（$SRC vs $DST），已中止"
+  echo "备份完成：$BK（$DST 字节）"
+  ls -1t "$BACKUP_DIR"/norvels-*.db 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+    rm -f "$old" && echo "  清理旧备份：$old"
+  done
+fi
+
 # ---------- 切换版本 ----------
 if [ -n "$NEW_VERSION" ]; then
   if grep -q '^NORVELS_VERSION=' "$ENV_FILE"; then
@@ -91,6 +141,7 @@ if [ -n "$NEW_VERSION" ]; then
   else
     printf 'NORVELS_VERSION=%s\n' "$NEW_VERSION" >> "$ENV_FILE"
   fi
+  APPLIED=1
   echo "已把 .env 中的版本改为 $NEW_VERSION"
   set -a; . "./$ENV_FILE"; set +a
 fi
@@ -134,7 +185,7 @@ docker compose up -d
 echo "== 等待健康检查（最多 120 秒）=="
 for i in $(seq 1 24); do
   STATE=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' norvels 2>/dev/null || echo missing)
-  echo "  [$((i*5))s] $STATE"
+  echo "  [$((i * 5))s] $STATE"
   case "$STATE" in
     healthy) echo "== 更新完成：$IMAGE =="; docker compose ps; exit 0 ;;
     unhealthy) die "容器进入 unhealthy，用 docker compose logs --tail 50 norvels 查看" ;;

@@ -82,11 +82,17 @@ sqlite3 data/norvels.db 'VACUUM;'
 
 ```bash
 cd /vol1/norvels
-sudo ./update.sh                  # 跟随 .env 里的版本
+sudo ./update.sh --latest         # 一条命令升到最新正式版（推荐）
 sudo ./update.sh 0.3.0            # 切到指定版本（会写回 .env）
 sudo ./update.sh --check          # 只看本地状态
 sudo ./update.sh --check-updates  # 问上游有没有新版本（不升级、不重启）
 ```
+
+脚本按顺序做四件事：**备份数据库**（`backup/norvels-<旧版本>-<时间>.db`，默认保留 3 份，`NORVELS_BACKUP_KEEP` 可改）→ 拉镜像 → 一次性容器预跑迁移 → 重启并轮询健康。任何一步失败都会**自动把镜像版本回滚**到升级前，并提示按「备份」一节恢复数据库（schema 只前进，镜像回滚不恢复数据）。
+
+> 想让这条命令完全免密，在 NAS 上写 `/etc/sudoers.d/norvels`：
+> `momo ALL=(ALL) NOPASSWD: /vol1/norvels/update.sh, /vol1/norvels/update.sh *`
+> 之后 `ssh nas 'cd /vol1/norvels && sudo ./update.sh --latest'` 不再要密码。
 
 `--check-updates` 的判定方式：对比「容器正在用的镜像 ID」与「`bsfeng/norvels:latest` 的镜像 ID」。
 它走的是 docker 的镜像加速器（也就是部署时唯一必须打通的那条路），不依赖
