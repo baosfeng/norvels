@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { BookDetail, ChapterBrief, Volume } from "../../api/types";
 import { CHAPTER_PAGE, mergeVerdict, rowsOf } from "../../lib/chapterBatch";
-import { formatCount } from "../../lib/format";
+import { formatCount, formatWords } from "../../lib/format";
+import { showToast } from "../../lib/toastStore";
 import { ChapterBatchBar } from "./ChapterBatchBar";
+import { ChapterBodyDrawer } from "./ChapterBodyDrawer";
 import { ChapterBatchDeleteDialog } from "./ChapterBatchDeleteDialog";
 import { ChapterMergeDialog } from "./ChapterMergeDialog";
 import { ChapterRenumberDialog } from "./ChapterRenumberDialog";
@@ -22,10 +24,16 @@ export function AdminChapters({
   book,
   onChanged,
   onError,
+  onReload,
 }: {
   book: BookDetail;
   onChanged: (message: string) => void;
   onError: (message: string) => void;
+  /**
+   * 只重拉详情、不弹横幅。正文抽屉保存后走这条：反馈用 toast（原型如此），
+   * 页面上的横幅留给元信息与其他结构操作。
+   */
+  onReload?: () => void;
 }) {
   const volumes = useMemo(() => [...book.volumes].sort((a, b) => a.idx - b.idx), [book.volumes]);
   const [query, setQuery] = useState("");
@@ -38,6 +46,8 @@ export function AdminChapters({
   const [savingId, setSavingId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<ChapterBrief | null>(null);
   const [splitting, setSplitting] = useState<ChapterBrief | null>(null);
+  /** 正在改正文的那一章（null = 抽屉关着） */
+  const [bodyEditing, setBodyEditing] = useState<ChapterBrief | null>(null);
   /** 勾选按 chapterId 集合维护：跨卷、跨「载入更多」都是同一套 */
   const [picked, setPicked] = useState<Set<number>>(() => new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
@@ -185,6 +195,7 @@ export function AdminChapters({
           onCancelEdit: () => setEditing(null),
           onTitleChange: setTitleDraft,
           onSaveTitle: (chapter) => void saveTitle(chapter),
+          onEditBody: setBodyEditing,
           onDelete: setDeleting,
           onSplit: setSplitting,
           onLoadMore: (volume) =>
@@ -205,6 +216,21 @@ export function AdminChapters({
           bookTitle={book.title}
           onCancel={() => setDeleting(null)}
           onConfirm={() => void removeChapter(deleting)}
+        />
+      ) : null}
+
+      {bodyEditing ? (
+        <ChapterBodyDrawer
+          bookId={book.id}
+          chapter={bodyEditing}
+          onClose={() => setBodyEditing(null)}
+          onSaved={({ words }) => {
+            setBodyEditing(null);
+            // 字数只是本地估算，真值在重拉后的目录里；toast 里仍用它，因为用户要的是「刚才改了多大」
+            showToast(`正文已保存 · 第 ${bodyEditing.idx + 1} 章 ${formatWords(words)}`);
+            if (onReload) onReload();
+            else onChanged("正文已保存。");
+          }}
         />
       ) : null}
 

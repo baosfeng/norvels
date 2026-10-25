@@ -192,6 +192,7 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
               reload();
             }}
             onError={(message) => setBanner({ tone: "error", text: message })}
+            onReload={reload}
           />
         </div>
       </div>

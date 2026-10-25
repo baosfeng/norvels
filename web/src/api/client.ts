@@ -280,6 +280,17 @@ export const api = {
   updateChapter: (bookId: number, chapterId: number, title: string, opts?: RequestOptions) =>
     request<void>(`/books/${bookId}/chapters/${chapterId}`, { ...opts, method: "PATCH", body: { title } }),
   /**
+   * 整章替换正文：204 无响应体。空正文（去空白后为空）与超过 1 MiB 一律 400
+   * code=invalid_param，message 是能直接展示的人话；章不存在 404。
+   * 不回传正文是有意的：保存后重拉章节目录拿服务端算的 wordCount，回一份就是两份真相。
+   */
+  updateChapterContent: (bookId: number, chapterId: number, content: string, opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/chapters/${chapterId}/content`, {
+      ...opts,
+      method: "PUT",
+      body: { content },
+    }),
+  /**
    * 按段落边界拆章：cutAfter 是 0 起的段落下标（「在这一段之后切开」），必须严格递增。
    * 后端只切 span、不重压正文，所以几万字的章也是毫秒级；返回拆完后的章数。
    */

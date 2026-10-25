@@ -7,6 +7,7 @@ export interface ChapterRowActions {
   onTogglePick: (id: number) => void;
   onPickRows: (rows: ChapterBrief[], on: boolean) => void;
   onStartEdit: (chapter: ChapterBrief) => void;
+  onEditBody: (chapter: ChapterBrief) => void;
   onCancelEdit: () => void;
   onTitleChange: (value: string) => void;
   onSaveTitle: (chapter: ChapterBrief) => void;
@@ -71,7 +72,7 @@ export function ChapterTable({
             <th className="is-num" style={{ width: 88 }}>
               字数
             </th>
-            <th className="c-actions" style={{ width: 190 }}>
+            <th className="c-actions" style={{ width: 246 }}>
               操作
             </th>
           </tr>
@@ -141,6 +142,14 @@ export function ChapterTable({
                   </td>
                   <td className="c-words is-num">{formatCount(chapter.wordCount)}</td>
                   <td className="c-actions">
+                    <button
+                      className="btn btn-sm"
+                      type="button"
+                      data-testid={`admin-chapter-body-${chapter.id}`}
+                      onClick={() => actions.onEditBody(chapter)}
+                    >
+                      正文
+                    </button>
                     <button
                       className="btn btn-sm"
                       type="button"
