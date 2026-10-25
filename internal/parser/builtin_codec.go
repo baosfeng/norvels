@@ -10,17 +10,21 @@ import (
 //	BOM 判定        1000
 //	无 BOM UTF-16    850 + 质量
 //	UTF-8 合法       800
+//	Shift-JIS        760（假名特征命中时；固定分，压过 GB/Big5 上限 750）
+//	Big5-HKSCS       710 + 质量（仅比 Big5 高 10，带 HKSCS 扩展区时优先记账）
 //	GB18030/Big5 合法 700 + 质量（上限 740）
 //	尽力解码          100 + 质量（上限 140）
 //
-// 这样「BOM > UTF-16 > UTF-8 > GB/Big5 > 兜底」的判定顺序与原实现一致。
+// 这样「BOM > UTF-16 > UTF-8 > Shift-JIS > Big5-HKSCS > GB/Big5 > 兜底」的判定顺序与原实现一致。
 const (
-	scoreBOM     = 1000.0
-	scoreUTF16   = 850.0
-	scoreUTF8    = 800.0
-	scoreLegacy  = 700.0
-	scoreLossy   = 100.0
-	scoreMaxQual = 400.0
+	scoreBOM      = 1000.0
+	scoreUTF16    = 850.0
+	scoreUTF8     = 800.0
+	scoreShiftJIS = 760.0
+	scoreHKSCS    = 710.0
+	scoreLegacy   = 700.0
+	scoreLossy    = 100.0
+	scoreMaxQual  = 400.0
 )
 
 // qualityScore 把文本质量分压进 [0, 40) 的区间，避免跨档位翻转。
@@ -94,6 +98,38 @@ func (big5Codec) Try(raw []byte) (string, float64) {
 	return text, qualityScore(scoreLegacy, textQuality(text))
 }
 
+// shiftJISCodec 处理日文 Shift-JIS。
+//
+// 命中条件不是「解码不报错」（x/text 对非法字节不报错），而是解码结果的假名
+// 特征；中文 GB18030 被当 Shift-JIS 解码时几乎全是半角片假名，会被挡掉。
+type shiftJISCodec struct{}
+
+func (shiftJISCodec) Name() string { return EncShiftJIS }
+
+func (shiftJISCodec) Try(raw []byte) (string, float64) {
+	text := decodeShiftJIS(raw)
+	if !japaneseLike(text) {
+		return text, 0
+	}
+	return text, scoreShiftJIS
+}
+
+// big5HKSCSCodec 处理繁体 Big5-HKSCS（港台常用，含 Big5 之外的扩展字）。
+//
+// x/text 的 Big5 解码器按 WHATWG big5 码表实现，已覆盖 HKSCS 扩展字；这里只负责
+// 按扩展区特征把它和普通 Big5 区分开，避免普通 Big5 被改名。
+type big5HKSCSCodec struct{}
+
+func (big5HKSCSCodec) Name() string { return EncBig5HKSCS }
+
+func (big5HKSCSCodec) Try(raw []byte) (string, float64) {
+	text, ok := decodeBig5(raw)
+	if !ok || !hkscsLike(raw, text) {
+		return text, 0
+	}
+	return text, qualityScore(scoreHKSCS, textQuality(text))
+}
+
 // utf16LECodec 处理 UTF-16LE（带 BOM 与无 BOM 两种）。
 type utf16LECodec struct{}
 
@@ -148,6 +184,8 @@ func registerBuiltinCodecs() {
 	RegisterCodec(utf8Codec{})
 	RegisterCodec(gb18030Codec{})
 	RegisterCodec(big5Codec{})
+	RegisterCodec(big5HKSCSCodec{})
+	RegisterCodec(shiftJISCodec{})
 }
 
 // decodeByCodecs 用注册表里的编码策略选最优解码结果。

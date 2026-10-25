@@ -13,13 +13,15 @@ import (
 
 // 编码名常量。model.ParsedBook.Encoding 记录其中之一。
 const (
-	EncUTF8    = "utf-8"
-	EncUTF8BOM = "utf-8-bom"
-	EncGB18030 = "gb18030"
-	EncBig5    = "big5"
-	EncUTF16LE = "utf-16le"
-	EncUTF16BE = "utf-16be"
-	EncUnknown = "unknown"
+	EncUTF8      = "utf-8"
+	EncUTF8BOM   = "utf-8-bom"
+	EncGB18030   = "gb18030"
+	EncBig5      = "big5"
+	EncBig5HKSCS = "big5-hkscs"
+	EncShiftJIS  = "shift-jis"
+	EncUTF16LE   = "utf-16le"
+	EncUTF16BE   = "utf-16be"
+	EncUnknown   = "unknown"
 )
 
 // Decode 探测编码并解码，返回编码名与文本（已去 BOM、CRLF→LF）。
@@ -35,9 +37,10 @@ func Decode(b []byte) (enc string, text string) {
 //  1. BOM 判定：UTF-8 / UTF-16LE / UTF-16BE / UTF-32；
 //  2. 大量 NUL 字节 → 无 BOM 的 UTF-16LE/BE；
 //  3. 整文件 UTF-8 合法性（Go 的 utf8.Valid 很快）；
-//  4. 整文件 GB18030 合法性（x/text 解码器）；
-//  5. 整文件 Big5 合法性；
-//  6. 以上都不成立 → 打分选最优候选，整文件按最优候选「尽力解码」（非法字节替换为 U+FFFD）。
+//  4. Shift-JIS 且解码结果像日文（假名占比够高）→ Shift-JIS；
+//  5. 整文件 GB18030 合法性（x/text 解码器）；
+//  6. 整文件 Big5 合法性；带 HKSCS 扩展区时记为 Big5-HKSCS；
+//  7. 以上都不成立 → 打分选最优候选，整文件按最优候选「尽力解码」（非法字节替换为 U+FFFD）。
 //
 // 关键点：必须对「整文件」做合法性校验，不能只看文件头。实测有 313 个文件前
 // 300KB 无法按 GB18030 解码（截断处劈开了多字节字符），但整文件是合法 GB18030。
@@ -93,19 +96,23 @@ func decodeByLegality(b []byte) (string, string, []string) {
 	if utf8.Valid(b) {
 		return EncUTF8, string(b), nil
 	}
+	// Shift-JIS 的字节大多是合法 GB18030，必须在 GB 之前用假名特征拦下。
+	if st := decodeShiftJIS(b); japaneseLike(st) {
+		return EncShiftJIS, st, nil
+	}
 	gbText, gbOK := decodeGB18030(b)
 	if gbOK {
 		// GB18030 与 Big5 的字节空间有重叠：若 GB 解出的文本质量偏低，
 		// 再看 Big5 能否解得更像正常中文。
 		if q := textQuality(gbText); q < 150 {
 			if bt, bigOK := decodeBig5(b); bigOK && textQuality(bt) > q+20 {
-				return EncBig5, bt, nil
+				return big5Encoding(b, bt), bt, nil
 			}
 		}
 		return EncGB18030, gbText, nil
 	}
 	if bt, ok := decodeBig5(b); ok {
-		return EncBig5, bt, nil
+		return big5Encoding(b, bt), bt, nil
 	}
 	return decodeBestEffort(b, gbText)
 }
