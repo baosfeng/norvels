@@ -74,14 +74,21 @@ export interface SearchHit {
   chapterId: number;
   chapterIdx: number;
   chapterTitle: string;
+  /**
+   * 章节命中片段。检索范围收敛到书名 / 作者 / 章节标题后，后端**仍返回该字段，但恒为空字符串**；
+   * 字段保留是为了契约稳定（调用方不必判 undefined）。渲染前先过 lib/snippet 的 hasSnippet。
+   */
   snippet: string;
   score: number;
 }
 
 export interface SearchResult {
   q: string;
+  /** 书名与作者命中（检索范围之一） */
   books: Page<BookSummary>;
+  /** 章节标题命中（检索范围之二）；每项都带 snippet 字段但恒为空串 */
   chapters: Page<SearchHit>;
+  /** 后端每次都会返回；可读提示语，为空串表示本次没有要额外说明的事 */
   notice?: string;
 }
 
@@ -106,10 +113,16 @@ export interface Stats {
   words: number;
   dbBytes: number;
   lastImportAt: string | null;
+  /** 体积构成：正文部分**压缩后**的实际占用（用户真正占的磁盘） */
   textBytes?: number;
+  /**
+   * 正文压缩前的逻辑字节（原始文字有多少）。
+   * 与 textBytes 之比就是压缩率，前端只用它算「省了多少」，不参与体积构成的百分比。
+   */
+  textBytesRaw?: number;
   indexBytes?: number;
   otherBytes?: number;
-  /** 体积构成为估算值（后端按表长度推算） */
+  /** 体积构成三段之和恒等于 dbBytes（后端按实际文件大小兜底过） */
   compositionEstimated?: boolean;
   /** 预计算表正在刷新：数值可用但可能不是最新，前端据此提示「数据更新中」 */
   stale?: boolean;

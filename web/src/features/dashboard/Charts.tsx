@@ -7,6 +7,7 @@ import {
   buildStorage,
   buildTopAuthors,
   RADIUS,
+  storageRatioNote,
 } from "../../lib/charts";
 import type { Bucket, ImportTrendPoint, ReadingProgress, Stats } from "../../api/types";
 
@@ -31,11 +32,13 @@ interface ChartFrameProps extends ChartState {
   id: ChartId;
   title: string;
   note: string;
+  /** 第二句结论（可选）：同一份数据算出的补充说明，不重复主结论 */
+  detail?: string;
   isEmpty: boolean;
   children: ReactNode;
 }
 
-function ChartFrame({ id, title, note, loading, failed, onRetry, isEmpty, stale, children }: ChartFrameProps) {
+function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty, stale, children }: ChartFrameProps) {
   return (
     <article className="chart-card" data-chart={id} data-testid={`chart:${id}`} data-od-id={`chart:${id}`}>
       <div className="chart-head">
@@ -44,6 +47,11 @@ function ChartFrame({ id, title, note, loading, failed, onRetry, isEmpty, stale,
           {loading ? "正在读取…" : note}
           {!loading && !failed && stale ? <span className="chart-stale">数据更新中</span> : null}
         </p>
+        {!loading && !failed && detail ? (
+          <p className="chart-note" data-testid={`chart:${id}:detail`}>
+            {detail}
+          </p>
+        ) : null}
       </div>
       <div className="chart-body">
         {loading ? (
@@ -186,10 +194,18 @@ export function ReadingDistChart({
 export function StorageChart({ stats, ...state }: { stats: Stats | null } & ChartState) {
   const model = buildStorage(stats);
   return (
-    <ChartFrame id="storage" title="库体积构成" note={model.note} isEmpty={model.empty} {...state}>
+    <ChartFrame
+      id="storage"
+      title="库体积构成"
+      note={model.note}
+      detail={storageRatioNote(model.data)}
+      isEmpty={model.empty}
+      {...state}
+    >
       <div style={{ width: "100%" }}>
         <div className="stack">
           {model.data.parts.map((part) => (
+            // 三段宽度已归一化到总和 100，堆叠条铺满且不溢出
             <span
               className="stack-seg"
               key={part.key}

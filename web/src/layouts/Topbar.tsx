@@ -41,7 +41,7 @@ export function Topbar({
             name="q"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜书名、作者、正文…"
+            placeholder="搜书名、作者、章节标题…"
             aria-label="搜索"
           />
           <button className="btn" type="submit">

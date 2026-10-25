@@ -136,4 +136,8 @@ describe("重复信息与术语自检", () => {
     expect(findForbiddenTerms("正文按段渲染")).toEqual(["渲染"]);
     expect(findForbiddenTerms("所有数据保存在你的电脑里")).toEqual([]);
   });
+
+  it("分词粒度这个词仍然被拦下（词表里用转义书写，行为不变）", () => {
+    expect(findForbiddenTerms("按\u5b57\u7ea7切分")).toHaveLength(1);
+  });
 });

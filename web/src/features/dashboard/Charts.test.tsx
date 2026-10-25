@@ -10,6 +10,7 @@ import {
   type ChartState,
 } from "./Charts";
 import type { ImportTrendPoint, ReadingProgress, Stats } from "../../api/types";
+import { findForbiddenTerms } from "../../lib/audit";
 
 const idle: ChartState = { loading: false, failed: false, onRetry: () => {} };
 
@@ -26,9 +27,21 @@ const stats: Stats = {
   words: 30418864,
   dbBytes: 326553600,
   lastImportAt: "2026-10-24T20:25:26.409Z",
+  // 正文：压缩后的实际占用；textBytesRaw：压缩前的原始文字字节
   textBytes: 101563175,
+  textBytesRaw: 300000000,
   indexBytes: 73533895,
   otherBytes: 151456530,
+};
+
+/** 真实量级：原文 4.87 GB 压到 1.66 GB，全库约 2.8 GB。 */
+const compressedStats: Stats = {
+  ...stats,
+  dbBytes: 3_000_000_000,
+  textBytes: 1_782_579_200,
+  textBytesRaw: 5_228_281_856,
+  indexBytes: 40_000_000,
+  otherBytes: 1_177_420_800,
 };
 
 const progress: ReadingProgress[] = [
@@ -138,5 +151,55 @@ describe("六张图都有四态", () => {
 
     render(<StorageChart stats={stats} {...idle} />);
     expect(screen.getByText(/全库约 .*其中正文占 \d+%/)).toBeTruthy();
+  });
+});
+
+describe("库体积构成：正文改成压缩后口径", () => {
+  it("三段宽度之和 = 100%（堆叠条铺满，不溢出不留缝）", () => {
+    const { container } = render(<StorageChart stats={compressedStats} {...idle} />);
+    const segs = [...container.querySelectorAll<HTMLElement>(".stack-seg")];
+    expect(segs).toHaveLength(3);
+    const sum = segs.reduce((acc, seg) => acc + Number.parseFloat(seg.style.width), 0);
+    // 写进 DOM 的百分比相加必须正好是 100（残差补在最后一段上），不是「大约 100」
+    expect(Math.round(sum * 100) / 100).toBe(100);
+    // 每段都不为负、也不超过 100
+    for (const seg of segs) {
+      const width = Number.parseFloat(seg.style.width);
+      expect(width).toBeGreaterThanOrEqual(0);
+      expect(width).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("正文压缩率用一句人话写出来，且不含实现词", () => {
+    render(<StorageChart stats={compressedStats} {...idle} />);
+    const detail = screen.getByTestId("chart:storage:detail");
+    expect(detail.textContent).toBe("正文约为原始文字的 34%，比不压缩省下 3.2 GB");
+    expect(findForbiddenTerms(detail.textContent ?? "")).toEqual([]);
+    // 同一张卡片里不重复「1.7 GB」：图例已经有一份
+    const legend = document.querySelector(".stack-legend") as HTMLElement;
+    expect(legend.textContent).toContain("正文 1.7 GB");
+    expect(detail.textContent).not.toContain("1.7 GB");
+    // 卡片全部可见文案都不出现实现词
+    const card = document.querySelector('[data-testid="chart:storage"]') as HTMLElement;
+    expect(findForbiddenTerms(card.textContent ?? "")).toEqual([]);
+  });
+
+  it("后端没给原始字节时不编造压缩率（只少一行说明，图照常出）", () => {
+    const { container } = render(<StorageChart stats={{ ...compressedStats, textBytesRaw: undefined }} {...idle} />);
+    expect(screen.queryByTestId("chart:storage:detail")).toBeNull();
+    expect(container.querySelectorAll(".stack-seg")).toHaveLength(3);
+  });
+
+  it("正文还在统计（textBytes=0）时也说不出压缩率，且三段仍然铺满", () => {
+    const { container } = render(
+      <StorageChart
+        stats={{ ...compressedStats, textBytes: 0, textBytesRaw: 5_228_281_856, indexBytes: 0, otherBytes: 3_000_000_000 }}
+        {...idle}
+      />,
+    );
+    expect(screen.queryByTestId("chart:storage:detail")).toBeNull();
+    const segs = [...container.querySelectorAll<HTMLElement>(".stack-seg")];
+    const sum = segs.reduce((acc, seg) => acc + Number.parseFloat(seg.style.width), 0);
+    expect(Math.round(sum * 100) / 100).toBe(100);
   });
 });

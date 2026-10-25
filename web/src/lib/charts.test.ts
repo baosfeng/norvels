@@ -8,7 +8,9 @@ import {
   buildTopAuthors,
   CIRCUMFERENCE,
   compact,
+  storageRatioNote,
 } from "./charts";
+import { findForbiddenTerms } from "./audit";
 import type { Bucket, ImportTrendPoint, ReadingProgress, Stats } from "../api/types";
 
 const trend = (books: number[]): ImportTrendPoint[] =>
@@ -35,7 +37,9 @@ const baseStats: Stats = {
   words: 30418864,
   dbBytes: 326553600,
   lastImportAt: "2026-10-24T20:25:26.409Z",
+  // 正文是压缩后的实际占用；textBytesRaw 是压缩前的原始文字字节
   textBytes: 101563175,
+  textBytesRaw: 300000000,
   indexBytes: 73533895,
   otherBytes: 151456530,
 };
@@ -174,16 +178,82 @@ describe("5 库体积构成", () => {
   it("占比极小的一段也有可见宽度，图例仍给真实数值", () => {
     const model = buildStorage({ ...baseStats, textBytes: 96_819_177, indexBytes: 134_477, otherBytes: 229_620_426 });
     const index = model.data.parts.find((p) => p.key === "index");
-    expect(index?.widthPct).toBeGreaterThanOrEqual(1.2);
+    // 归一化后最小宽度会按比例略微收缩（1.2 → ~1.19），仍远高于「看不见」的比例
+    expect(index?.widthPct).toBeGreaterThanOrEqual(1);
     expect(index?.display).toBe("0.1 MB");
   });
 
   it("正常比例下三段按真实占比画，结论给出总量与正文占比", () => {
     const model = buildStorage(baseStats);
     const sum = model.data.parts.reduce((acc, p) => acc + p.widthPct, 0);
-    expect(sum).toBeCloseTo(100, 1);
+    expect(sum).toBeCloseTo(100, 6);
     expect(model.note).toContain("正文占");
     expect(model.data.parts.map((p) => p.label)).toEqual(["正文", "书目信息", "其他"]);
+  });
+
+  // 正文口径改成「压缩后字节」后，正文段会明显变小，三段宽度仍然要落在 100% 上：
+  // 既不能因为最小宽度放大而溢出，也不能因为取整而留下缝。
+  it("压缩后的正文口径下，三段渲染宽度之和仍是 100", () => {
+    const model = buildStorage({
+      ...baseStats,
+      // 真实量级：原文 4.87 GB → 压缩后 1.66 GB，而库总共约 2.8 GB
+      textBytes: 1_782_579_200,
+      textBytesRaw: 5_228_281_856,
+      indexBytes: 40_000_000,
+      otherBytes: 1_181_000_000,
+    });
+    const sum = model.data.parts.reduce((acc, p) => acc + p.widthPct, 0);
+    expect(Math.round(sum * 100) / 100).toBe(100);
+    expect(Math.round(model.data.widthSum * 100) / 100).toBe(100);
+    // 真实占比之和也是 100（渲染宽度做过最小宽度归一，真实占比不受影响）
+    expect(model.data.shareSum).toBeCloseTo(100, 6);
+    for (const part of model.data.parts) {
+      expect(part.widthPct).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(part.widthPct)).toBe(true);
+    }
+  });
+
+  it("压缩率按压缩后 / 原始算，给出「省了多少」的人话", () => {
+    const model = buildStorage({
+      ...baseStats,
+      textBytes: 1_782_579_200,
+      textBytesRaw: 5_228_281_856,
+      indexBytes: 40_000_000,
+      otherBytes: 1_181_000_000,
+    });
+    expect(model.data.compressionPct).toBe(34);
+    // 不复述图例里已有的 1.7 GB，只给「比例 + 省下多少」两个新信息
+    expect(storageRatioNote(model.data)).toBe("正文约为原始文字的 34%，比不压缩省下 3.2 GB");
+    expect(storageRatioNote(model.data)).not.toContain("1.7 GB");
+    // 去术语化：不出现算法名 / 实现词
+    expect(findForbiddenTerms(storageRatioNote(model.data))).toEqual([]);
+  });
+
+  it("没有原始字节（老接口）时不编造压缩率", () => {
+    const model = buildStorage({ ...baseStats, textBytesRaw: undefined });
+    expect(model.data.compressionPct).toBeNull();
+    expect(storageRatioNote(model.data)).toBe("");
+  });
+
+  it("正文还没拆出来（统计中）时不显示压缩率", () => {
+    const model = buildStorage({ ...baseStats, textBytes: 0, textBytesRaw: 5_000_000_000, indexBytes: 0, otherBytes: 326_574_080 });
+    expect(model.data.compressionPct).toBeNull();
+    expect(storageRatioNote(model.data)).toBe("");
+  });
+
+  it("压缩后和原文一样大（没省下字节）时不硬凑一句压缩率", () => {
+    const model = buildStorage({ ...baseStats, textBytes: 1_000_000, textBytesRaw: 1_000_000 });
+    expect(model.data.compressionPct).toBe(100);
+    expect(model.data.savedBytes).toBe(0);
+    expect(storageRatioNote(model.data)).toBe("");
+  });
+
+  it("脏数据（负数 otherBytes）也不画出负宽度", () => {
+    const model = buildStorage({ ...baseStats, textBytes: 100, indexBytes: 50, otherBytes: -80 });
+    for (const part of model.data.parts) {
+      expect(part.widthPct).toBeGreaterThanOrEqual(0);
+    }
+    expect(model.data.widthSum).toBeCloseTo(100, 6);
   });
 
   it("总量有值但正文/索引还没拆出来时，不谎报「正文占 0%」", () => {
