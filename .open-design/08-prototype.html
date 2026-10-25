@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>norvels · 书架原型 A</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>norvels · 本地中文小说库</title>
 <style>
 *,*::before,*::after{box-sizing:border-box}
 :root {
@@ -457,7 +457,6 @@ h3{font-size:var(--text-base);font-weight:600}
   .resume-card{padding:12px;gap:12px}
   .resume-card .cover{width:80px}
   .h5-top h1{font-size:var(--text-xl)}
-  .demo-bar{bottom:8px;right:8px;left:8px;justify-content:center}
 }
 
 /* ── 目录虚拟滚动（详情页 + 抽屉共用同一套渲染策略） ── */
@@ -488,9 +487,6 @@ h3{font-size:var(--text-base);font-weight:600}
 .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 700ms linear infinite;flex:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.demo-bar{position:fixed;right:16px;bottom:16px;z-index:70;display:flex;align-items:center;gap:2px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface);box-shadow:var(--elev-raised);max-width:calc(100vw - 32px);overflow:auto}
-.demo-bar .chip{min-height:28px;padding:0 8px;font-size:10px;border-color:transparent;white-space:nowrap}
-.demo-bar .chip.is-active{background:var(--surface-warm);border-color:var(--border)}
 .demo-sep{width:1px;height:16px;background:var(--border);margin:0 2px;flex:none}
 
 
@@ -651,7 +647,87 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
   .search-book .cover{width:40px;aspect-ratio:3/4}
 }
 </style>
-</head>
+<style>
+/* ══ H5 专项重设计（≤768）：可滚动书架 / 触控基线 / 沉浸式阅读 ══ */
+.h5-fs-btn{display:none}
+@media (max-width: 768px){
+  body{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  .btn,.icon-btn,.input,.select{min-height:44px}
+  .icon-btn{width:44px;height:44px}
+  .chip{min-height:44px;padding:8px 14px;display:inline-flex;align-items:center}
+  .seg button{min-height:44px;padding:8px 12px}
+  .stepper button{width:44px;height:44px}
+  .stepper span{min-width:36px}
+  .side-nav a{min-height:44px;padding:0 12px}
+  .drawer-list a{min-height:44px}
+  .chapter-item{min-height:44px}
+  .vol-jump button{min-height:44px}
+  .load-more{min-height:44px}
+  .search-tabs a{padding:12px 0}
+  .h5-row{min-height:64px}
+  .h5-section-head .h5-all-link{display:inline-flex;align-items:center;min-height:44px;padding:0 2px;color:var(--muted);font-size:12.5px;white-space:nowrap}
+  .view-toggle{display:none}
+  .h5-all{margin-top:24px;padding-top:2px}
+  .h5-all-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .h5-all-head h2{font-size:var(--text-lg);white-space:nowrap}
+  .h5-all-head .meta{font-size:11.5px;margin-top:2px}
+  .h5-sort-btn{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface);font-size:13px;color:var(--fg);white-space:nowrap}
+  .h5-sort-btn:active{background:var(--surface-warm)}
+  .h5-book-list{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);overflow:hidden}
+  .h5-book{display:flex;align-items:center;gap:12px;min-height:64px;padding:10px 12px;border-bottom:1px solid var(--border-soft);touch-action:manipulation;-webkit-user-select:none;user-select:none}
+  .h5-book:last-child{border-bottom:0}
+  .h5-book:active{background:var(--surface-warm)}
+  .h5-book .cover{width:38px;flex:none}
+  .h5-book .cover em{display:none}
+  .h5-book-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+  .h5-book-text b{font-size:var(--text-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .h5-book-text .meta{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .h5-book-side{flex:none;font-size:11.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+  .h5-more-wrap{display:flex;align-items:center;justify-content:center;padding:14px 0 4px}
+  .h5-more{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface);font-size:13px;color:var(--fg)}
+  .h5-more:active{background:var(--surface-warm)}
+  .h5-end{text-align:center;font-size:12px;color:var(--muted);padding:16px 0 4px}
+  .h5-sentinel{height:1px}
+  .h5-sheet{position:fixed;inset:0;z-index:90;display:block}
+  .h5-sheet-scrim{position:absolute;inset:0;background:var(--scrim)}
+  .h5-sheet-card{position:absolute;left:0;right:0;bottom:0;background:var(--surface);color:var(--fg);border-radius:var(--radius-lg) var(--radius-lg) 0 0;box-shadow:var(--elev-raised);padding:6px 8px calc(env(safe-area-inset-bottom) + 10px);animation:sheetUp .22s var(--ease-standard)}
+  @keyframes sheetUp{from{transform:translateY(20px);opacity:.5}to{transform:none;opacity:1}}
+  .h5-sheet-head{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 6px}
+  .h5-sheet-head strong{font-size:var(--text-base)}
+  .h5-opt{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;padding:0 14px;border-radius:var(--radius-sm);font-size:var(--text-base);color:var(--fg);text-align:left}
+  .h5-opt[aria-checked="true"]{background:var(--surface-warm);font-weight:600}
+  .h5-opt .tick{position:relative;width:16px;height:16px;flex:none;opacity:0}
+  .h5-opt .tick::after{content:"";position:absolute;left:4px;top:1px;width:5px;height:10px;border-right:2px solid var(--accent);border-bottom:2px solid var(--accent);transform:rotate(45deg)}
+  .h5-opt[aria-checked="true"] .tick{opacity:1}
+  body.h5-sheet-open{overflow:hidden}
+  body[data-view="reader"]{position:fixed;inset:0;height:100vh;height:100dvh;overflow:hidden;overscroll-behavior:none;background:var(--r-bg)}
+  body[data-view="reader"] .app-chrome{display:none}
+  body[data-view="reader"] .view-reader{position:relative;display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;overflow:hidden;padding:0;background:var(--r-bg);color:var(--r-fg)}
+  body[data-view="reader"] .view-reader:fullscreen{height:100dvh}
+  .view-reader .reader-top{position:absolute;top:0;left:0;right:0;z-index:45;display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 8px) calc(12px + env(safe-area-inset-right)) 10px calc(12px + env(safe-area-inset-left));border-bottom:0;background:linear-gradient(to bottom,var(--r-bg) 72%,color-mix(in oklab,var(--r-bg),transparent 10%));transform:translateY(calc(-100% - env(safe-area-inset-top)));opacity:0;pointer-events:none;transition:transform .22s var(--ease-standard),opacity .16s var(--ease-standard)}
+  body.h5-controls .view-reader .reader-top{transform:none;opacity:1;pointer-events:auto}
+  .view-reader .reader-top-title{flex:1;min-width:0}
+  .view-reader .reader-top-title strong{font-size:var(--text-sm)}
+  .view-reader .reader-top-actions{margin-left:auto;flex:none;gap:4px}
+  .view-reader .reader-top-actions .btn{padding:0 9px;min-height:44px;font-size:13px}
+  .h5-fs-btn{display:none}
+  body.fs-supported .h5-fs-btn{display:inline-flex}
+  .view-reader .reader-main{position:absolute;inset:0;display:block;overflow-y:auto;overflow-x:hidden;padding:calc(env(safe-area-inset-top) + 22px) calc(20px + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 96px) calc(20px + env(safe-area-inset-left));-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+  .view-reader .reader-content{max-width:42rem;margin:0 auto}
+  .view-reader .reader-loading-layer{position:fixed;inset:0;z-index:48;padding:calc(env(safe-area-inset-top) + 40px) 20px 96px}
+  .h5-reader-bar{position:absolute;left:0;right:0;bottom:0;z-index:46;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;padding:6px calc(6px + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 6px) calc(6px + env(safe-area-inset-left));background:var(--r-raised);border-top:1px solid var(--r-border);transform:translateY(calc(100% + env(safe-area-inset-bottom)));opacity:0;pointer-events:none;transition:transform .22s var(--ease-standard),opacity .16s var(--ease-standard);box-shadow:var(--elev-raised)}
+  body.h5-controls .h5-reader-bar{transform:none;opacity:1;pointer-events:auto}
+  .h5-reader-bar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:48px;padding:4px 0;font-size:11px;color:var(--r-fg);-webkit-user-select:none;user-select:none}
+  .h5-reader-bar button:active{background:color-mix(in oklab,var(--r-fg),transparent 92%);border-radius:var(--radius-sm)}
+  .h5-reader-bar button[disabled]{opacity:.38}
+  .view-reader .drawer{padding-bottom:env(safe-area-inset-bottom)}
+  .view-reader .settings-panel{top:calc(env(safe-area-inset-top) + 8px);bottom:auto;max-height:70dvh;overflow:auto}
+  @media (prefers-reduced-motion: reduce){
+    .h5-sheet-card{animation:none}
+    .view-reader .reader-top,.h5-reader-bar{transition:none}
+  }
+}
+</style></head>
 <body data-view="shelf" data-theme="day">
 <div class="app-chrome layout-a">
   <div class="nav-scrim" data-action="toggle-nav"></div>
@@ -711,19 +787,31 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
               <span class="btn btn-primary resume-cta">接着读</span>
             </div>
           </a>
-          <form class="h5-search" data-search-form role="search">
-            <span class="search-icon"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg></span>
-            <input class="input" type="search" name="q" placeholder="搜书名、作者、正文…" aria-label="搜索">
-            <button class="btn" type="submit">搜索</button>
-          </form>
           <div class="h5-section">
-            <div class="h5-section-head"><h2>最近在读</h2><a class="meta" href="#/shelf" data-nav="shelf">全部 865 本 →</a></div>
+            <div class="h5-section-head"><h2>最近在读</h2><button class="meta h5-all-link" type="button" data-action="h5-scroll-all">全部 865 本 ↓</button></div>
             <div class="h5-list">
               <a class="h5-row" href="#/read/8/56"><div class="cover" aria-hidden="true"><span>覆</span></div><span class="h5-row-text"><b>秋灯夜雨</b><span class="meta">第 56 章 · 长街</span></span><span class="h5-row-pct num">62%</span></a>
               <a class="h5-row" href="#/read/2/733"><div class="cover" aria-hidden="true"><span>无</span></div><span class="h5-row-text"><b>星槎纪事</b><span class="meta">第 733 章 · 归途</span></span><span class="h5-row-pct num">18%</span></a>
               <a class="h5-row" href="#/read/9/1204"><div class="cover" aria-hidden="true"><span>雪</span></div><span class="h5-row-text"><b>孤山雪谱</b><span class="meta">第 1204 章 · 雪信</span></span><span class="h5-row-pct num">5%</span></a>
             </div>
           </div>
+          <form class="h5-search" data-search-form role="search">
+            <span class="search-icon"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg></span>
+            <input class="input" type="search" name="q" placeholder="搜书名、作者、正文…" aria-label="搜索">
+            <button class="btn" type="submit">搜索</button>
+          </form>
+          <section class="h5-all" data-h5-only data-h5-catalog data-od-id="home:catalog" aria-labelledby="h5-all-title">
+            <div class="h5-all-head">
+              <div><h2 id="h5-all-title">全部书目</h2><p class="meta" data-h5-count>共 865 本</p></div>
+              <button class="h5-sort-btn" type="button" data-action="h5-sort-open" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg><span data-h5-sort-label>最近导入</span></button>
+            </div>
+            <div class="h5-book-list" data-h5-book-list role="list"></div>
+            <div class="h5-more-wrap">
+              <button class="h5-more" type="button" data-action="h5-load-more">加载更多</button>
+              <p class="h5-end" data-h5-end hidden>已经到最后一本了</p>
+            </div>
+            <div class="h5-sentinel" data-h5-sentinel aria-hidden="true"></div>
+          </section>
         </div>
       </section>
 
@@ -977,9 +1065,10 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
     <div class="reader-top-actions">
       <button class="btn" data-action="drawer-open">目录</button>
       <button class="btn" data-action="settings-open">设置</button>
+      <button class="icon-btn h5-fs-btn" type="button" data-action="h5-fullscreen" aria-label="全屏阅读" aria-pressed="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
     </div>
   </header>
-  <div class="reader-main">
+  <div class="reader-main" data-reader-surface>
     <div class="reader-loading-layer" data-reader-loading hidden>
       <div class="state-panel" data-od-id="state:reader-loading">
         <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
@@ -992,6 +1081,12 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
         <div class="progress"><span data-reader-bar style="width:42%"></span></div>
       </div>
       <p class="reader-hint">← / → 切换章节 · 空格 / PageDown 翻页 · 进度保存在本机</p></article></div>
+  <nav class="h5-reader-bar" data-h5-only data-od-id="reader-controls" aria-label="阅读控制">
+    <button type="button" data-action="prev-chapter" aria-label="上一章"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>上一章</span></button>
+    <button type="button" data-action="drawer-open" aria-label="章节目录"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>目录</span></button>
+    <button type="button" data-action="settings-open" aria-label="阅读设置"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="16" cy="8" r="2"/><circle cx="8" cy="16" r="2"/></svg><span>设置</span></button>
+    <button type="button" data-action="next-chapter" aria-label="下一章"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>下一章</span></button>
+  </nav>
   <div class="settings-panel" data-settings-panel><div class="settings-row"><span>字号</span><div class="stepper"><button data-action="font-dec" aria-label="减小字号">A−</button><span data-font-val>19</span><button data-action="font-inc" aria-label="增大字号">A+</button></div></div><div class="settings-row"><span>行距</span><div class="stepper"><button data-action="leading-dec" aria-label="减小行距">−</button><span data-leading-val>1.9</span><button data-action="leading-inc" aria-label="增大行距">+</button></div></div><div class="settings-row"><span>主题</span><div class="seg"><button data-action="theme" data-theme-set="day" class="is-active">日间</button><button data-action="theme" data-theme-set="night">夜间</button><button data-action="theme" data-theme-set="parchment">羊皮纸</button></div></div></div>
   <div class="overlay" data-overlay></div>
   <aside class="drawer" data-drawer aria-label="章节目录" data-od-id="reader-drawer"><div class="drawer-head"><strong>目录</strong><span class="meta" data-drawer-book>6177 章 · 12 卷</span><button class="btn btn-ghost" data-action="drawer-close">关闭</button></div><div class="drawer-search"><input class="input" type="search" placeholder="搜索章节名或章号…" data-drawer-search aria-label="搜索章节"></div><div class="drawer-body" data-drawer-body>
@@ -1000,17 +1095,21 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
 </div></aside>
 </section>
 
-<div class="demo-bar" data-od-id="demo-only:state-switch" role="group" aria-label="状态预览（演示用，不进产品）">
-  <button class="chip is-active" type="button" data-action="shelf-state" data-state="grid">有内容</button>
-  <button class="chip" type="button" data-action="shelf-state" data-state="loading">加载中</button>
-  <button class="chip" type="button" data-action="shelf-state" data-state="empty">空态</button>
-  <button class="chip" type="button" data-action="shelf-state" data-state="error">失败</button>
-  <span class="demo-sep" aria-hidden="true"></span>
-  <button class="chip" type="button" data-action="mock-view" data-mock="search-empty">搜索无结果</button>
-  <button class="chip" type="button" data-action="mock-view" data-mock="reader-loading">正文加载</button>
-  <button class="chip" type="button" data-action="mock-view" data-mock="import-failed">导入失败</button>
-  <button class="chip" type="button" data-action="mock-view" data-mock="dashboard-empty">驾驶舱空库</button>
+
+<div class="h5-sheet" data-h5-sheet data-h5-only data-od-id="home:sort-sheet" role="dialog" aria-modal="true" aria-labelledby="h5-sheet-title" hidden>
+  <div class="h5-sheet-scrim" data-action="h5-sort-close"></div>
+  <div class="h5-sheet-card">
+    <div class="h5-sheet-head"><strong id="h5-sheet-title">排序方式</strong><button class="icon-btn" type="button" data-action="h5-sort-close" aria-label="关闭排序"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div role="radiogroup" aria-label="排序方式" data-h5-sort-group>
+      <button type="button" class="h5-opt" role="radio" aria-checked="true" data-action="h5-sort" data-sort="imported">最近导入<span class="tick" aria-hidden="true"></span></button>
+      <button type="button" class="h5-opt" role="radio" aria-checked="false" data-action="h5-sort" data-sort="updated">最近更新<span class="tick" aria-hidden="true"></span></button>
+      <button type="button" class="h5-opt" role="radio" aria-checked="false" data-action="h5-sort" data-sort="title">书名<span class="tick" aria-hidden="true"></span></button>
+      <button type="button" class="h5-opt" role="radio" aria-checked="false" data-action="h5-sort" data-sort="chapters">章节数<span class="tick" aria-hidden="true"></span></button>
+      <button type="button" class="h5-opt" role="radio" aria-checked="false" data-action="h5-sort" data-sort="words">字数<span class="tick" aria-hidden="true"></span></button>
+    </div>
+  </div>
 </div>
+
 <script>
 (function () {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -1792,6 +1891,347 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
   applyType();
   renderCharts();
   applyRoute();
+})();
+</script>
+<script>
+/* H5 专项增强：可滚动书架（每页 30 本 + 5 种排序）、触控、沉浸式阅读 */
+(function () {
+  'use strict';
+  var VERSION = 'B';
+  var MQ = window.matchMedia('(max-width: 768px)');
+  var PAGE = 30;
+  var TOTAL = 865;
+  var CHAPTER_TOTAL = 6177;
+  var PRE = ['长夜','孤山','青川','星槎','城南','山海','秋灯','寒江','北窗','旧巷','浮云','暮雪','石桥','半坡','远岫','空庭','春申','断碑','残卷','荒渡','野店','孤舟','晚照','闲庭','古驿','深巷','小楼','西窗','南浦','东篱'];
+  var SUF = ['书简','纪事','剑录','秘录','夜话','手记','札记','笔记','遗稿','旧闻','杂录','志异','风物','闲谈','杂记','图志','旧档','残页'];
+  var EXTRA = ['外传','续篇','前传','别录','补遗','残稿','别本','后记'];
+  var AUTHORS = ['沈砚','周牧','苏梨','顾亭','云岚','白鹭','林望','许照','陈砚舟','佚名'];
+  var HOUR = 3600000, DAY = 24 * HOUR, NOW = Date.now();
+
+  function fmtDate(ts) {
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  }
+  var BOOKS = (function () {
+    var out = [];
+    for (var i = 0; i < TOTAL; i++) {
+      var title;
+      if (i < 540) title = PRE[i % 30] + SUF[Math.floor(i / 30) % 18];
+      else title = PRE[(i * 7) % 30] + SUF[(i * 3) % 18] + '·' + EXTRA[Math.floor((i - 540) / 40) % 8];
+      var chapters = 48 + ((i * 977) % 6120);
+      var read = ((i * 31) % 9 === 0);
+      out.push({
+        id: i + 1,
+        title: title,
+        author: AUTHORS[(i * 13) % AUTHORS.length],
+        chapters: chapters,
+        words: chapters * (2800 + ((i * 37) % 3200)),
+        importedAt: NOW - i * 5 * HOUR - (i % 7) * HOUR,
+        updatedAt: NOW - ((i * 17) % 120) * DAY - (i % 11) * HOUR,
+        read: read,
+        pct: read ? 3 + ((i * 23) % 94) : 0,
+        lastChapter: read ? 1 + ((i * 131) % chapters) : 0
+      });
+    }
+    return out;
+  })();
+
+  var SORTS = {
+    imported: function (a, b) { return b.importedAt - a.importedAt || a.id - b.id; },
+    updated: function (a, b) { return b.updatedAt - a.updatedAt || a.id - b.id; },
+    title: function (a, b) { return a.title.localeCompare(b.title, 'zh-Hans-CN') || a.id - b.id; },
+    chapters: function (a, b) { return b.chapters - a.chapters || a.id - b.id; },
+    words: function (a, b) { return b.words - a.words || a.id - b.id; }
+  };
+  var LABELS = { imported: '最近导入', updated: '最近更新', title: '书名', chapters: '章节数', words: '字数' };
+  var shelf = { sort: 'imported', shown: PAGE };
+
+  function sortedBooks() { return BOOKS.slice().sort(SORTS[shelf.sort]); }
+  function q(sel, root) { return (root || document).querySelector(sel); }
+  function qa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  function rowHTML(b) {
+    var side = b.read ? '<span class="num">' + b.pct + '%</span>' : '<span>' + fmtDate(b.importedAt) + '</span>';
+    return '<a class="h5-book" role="listitem" href="#/book/' + b.id + '">' +
+      '<span class="cover" aria-hidden="true"><span>' + b.title.charAt(0) + '</span></span>' +
+      '<span class="h5-book-text"><b>' + b.title + '</b><span class="meta">' + b.author + ' · ' + b.chapters + ' 章</span></span>' +
+      '<span class="h5-book-side">' + side + '</span></a>';
+  }
+
+  function renderShelf() {
+    var list = q('[data-h5-book-list]');
+    if (!list) return;
+    var all = sortedBooks();
+    var n = Math.min(shelf.shown, all.length);
+    var html = '';
+    for (var i = 0; i < n; i++) html += rowHTML(all[i]);
+    list.innerHTML = html;
+    var count = q('[data-h5-count]');
+    if (count) count.textContent = '共 ' + all.length + ' 本';
+    var more = q('[data-action="h5-load-more"]');
+    if (more) more.hidden = n >= all.length;
+    var end = q('[data-h5-end]');
+    if (end) end.hidden = n < all.length;
+    var label = q('[data-h5-sort-label]');
+    if (label) label.textContent = LABELS[shelf.sort];
+  }
+
+  function loadMore() {
+    if (shelf.shown >= BOOKS.length) return;
+    shelf.shown = Math.min(BOOKS.length, shelf.shown + PAGE);
+    renderShelf();
+  }
+
+  function syncSortUI() {
+    qa('.h5-opt').forEach(function (btn) {
+      btn.setAttribute('aria-checked', btn.getAttribute('data-sort') === shelf.sort ? 'true' : 'false');
+    });
+    var label = q('[data-h5-sort-label]');
+    if (label) label.textContent = LABELS[shelf.sort];
+  }
+
+  var sheet = q('[data-h5-sheet]');
+  var sheetTrigger = null;
+  function openSheet() {
+    if (!sheet) return;
+    sheetTrigger = document.activeElement;
+    sheet.hidden = false;
+    document.body.classList.add('h5-sheet-open');
+    var t = q('[data-action="h5-sort-open"]');
+    if (t) t.setAttribute('aria-expanded', 'true');
+    window.setTimeout(function () {
+      var cur = q('.h5-opt[aria-checked="true"]');
+      if (cur) cur.focus();
+    }, 30);
+  }
+  function closeSheet() {
+    if (!sheet) return;
+    sheet.hidden = true;
+    document.body.classList.remove('h5-sheet-open');
+    var t = q('[data-action="h5-sort-open"]');
+    if (t) t.setAttribute('aria-expanded', 'false');
+    if (sheetTrigger && sheetTrigger.focus) sheetTrigger.focus();
+  }
+
+  var reader = { active: false, controls: false, timer: 0, start: null, lastChapter: null, scrollBound: false };
+
+  function chapterNo() {
+    var m = /#\/read\/(\d+)\/(\d+)/.exec(location.hash);
+    return m ? parseInt(m[2], 10) : 1;
+  }
+  function surface() { return q('[data-reader-surface]'); }
+  function goChapter(delta) {
+    var n = chapterNo() + delta;
+    if (n < 1 || n > CHAPTER_TOTAL) return;
+    location.hash = '#/read/1/' + n;
+  }
+  function panelsOpen() {
+    var d = q('[data-drawer]');
+    var st = q('[data-settings-panel]');
+    return !!((d && d.classList.contains('is-open')) || (st && st.classList.contains('is-open')));
+  }
+  function showControls() {
+    document.body.classList.add('h5-controls');
+    reader.controls = true;
+    window.clearTimeout(reader.timer);
+    reader.timer = window.setTimeout(function () {
+      if (panelsOpen()) { showControls(); return; }
+      hideControls();
+    }, 3000);
+  }
+  function hideControls() {
+    document.body.classList.remove('h5-controls');
+    reader.controls = false;
+    window.clearTimeout(reader.timer);
+  }
+  function toggleControls() { if (reader.controls) hideControls(); else showControls(); }
+
+  function updateProgress(sc) {
+    var max = sc.scrollHeight - sc.clientHeight;
+    var ratio = max > 0 ? Math.min(1, Math.max(0, sc.scrollTop / max)) : 0;
+    var pct = Math.round(ratio * 100);
+    qa('[data-reader-percent]').forEach(function (el) { el.textContent = String(pct); });
+    qa('[data-reader-bar]').forEach(function (el) { el.style.width = pct + '%'; });
+    qa('[data-reader-position]').forEach(function (el) { el.textContent = String(chapterNo()); });
+    var line = q('[data-h5-bar]');
+    if (line) line.style.width = pct + '%';
+    try { localStorage.setItem('norvels:progress:1', JSON.stringify({ chapterId: chapterNo(), ratio: ratio })); } catch (e) {}
+  }
+
+  function restoreProgress(sc) {
+    try {
+      var raw = localStorage.getItem('norvels:progress:1');
+      if (!raw) return;
+      var p = JSON.parse(raw);
+      if (!p || p.chapterId !== chapterNo() || !p.ratio) return;
+      window.requestAnimationFrame(function () {
+        sc.scrollTop = (sc.scrollHeight - sc.clientHeight) * p.ratio;
+        updateProgress(sc);
+      });
+    } catch (e) {}
+  }
+
+  function bindScroll(sc) {
+    if (reader.scrollBound) return;
+    reader.scrollBound = true;
+    sc.addEventListener('scroll', function () { updateProgress(sc); }, { passive: true });
+  }
+
+  function enterReader() {
+    var sc = surface();
+    if (!sc) return;
+    bindScroll(sc);
+    var ch = chapterNo();
+    if (reader.lastChapter !== ch) {
+      reader.lastChapter = ch;
+      sc.scrollTop = 0;
+      restoreProgress(sc);
+      window.setTimeout(function () { updateProgress(sc); }, 80);
+    }
+    var first = !reader.active;
+    reader.active = true;
+    if (first) hideControls();
+    else if (reader.controls) showControls();
+  }
+  function leaveReader() {
+    reader.active = false;
+    reader.lastChapter = null;
+    hideControls();
+  }
+
+  function setupFullscreen() {
+    var supported = !!(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+    document.body.classList.toggle('fs-supported', supported && MQ.matches);
+    var btn = q('[data-action="h5-fullscreen"]');
+    if (!btn || btn.getAttribute('data-bound') === '1') return;
+    btn.setAttribute('data-bound', '1');
+    btn.addEventListener('click', function () {
+      try {
+        if (document.fullscreenElement) {
+          var ex = document.exitFullscreen();
+          if (ex && ex.catch) ex.catch(function () {});
+        } else {
+          var host = q('.view-reader') || document.documentElement;
+          var p = host.requestFullscreen();
+          if (p && p.catch) p.catch(function () {});
+        }
+      } catch (err) {}
+    });
+    document.addEventListener('fullscreenchange', function () {
+      var on = !!document.fullscreenElement;
+      btn.setAttribute('aria-label', on ? '退出全屏' : '全屏阅读');
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  document.addEventListener('pointerdown', function (e) {
+    if (!MQ.matches || document.body.getAttribute('data-view') !== 'reader') return;
+    var sc = surface();
+    if (!sc || !sc.contains(e.target)) return;
+    if (e.target.closest('button,a,input,select,textarea,.settings-panel,.drawer,.h5-reader-bar,.reader-top')) return;
+    reader.start = { x: e.clientX, y: e.clientY, t: Date.now() };
+  }, { passive: true });
+
+  document.addEventListener('pointercancel', function () { reader.start = null; }, { passive: true });
+
+  document.addEventListener('pointerup', function (e) {
+    var s = reader.start;
+    if (!s) return;
+    reader.start = null;
+    if (!MQ.matches || document.body.getAttribute('data-view') !== 'reader') return;
+    var sc = surface();
+    if (!sc) return;
+    var dx = e.clientX - s.x, dy = e.clientY - s.y, dt = Date.now() - s.t;
+    if (dt > 700) return;
+    if (Math.abs(dx) >= 56 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      if (dx < 0) goChapter(1); else goChapter(-1);
+      return;
+    }
+    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) return;
+    var rect = sc.getBoundingClientRect();
+    var x = e.clientX - rect.left, w = rect.width;
+    if (VERSION === 'A') {
+      if (x < w / 3) goChapter(-1);
+      else if (x > (w * 2) / 3) goChapter(1);
+      else toggleControls();
+    } else {
+      toggleControls();
+    }
+  }, { passive: true });
+
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-action]') : null;
+    if (!el) return;
+    var action = el.getAttribute('data-action');
+    if (action === 'h5-sort-open') { openSheet(); }
+    else if (action === 'h5-sort-close') { closeSheet(); }
+    else if (action === 'h5-sort') {
+      shelf.sort = el.getAttribute('data-sort');
+      shelf.shown = PAGE;
+      syncSortUI();
+      renderShelf();
+      closeSheet();
+    } else if (action === 'h5-load-more') { loadMore(); }
+    else if (action === 'h5-scroll-all') {
+      var all = q('[data-h5-catalog]');
+      if (all) {
+        var top = all.getBoundingClientRect().top + (window.pageYOffset || document.documentElement.scrollTop || 0) - 12;
+        window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    } else if (el.closest('.h5-reader-bar') || el.closest('.reader-top')) {
+      if (action === 'prev-chapter' || action === 'next-chapter' || action === 'h5-fullscreen' || action === 'drawer-open' || action === 'settings-open') {
+        if (reader.controls) showControls();
+      } else {
+        hideControls();
+      }
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (!MQ.matches) return;
+    if (e.key === 'Escape' && sheet && !sheet.hidden) { closeSheet(); return; }
+    if (document.body.getAttribute('data-view') !== 'reader') return;
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.key === ' ' || e.key === 'PageDown') {
+      var sc = surface();
+      if (sc) { e.preventDefault(); sc.scrollBy(0, Math.round(sc.clientHeight * 0.82)); }
+    }
+  });
+
+  function ensureShelf() {
+    if (!MQ.matches) return;
+    var list = q('[data-h5-book-list]');
+    if (!list) return;
+    if (!list.children.length) renderShelf();
+    var sentinel = q('[data-h5-sentinel]');
+    if (sentinel && 'IntersectionObserver' in window && !sentinel.getAttribute('data-observed')) {
+      sentinel.setAttribute('data-observed', '1');
+      new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) { if (en.isIntersecting) loadMore(); });
+      }, { rootMargin: '420px 0px' }).observe(sentinel);
+    }
+  }
+
+  function tick() {
+    if (!MQ.matches) {
+      leaveReader();
+      document.body.classList.remove('fs-supported');
+      return;
+    }
+    setupFullscreen();
+    var v = document.body.getAttribute('data-view');
+    if (v === 'shelf') { location.hash = '#/home'; return; }
+    if (v === 'reader') enterReader(); else leaveReader();
+    if (v === 'home') ensureShelf();
+  }
+  function schedule() { window.setTimeout(tick, 0); }
+
+  window.addEventListener('hashchange', schedule);
+  if (MQ.addEventListener) MQ.addEventListener('change', schedule);
+  else if (MQ.addListener) MQ.addListener(schedule);
+  document.addEventListener('DOMContentLoaded', schedule);
+  schedule();
 })();
 </script>
 </body>
