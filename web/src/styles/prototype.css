@@ -832,3 +832,106 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
     min-height: 44px;
   }
 }
+/* ══ P1-B 导入侧：预检报告 / 失败重试 / 词表 / 书架多选 ══ */
+.shelf-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* 多选模式下整张卡片是选择按钮：样式沿用链接，但不带链接的下划线语义 */
+.book-card button.book-link {
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.book-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 72%);
+}
+.book-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1;
+}
+.book-card.is-selected .book-check {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+}
+@media (max-width: 768px) {
+  .book-check {
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+  }
+  .shelf-head-actions .btn {
+    min-height: 44px;
+  }
+}
+/* 预检报告面板 */
+.dry-run {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.dry-run .head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.dry-run .head h2 {
+  margin: 0;
+}
+.dry-run .counters {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.dry-run .import-errors {
+  padding: 0;
+}
+.dry-run .import-errors h3 {
+  margin: 0 0 6px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.dry-run .import-errors ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+}
+.dry-run code {
+  word-break: break-all;
+}
+@media (max-width: 768px) {
+  .dry-run .counters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

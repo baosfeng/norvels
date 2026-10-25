@@ -215,6 +215,36 @@ describe("api 其余端点都走同一出口", () => {
     expect(JSON.parse(String(calls[2].body))).toEqual({ chapterId: 10, paraIndex: 2, label: "第一段" });
   });
 
+  it("预检 / 逐文件清单 / 重试 / 词表：路径、方法与请求体都对", async () => {
+    const calls: { method?: string; url: string; body?: unknown }[] = [];
+    mockFetch(async (url, init) => {
+      calls.push({ url: String(url), method: init?.method, body: init?.body });
+      return new Response(JSON.stringify({ jobId: 9 }), { status: 200 });
+    });
+
+    await api.dryRunImport({ dir: "/books", recursive: true });
+    await api.importJobFiles(7, "failed");
+    await api.retryImport(7, ["/books/a.txt"]);
+    await api.retryImport(7);
+    await api.tagRules();
+    await api.putTagRules([{ tag: "奇幻", keywords: ["魔法"] }]);
+
+    expect(calls.map((call) => `${call.method ?? "GET"} ${call.url}`)).toEqual([
+      "POST /api/import",
+      "GET /api/import/jobs/7/files?status=failed",
+      "POST /api/import/jobs/7/retry",
+      "POST /api/import/jobs/7/retry",
+      "GET /api/settings/tag-rules",
+      "PUT /api/settings/tag-rules",
+    ]);
+    // dryRun 由客户端补上，调用方不用记得传
+    expect(JSON.parse(String(calls[0].body))).toEqual({ dir: "/books", recursive: true, dryRun: true });
+    expect(JSON.parse(String(calls[2].body))).toEqual({ sources: ["/books/a.txt"] });
+    // 省略 sources = 重试全部 failed
+    expect(JSON.parse(String(calls[3].body))).toEqual({});
+    expect(JSON.parse(String(calls[5].body))).toEqual({ rules: [{ tag: "奇幻", keywords: ["魔法"] }] });
+  });
+
   it("updateBook 用 PATCH 提交元数据子集并返回详情", async () => {
     const calls: { url?: string; method?: string; body?: unknown }[] = [];
     mockFetch(async (url, init) => {

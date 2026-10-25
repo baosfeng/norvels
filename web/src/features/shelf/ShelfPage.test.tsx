@@ -290,3 +290,86 @@ describe("视口底子：100vh 只作 100dvh 的回退", () => {
     expect(css).toContain("user-select: none");
   });
 });
+describe("书架：多选与批量设作者", () => {
+  beforeEach(() => {
+    books.mockReset();
+    updateBook.mockReset();
+    ioCallbacks = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  async function selectTwo(tier: "pc" | "h5" = "pc") {
+    // 批量成功后书架会 reload：用可重复的返回值，别让第二次取数拿到 undefined
+    books.mockResolvedValue({ items: [bookAt(1), bookAt(2)], total: 2, page: 1, size: 24 });
+    renderShelf(tier);
+    await waitFor(() => expect(cardCount()).toBe(2));
+    fireEvent.click(screen.getByTestId("shelf-select-toggle"));
+    fireEvent.click(screen.getByTestId("book-select-1"));
+    fireEvent.click(screen.getByTestId("book-select-2"));
+  }
+
+  it("选中 2 本后循环 PATCH，全部成功后收工并退出选择模式", async () => {
+    updateBook.mockResolvedValue({} as BookDetail);
+    await selectTwo();
+    expect(screen.getByTestId("shelf-batch-author").textContent).toContain("（2）");
+
+    fireEvent.click(screen.getByTestId("shelf-batch-author"));
+    fireEvent.change(screen.getByLabelText("作者（多位用「、」或逗号分隔）"), { target: { value: "张三、李四" } });
+    fireEvent.click(screen.getByTestId("batch-author-confirm"));
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(2));
+    expect(updateBook.mock.calls.map((call) => call[0])).toEqual([1, 2]);
+    expect(updateBook.mock.calls[0][1]).toEqual({ authors: ["张三", "李四"] });
+
+    await waitFor(() => expect(screen.queryByTestId("batch-author-dialog")).toBeNull());
+    expect(screen.queryByTestId("book-select-1")).toBeNull();
+  });
+
+  it("有失败项时显示「已完成 x / N」，可只重试失败的那本", async () => {
+    // 第 2 本第一次失败、重试时成功：用实现而不是一次性队列，避免次数对不上
+    let failBook2 = true;
+    updateBook.mockImplementation(async (id: number) => {
+      if (id === 2 && failBook2) {
+        failBook2 = false;
+        throw new Error("离线");
+      }
+      return {} as BookDetail;
+    });
+    await selectTwo();
+
+    fireEvent.click(screen.getByTestId("shelf-batch-author"));
+    fireEvent.change(screen.getByLabelText("作者（多位用「、」或逗号分隔）"), { target: { value: "张三" } });
+    fireEvent.click(screen.getByTestId("batch-author-confirm"));
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("batch-author-progress").textContent).toContain("1 / 2"));
+    expect(screen.getByTestId("batch-author-failures").textContent).toContain("示例书 2");
+    expect(screen.getByTestId("batch-author-dialog")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("batch-author-retry"));
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(3));
+    // 只重试失败的那本
+    expect(updateBook.mock.calls[2][0]).toBe(2);
+    // 重试成功后整批收工：弹层关闭、退出选择模式
+    await waitFor(() => expect(screen.queryByTestId("batch-author-dialog")).toBeNull());
+    expect(screen.queryByTestId("book-select-1")).toBeNull();
+  });
+
+  it("作者留空即清空，下发空数组（按契约）", async () => {
+    updateBook.mockResolvedValue({} as BookDetail);
+    books.mockResolvedValue({ items: [bookAt(1)], total: 1, page: 1, size: 24 });
+    renderShelf("h5");
+    await waitFor(() => expect(cardCount()).toBe(1));
+
+    fireEvent.click(screen.getByTestId("shelf-select-toggle"));
+    fireEvent.click(screen.getByTestId("book-select-1"));
+    fireEvent.click(screen.getByTestId("shelf-batch-author"));
+    fireEvent.change(screen.getByLabelText("作者（多位用「、」或逗号分隔）"), { target: { value: "  " } });
+    expect(screen.getByTestId("batch-author-confirm").textContent).toContain("清空 1 本作者");
+    fireEvent.click(screen.getByTestId("batch-author-confirm"));
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
+    expect(updateBook.mock.calls[0][1]).toEqual({ authors: [] });
+  });
+});

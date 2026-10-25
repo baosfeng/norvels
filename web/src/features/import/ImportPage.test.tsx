@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChapterRule, ImportJob, UploadResult } from "../../api/types";
+import type { ChapterRule, DryRunReport, ImportJob, ImportJobFile, UploadResult } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 import { TierRoute } from "../../layouts/TierRoute";
 
@@ -19,20 +19,41 @@ const rulesState = {
   reload: vi.fn(),
 };
 
+const tagRulesState = {
+  data: { rules: [] as ChapterRule[] },
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
+const failedFilesState = {
+  data: { files: [] as ImportJobFile[] },
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
 const uploadImport = vi.fn<(files: File[], opts?: { force?: boolean; update?: boolean }) => Promise<UploadResult>>();
 const startImport = vi.fn(async () => ({ jobId: 1 }));
 const cancelImport = vi.fn<(id: number) => Promise<{ status: string }>>();
 const importJob = vi.fn<(id: number) => Promise<ImportJob>>();
 const putChapterRules = vi.fn<(rules: ChapterRule[]) => Promise<void>>();
+const dryRunImport = vi.fn<(body: { dir: string }) => Promise<DryRunReport>>();
+const retryImport = vi.fn<(jobId: number, sources?: string[]) => Promise<{ jobId: number }>>();
 
 vi.mock("../../api/hooks", () => ({
   useImportJobs: () => jobState,
   useChapterRules: () => rulesState,
+  useTagRules: () => tagRulesState,
+  useFailedFiles: () => failedFilesState,
 }));
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return { ...actual, api: { uploadImport, startImport, cancelImport, importJob, putChapterRules } };
+  return {
+    ...actual,
+    api: { uploadImport, startImport, cancelImport, importJob, putChapterRules, dryRunImport, retryImport },
+  };
 });
 
 const { ImportPage } = await import("./ImportPage");
@@ -62,8 +83,13 @@ describe("导入页：文件上传与逐文件友好报错", () => {
     jobState.loading = false;
     jobState.error = null;
     jobState.reload.mockReset();
+    failedFilesState.data = { files: [] };
+    failedFilesState.loading = false;
+    failedFilesState.error = null;
     uploadImport.mockReset();
     startImport.mockReset();
+    dryRunImport.mockReset();
+    retryImport.mockReset();
   });
 
   it("空态：没选文件时说清支持什么，上传按钮先不可用", () => {
@@ -383,5 +409,170 @@ describe("导入页：章节识别规则", () => {
     rulesState.data = { rules: [] };
     render(<ImportPage />);
     expect(screen.getByTestId("rules-empty")).toBeTruthy();
+  });
+});
+
+describe("导入页：只预检（dry-run）", () => {
+  beforeEach(() => {
+    jobState.data = { items: [] };
+    jobState.loading = false;
+    jobState.error = null;
+    failedFilesState.data = { files: [] };
+    failedFilesState.loading = false;
+    failedFilesState.error = null;
+    dryRunImport.mockReset();
+    startImport.mockReset();
+  });
+
+  it("点「只预检」同步拿回报告：四类计数 + 样例表 + 错误清单，且不建任务", async () => {
+    dryRunImport.mockResolvedValueOnce({
+      truncated: false,
+      files: { total: 12, willImport: 9, duplicate: 2, unsupported: 1, failed: 0 },
+      books: { new: 8, duplicate: 2, split: 1 },
+      sample: [
+        {
+          source: "/path/to/txt/示例书简.txt",
+          title: "示例书简",
+          chapters: 12,
+          words: 34567,
+          duplicate: false,
+          reason: "",
+        },
+      ],
+      errors: [{ source: "/path/to/x.pdf", reason: "unsupported_format" }],
+    });
+    render(<ImportPage />);
+
+    fireEvent.change(screen.getByLabelText("目录或单个文件路径"), { target: { value: "/path/to/txt" } });
+    fireEvent.click(screen.getByTestId("import-dry-run"));
+
+    await waitFor(() => expect(screen.getByTestId("dry-run-report")).toBeTruthy());
+    expect(dryRunImport.mock.calls[0][0]).toMatchObject({ dir: "/path/to/txt", recursive: true });
+    expect(screen.getByTestId("dry-run-will-import").textContent).toBe("9");
+    expect(screen.getByTestId("dry-run-duplicate").textContent).toBe("2");
+    expect(screen.getByTestId("dry-run-unsupported").textContent).toBe("1");
+    expect(screen.getByTestId("dry-run-failed").textContent).toBe("0");
+    expect(screen.getByTestId("dry-run-total").textContent).toBe("12");
+    expect(screen.getByTestId("dry-run-sample").textContent).toContain("示例书简");
+    expect(screen.getByTestId("dry-run-errors").textContent).toContain("unsupported_format");
+    // 预检不建任务
+    expect(startImport).not.toHaveBeenCalled();
+  });
+
+  it("没填路径时先拦下，不发预检请求", () => {
+    render(<ImportPage />);
+
+    fireEvent.click(screen.getByTestId("import-dry-run"));
+
+    expect(dryRunImport).not.toHaveBeenCalled();
+    expect(screen.getByText(/先填一个目录或 txt 文件路径，再预检/)).toBeTruthy();
+  });
+
+  it("预检失败给错误面板，不把失败当成功", async () => {
+    dryRunImport.mockRejectedValueOnce(new ApiError("http", "timeout", 503, "timeout"));
+    render(<ImportPage />);
+
+    fireEvent.change(screen.getByLabelText("目录或单个文件路径"), { target: { value: "/path/to/txt" } });
+    fireEvent.click(screen.getByTestId("import-dry-run"));
+
+    await waitFor(() => expect(screen.getByTestId("dry-run-error")).toBeTruthy());
+    expect(screen.queryByTestId("dry-run-report")).toBeNull();
+  });
+
+  it("目录条目过多时说明只预检了前 200 个文件", async () => {
+    dryRunImport.mockResolvedValueOnce({
+      truncated: true,
+      files: { total: 500, willImport: 480, duplicate: 20, unsupported: 0, failed: 0 },
+      books: { new: 470, duplicate: 20, split: 10 },
+      sample: [],
+      errors: [],
+    });
+    render(<ImportPage />);
+
+    fireEvent.change(screen.getByLabelText("目录或单个文件路径"), { target: { value: "/path/to/txt" } });
+    fireEvent.click(screen.getByTestId("import-dry-run"));
+
+    await waitFor(() => expect(screen.getByTestId("dry-run-truncated")).toBeTruthy());
+    expect(screen.getByTestId("dry-run-truncated").textContent).toContain("前 200 个文件");
+  });
+});
+
+describe("导入页：失败清单与重试", () => {
+  const failedJob: ImportJob = {
+    id: 7,
+    sourceDir: "/path/to/txt",
+    status: "completed_with_errors",
+    total: 3,
+    imported: 0,
+    skipped: 0,
+    failed: 3,
+    failedCount: 3,
+    startedAt: "2026-10-25T10:00:00.000Z",
+    finishedAt: "2026-10-25T10:01:00.000Z",
+    message: "",
+  };
+
+  const failedFiles: ImportJobFile[] = [
+    {
+      id: 1,
+      source: "/path/to/txt/a.txt",
+      displayPath: "a.txt",
+      status: "failed",
+      reason: "parse_failed",
+      bookId: 0,
+      updatedAt: "2026-10-25T10:01:00.000Z",
+    },
+    {
+      id: 2,
+      source: "/path/to/txt/b.txt",
+      displayPath: "b.txt",
+      status: "failed",
+      reason: "parse_failed",
+      bookId: 0,
+      updatedAt: "2026-10-25T10:01:00.000Z",
+    },
+  ];
+
+  beforeEach(() => {
+    jobState.data = { items: [failedJob] };
+    jobState.loading = false;
+    jobState.error = null;
+    failedFilesState.data = { files: failedFiles };
+    failedFilesState.loading = false;
+    failedFilesState.error = null;
+    retryImport.mockReset();
+  });
+
+  it("每行可单独重试，顶部可一键重试全部失败，成功后提示新任务号", async () => {
+    retryImport.mockResolvedValue({ jobId: 9 });
+    render(<ImportPage />);
+
+    expect(screen.getByTestId("failed-files")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("重试 a.txt"));
+    await waitFor(() => expect(retryImport.mock.calls[0]).toEqual([7, ["/path/to/txt/a.txt"]]));
+
+    fireEvent.click(screen.getByTestId("retry-all-failed"));
+    await waitFor(() => expect(retryImport.mock.calls[1]?.[0]).toBe(7));
+    // 全部重试不带 sources（后端据此重试该任务全部 failed）
+    expect(retryImport.mock.calls[1][1]).toBeUndefined();
+    await waitFor(() => expect(screen.getByTestId("retry-note").textContent).toContain("#9"));
+  });
+
+  it("任务还在跑时重试被拒，把 409 说成人话", async () => {
+    retryImport.mockRejectedValueOnce(new ApiError("http", "conflict", 409, "conflict"));
+    render(<ImportPage />);
+
+    fireEvent.click(screen.getByTestId("retry-all-failed"));
+
+    await waitFor(() => expect(screen.getByTestId("retry-note").textContent).toContain("任务还在跑"));
+  });
+
+  it("completed_with_errors 显示「完成（部分失败）」，不再落到排队中", () => {
+    failedFilesState.data = { files: [] };
+    render(<ImportPage />);
+
+    expect(screen.getByText("完成（部分失败）")).toBeTruthy();
+    expect(screen.queryByText("排队中")).toBeNull();
   });
 });

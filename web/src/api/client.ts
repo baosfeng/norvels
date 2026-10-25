@@ -9,14 +9,18 @@ import type {
   ChapterDetail,
   ChapterRule,
   ChapterRules,
+  DryRunReport,
   HealthReport,
   ImportJob,
+  ImportJobFiles,
   ImportTrendPoint,
   Page,
   ReadStatus,
   ReadingProgress,
   SearchResult,
   Stats,
+  TagRule,
+  TagRules,
   TagSummary,
   UploadResult,
 } from "./types";
@@ -42,6 +46,9 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** 驾驶舱统计类接口放宽到 20s：后端查预计算表，刷新窗口内会比列表接口慢。 */
 export const STATS_TIMEOUT_MS = 20_000;
+
+/** 只预检是同步扫描（后端上限 60 秒，超时回 503）：客户端放宽到 65s，让后端的 503 先到。 */
+export const DRY_RUN_TIMEOUT_MS = 65_000;
 
 /** 上传是「浏览器 → 后端落盘」的大文件传输，不能用列表接口的 10s 超时。 */
 export const UPLOAD_TIMEOUT_MS = 300_000;
@@ -202,6 +209,38 @@ export const api = {
   importJob: (id: number, opts?: RequestOptions) => request<ImportJob>(`/import/jobs/${id}`, opts),
   startImport: (body: { dir: string; recursive?: boolean; force?: boolean; update?: boolean; workers?: number; dryRun?: boolean }, opts?: RequestOptions) =>
     request<{ jobId: number }>("/import", { ...opts, method: "POST", body }),
+  /**
+   * 只预检：POST /import {dryRun:true}，不建任务、不占锁，同步返回报告。
+   * 服务端超时回 503 timeout（客户端超时设得比它更长，优先展示后端口径）。
+   */
+  dryRunImport: (
+    body: { dir: string; recursive?: boolean; force?: boolean; update?: boolean; workers?: number },
+    opts?: RequestOptions,
+  ) =>
+    request<DryRunReport>("/import", {
+      ...opts,
+      method: "POST",
+      body: { ...body, dryRun: true },
+      timeoutMs: opts?.timeoutMs ?? DRY_RUN_TIMEOUT_MS,
+    }),
+  /** 某任务的逐文件终态；status=failed 时只回失败项（重试清单用它）。 */
+  importJobFiles: (jobId: number, status?: "failed", opts?: RequestOptions) =>
+    request<ImportJobFiles>(`/import/jobs/${jobId}/files${query({ status })}`, opts),
+  /**
+   * 重试失败文件：sources 省略即重试该任务全部 failed；生成**新任务**，原任务记录不变。
+   * 202 {"jobId":N}；任务不存在 404、仍在 running 409、无可重试项 400。
+   */
+  retryImport: (jobId: number, sources?: string[], opts?: RequestOptions) =>
+    request<{ jobId: number }>(`/import/jobs/${jobId}/retry`, {
+      ...opts,
+      method: "POST",
+      body: sources ? { sources } : {},
+    }),
+  /** 词表规则：命中关键词即给书打标签（只增不删，不覆盖手动标签）。 */
+  tagRules: (opts?: RequestOptions) => request<TagRules>("/settings/tag-rules", opts),
+  /** 全量替换词表规则；条数 / 标签名 / 关键词超限或标签重名 400 invalid_param。 */
+  putTagRules: (rules: TagRule[], opts?: RequestOptions) =>
+    request<void>("/settings/tag-rules", { ...opts, method: "PUT", body: { rules } }),
   /** 上传文件：multipart；部分文件被拒仍算成功，逐文件原因在 rejected 里。 */
   uploadImport: (files: File[], opts: UploadOptions = {}) => {
     const form = new FormData();

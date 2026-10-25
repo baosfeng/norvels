@@ -15,6 +15,7 @@ import {
 } from "../../lib/readStatus";
 import { stripTags } from "../../lib/text";
 import { showToast } from "../../lib/toastStore";
+import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { useIsH5 } from "../../lib/tier";
 import { useBookFeed } from "../../lib/useBookFeed";
 
@@ -47,6 +48,10 @@ export function ShelfPage() {
   // 角标点击后的乐观值：列表重新取数会拿回后端值，这里只兜住「刚点完还没刷新」的空窗
   const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 多选模式：右上角「选择」进入；选中后批量设作者（循环 PATCH，纯前端）
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // 筛选项的候选：作者与标签都是 PC 专属，H5 不发这两个请求
@@ -141,6 +146,23 @@ export function ShelfPage() {
     }
   }
 
+  function toggleSelecting() {
+    setSelecting((prev) => !prev);
+    setSelected(new Set());
+    setBatchOpen(false);
+  }
+
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const selectedBooks = items.filter((book) => selected.has(book.id));
+
   return (
     <section className="view-shelf" data-testid="view:shelf" data-od-id="shelf">
       <div className="page-head">
@@ -154,18 +176,40 @@ export function ShelfPage() {
             </p>
           )}
         </div>
-        {isH5 ? (
+        <div className="shelf-head-actions">
           <button
-            className="btn shelf-sort-trigger"
+            className="btn"
             type="button"
-            data-testid="shelf-sort-trigger"
-            aria-haspopup="dialog"
-            aria-expanded={sheetOpen}
-            onClick={() => setSheetOpen(true)}
+            data-testid="shelf-select-toggle"
+            aria-pressed={selecting}
+            onClick={toggleSelecting}
           >
-            {readStatus === null ? `排序：${sortLabel}` : `${readStatusFilterLabel(readStatus)} · ${sortLabel}`}
+            {selecting ? "退出选择" : "选择"}
           </button>
-        ) : null}
+          {selecting ? (
+            <button
+              className="btn btn-primary"
+              type="button"
+              data-testid="shelf-batch-author"
+              disabled={selected.size === 0}
+              onClick={() => setBatchOpen(true)}
+            >
+              批量设作者（{selected.size}）
+            </button>
+          ) : null}
+          {isH5 ? (
+            <button
+              className="btn shelf-sort-trigger"
+              type="button"
+              data-testid="shelf-sort-trigger"
+              aria-haspopup="dialog"
+              aria-expanded={sheetOpen}
+              onClick={() => setSheetOpen(true)}
+            >
+              {readStatus === null ? `排序：${sortLabel}` : `${readStatusFilterLabel(readStatus)} · ${sortLabel}`}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {isH5 ? null : (
@@ -283,6 +327,9 @@ export function ShelfPage() {
                 compact={isH5}
                 status={statusOverrides[book.id] ?? book.readStatus ?? ""}
                 onCycle={() => void cycleStatus(book)}
+                selecting={selecting}
+                selected={selected.has(book.id)}
+                onSelect={() => toggleSelected(book.id)}
               />
             ))}
           </div>
@@ -391,6 +438,19 @@ export function ShelfPage() {
           </div>
         </div>
       ) : null}
+      {batchOpen ? (
+        <BatchAuthorDialog
+          books={selectedBooks}
+          onClose={() => setBatchOpen(false)}
+          onSaved={(count) => {
+            setBatchOpen(false);
+            setSelecting(false);
+            setSelected(new Set());
+            reload();
+            showToast(`已批量更新 ${count} 本书的作者`);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -418,49 +478,87 @@ function FilterHints({
   );
 }
 
-/** 书卡：角标是独立按钮（不套在链接里，避免交互元素嵌套），点一下循环切换阅读状态。 */
+/**
+ * 书卡：角标是独立按钮（不套在链接里，避免交互元素嵌套），点一下循环切换阅读状态。
+ * 多选模式下整张卡片变成选择按钮（同样不嵌套链接），右上角显示勾选状态。
+ */
 function BookCard({
   book,
   compact,
   status,
   onCycle,
+  selecting,
+  selected,
+  onSelect,
 }: {
   book: BookSummary;
   compact: boolean;
   status: ReadStatus;
   onCycle: () => void;
+  selecting: boolean;
+  selected: boolean;
+  onSelect: () => void;
 }) {
+  const content = (
+    <>
+      <Cover
+        title={book.title}
+        bookId={book.id}
+        updatedAt={book.updatedAt}
+        hasCover={book.hasCover}
+        showLabel={!compact}
+      />
+      <div className="book-card-body">
+        <h3>{book.title}</h3>
+        <p className="book-author">{book.authorName || "佚名"}</p>
+        <p className="book-meta">
+          <span className="num">{formatCount(book.chapterCount)} 章</span>
+          <span className="num">{formatCount(book.wordCount)} 字</span>
+          {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
+        </p>
+        {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
+      </div>
+    </>
+  );
+
   return (
-    <article className="book-card" data-status={status}>
-      <button
-        className="book-status"
-        type="button"
-        data-testid={`book-status-${book.id}`}
-        data-status={status}
-        aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
-        onClick={onCycle}
-      >
-        {READ_STATUS_LABELS[status]}
-      </button>
-      <Link className="book-link" to={`/book/${book.id}`}>
-        <Cover
-          title={book.title}
-          bookId={book.id}
-          updatedAt={book.updatedAt}
-          hasCover={book.hasCover}
-          showLabel={!compact}
-        />
-        <div className="book-card-body">
-          <h3>{book.title}</h3>
-          <p className="book-author">{book.authorName || "佚名"}</p>
-          <p className="book-meta">
-            <span className="num">{formatCount(book.chapterCount)} 章</span>
-            <span className="num">{formatCount(book.wordCount)} 字</span>
-            {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
-          </p>
-          {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
-        </div>
-      </Link>
+    <article
+      className={`book-card${selecting ? " is-selecting" : ""}${selected ? " is-selected" : ""}`}
+      data-status={status}
+    >
+      {selecting ? null : (
+        <button
+          className="book-status"
+          type="button"
+          data-testid={`book-status-${book.id}`}
+          data-status={status}
+          aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
+          onClick={onCycle}
+        >
+          {READ_STATUS_LABELS[status]}
+        </button>
+      )}
+      {selecting ? (
+        <button
+          className="book-link"
+          type="button"
+          aria-pressed={selected}
+          aria-label={`选择《${book.title}》`}
+          data-testid={`book-select-${book.id}`}
+          onClick={onSelect}
+        >
+          {content}
+        </button>
+      ) : (
+        <Link className="book-link" to={`/book/${book.id}`}>
+          {content}
+        </Link>
+      )}
+      {selecting ? (
+        <span className="book-check" aria-hidden="true">
+          {selected ? "✓" : ""}
+        </span>
+      ) : null}
     </article>
   );
 }

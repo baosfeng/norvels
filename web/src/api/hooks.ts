@@ -99,6 +99,20 @@ export function useChapterRules() {
   return useResource((signal: AbortSignal) => api.getChapterRules({ signal }), []);
 }
 
+/** 词表规则（标签 ← 关键词）：导入时自动打标，只增不删。 */
+export function useTagRules() {
+  return useResource((signal: AbortSignal) => api.tagRules({ signal }), []);
+}
+
+/** 某任务的失败文件清单（重试入口用）；jobId 为空时不发请求。 */
+export function useFailedFiles(jobId: number | null) {
+  return useResource(
+    (signal: AbortSignal) => api.importJobFiles(jobId as number, "failed", { signal }),
+    [jobId],
+    { enabled: jobId !== null && Number.isFinite(jobId) },
+  );
+}
+
 /** 进度写入：失败不打断阅读，返回是否落库成功，供 UI 决定是否展示离线提示。 */
 export function useSaveProgress() {
   return useCallback(async (body: { bookId: number; chapterId: number; percent: number }, options?: RequestOptions) => {
