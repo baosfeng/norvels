@@ -36,13 +36,14 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
   "chapters": {
     "items": [{
       "bookId": 1, "bookTitle": "风流名将", "chapterId": 88, "chapterTitle": "第88章 夜宴",
-      "snippet": "", "score": 12.3
+      "snippet": "第 88 章 · 共 1300 章", "score": 12.3
     }],
     "total": 57, "page": 1, "size": 20
   }
 }
 ```
-> `snippet` 字段保留但**恒为空字符串**：正文检索已下线，后端不再计算命中片段（见 [ADR-0002](../adr/0002-drop-fulltext-index.md)）。
+> `snippet` 是**章序上下文**（`第 N 章 · 共 M 章`）：正文检索已下线（见 [ADR-0002](../adr/0002-drop-fulltext-index.md)），
+> 没有正文片段可给，但标题命中需要「这一章在书里的位置」，前端按纯文本渲染即可（不含 HTML）。
 
 **检索约束（实现现状，前端必须处理）**
 
@@ -78,7 +79,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 - 阅读进度：**服务端为准**（见 [api-dashboard.md §9](api-dashboard.md#get-apireadingprogress) 的 `GET /api/reading/progress`），`localStorage` 降级为离线缓存。
 - 章节正文为纯文本，前端按段渲染（`\n` 分段），不做富文本。
-- 搜索无高亮：`snippet` 恒为空，前端不要按标签渲染。
+- 搜索命中片段是章序上下文（`第 N 章 · 共 M 章`）纯文本，不保证高亮；无片段时不要渲染空行。
 
 ## 鉴权（可选）
 
