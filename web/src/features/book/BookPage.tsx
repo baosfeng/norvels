@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useBook, useReadingProgress } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
-import type { BookDetail, ReadStatus, SerialStatus, Volume } from "../../api/types";
+import type { BookDetail, ChapterBrief, ReadStatus, SerialStatus, Volume } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { ChapterList } from "./ChapterList";
@@ -14,7 +14,8 @@ import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
 import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
-import { columnsForWidth } from "../../lib/tocRows";
+import { useTocColumns } from "./useTocColumns";
+import { ackNewChaptersIfLast } from "./newChapters";
 
 /** 书籍详情：PC 双栏（封面侧 + 目录），H5 单列（封面缩为横向头部，简介折叠）。 */
 export function BookPage() {
@@ -89,6 +90,11 @@ export function BookPage() {
       setReadStatus(previous);
       showToast(metaErrorText(error));
     }
+  }
+
+  /** 读到最后一章 = 追更读完了：清角标（失败只影响角标数字，不打断阅读）。 */
+  function openChapter(chapter: ChapterBrief) {
+    void ackNewChaptersIfLast(book, chapter, reload);
   }
 
   function toggleVolume(index: number) {
@@ -218,6 +224,11 @@ export function BookPage() {
             <span className="meta" data-testid="book-serial">
               {serialLabel(book.serialStatus)}
             </span>
+            {(book.newChapters ?? 0) > 0 ? (
+              <span className="pill is-live" data-testid="book-new-chapters">
+                新章 +{book.newChapters}
+              </span>
+            ) : null}
           </p>
           <p className="meta" data-testid="book-last-chapter">
             最后更新 · {formatDate(book.updatedAt)} · 最新章节 · {lastChapter}
@@ -272,6 +283,7 @@ export function BookPage() {
                 columns={columns}
                 dense={dense}
                 scrollToCurrent
+                onNavigate={openChapter}
                 ariaLabel="章节目录"
               />
             </div>
@@ -326,6 +338,7 @@ export function BookPage() {
                             columns={columns}
                             dense={dense}
                             scrollToCurrent
+                            onNavigate={openChapter}
                             ariaLabel={`${volumeLabel(volume)} 目录`}
                           />
                         </div>
@@ -344,22 +357,6 @@ export function BookPage() {
       ) : null}
     </section>
   );
-}
-
-/**
- * 目录列数：PC 上按窗口宽度流动（≥1180 三列、≥900 两列、其余一列），H5 恒一列。
- * 监听 resize 而不是只在挂载时算一次：窗口拖窄后列数不跟着变，行高与实际排版会错位。
- */
-function useTocColumns(isH5: boolean): number {
-  const [columns, setColumns] = useState(() => (typeof window === "undefined" ? 1 : columnsForWidth(window.innerWidth)));
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const sync = () => setColumns(isH5 ? 1 : columnsForWidth(window.innerWidth));
-    sync();
-    window.addEventListener("resize", sync);
-    return () => window.removeEventListener("resize", sync);
-  }, [isH5]);
-  return isH5 ? 1 : columns;
 }
 
 function volumeLabel(volume: Volume): string {

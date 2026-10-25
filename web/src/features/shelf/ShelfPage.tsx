@@ -17,6 +17,8 @@ import { stripTags } from "../../lib/text";
 import { showToast } from "../../lib/toastStore";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { CollectionFilter } from "./CollectionFilter";
+import { RandomBookButton } from "./RandomBookButton";
+import { ResumeCard } from "./ResumeCard";
 import { useIsH5 } from "../../lib/tier";
 import {
   SHELF_REFRESH_MIN_AGE_MS,
@@ -294,6 +296,9 @@ export function ShelfPage() {
           )}
         </div>
         <div className="shelf-head-actions">
+          {isH5 ? null : (
+            <RandomBookButton authorId={authorId ?? undefined} tag={tag ?? undefined} collection={collection ?? undefined} />
+          )}
           <button
             className="btn"
             type="button"
@@ -328,6 +333,8 @@ export function ShelfPage() {
           ) : null}
         </div>
       </div>
+
+      {isH5 ? null : <ResumeCard />}
 
       {isH5 ? null : (
         <div className="toolbar" data-testid="shelf-toolbar">
@@ -676,6 +683,11 @@ function BookCard({
           <span className="num">{formatCount(book.chapterCount)} 章</span>
           <span className="num">{formatCount(book.wordCount)} 字</span>
           {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
+          {(book.newChapters ?? 0) > 0 ? (
+            <span className="pill is-live" data-testid={`book-new-chapters-${book.id}`}>
+              新章 +{book.newChapters}
+            </span>
+          ) : null}
           {selecting ? null : badge}
         </p>
         {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
