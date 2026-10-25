@@ -17,8 +17,9 @@ func bookFilter(q BookQuery) ([]string, []any) {
 		where = append(where, "(b.title LIKE ? ESCAPE '!' OR a.name LIKE ? ESCAPE '!')")
 		args = append(args, pat, pat)
 	}
+	// 作者筛选认主作者与副作者：从作者页点进来时不该漏掉合著的书。
 	if q.AuthorID != 0 {
-		where = append(where, "b.author_id = ?")
+		where = append(where, "b.id IN (SELECT book_id FROM "+authorWorks+" WHERE aid = ?)")
 		args = append(args, q.AuthorID)
 	}
 	if t := strings.TrimSpace(q.Tag); t != "" {

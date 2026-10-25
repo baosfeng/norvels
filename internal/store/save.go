@@ -368,8 +368,9 @@ func refreshAuthorStats(ctx context.Context, tx *sql.Tx, authorID int64) error {
 	}
 	_, err := tx.ExecContext(ctx,
 		"UPDATE authors SET "+
-			"book_count = (SELECT COUNT(*) FROM books WHERE author_id = authors.id), "+
-			"word_count = (SELECT COALESCE(SUM(word_count), 0) FROM books WHERE author_id = authors.id) "+
+			"book_count = (SELECT COUNT(*) FROM "+authorWorks+" WHERE aid = authors.id), "+
+			"word_count = (SELECT COALESCE(SUM(b.word_count), 0) FROM "+authorWorks+" x "+
+			"JOIN books b ON b.id = x.book_id WHERE x.aid = authors.id) "+
 			"WHERE id = ?", authorID)
 	if err != nil {
 		return fmt.Errorf("store: refresh author stats: %w", err)

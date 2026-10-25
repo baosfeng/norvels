@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// authorWorks 是「作者 → 作品」的规范子查询：主作者（books.author_id）与
+// 副作者（books_authors）各算一次，UNION 去重后每本书只出现一行。
+// 列表、详情、筛选、统计都走它，避免「详情能看到多作者、作者页却查不到」的数据孤儿。
+const authorWorks = "(SELECT author_id AS aid, id AS book_id FROM books WHERE author_id <> 0 " +
+	"UNION SELECT author_id AS aid, book_id FROM books_authors)"
+
 // authorOrder 把排序键映射为 ORDER BY 子句。
 //
 // books = 按作品数（默认）；words = 按总字数（驾驶舱「字数 Top 10」）；
@@ -46,7 +52,8 @@ func (s *Store) ListAuthors(ctx context.Context, q AuthorQuery) (Page[AuthorSumm
 	}
 
 	query := "SELECT a.id, a.name, COUNT(b.id), COALESCE(SUM(b.word_count), 0) " +
-		"FROM authors a LEFT JOIN books b ON b.author_id = a.id" + whereSQL +
+		"FROM authors a LEFT JOIN " + authorWorks + " x ON x.aid = a.id " +
+		"LEFT JOIN books b ON b.id = x.book_id" + whereSQL +
 		" GROUP BY a.id, a.name ORDER BY " + authorOrder(q.Sort) + " LIMIT ? OFFSET ?"
 	qargs := append(append([]any{}, args...), size, (page-1)*size)
 
@@ -78,7 +85,8 @@ func (s *Store) GetAuthor(ctx context.Context, id int64) (*AuthorDetail, error) 
 	var a AuthorSummary
 	err := s.db.QueryRowContext(ctx,
 		"SELECT a.id, a.name, COUNT(b.id), COALESCE(SUM(b.word_count), 0) "+
-			"FROM authors a LEFT JOIN books b ON b.author_id = a.id WHERE a.id = ? GROUP BY a.id, a.name", id).
+			"FROM authors a LEFT JOIN "+authorWorks+" x ON x.aid = a.id "+
+			"LEFT JOIN books b ON b.id = x.book_id WHERE a.id = ? GROUP BY a.id, a.name", id).
 		Scan(&a.ID, &a.Name, &a.BookCount, &a.WordCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: author %d", ErrNotFound, id)
@@ -87,7 +95,8 @@ func (s *Store) GetAuthor(ctx context.Context, id int64) (*AuthorDetail, error) 
 		return nil, fmt.Errorf("store: get author: %w", err)
 	}
 
-	books, err := s.loadBooks(ctx, []string{"b.author_id = ?"}, []any{id}, bookOrder("updated"), -1, 0)
+	books, err := s.loadBooks(ctx, []string{"b.id IN (SELECT book_id FROM " + authorWorks + " WHERE aid = ?)"},
+		[]any{id}, bookOrder("updated"), -1, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -185,3 +185,51 @@ func TestFindByTitleAuthor(t *testing.T) {
 		t.Fatalf("空书名的错误 = %v，期望 ErrInvalidArgument", err)
 	}
 }
+
+// TestAuthorAggregatesIncludeCoAuthors 副作者（books_authors 里非首位）也要进
+// 作者页、作者筛选与作品列表：否则详情页看得到「作者甲」，作者页却查不到他的书。
+func TestAuthorAggregatesIncludeCoAuthors(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	solo := sampleBook("独立作品", "作者甲", "/path/to/agg-a.txt", strings.Repeat("a", 64))
+	if _, err := st.SaveBook(ctx, solo, SaveOptions{}); err != nil {
+		t.Fatalf("SaveBook solo: %v", err)
+	}
+	co := sampleBook("合著作品", "作者乙", "/path/to/agg-b.txt", strings.Repeat("b", 64))
+	co.Authors = []string{"作者乙", "作者甲"}
+	if _, err := st.SaveBook(ctx, co, SaveOptions{}); err != nil {
+		t.Fatalf("SaveBook co: %v", err)
+	}
+
+	page, err := st.ListAuthors(ctx, AuthorQuery{Sort: "books"})
+	if err != nil {
+		t.Fatalf("ListAuthors: %v", err)
+	}
+	byName := make(map[string]AuthorSummary, len(page.Items))
+	for _, a := range page.Items {
+		byName[a.Name] = a
+	}
+	if byName["作者甲"].BookCount != 2 {
+		t.Fatalf("作者甲 book_count = %d，期望 2（独立 + 合著）", byName["作者甲"].BookCount)
+	}
+	if byName["作者乙"].BookCount != 1 {
+		t.Fatalf("作者乙 book_count = %d，期望 1", byName["作者乙"].BookCount)
+	}
+
+	detail, err := st.GetAuthor(ctx, byName["作者甲"].ID)
+	if err != nil {
+		t.Fatalf("GetAuthor: %v", err)
+	}
+	if len(detail.Books) != 2 {
+		t.Fatalf("作者甲作品数 = %d，期望 2", len(detail.Books))
+	}
+
+	filtered, err := st.ListBooks(ctx, BookQuery{AuthorID: byName["作者甲"].ID})
+	if err != nil {
+		t.Fatalf("ListBooks by author: %v", err)
+	}
+	if filtered.Total != 2 {
+		t.Fatalf("按作者甲筛选 = %d 本，期望 2", filtered.Total)
+	}
+}
