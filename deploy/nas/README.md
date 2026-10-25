@@ -82,10 +82,15 @@ sqlite3 data/norvels.db 'VACUUM;'
 
 ```bash
 cd /vol1/norvels
-sudo ./update.sh            # 跟随 .env 里的版本
-sudo ./update.sh 0.3.0      # 切到指定版本（会写回 .env）
-sudo ./update.sh --check    # 只看状态
+sudo ./update.sh                  # 跟随 .env 里的版本
+sudo ./update.sh 0.3.0            # 切到指定版本（会写回 .env）
+sudo ./update.sh --check          # 只看本地状态
+sudo ./update.sh --check-updates  # 问上游有没有新版本（不升级、不重启）
 ```
+
+`--check-updates` 的判定方式：对比「容器正在用的镜像 ID」与「`bsfeng/norvels:latest` 的镜像 ID」。
+它走的是 docker 的镜像加速器（也就是部署时唯一必须打通的那条路），不依赖
+Docker Hub API 或 registry 直连——国内这两条常常超时。镜像 17 MB，层已缓存时约 2 秒。
 
 脚本做的事：`docker pull` → 一次性容器跑 `migrate`（大库迁移可达几十分钟，
 不能在健康检查里做，否则会被判定 unhealthy 重启、迁移回滚重来）→ `up -d` →
