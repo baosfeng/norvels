@@ -36,11 +36,14 @@ export const FONT_FAMILY_LABELS: Record<ReaderFontFamily, string> = { serif: "�
 export const WIDTH_LABELS: Record<ReaderWidth, string> = { narrow: "窄", normal: "标准", wide: "宽" };
 export const ALIGN_LABELS: Record<ReaderAlign, string> = { left: "左对齐", justify: "两端" };
 
-/** 字体栈：衬线优先宋体（Windows 上落到 SimSun），黑体优先 Heiti / SimHei。 */
+/**
+ * 字体族 → CSS 变量（字体栈本身定义在 tokens.css，一个值只出现一次）：
+ * 衬线优先宋体、黑体优先 Heiti / SimHei，系统档跟浏览器默认无衬线。
+ */
 export const FONT_FAMILY_STACK: Record<ReaderFontFamily, string> = {
-  serif: '"Songti SC","SimSun","Source Han Serif SC","Noto Serif CJK SC",Georgia,serif',
-  sans: '"Heiti SC","SimHei","PingFang SC","Microsoft YaHei",sans-serif',
-  system: 'system-ui,-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif',
+  serif: "var(--reader-serif, serif)",
+  sans: "var(--reader-sans, sans-serif)",
+  system: "var(--reader-system, system-ui, sans-serif)",
 };
 
 export const FONT_MIN = 14;

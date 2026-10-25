@@ -68,8 +68,18 @@
   --max: 1320px;
   --gutter: 32px;
   --radius: var(--radius-sm);
+  /* 阅读器排版：默认值兜底，真正的取值由阅读器外壳的内联变量覆盖（lib/readerSettings 映射） */
   --reader-font: 19px;
   --reader-leading: 1.9;
+  --reader-para: 1em;
+  --reader-width: 42rem;
+  --reader-align: left;
+  --reader-indent: 2em;
+  --reader-serif: "Songti SC", "SimSun", "Source Han Serif SC", "Noto Serif CJK SC", Georgia, serif;
+  --reader-sans: "Heiti SC", "SimHei", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --reader-system: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --switch-w: 40px;
+  --switch-h: 22px;
 }
 
 html[data-theme="day"] {

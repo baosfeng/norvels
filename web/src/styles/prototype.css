@@ -166,9 +166,9 @@ h3{font-size:var(--text-base);font-weight:600}
 .reader-loading-layer .state-panel{width:100%;max-width:42rem;border-color:var(--r-border);background:var(--r-surface)}
 .reader-loading-layer .state-panel p{color:var(--r-muted)}
 .reader-loading-layer .state-mark{background:var(--r-raised);color:var(--r-fg)}
-.reader-content{width:100%;max-width:42rem;font-size:var(--reader-font);line-height:var(--reader-leading);color:var(--r-fg)}
+.reader-content{width:100%;max-width:var(--reader-width,42rem);font-family:var(--reader-family,inherit);font-size:var(--reader-font);line-height:var(--reader-leading);color:var(--r-fg)}
 .reader-content h2{font-size:1.5em;margin:0 0 1.4em;letter-spacing:-.01em}
-.reader-content p{text-indent:2em;margin:0 0 .9em;color:var(--r-fg);font-size:var(--reader-font);line-height:var(--reader-leading);text-wrap:pretty}
+.reader-content p{text-indent:var(--reader-indent,2em);margin:0 0 var(--reader-para,.9em);text-align:var(--reader-align,left);color:var(--r-fg);font-size:var(--reader-font);line-height:var(--reader-leading);text-wrap:pretty}
 .reader-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:44px;padding-top:18px;border-top:1px solid var(--r-border)}
 .reader-pager .btn{border-color:var(--r-border);background:var(--r-surface);color:var(--r-fg)}
 .reader-pager .btn[disabled]{opacity:.4;cursor:default}
@@ -187,10 +187,19 @@ h3{font-size:var(--text-base);font-weight:600}
 .drawer-list a:hover{background:color-mix(in oklab,var(--r-fg),transparent 92%)}
 .drawer-list a.is-current{background:color-mix(in oklab,var(--r-fg),transparent 88%);font-weight:600}
 .drawer-list .num{font-size:11px;color:var(--r-muted);min-width:28px;text-align:right}
-.settings-panel{position:fixed;top:64px;right:20px;z-index:60;width:288px;padding:16px;border:1px solid var(--r-border);border-radius:var(--radius);background:var(--r-raised);color:var(--r-fg);display:none;box-shadow:0 16px 40px rgba(0,0,0,.14)}
+.settings-panel{position:fixed;top:64px;right:20px;z-index:60;width:326px;max-height:min(78dvh,640px);overflow:auto;overscroll-behavior:contain;padding:16px;border:1px solid var(--r-border);border-radius:var(--radius);background:var(--r-raised);color:var(--r-fg);display:none;box-shadow:0 16px 40px rgba(0,0,0,.14)}
 .settings-panel.is-open{display:block}
-.settings-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--r-border);font-size:13px}
+.settings-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 8px;border-bottom:1px solid var(--r-border);font-size:13px}
+.settings-head .btn{min-height:32px;padding:4px 8px;color:var(--r-fg)}
+.settings-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:9px 0;border-bottom:1px solid var(--r-border);font-size:13px}
 .settings-row:last-child{border-bottom:0}
+.settings-row .seg{flex-wrap:wrap;max-width:100%}
+.settings-row .seg button{padding:4px 8px}
+/* 开关：32px 高，点击区域随行高放大（H5 用 .settings-row 的整行留白补足） */
+.switch{position:relative;flex:none;width:var(--switch-w);height:var(--switch-h);border-radius:999px;background:color-mix(in oklab,var(--r-fg),transparent 82%);transition:background var(--motion-fast) var(--ease-standard)}
+.switch.is-on{background:var(--r-fg)}
+.switch-knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--r-bg);transition:transform var(--motion-fast) var(--ease-standard)}
+.switch.is-on .switch-knob{transform:translateX(18px)}
 .seg{display:inline-flex;border:1px solid var(--r-border);border-radius:4px;overflow:hidden}
 .seg button{min-height:32px;padding:4px 10px;font-size:12px;color:var(--r-muted)}
 .seg button.is-active{background:var(--r-fg);color:var(--r-bg)}
@@ -214,7 +223,7 @@ h3{font-size:var(--text-base);font-weight:600}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media (max-width: 1440px){ .container{--gutter:28px} }
 @media (max-width: 1024px){ .reader-main{padding:32px 20px 56px} }
-@media (max-width: 768px){ .reader-main{padding:24px 18px 48px} .settings-panel{right:12px;left:12px;width:auto;top:56px} }
+@media (max-width: 768px){ .reader-main{padding:24px 18px 48px} .settings-panel{right:12px;left:12px;width:auto;top:56px;max-height:min(70dvh,560px)} }
 @media (max-width: 390px){ .reader-top{padding:8px 12px} .reader-main{padding:20px 16px 40px} .reader-content{font-size:calc(var(--reader-font) - 1px)} }
 
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useBook, useBookmarks, useChapter, useSaveProgress } from "../../api/hooks";
@@ -6,7 +6,7 @@ import type { Bookmark, ChapterBrief } from "../../api/types";
 import { ChevronLeftIcon } from "../../components/Icons";
 import { ErrorPanel, LoadingPanel, EmptyPanel } from "../../components/StatePanel";
 import { TocDrawer } from "./TocDrawer";
-import { useTheme, type Theme } from "../../lib/theme";
+import { useTheme } from "../../lib/theme";
 import { useIsH5 } from "../../lib/tier";
 import { formatWords } from "../../lib/format";
 import { useReaderControls } from "../../lib/useReaderControls";
@@ -18,19 +18,9 @@ import { showToast } from "../../lib/toastStore";
 import { BookmarksDrawer } from "./BookmarksDrawer";
 import { ReaderBottomBar } from "./ReaderBottomBar";
 import { ReaderSearchPanel } from "./ReaderSearchPanel";
-
-const FONT_KEY = "norvels.reader.font";
-const LEADING_KEY = "norvels.reader.leading";
-
-function readNumber(key: string, fallback: number): number {
-  try {
-    const raw = window.localStorage.getItem(key);
-    const n = raw === null ? NaN : Number(raw);
-    return Number.isFinite(n) ? n : fallback;
-  } catch {
-    return fallback;
-  }
-}
+import { ReaderSettingsPanel } from "./ReaderSettingsPanel";
+import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
+import { tradToSimp } from "../../lib/trad2simp";
 
 /**
  * 阅读器：产品核心，两端能力等价。
@@ -62,8 +52,11 @@ export function ReaderPage() {
   // 段落锚点 = 视口里最靠上的段落（书签记在这里）；没有 IntersectionObserver 时恒为第 0 段
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
   const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
-  const [font, setFont] = useState(() => readNumber(FONT_KEY, 19));
-  const [leading, setLeading] = useState(() => readNumber(LEADING_KEY, 1.9));
+  // 排版设置集中在一个对象里：面板改一项只 patch 一项，落盘统一写 norvels.reader.*
+  const [settings, setSettings] = useState<ReaderSettings>(() => readReaderSettings());
+  const updateSettings = useCallback((patch: Partial<ReaderSettings>) => {
+    setSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
   const { theme, setTheme, themes } = useTheme();
 
   // 控制层：H5 默认收起、单击正文唤出、3 秒无操作收起；设置/目录打开时暂停收起
@@ -103,7 +96,12 @@ export function ReaderPage() {
   // 正文分段：段落下标即后端 paraIndex，书签与跳转都按它对齐（空行保留占位，不挪下标）
   const content = chapter.data?.content ?? "";
   const paragraphs = useMemo(() => splitParagraphs(content), [content]);
-  const search = useMemo(() => searchParagraphs(paragraphs, searchQuery), [paragraphs, searchQuery]);
+  // 繁→简是逐字替换、长度不变，所以段落下标与书签 / 进度仍然对齐
+  const viewParagraphs = useMemo(
+    () => (settings.script ? paragraphs.map(tradToSimp) : paragraphs),
+    [paragraphs, settings.script],
+  );
+  const search = useMemo(() => searchParagraphs(viewParagraphs, searchQuery), [viewParagraphs, searchQuery]);
   const hitCount = search.hits.length;
   const currentHit = hitState.query === search.query && hitCount > 0 ? Math.min(hitState.position, hitCount - 1) : 0;
   const hitsByPara = useMemo(() => {
@@ -117,15 +115,10 @@ export function ReaderPage() {
   }, [search]);
   const anchorPara = anchor.chapterId === (chapter.data?.id ?? 0) ? anchor.para : 0;
 
-  // 字号 / 行距持久化
+  // 排版设置持久化（隐私模式下写入失败不影响当前阅读）
   useEffect(() => {
-    try {
-      window.localStorage.setItem(FONT_KEY, String(font));
-      window.localStorage.setItem(LEADING_KEY, String(leading));
-    } catch {
-      /* 隐私模式下写入失败不影响当前阅读 */
-    }
-  }, [font, leading]);
+    writeReaderSettings(settings);
+  }, [settings]);
 
   // 进度上报：章节打开即记录，失败不打断阅读（本地仍在）
   const percent = chapters.length > 0 && index >= 0 ? (index + 1) / chapters.length : 0;
@@ -196,7 +189,7 @@ export function ReaderPage() {
       await api.createBookmark(bookId, {
         chapterId,
         paraIndex,
-        label: bookmarkLabel(paragraphs[paraIndex] ?? ""),
+        label: bookmarkLabel(viewParagraphs[paraIndex] ?? ""),
       });
       bookmarks.reload();
       showToast("已加入书签。");
@@ -306,7 +299,7 @@ export function ReaderPage() {
       className={`reader-shell${isH5 ? " is-h5" : ""}${controls.visible ? " is-controls" : ""}`}
       data-testid="view:reader"
       data-od-id="reader"
-      style={{ ["--reader-font" as string]: `${font}px`, ["--reader-leading" as string]: String(leading) }}
+      style={readerStyleVars(settings) as CSSProperties}
     >
       <header
         className="reader-top"
@@ -395,7 +388,7 @@ export function ReaderPage() {
           <article key={articleKey} className={`reader-content reader-article${reducedMotion ? "" : " is-entering"}`}>
             <h2>{chapter.data.title}</h2>
             <div>
-              {paragraphs.map((para, i) =>
+              {viewParagraphs.map((para, i) =>
                 para ? (
                   <p key={i} id={`para-${i}`} data-para={i}>
                     {paragraphNodes(para, hitsByPara.get(i) ?? [], currentHit, searchOpen)}
@@ -459,48 +452,15 @@ export function ReaderPage() {
         />
       ) : null}
 
-      <div className={`settings-panel${settingsOpen ? " is-open" : ""}`} role="dialog" aria-label="阅读设置" aria-hidden={!settingsOpen}>
-        <div className="settings-row">
-          <span>字号</span>
-          <div className="stepper">
-            <button type="button" aria-label="减小字号" onClick={() => setFont((v) => Math.max(14, v - 1))}>
-              A−
-            </button>
-            <span className="num">{font}</span>
-            <button type="button" aria-label="增大字号" onClick={() => setFont((v) => Math.min(28, v + 1))}>
-              A+
-            </button>
-          </div>
-        </div>
-        <div className="settings-row">
-          <span>行距</span>
-          <div className="stepper">
-            <button type="button" aria-label="减小行距" onClick={() => setLeading((v) => Math.max(1.4, Number((v - 0.1).toFixed(1))))}>
-              −
-            </button>
-            <span className="num">{leading.toFixed(1)}</span>
-            <button type="button" aria-label="增大行距" onClick={() => setLeading((v) => Math.min(2.4, Number((v + 0.1).toFixed(1))))}>
-              +
-            </button>
-          </div>
-        </div>
-        <div className="settings-row">
-          <span>主题</span>
-          <div className="seg" role="group" aria-label="主题">
-            {themes.map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={theme === t ? "is-active" : ""}
-                aria-pressed={theme === t}
-                onClick={() => setTheme(t as Theme)}
-              >
-                {themeName(t)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <ReaderSettingsPanel
+        open={settingsOpen}
+        settings={settings}
+        onChange={updateSettings}
+        theme={theme}
+        themes={themes}
+        setTheme={setTheme}
+        onClose={() => setSettingsOpen(false)}
+      />
 
       <button
         className={`overlay${drawerOpen || bookmarksOpen ? " is-open" : ""}`}
@@ -560,8 +520,3 @@ function paragraphNodes(para: string, hits: ReaderHit[], currentHit: number, sea
   return nodes;
 }
 
-function themeName(theme: string): string {
-  if (theme === "night") return "夜间";
-  if (theme === "parchment") return "羊皮纸";
-  return "日间";
-}
