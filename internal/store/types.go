@@ -25,6 +25,8 @@ type BookQuery struct {
 	Series string
 	// Rating 是评分筛选 1–5；0 表示不过滤（0 本身是「未评」，不能拿来筛）。
 	Rating int
+	// Collection 是书单 id 筛选；0 表示不过滤。
+	Collection int64
 }
 
 // AuthorQuery 描述作者列表的过滤与排序。

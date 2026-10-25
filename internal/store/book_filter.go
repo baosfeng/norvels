@@ -41,6 +41,12 @@ func bookFilter(q BookQuery) ([]string, []any) {
 		where = append(where, "b.rating = ?")
 		args = append(args, q.Rating)
 	}
+	// 书单是 M:N 关联，存在性子查询即可（collection_books 很小，不必 JOIN 去重）。
+	if q.Collection != 0 {
+		where = append(where, "EXISTS (SELECT 1 FROM collection_books cb "+
+			"WHERE cb.book_id = b.id AND cb.collection_id = ?)")
+		args = append(args, q.Collection)
+	}
 	// 连载状态：none 是「未知（''）」的哨兵值，其余按取值精确匹配。
 	if ss := strings.TrimSpace(q.SerialStatus); ss != "" {
 		if ss == SerialStatusNone {
