@@ -1,7 +1,7 @@
 # 导入扩展：上传 · EPUB · 元数据（2026-10-25）
 
 > 目标：让书以「文件」进去（浏览器上传 + EPUB），带出封面/分类/元数据；不支持的类型当场友好报错。
-> 边界：只存封面这一种二进制；插图/字体/CSS/MOBI/AZW3/PDF/DOCX/DRM 解密/ZIP 批量/合集拆分/追更都不做。
+> 边界：只存封面这一种二进制；插图/字体/CSS/MOBI/AZW3/PDF/DOCX/DRM 解密不做。ZIP 批量、合集拆分、追更增量见 [2026-10-25-import-p1.md](2026-10-25-import-p1.md)。
 
 ## 1. 用户可见行为
 
@@ -38,7 +38,7 @@
 200 `image/jpeg|png|webp|gif`，`Cache-Control: public, max-age=86400`；无封面 404 `not_found`。
 
 ### PATCH /api/books/{id}
-body 为任意子集：`title`、`author`、`intro`、`tags`（字符串数组，全量替换）、`series`、`seriesIndex`。
+body 为任意子集：`title`、`author`、`authors`（字符串数组，全量替换）、`intro`、`tags`（字符串数组，全量替换）、`series`、`seriesIndex`；`intro`/`series` 传空串即清空，`seriesIndex` 传 0 即清空（后续增量见 import-p1.md）。
 成功 200 返回 BookDetail；空 body 400；id 不存在 404。作者变化要重算 `authors` 聚合列。
 
 ### GET /api/books/{id} 增量字段
