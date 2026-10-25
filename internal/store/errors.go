@@ -18,6 +18,12 @@ var (
 	// 独立哨兵而不是复用 ErrConflict：调用方要能区分「有别的任务在跑（稍后重试）」
 	// 与「这份文件和库里的书对不上（重试也没用，得换文件或 --force）」。
 	ErrNotAppendable = errors.New("store: new chapters are not an extension of the stored ones")
+	// ErrNotMergeable 表示所选章节无法合并成一章（api 映射 409）。
+	//
+	// 独立哨兵而不是复用 ErrInvalidArgument：跨卷 / 不连续不是「参数写错了」，
+	// 而是「这个操作在这份目录结构上不成立」，前端应提示用户重选章节，
+	// 而不是当成表单校验错误。具体原因写在错误信息里（跨卷 / 不连续 / 少于 2 章）。
+	ErrNotMergeable = errors.New("store: chapters are not mergeable")
 	// ErrSchemaTooNew 表示库由更新版本迁移过：拒绝打开并写入，避免静默数据损坏。
 	// 具体版本在 *SchemaVersionError 上（errors.As 可取），见 schema_guard.go。
 	ErrSchemaTooNew = errors.New("store: database schema is newer than this binary")

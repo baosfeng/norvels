@@ -24,10 +24,13 @@ type errorBody struct {
 
 // 错误码：前端可据此分支，消息面向人类。
 const (
-	codeInvalidParam     = "invalid_param"
-	codeInvalidID        = "invalid_id"
-	codeNotFound         = "not_found"
-	codeConflict         = "conflict"
+	codeInvalidParam = "invalid_param"
+	codeInvalidID    = "invalid_id"
+	codeNotFound     = "not_found"
+	codeConflict     = "conflict"
+	// codeNotMergeable 表示所选章节在这份目录结构上合不了（跨卷 / 不连续）。
+	// 与 conflict 分开：前端要提示的是「重选章节」，不是「稍后重试」。
+	codeNotMergeable     = "not_mergeable"
 	codeInternal         = "internal"
 	codeMethodNotAllowed = "method_not_allowed"
 	codeQueryTooShort    = "query_too_short"

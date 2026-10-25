@@ -92,6 +92,10 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("PATCH /api/books/{id}/chapters/{cid}", s.handlePatchChapter)
 	mux.HandleFunc("DELETE /api/books/{id}/chapters/{cid}", s.handleDeleteChapter)
 	mux.HandleFunc("POST /api/books/{id}/chapters/{cid}/split", s.handleSplitChapter)
+	// 章节批量编辑（M2）：批量删除 / 合并 / 重编号。单事务，不做「部分成功」。
+	mux.HandleFunc("POST /api/books/{id}/chapters/batch-delete", s.handleBatchDeleteChapters)
+	mux.HandleFunc("POST /api/books/{id}/chapters/merge", s.handleMergeChapters)
+	mux.HandleFunc("POST /api/books/{id}/chapters/renumber", s.handleRenumberChapters)
 	// 书签（P1 阅读体验 spec §2.2）：GET/POST 挂在书下，DELETE 按书签 id 直删。
 	mux.HandleFunc("GET /api/books/{id}/bookmarks", s.handleListBookmarks)
 	mux.HandleFunc("POST /api/books/{id}/bookmarks", s.handleCreateBookmark)
