@@ -87,34 +87,6 @@ func bookOrder(sortKey string) string {
 	}
 }
 
-// bookFilter 把 BookQuery 编译成 WHERE 片段与参数。
-func bookFilter(q BookQuery) ([]string, []any) {
-	var (
-		where []string
-		args  []any
-	)
-	if s := strings.TrimSpace(q.Q); s != "" {
-		pat := "%" + escapeLike(s) + "%"
-		where = append(where, "(b.title LIKE ? ESCAPE '!' OR a.name LIKE ? ESCAPE '!')")
-		args = append(args, pat, pat)
-	}
-	if q.AuthorID != 0 {
-		where = append(where, "b.author_id = ?")
-		args = append(args, q.AuthorID)
-	}
-	if t := strings.TrimSpace(q.Tag); t != "" {
-		where = append(where, "EXISTS (SELECT 1 FROM book_tags bt JOIN tags t ON t.id = bt.tag_id "+
-			"WHERE bt.book_id = b.id AND t.name = ?)")
-		args = append(args, t)
-	}
-	// '' 表示不过滤（全部）：未标记不该成为一个可见筛选项，与 api 层口径一致。
-	if rs := strings.TrimSpace(q.ReadStatus); rs != "" {
-		where = append(where, "b.read_status = ?")
-		args = append(args, rs)
-	}
-	return where, args
-}
-
 func (s *Store) countBooks(ctx context.Context, where []string, args []any) (int, error) {
 	q := "SELECT COUNT(*) FROM books b LEFT JOIN authors a ON a.id = b.author_id"
 	if len(where) > 0 {

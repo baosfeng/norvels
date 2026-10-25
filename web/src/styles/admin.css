@@ -1,0 +1,286 @@
+/* 书籍管理（作者后台）——只补原型样式没覆盖的部分，颜色全部走 token。
+   原型来源：.open-design/09-admin.html（三屏：列表 / 单书 / 状态）。 */
+
+/* ── 列表 ── */
+.admin-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: flex-end;
+}
+.admin-filter .search-wrap {
+  flex: 1 1 220px;
+}
+.admin-filter label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.admin-books {
+  margin-top: 12px;
+}
+.admin-table th,
+.admin-table td {
+  padding: 9px 10px;
+  vertical-align: middle;
+}
+.admin-table .c-cover .cover {
+  width: 34px;
+  height: 46px;
+  font-size: 14px;
+}
+.admin-table .book-link {
+  display: block;
+  font-size: 14px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-table .book-link:hover {
+  color: var(--accent);
+}
+.admin-table .admin-author {
+  display: block;
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-warm);
+}
+.batch-bar .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ── 单书：双栏（左 372 固定，右自适应） ── */
+.book-admin {
+  display: grid;
+  grid-template-columns: minmax(0, 372px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 12px;
+}
+.book-admin .book-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.admin-cover {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+.admin-cover .cover {
+  width: 96px;
+  height: 128px;
+  flex: none;
+}
+.admin-cover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.admin-cover > .meta {
+  flex: 1 1 100%;
+  font-size: 11.5px;
+}
+.admin-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  position: sticky;
+  bottom: 0;
+}
+.admin-actions .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.notice.is-error {
+  border-color: var(--danger-text);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+/* ── 章节表：行内编辑与动作 ── */
+.admin-chapters .table-toolbar {
+  margin-bottom: 8px;
+}
+.admin-chapters .table-toolbar .search-wrap {
+  flex: 1 1 220px;
+}
+.admin-chapters .chapter-table .ch-row.is-editing .c-title {
+  grid-column: auto;
+}
+.ch-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ch-edit .input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+/* ── 拆分面板 ── */
+.confirm-dialog.is-wide {
+  width: min(920px, calc(100vw - 40px));
+}
+.split-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 264px;
+  gap: 14px;
+  align-items: start;
+  margin: 10px 0;
+}
+.split-paras {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  max-height: 44vh;
+  overflow: auto;
+}
+.split-para {
+  position: relative;
+  padding: 7px 10px 7px 42px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+.split-para .pno {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.split-para .ptext {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.split-para .pwords {
+  margin-left: 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.split-cut-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 0;
+  border-top: 1px dashed var(--border-soft);
+  border-bottom: 1px dashed var(--border-soft);
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.split-cut-btn:hover {
+  background: var(--surface-warm);
+  color: var(--fg-2);
+}
+.split-cut-btn .line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-soft);
+}
+.split-cut-btn.is-cut {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-warm);
+  font-weight: 600;
+}
+.split-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.split-side-label {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--fg-2);
+  font-weight: 600;
+}
+.split-auto {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.split-auto .field {
+  flex: 1;
+  margin: 0;
+}
+.split-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 30vh;
+  overflow: auto;
+}
+.split-piece {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  padding: 7px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.split-piece b {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.split-piece .meta {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+/* ── 窄屏：管理页在 PC 档内也要能用（平板竖屏 768–1024） ── */
+@media (max-width: 1024px) {
+  .book-admin {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split-wrap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split-paras {
+    max-height: 36vh;
+  }
+}

@@ -7,7 +7,7 @@ import { useIsH5 } from "../lib/tier";
 
 /**
  * PC 侧栏（H5 下作为汉堡抽屉内容渲染）。
- * 管理入口（驾驶舱 / 作者 / 导入管理）只在 PC 出现——H5 是条件渲染，不是隐藏。
+ * 管理入口（书籍管理 / 驾驶舱 / 作者 / 导入管理）只在 PC 出现——H5 是条件渲染，不是隐藏。
  */
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const isH5 = useIsH5();
@@ -40,6 +40,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </NavLink>
         {isH5 ? null : (
           <>
+            <NavLink to="/admin" onClick={onNavigate} data-testid="nav-admin">
+              书籍管理
+            </NavLink>
             <NavLink to="/dashboard" onClick={onNavigate}>
               驾驶舱
             </NavLink>

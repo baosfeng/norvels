@@ -22,6 +22,7 @@ const book: BookDetail = {
   seriesIndex: 2,
   tags: ["武侠", "连载"],
   serialStatus: "ongoing",
+  readStatus: "",
   lastChapterTitle: "第二章",
   lastChapterIdx: 1,
   volumes: [
@@ -45,7 +46,6 @@ const bookState = {
 };
 
 const updateBook = vi.fn<(id: number, patch: BookMetaPatch) => Promise<BookDetail>>();
-const deleteBook = vi.fn<(id: number) => Promise<void>>();
 
 vi.mock("../../api/hooks", () => ({
   useBook: () => bookState,
@@ -54,7 +54,7 @@ vi.mock("../../api/hooks", () => ({
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return { ...actual, api: { updateBook, deleteBook } };
+  return { ...actual, api: { updateBook } };
 });
 
 const { BookPage } = await import("./BookPage");
@@ -66,6 +66,7 @@ function renderPage() {
       <Routes>
         <Route path="/book/:bookId" element={<BookPage />} />
         <Route path="/shelf" element={<p>书架页</p>} />
+        <Route path="/admin/books/:bookId" element={<p>单书管理页</p>} />
       </Routes>
       <ToastHost />
     </MemoryRouter>,
@@ -79,317 +80,107 @@ describe("书籍详情：真实封面与占位回退", () => {
     bookState.data = book;
     bookState.reload = vi.fn();
     updateBook.mockReset();
-    deleteBook.mockReset();
   });
 
   it("有封面时用带版本参数的图片，并延迟加载", () => {
     renderPage();
-
     const img = screen.getByTestId("cover-image") as HTMLImageElement;
     expect(img.getAttribute("src")).toBe(`/api/books/7/cover?v=${coverVersion}`);
     expect(img.getAttribute("loading")).toBe("lazy");
   });
 
   it("图片加载失败时回落到书名首字占位，而不是留一格空白", () => {
-    const { container } = renderPage();
-
+    renderPage();
     fireEvent.error(screen.getByTestId("cover-image"));
-
     expect(screen.queryByTestId("cover-image")).toBeNull();
-    expect(container.querySelector(".cover span")?.textContent).toBe("示");
-    expect(screen.getByRole("img", { name: "示例书简 的封面" })).toBeTruthy();
+    expect(screen.getByText("示")).toBeTruthy();
   });
 
   it("没有封面的书直接用占位", () => {
     bookState.data = { ...book, hasCover: false };
-    const { container } = renderPage();
-
+    renderPage();
     expect(screen.queryByTestId("cover-image")).toBeNull();
-    expect(container.querySelector(".cover span")?.textContent).toBe("示");
   });
 });
 
-describe("书籍详情：元数据编辑", () => {
+describe("书籍详情：只读展示", () => {
   beforeEach(() => {
     bookState.data = book;
-    bookState.reload = vi.fn();
     updateBook.mockReset();
-    deleteBook.mockReset();
   });
 
-  it("编辑表单回填当前值，保存只提交改过的字段（清空的系列下发空串）", async () => {
-    updateBook.mockResolvedValueOnce({ ...book, title: "示例书简 新版", updatedAt: "2026-10-25T03:00:00.000Z" });
+  it("页头用顿号连起多作者，并展示连载状态与最新章节", () => {
+    bookState.data = { ...book, authors: ["示例作者", "另一位"], authorName: "示例作者" };
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    expect((screen.getByLabelText("书名") as HTMLInputElement).value).toBe("示例书简");
-    expect((screen.getByLabelText("作者") as HTMLInputElement).value).toBe("示例作者");
-    expect((screen.getByLabelText("标签") as HTMLInputElement).value).toBe("武侠，连载");
-
-    fireEvent.change(screen.getByLabelText("书名"), { target: { value: "示例书简 新版" } });
-    fireEvent.change(screen.getByLabelText("标签"), { target: { value: "武侠, 连载, 武侠, 悬疑" } });
-    fireEvent.change(screen.getByLabelText("系列"), { target: { value: "" } });
-    fireEvent.change(screen.getByLabelText("系列序号"), { target: { value: "3" } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    expect(updateBook.mock.calls[0][0]).toBe(7);
-    // 重复的「武侠」被去掉；清空的「系列」按契约下发空串，序号改成 3
-    expect(updateBook.mock.calls[0][1]).toEqual({
-      title: "示例书简 新版",
-      tags: ["武侠", "连载", "悬疑"],
-      series: "",
-      seriesIndex: 3,
-    });
-    expect(bookState.reload).toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByTestId("book-edit-form")).toBeNull());
-    expect(screen.getByTestId("book-notice").textContent).toContain("已保存");
+    expect(screen.getByTestId("book-byline").textContent).toContain("示例作者、另一位");
+    expect(screen.getByTestId("book-serial").textContent).toBe("连载中");
+    expect(screen.getByTestId("book-last-chapter").textContent).toContain("第 2 章 · 第二章");
   });
 
-  it("书名清空时先拦下，不把空字段发给后端", () => {
+  it("还没有章节时元信息行说清「暂无章节」", () => {
+    bookState.data = { ...book, volumes: [], lastChapterIdx: -1, lastChapterTitle: "" };
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.change(screen.getByLabelText("书名"), { target: { value: "   " } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    expect(screen.getByTestId("book-edit-error").textContent).toContain("书名不能为空");
-    expect(updateBook).not.toHaveBeenCalled();
+    expect(screen.getByTestId("book-last-chapter").textContent).toContain("暂无章节");
   });
 
-  it("没有改动时提示而不是发空请求", () => {
+  it("展示标签；标签为空时不渲染标签行", () => {
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    expect(screen.getByTestId("book-edit-error").textContent).toContain("还没有改动");
-    expect(updateBook).not.toHaveBeenCalled();
-  });
-
-  it("保存失败把后端错误翻成人话，表单留着可重试", async () => {
-    updateBook.mockRejectedValueOnce(new ApiError("http", "not found", 404, "not_found"));
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.change(screen.getByLabelText("简介"), { target: { value: "改过的简介。" } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    await waitFor(() => expect(screen.getByTestId("book-edit-error").textContent).toContain("这本书已经不在了"));
-    expect(screen.getByTestId("book-edit-form")).toBeTruthy();
-  });
-
-  it("详情页展示当前标签；标签为空时不渲染标签行", () => {
-    const { unmount } = renderPage();
     expect(screen.getByTestId("book-tags").textContent).toContain("武侠");
-    unmount();
+  });
 
+  it("标签为空时不渲染标签行", () => {
     bookState.data = { ...book, tags: [] };
     renderPage();
     expect(screen.queryByTestId("book-tags")).toBeNull();
   });
 
-  it("清空简介时下发空串，后端据此真的清掉", async () => {
+  it("阅读状态下拉回填当前值，改一次只提交 readStatus 并即时回显", async () => {
+    updateBook.mockResolvedValue({ ...book, readStatus: "reading" });
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.change(screen.getByLabelText("简介"), { target: { value: "   " } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    expect(updateBook.mock.calls[0][1]).toEqual({ intro: "" });
+    fireEvent.change(screen.getByTestId("book-read-status"), { target: { value: "reading" } });
+    await waitFor(() => expect(updateBook).toHaveBeenCalledWith(7, { readStatus: "reading" }));
+    await waitFor(() => expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe("reading"));
   });
 
-  it("清空系列名与系列序号时分别下发空串与 0", async () => {
+  it("阅读状态写失败时退回原值，不用后端错误原文", async () => {
+    updateBook.mockRejectedValue(new ApiError("http", "store: boom", 500));
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.change(screen.getByLabelText("系列"), { target: { value: "" } });
-    fireEvent.change(screen.getByLabelText("系列序号"), { target: { value: "" } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    expect(updateBook.mock.calls[0][1]).toEqual({ series: "", seriesIndex: 0 });
+    fireEvent.change(screen.getByTestId("book-read-status"), { target: { value: "done" } });
+    await waitFor(() => expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe(""));
+    expect(screen.getByTestId("toast").textContent).not.toContain("store:");
   });
 
-  it("作者按顿号拆成多个，去空后提交 authors", async () => {
+  it("有书签时元信息区显示条数", () => {
+    bookState.data = { ...book, bookmarkCount: 3 };
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.change(screen.getByLabelText("作者"), { target: { value: "张三、李四" } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    expect(updateBook.mock.calls[0][1]).toEqual({ authors: ["张三", "李四"] });
+    expect(screen.getByTestId("book-bookmark-count").textContent).toContain("3");
   });
 
-  it("作者被清空时先拦下，不下发空数组", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.change(screen.getByLabelText("作者"), { target: { value: " 、 ， " } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    expect(screen.getByTestId("book-edit-error").textContent).toContain("作者不能为空");
-    expect(updateBook).not.toHaveBeenCalled();
-  });
-
-  it("多作者在页头用顿号连起来展示", () => {
-    bookState.data = { ...book, authors: ["张三", "李四"] };
-    renderPage();
-
-    expect(screen.getByTestId("book-byline").textContent).toContain("张三、李四");
-  });
-});
-
-describe("书籍详情：连载状态与最新章节", () => {
-  beforeEach(() => {
-    bookState.data = book;
-    bookState.reload = vi.fn();
-    updateBook.mockReset();
-    deleteBook.mockReset();
-  });
-
-  it("页头显示连载状态，元信息行显示最后更新与最新章节", () => {
-    renderPage();
-
-    expect(screen.getByTestId("book-serial").textContent).toBe("连载中");
-    const meta = screen.getByTestId("book-last-chapter").textContent ?? "";
-    expect(meta).toContain("最后更新");
-    expect(meta).toContain("第 2 章");
-    expect(meta).toContain("第二章");
-  });
-
-  it("还没有章节时元信息行说清「暂无章节」，不留空白", () => {
-    bookState.data = { ...book, lastChapterTitle: undefined, lastChapterIdx: undefined };
-    renderPage();
-
-    expect(screen.getByTestId("book-last-chapter").textContent).toContain("暂无章节");
-    expect(screen.getByTestId("book-serial").textContent).toBe("连载中");
-  });
-
-  it("改连载状态只提交 serialStatus，其它字段不带", async () => {
-    updateBook.mockResolvedValueOnce({ ...book, serialStatus: "completed" });
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    const select = screen.getByLabelText("连载状态") as HTMLSelectElement;
-    expect(select.value).toBe("ongoing");
-
-    fireEvent.change(select, { target: { value: "completed" } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    expect(updateBook.mock.calls[0][1]).toEqual({ serialStatus: "completed" });
-  });
-
-  it("连载状态改回未知时下发空串，后端据此清空", async () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "编辑信息" }));
-    fireEvent.change(screen.getByLabelText("连载状态"), { target: { value: "" } });
-    fireEvent.click(screen.getByTestId("book-edit-save"));
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    expect(updateBook.mock.calls[0][1]).toEqual({ serialStatus: "" });
-  });
-});
-
-describe("书籍详情：阅读状态", () => {
-  beforeEach(() => {
-    bookState.data = { ...book, readStatus: "want" };
-    bookState.reload = vi.fn();
-    updateBook.mockReset();
-    deleteBook.mockReset();
-  });
-
-  it("元信息区的下拉回填当前状态，改一次只提交 readStatus 并即时回显", async () => {
-    updateBook.mockResolvedValueOnce({ ...book, readStatus: "reading" });
-    renderPage();
-
-    const select = screen.getByTestId("book-read-status") as HTMLSelectElement;
-    expect(select.value).toBe("want");
-
-    fireEvent.change(select, { target: { value: "reading" } });
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    expect(updateBook.mock.calls[0]).toEqual([7, { readStatus: "reading" }]);
-    expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe("reading");
-    expect(screen.getByTestId("book-notice").textContent).toContain("在读");
-  });
-
-  it("PATCH 失败时下拉退回原值并提示，不用后端错误原文", async () => {
-    updateBook.mockRejectedValueOnce(new ApiError("http", "invalid_param", 400, "invalid_param"));
-    renderPage();
-
-    const select = screen.getByTestId("book-read-status") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "done" } });
-
-    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe("want"));
-    await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("有几项内容不符合要求"));
-  });
-
-  it("有书签时元信息区显示条数，没有就不占位", () => {
-    bookState.data = { ...book, readStatus: "reading", bookmarkCount: 3 };
-    const { unmount } = renderPage();
-    expect(screen.getByTestId("book-bookmark-count").textContent).toContain("3 条");
-    unmount();
-
-    bookState.data = { ...book, readStatus: "reading", bookmarkCount: 0 };
+  it("没有书签时不占位", () => {
+    bookState.data = { ...book, bookmarkCount: 0 };
     renderPage();
     expect(screen.queryByTestId("book-bookmark-count")).toBeNull();
   });
 });
 
-describe("书籍详情：删除书籍的二次确认", () => {
+describe("书籍详情：管理入口已迁出（P1 管理页）", () => {
   beforeEach(() => {
     bookState.data = book;
-    bookState.reload = vi.fn();
     updateBook.mockReset();
-    deleteBook.mockReset();
   });
 
-  it("没输入书名时确认按钮不可点，点了也不发请求", () => {
+  it("详情页不再出现编辑与删除控件", () => {
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "删除这本书" }));
-    expect(screen.getByTestId("delete-dialog")).toBeTruthy();
-    expect((screen.getByTestId("delete-confirm") as HTMLButtonElement).disabled).toBe(true);
-
-    // 少一个字也不行
-    fireEvent.change(screen.getByLabelText("输入书名「示例书简」以确认"), { target: { value: "示例书" } });
-    expect((screen.getByTestId("delete-confirm") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByTestId("delete-confirm"));
-
-    expect(deleteBook).not.toHaveBeenCalled();
-    expect(screen.getByTestId("delete-dialog")).toBeTruthy();
+    expect(screen.queryByTestId("book-edit-form")).toBeNull();
+    expect(screen.queryByText("编辑信息")).toBeNull();
+    expect(screen.queryByText("删除这本书")).toBeNull();
   });
 
-  it("书名对上后调 DELETE，成功回书架并弹 toast", async () => {
-    deleteBook.mockResolvedValueOnce(undefined);
+  it("PC 上给出「管理这本书」入口，指向独立的书籍管理页", async () => {
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "删除这本书" }));
-    fireEvent.change(screen.getByLabelText("输入书名「示例书简」以确认"), { target: { value: "示例书简" } });
-    expect((screen.getByTestId("delete-confirm") as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByTestId("delete-confirm"));
-
-    await waitFor(() => expect(deleteBook).toHaveBeenCalledWith(7));
-    await waitFor(() => expect(screen.getByText("书架页")).toBeTruthy());
-    expect(screen.getByTestId("toast").textContent).toContain("已删除《示例书简》");
-  });
-
-  it("删除失败时弹层留着可重试，并把原因说成人话", async () => {
-    deleteBook.mockRejectedValueOnce(new ApiError("http", "boom", 500));
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "删除这本书" }));
-    fireEvent.change(screen.getByLabelText("输入书名「示例书简」以确认"), { target: { value: "示例书简" } });
-    fireEvent.click(screen.getByTestId("delete-confirm"));
-
-    await waitFor(() => expect(screen.getByTestId("delete-error").textContent).toContain("删除没能完成"));
-    expect(screen.getByTestId("delete-dialog")).toBeTruthy();
-    expect(screen.queryByText("书架页")).toBeNull();
+    const link = screen.getByTestId("book-admin-link") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("/admin/books/7");
+    fireEvent.click(link);
+    await waitFor(() => expect(screen.getByText("单书管理页")).toBeTruthy());
   });
 });

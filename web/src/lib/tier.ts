@@ -13,7 +13,7 @@ export function tierOf(matches: boolean): Tier {
 }
 
 /** 该路由是否属于管理能力：H5 下不渲染，也直接不承认这个路由。 */
-export const MANAGEMENT_ROUTES = ["import", "authors", "dashboard"] as const;
+export const MANAGEMENT_ROUTES = ["import", "authors", "dashboard", "admin"] as const;
 
 export function isManagementRoute(segment: string): boolean {
   return (MANAGEMENT_ROUTES as readonly string[]).includes(segment);

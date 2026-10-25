@@ -16,8 +16,10 @@ import type {
   ImportTrendPoint,
   Page,
   ReadStatus,
+  SerialStatus,
   ReadingProgress,
   SearchResult,
+  SplitResult,
   Stats,
   TagRule,
   TagRules,
@@ -170,6 +172,8 @@ export interface BookQuery {
   size?: number;
   /** 阅读状态筛选：want / reading / done；不传即全部（含未标记）。空串不落进 URL。 */
   readStatus?: Exclude<ReadStatus, "">;
+  /** 连载状态筛选：ongoing / completed / none（未知）；不传即全部。 */
+  serialStatus?: Exclude<SerialStatus, ""> | "none";
 }
 
 /** 契约文档（docs/specs/2026-10-25-p1-reading.md §2.3）里的名字；与 BookQuery 是同一份参数。 */
@@ -266,6 +270,42 @@ export const api = {
   /** 删书签：204；不存在 404 not_found。 */
   deleteBookmark: (id: number, opts?: RequestOptions) =>
     request<void>(`/bookmarks/${id}`, { ...opts, method: "DELETE" }),
+  /**
+   * 改一章标题：204 无响应体。章节结构编辑（改标题/拆分/删除）都即时生效，
+   * 不进「保存」批次——见 docs/specs/2026-10-25-book-management-m1.md §2。
+   */
+  updateChapter: (bookId: number, chapterId: number, title: string, opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/chapters/${chapterId}`, { ...opts, method: "PATCH", body: { title } }),
+  /**
+   * 按段落边界拆章：cutAfter 是 0 起的段落下标（「在这一段之后切开」），必须严格递增。
+   * 后端只切 span、不重压正文，所以几万字的章也是毫秒级；返回拆完后的章数。
+   */
+  splitChapter: (bookId: number, chapterId: number, cutAfter: number[], opts?: RequestOptions) =>
+    request<SplitResult>(`/books/${bookId}/chapters/${chapterId}/split`, {
+      ...opts,
+      method: "POST",
+      body: { cutAfter },
+    }),
+  /** 删一章：204；后面章节序号由后端补齐。 */
+  deleteChapter: (bookId: number, chapterId: number, opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/chapters/${chapterId}`, { ...opts, method: "DELETE" }),
+  /**
+   * 上传封面：multipart 单文件（字段名 cover），单张 ≤2 MiB，JPEG/PNG/WebP/GIF。
+   * 成功 204，之后要 reload 详情：封面地址的版本参数取自 books.updatedAt。
+   */
+  uploadCover: (bookId: number, file: File, opts?: RequestOptions) => {
+    const form = new FormData();
+    form.append("cover", file, file.name);
+    return request<void>(`/books/${bookId}/cover`, {
+      ...opts,
+      method: "PUT",
+      rawBody: form,
+      timeoutMs: opts?.timeoutMs ?? 60_000,
+    });
+  },
+  /** 删封面：204（幂等，本来没有也算成功）。 */
+  deleteCover: (bookId: number, opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/cover`, { ...opts, method: "DELETE" }),
   /** 改书名/作者/简介/标签/系列/连载状态/阅读状态：任意子集，返回更新后的详情。 */
   updateBook: (id: number, patch: BookMetaPatch, opts?: RequestOptions) =>
     request<BookDetail>(`/books/${id}`, { ...opts, method: "PATCH", body: patch }),

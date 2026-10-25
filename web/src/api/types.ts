@@ -79,6 +79,8 @@ export interface BookSummary extends BookMeta {
   status: BookStatus;
   /** 阅读状态；后端未升级时缺省，前端一律按 `""`（未标记）处理。 */
   readStatus?: ReadStatus;
+  /** 连载状态；列表也返回（管理页的筛选与列都用它），缺省按 `""`（未知）。 */
+  serialStatus?: SerialStatus;
   /** 本书书签总数；缺省时按「还不知道」处理，不展示。 */
   bookmarkCount?: number;
   importedAt: string;
@@ -90,6 +92,14 @@ export interface Page<T> {
   total: number;
   page: number;
   size: number;
+}
+
+/** 连载状态筛选值：none 专门筛「未知」（后端用同名字段承接）。 */
+export type SerialStatusFilter = Exclude<SerialStatus, ""> | "none";
+
+/** POST /api/books/{id}/chapters/{cid}/split 的响应：拆完后的章数。 */
+export interface SplitResult {
+  chapters: number;
 }
 
 export interface ChapterBrief {
@@ -110,8 +120,6 @@ export interface Volume {
 export interface BookDetail extends BookSummary {
   /** 有序作者列表；存量书按主作者兜底，所以通常至少一项。authorName 仍是主作者。 */
   authors: string[];
-  /** 连载状态；后端未升级时缺省，前端一律按 `""`（未知）处理。 */
-  serialStatus?: SerialStatus;
   /** 最后一章（idx 最大的章节）的标题；书还没有章节时缺省 */
   lastChapterTitle?: string;
   /** 最后一章的章序（从 0 起）；书还没有章节时缺省 */

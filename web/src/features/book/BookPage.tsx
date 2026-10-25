@@ -1,13 +1,13 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useBook, useReadingProgress } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
-import type { BookDetail, BookMetaPatch, ReadStatus, SerialStatus, Volume } from "../../api/types";
+import type { BookDetail, ReadStatus, SerialStatus, Volume } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { ChapterList } from "./ChapterList";
-import { DeleteBookDialog } from "./DeleteBookDialog";
 import { formatCount, formatDate } from "../../lib/format";
+import { authorsOf } from "../../lib/metaDraft";
 import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
 import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
@@ -24,8 +24,6 @@ export function BookPage() {
   const location = useLocation();
   const [openVolumes, setOpenVolumes] = useState<Set<number>>(new Set());
   const [introOpen, setIntroOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState("");
   /** 状态下拉的乐观值：PATCH 成功即时回显，失败退回后端值 */
   const [readStatus, setReadStatus] = useState<ReadStatus | null>(null);
@@ -127,26 +125,12 @@ export function BookPage() {
                 从第一章开始
               </Link>
             ) : null}
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => {
-                setEditing((value) => !value);
-                setNotice("");
-              }}
-            >
-              {editing ? "收起编辑" : "编辑信息"}
-            </button>
-            <button
-              className="btn btn-ghost btn-danger"
-              type="button"
-              onClick={() => {
-                setDeleting(true);
-                setNotice("");
-              }}
-            >
-              删除这本书
-            </button>
+            {/* 详情页只读：改信息、传封面、改章节、删书都在独立的书籍管理页（/admin） */}
+            {isH5 ? null : (
+              <Link className="btn btn-ghost" to={`/admin/books/${book.id}`} data-testid="book-admin-link">
+                管理这本书
+              </Link>
+            )}
           </div>
           <dl className="facts">
             <div>
@@ -229,18 +213,6 @@ export function BookPage() {
             <p className="meta" role="status" data-testid="book-notice">
               {notice}
             </p>
-          ) : null}
-          {editing ? (
-            <BookEditForm
-              key={book.updatedAt}
-              book={book}
-              onSaved={() => {
-                setEditing(false);
-                setNotice("已保存，页面上的信息已更新。");
-                reload();
-              }}
-              onCancel={() => setEditing(false)}
-            />
           ) : null}
 
           {intro ? (
@@ -328,18 +300,6 @@ export function BookPage() {
         </div>
       </div>
 
-      {deleting ? (
-        <DeleteBookDialog
-          bookId={book.id}
-          title={book.title}
-          onClose={() => setDeleting(false)}
-          onDeleted={() => {
-            setDeleting(false);
-            showToast(`已删除《${book.title}》`);
-            navigate("/shelf");
-          }}
-        />
-      ) : null}
     </section>
   );
 }
@@ -366,87 +326,6 @@ function lastChapterLabel(book: BookDetail): string {
   return "暂无章节";
 }
 
-interface MetaDraft {
-  title: string;
-  authors: string;
-  intro: string;
-  tags: string;
-  series: string;
-  seriesIndex: string;
-  serialStatus: SerialStatus;
-}
-
-/** 作者列表：新契约带 authors；老数据只有主作者时按它兜底，两者都没有就是空。 */
-function authorsOf(book: BookDetail): string[] {
-  const list = (book.authors ?? []).map((name) => name.trim()).filter(Boolean);
-  if (list.length > 0) return list;
-  return book.authorName ? [book.authorName] : [];
-}
-
-/** 表单初值：作者与标签用「，」拼成一行；系列序号只在有值时显示。 */
-function draftOf(book: BookDetail): MetaDraft {
-  return {
-    title: book.title ?? "",
-    authors: authorsOf(book).join("，"),
-    intro: stripTags(book.intro),
-    tags: (book.tags ?? []).join("，"),
-    series: book.series ?? "",
-    seriesIndex: book.seriesIndex ? String(book.seriesIndex) : "",
-    serialStatus: book.serialStatus ?? "",
-  };
-}
-
-/** 作者按逗号/顿号/分号/换行分隔，去空白并按输入顺序去重。 */
-function parseAuthors(value: string): string[] {
-  const seen = new Set<string>();
-  for (const raw of value.split(/[,，、;；\n\r]+/)) {
-    const name = raw.trim();
-    if (name) seen.add(name);
-  }
-  return [...seen];
-}
-
-/** 系列序号：空串即 0（清空）；填了非数字或负数返回 NaN，由表单拦下。 */
-function parseSeriesIndex(value: string): number {
-  const text = value.trim();
-  if (!text) return 0;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : Number.NaN;
-}
-
-/** 标签按逗号或换行分隔，去空白并自动去重。 */
-function parseTags(value: string): string[] {
-  const seen = new Set<string>();
-  for (const raw of value.split(/[,，\n\r]+/)) {
-    const tag = raw.trim();
-    if (tag) seen.add(tag);
-  }
-  return [...seen];
-}
-
-/**
- * 只提交「改过」的字段：后端空 body 会 400；与初值不同就下发，
- * 空串与 0 也照发（契约里 ""/0 就是清空），没改的字段不出现。
- * 作者统一走 authors（后端 authors 优先，author 只读展示）。
- */
-function buildPatch(draft: MetaDraft, origin: MetaDraft): BookMetaPatch {
-  const patch: BookMetaPatch = {};
-  const title = draft.title.trim();
-  if (title && title !== origin.title.trim()) patch.title = title;
-  const authors = parseAuthors(draft.authors);
-  if (authors.join("\u0000") !== parseAuthors(origin.authors).join("\u0000")) patch.authors = authors;
-  const intro = draft.intro.trim();
-  if (intro !== origin.intro.trim()) patch.intro = intro;
-  const series = draft.series.trim();
-  if (series !== origin.series.trim()) patch.series = series;
-  const seriesIndex = parseSeriesIndex(draft.seriesIndex);
-  if (seriesIndex !== parseSeriesIndex(origin.seriesIndex)) patch.seriesIndex = seriesIndex;
-  const tags = parseTags(draft.tags);
-  if (tags.join("\u0000") !== parseTags(origin.tags).join("\u0000")) patch.tags = tags;
-  if (draft.serialStatus !== origin.serialStatus) patch.serialStatus = draft.serialStatus;
-  return patch;
-}
-
 /** 保存失败的文案：按状态码翻成人话，不把后端错误直接展示。 */
 function metaErrorText(error: unknown): string {
   if (error instanceof ApiError) {
@@ -457,142 +336,3 @@ function metaErrorText(error: unknown): string {
   return "保存没能完成，稍后再试。";
 }
 
-/**
- * 编辑表单：书名 / 作者 / 简介 / 标签 / 系列。
- * 保存中与失败只在本区块提示，不遮挡目录；成功后由父组件刷新并收起。
- */
-function BookEditForm({
-  book,
-  onSaved,
-  onCancel,
-}: {
-  book: BookDetail;
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const origin = draftOf(book);
-  const [draft, setDraft] = useState<MetaDraft>(origin);
-  const [saving, setSaving] = useState(false);
-  const [errorText, setErrorText] = useState("");
-
-  function update(key: keyof MetaDraft, value: string) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft.title.trim()) {
-      setErrorText("书名不能为空。");
-      return;
-    }
-    if (parseAuthors(draft.authors).length === 0) {
-      setErrorText("作者不能为空，至少填一个。");
-      return;
-    }
-    if (Number.isNaN(parseSeriesIndex(draft.seriesIndex))) {
-      setErrorText("系列序号要填 0 或正整数，留空表示清空。");
-      return;
-    }
-    const patch = buildPatch(draft, origin);
-    if (Object.keys(patch).length === 0) {
-      setErrorText("还没有改动，改一项再保存。");
-      return;
-    }
-    setSaving(true);
-    setErrorText("");
-    try {
-      await api.updateBook(book.id, patch);
-      onSaved();
-    } catch (err) {
-      setErrorText(metaErrorText(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form className="import-form" data-testid="book-edit-form" onSubmit={save} style={{ marginTop: 16 }}>
-      <h2>编辑书籍信息</h2>
-      <div className="field">
-        <label htmlFor="meta-title">书名</label>
-        <input className="input" id="meta-title" value={draft.title} onChange={(e) => update("title", e.target.value)} />
-      </div>
-      <div className="field">
-        <label htmlFor="meta-author">作者</label>
-        <input
-          className="input"
-          id="meta-author"
-          value={draft.authors}
-          placeholder="多位作者用「、」或逗号分隔，例如 张三、李四"
-          onChange={(e) => update("authors", e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="meta-intro">简介</label>
-        <textarea
-          className="input"
-          id="meta-intro"
-          rows={4}
-          value={draft.intro}
-          onChange={(e) => update("intro", e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="meta-tags">标签</label>
-        <textarea
-          className="input"
-          id="meta-tags"
-          rows={2}
-          value={draft.tags}
-          placeholder="例如 武侠, 连载（逗号或回车分隔，重复自动去掉）"
-          onChange={(e) => update("tags", e.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="meta-serial-status">连载状态</label>
-        <select
-          className="input"
-          id="meta-serial-status"
-          value={draft.serialStatus}
-          onChange={(e) => update("serialStatus", e.target.value)}
-        >
-          <option value="">未知</option>
-          <option value="ongoing">连载中</option>
-          <option value="completed">已完结</option>
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="meta-series">系列</label>
-        <input className="input" id="meta-series" value={draft.series} onChange={(e) => update("series", e.target.value)} />
-      </div>
-      <div className="field">
-        <label htmlFor="meta-series-index">系列序号</label>
-        <input
-          className="input"
-          id="meta-series-index"
-          type="number"
-          min={0}
-          placeholder="留空表示清空"
-          value={draft.seriesIndex}
-          onChange={(e) => update("seriesIndex", e.target.value)}
-        />
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button className="btn btn-primary" type="submit" disabled={saving} data-testid="book-edit-save">
-          {saving ? "正在保存…" : "保存"}
-        </button>
-        <button className="btn btn-ghost" type="button" onClick={onCancel} disabled={saving}>
-          取消
-        </button>
-      </div>
-      <p className="meta">
-        简介、系列留空即清空，系列序号留空或填 0 即清空；标签留空即清空。没改的项不会被提交。
-      </p>
-      {errorText ? (
-        <p className="meta" role="alert" data-testid="book-edit-error">
-          {errorText}
-        </p>
-      ) : null}
-    </form>
-  );
-}

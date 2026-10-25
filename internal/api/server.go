@@ -85,6 +85,13 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("PATCH /api/books/{id}", s.handlePatchBook)
 	mux.HandleFunc("DELETE /api/books/{id}", s.handleDeleteBook)
 	mux.HandleFunc("GET /api/books/{id}/cover", s.handleGetBookCover)
+	// 封面写入（管理页 M1）：上传走 multipart，删除是幂等的（本来没有也 204）。
+	mux.HandleFunc("PUT /api/books/{id}/cover", s.handlePutBookCover)
+	mux.HandleFunc("DELETE /api/books/{id}/cover", s.handleDeleteBookCover)
+	// 章节结构编辑（管理页 M1）：改标题 / 拆分 / 删除都是即时生效，不进「保存」批次。
+	mux.HandleFunc("PATCH /api/books/{id}/chapters/{cid}", s.handlePatchChapter)
+	mux.HandleFunc("DELETE /api/books/{id}/chapters/{cid}", s.handleDeleteChapter)
+	mux.HandleFunc("POST /api/books/{id}/chapters/{cid}/split", s.handleSplitChapter)
 	// 书签（P1 阅读体验 spec §2.2）：GET/POST 挂在书下，DELETE 按书签 id 直删。
 	mux.HandleFunc("GET /api/books/{id}/bookmarks", s.handleListBookmarks)
 	mux.HandleFunc("POST /api/books/{id}/bookmarks", s.handleCreateBookmark)

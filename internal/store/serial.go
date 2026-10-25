@@ -11,6 +11,12 @@ const (
 	SerialStatusCompleted = "completed" // 已完结
 )
 
+// SerialStatusNone 是**列表筛选**专用哨兵：筛出「未知」（serial_status = ”）的书。
+//
+// 空串已经被「不过滤」占用，所以筛选口径另起一个值；它不进入落库白名单，
+// 只出现在 GET /api/books?serialStatus=none 这一条查询路径上。
+const SerialStatusNone = "none"
+
 // serialStatuses 是允许落库的取值集合（白名单而不是黑名单：非法值一律拒收）。
 var serialStatuses = map[string]bool{
 	SerialStatusUnknown:   true,

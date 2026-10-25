@@ -18,6 +18,9 @@ type BookQuery struct {
 	Size     int    // 每页条数
 	// ReadStatus 是阅读状态筛选：''（不过滤）| want | reading | done。
 	ReadStatus string
+	// SerialStatus 是连载状态筛选：''（不过滤）| ongoing | completed | none（= 未知）。
+	// none 是「筛出没标状态的存量书」的哨兵值——空串已经被「不过滤」占用。
+	SerialStatus string
 }
 
 // AuthorQuery 描述作者列表的过滤与排序。

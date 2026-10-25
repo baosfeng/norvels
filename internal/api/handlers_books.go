@@ -19,45 +19,59 @@ var bookSorts = map[string]bool{
 }
 
 func (s *Server) handleListBooks(w http.ResponseWriter, r *http.Request) {
-	page, size, err := parsePagination(r)
+	q, err := bookListQuery(r)
 	if err != nil {
 		s.badRequest(w, err, codeInvalidParam)
 		return
-	}
-	sort := strings.TrimSpace(r.URL.Query().Get("sort"))
-	if sort == "" {
-		sort = "updated"
-	}
-	if !bookSorts[sort] {
-		s.badRequest(w, badParam("参数 sort 只支持 updated|title|chapters|words|imported"), codeInvalidParam)
-		return
-	}
-	authorID, _, err := int64Query(r, "authorId")
-	if err != nil {
-		s.badRequest(w, err, codeInvalidParam)
-		return
-	}
-	readStatus := strings.TrimSpace(r.URL.Query().Get("readStatus"))
-	if readStatus != "" && !store.ValidReadStatus(readStatus) {
-		s.badRequest(w, badParam("参数 readStatus 只支持 want|reading|done（留空表示不过滤）"), codeInvalidParam)
-		return
-	}
-	q := store.BookQuery{
-		Q:          strings.TrimSpace(r.URL.Query().Get("q")),
-		AuthorID:   authorID,
-		Tag:        strings.TrimSpace(r.URL.Query().Get("tag")),
-		Sort:       sort,
-		Page:       page,
-		Size:       size,
-		ReadStatus: readStatus,
 	}
 	res, err := s.st.ListBooks(r.Context(), q)
 	if err != nil {
 		s.fail(w, r, err, "书籍列表不可用")
 		return
 	}
-	normalizePage(&res, page, size)
+	normalizePage(&res, q.Page, q.Size)
 	writeJSON(w, http.StatusOK, res)
+}
+
+// bookListQuery 解析并校验 GET /api/books 的查询参数。
+//
+// 抽成函数的原因：每加一个筛选维度就要多一段「取值 → 校验 → 落库口径」，
+// 留在 handler 里会把圈复杂度顶过 10（门禁 4）。
+func bookListQuery(r *http.Request) (store.BookQuery, error) {
+	page, size, err := parsePagination(r)
+	if err != nil {
+		return store.BookQuery{}, err
+	}
+	sort := strings.TrimSpace(r.URL.Query().Get("sort"))
+	if sort == "" {
+		sort = "updated"
+	}
+	if !bookSorts[sort] {
+		return store.BookQuery{}, badParam("参数 sort 只支持 updated|title|chapters|words|imported")
+	}
+	authorID, _, err := int64Query(r, "authorId")
+	if err != nil {
+		return store.BookQuery{}, err
+	}
+	readStatus := strings.TrimSpace(r.URL.Query().Get("readStatus"))
+	if readStatus != "" && !store.ValidReadStatus(readStatus) {
+		return store.BookQuery{}, badParam("参数 readStatus 只支持 want|reading|done（留空表示不过滤）")
+	}
+	// 连载状态筛选（管理页的筛选条）：none 筛出「未知」，留空表示不过滤。
+	serialStatus := strings.TrimSpace(r.URL.Query().Get("serialStatus"))
+	if serialStatus != "" && serialStatus != store.SerialStatusNone && !store.ValidSerialStatus(serialStatus) {
+		return store.BookQuery{}, badParam("参数 serialStatus 只支持 ongoing|completed|none（留空表示不过滤）")
+	}
+	return store.BookQuery{
+		Q:            strings.TrimSpace(r.URL.Query().Get("q")),
+		AuthorID:     authorID,
+		Tag:          strings.TrimSpace(r.URL.Query().Get("tag")),
+		Sort:         sort,
+		Page:         page,
+		Size:         size,
+		ReadStatus:   readStatus,
+		SerialStatus: serialStatus,
+	}, nil
 }
 
 func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {

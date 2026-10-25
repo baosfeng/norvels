@@ -8,13 +8,15 @@ import { SearchPage } from "./features/search/SearchPage";
 import { ImportPage } from "./features/import/ImportPage";
 import { AuthorsPage } from "./features/authors/AuthorsPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { AdminBooksPage } from "./features/admin/AdminBooksPage";
+import { AdminBookPage } from "./features/admin/AdminBookPage";
 import { TierRoute } from "./layouts/TierRoute";
 import { LandingRedirect, NotFoundPage, TierHomeRedirect } from "./layouts/Redirects";
 
 /**
  * 路由表。
  * - 阅读器是独立外壳（没有侧栏/顶栏），其余视图共用 AppShell。
- * - 管理类视图（驾驶舱 / 导入 / 作者）包在 TierRoute 里：H5 下不是隐藏，而是根本不渲染。
+ * - 管理类视图（驾驶舱 / 导入 / 作者 / 书籍管理）包在 TierRoute 里：H5 下不是隐藏，而是根本不渲染。
  */
 export const routeTable: RouteObject[] = [
   { path: "/", element: <TierHomeRedirect /> },
@@ -45,6 +47,23 @@ export const routeTable: RouteObject[] = [
         element: (
           <TierRoute>
             <AuthorsPage />
+          </TierRoute>
+        ),
+      },
+      // 书籍管理（作者后台）：PC 专属，H5 下由 TierRoute 直接不渲染
+      {
+        path: "admin",
+        element: (
+          <TierRoute>
+            <AdminBooksPage />
+          </TierRoute>
+        ),
+      },
+      {
+        path: "admin/books/:bookId",
+        element: (
+          <TierRoute>
+            <AdminBookPage />
           </TierRoute>
         ),
       },

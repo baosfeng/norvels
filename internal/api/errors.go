@@ -120,6 +120,26 @@ func (s *Server) failBlockCorrupted(w http.ResponseWriter, r *http.Request, err 
 	writeError(w, http.StatusServiceUnavailable, codeContentCorrupted, "本章正文读取失败")
 }
 
+// failParam 把入参非法类错误翻成 400，并把 store 层的原因带给前端。
+//
+// store 的错误文本形如 "store: invalid argument: 拆分点必须严格递增"：
+// 前半截是给日志看的，用户只需要最后那段原因；拿不到原因时退回通用文案。
+func (s *Server) failParam(w http.ResponseWriter, err error) {
+	writeError(w, http.StatusBadRequest, codeInvalidParam, paramMessage(err))
+}
+
+// paramMessage 取 store 错误里的最后一段原因。
+func paramMessage(err error) string {
+	msg := err.Error()
+	if !strings.Contains(msg, store.ErrInvalidArgument.Error()) {
+		return "请求参数非法"
+	}
+	if i := strings.LastIndex(msg, ": "); i >= 0 && i+2 < len(msg) {
+		return msg[i+2:]
+	}
+	return "请求参数非法"
+}
+
 // isNotFound 识别「未找到」：store.ErrNotFound / sql.ErrNoRows / 常见文案兜底。
 func isNotFound(err error) bool {
 	if err == nil {

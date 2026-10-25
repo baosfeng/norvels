@@ -91,7 +91,11 @@ func saveCoverInTx(ctx context.Context, tx *sql.Tx, bookID int64, mime string, d
 	if err != nil {
 		return fmt.Errorf("store: save cover %d: %w", bookID, err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE books SET has_cover = 1 WHERE id = ?", bookID); err != nil {
+	// updated_at 一起刷新：前端把它当封面地址的版本参数，不刷新就会一直显示旧图
+	// （Cover 组件按 ?v=<updatedAt 毫秒> 取图，浏览器缓存一天）。
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE books SET has_cover = 1, updated_at = ? WHERE id = ?",
+		formatTime(nowUTC()), bookID); err != nil {
 		return fmt.Errorf("store: mark cover %d: %w", bookID, err)
 	}
 	return nil
@@ -112,4 +116,35 @@ func (s *Store) GetCover(ctx context.Context, bookID int64) (*Cover, error) {
 		return nil, fmt.Errorf("store: get cover %d: %w", bookID, err)
 	}
 	return &c, nil
+}
+
+// DeleteCover 删掉一本书的封面并把 books.has_cover 置 0。
+//
+// 幂等：本来就没有封面也返回 nil（管理页的「删除封面」按钮不该因为
+// 用户点了两次而报错）。书不存在返回 ErrNotFound。
+func (s *Store) DeleteCover(ctx context.Context, bookID int64) error {
+	if bookID <= 0 {
+		return fmt.Errorf("%w: book id %d", ErrInvalidArgument, bookID)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: delete cover begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM book_covers WHERE book_id = ?", bookID); err != nil {
+		return fmt.Errorf("store: delete cover %d: %w", bookID, err)
+	}
+	res, err := tx.ExecContext(ctx,
+		"UPDATE books SET has_cover = 0, updated_at = ? WHERE id = ?", formatTime(nowUTC()), bookID)
+	if err != nil {
+		return fmt.Errorf("store: clear cover flag %d: %w", bookID, err)
+	}
+	if err := requireOneRow(res, bookID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: delete cover commit: %w", err)
+	}
+	return nil
 }
