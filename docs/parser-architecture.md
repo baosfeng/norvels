@@ -119,7 +119,7 @@ func Splitters() []Splitter
 | Meta | `preamble`（weight 60） | 正文头部元信息块 |
 | Meta | `heading-reverse`（weight 40） | 由章节标题反推（头部信息缺失时兜底） |
 | Meta | `stem`（weight 10） | 兜底：文件名主干即书名，保证书名永不落空 |
-| Splitter | `di-unit` | 「第N章/节/回/篇/话/卷/部」 |
+| Splitter | `di-unit` | 「第N章/节/回/篇/话/卷/部」，数字可中文或阿拉伯（`第 3 章` / `第3章`，两侧空白、全角与半角空格皆可） |
 | Splitter | `special` | 序章 / 楔子 / 引子 / 尾声 / 番外 |
 | Splitter | `numeric` | 纯数字行 / `1、标题` |
 | Splitter | `en-chapter` | `Chapter N` |

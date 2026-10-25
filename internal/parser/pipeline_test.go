@@ -165,6 +165,55 @@ func TestOptionsMaxChapterChars(t *testing.T) {
 	}
 }
 
+// TestParseSpacedArabicChapters 覆盖「第 3 章」「第 12 章」这类数字带填充空白的
+// 阿拉伯数字标题：30 章必须切出 30 章（修复前这两章会被并进上一章）。
+// 正文里同时出现「第 3 章」引用，必须留在正文里、不额外切章。
+func TestParseSpacedArabicChapters(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("某书名\n作者：某作者\n\n")
+	for i := 1; i <= 30; i++ {
+		b.WriteString(spacedChapterTitle(i))
+		b.WriteString("\n")
+		b.WriteString("这是第" + itoa(i) + "章的正文，他翻回第 3 章又看了一遍那段对话。\n\n")
+	}
+	book, err := New(DefaultOptions()).ParseBytes("某文件名.txt", []byte(b.String()))
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(book.Chapters) != 30 {
+		t.Fatalf("章数 = %d，期望 30（标题 = %v）", len(book.Chapters), chapterTitles(book.Chapters))
+	}
+	for _, i := range []int{3, 12} {
+		want := "第 " + itoa(i) + " 章"
+		if got := book.Chapters[i-1].Title; !strings.HasPrefix(got, want) {
+			t.Errorf("第 %d 章标题 = %q，期望以 %q 开头", i, got, want)
+		}
+	}
+	if !strings.Contains(book.Chapters[7].Content, "第 3 章") {
+		t.Errorf("正文里的「第 3 章」引用被吃掉: %q", book.Chapters[7].Content)
+	}
+}
+
+// TestParseSpacedArabicInVolume 覆盖卷内阿拉伯数字标题。
+func TestParseSpacedArabicInVolume(t *testing.T) {
+	text := "第一卷 风云\n第 1 章 甲\n正文甲。\n第 2 章 乙\n正文乙。\n第 3 章 丙\n正文丙。\n"
+	book, err := New(DefaultOptions()).ParseBytes("卷内.txt", []byte(text))
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(book.Chapters) != 3 {
+		t.Fatalf("章数 = %d，期望 3（标题 = %v）", len(book.Chapters), chapterTitles(book.Chapters))
+	}
+}
+
+// spacedChapterTitle 造标题：第 3/12 章用「第 3 章」写法（等价「按序号重命名」的产物）。
+func spacedChapterTitle(i int) string {
+	if i == 3 || i == 12 {
+		return "第 " + itoa(i) + " 章 标题" + itoa(i)
+	}
+	return "第" + itoa(i) + "章 标题" + itoa(i)
+}
+
 // TestParseFile 覆盖 ParseFile 的正常与读失败路径。
 func TestParseFile(t *testing.T) {
 	dir := t.TempDir()

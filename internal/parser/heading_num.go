@@ -120,42 +120,44 @@ func cnUnitValue(r rune) int {
 }
 
 // cutDiNum 解析行首的「第」+ 数字。
+//
+// 「第」与数字之间、数字与章级单位之间都允许填充空白：「第3章」「第 3 章」
+// 「第3 章」「第 12 章」是同一形态——「按序号重命名」产出的正是「第 1 章 标题」，
+// 不认这种写法会把整章并进上一章。numText 保留这段原文切片（含两侧填充），
+// marker 因此与原文逐字一致（scanEmbedded 依赖 len(marker) 推进正文起点）。
 func cutDiNum(s string) (num int, numText string, rest string, ok bool) {
 	if !strings.HasPrefix(s, "第") {
 		return 0, "", "", false
 	}
 	r := s[len("第"):]
-	// 第 与数字之间允许空格
-	trimmed := 0
-	for trimmed < len(r) {
-		c := r[trimmed]
-		if c == ' ' || c == '\t' {
-			trimmed++
-			continue
-		}
-		if c == 0xE3 && trimmed+2 < len(r) && r[trimmed+1] == 0x80 && r[trimmed+2] == 0x80 {
-			trimmed += 3 // 全角空格
-			continue
-		}
-		break
-	}
-	v, n, valid := parseNumeral(r[trimmed:])
+	lead := skipPadBytes(r, 0)
+	v, n, valid := parseNumeral(r[lead:])
 	if !valid {
 		return 0, "", "", false
 	}
-	return v, string(r[:trimmed+n]), r[trimmed+n:], true
+	end := skipPadBytes(r, lead+n)
+	return v, string(r[:end]), r[end:], true
+}
+
+// skipPadBytes 返回从 i 起跳过填充空白（空格/制表/全角空格/NBSP）后的字节下标。
+func skipPadBytes(s string, i int) int {
+	for i < len(s) {
+		r, sz := utf8.DecodeRuneInString(s[i:])
+		if !isPadRune(r) {
+			break
+		}
+		i += sz
+	}
+	return i
 }
 
 // findChapterMarker 在字符串中查找「第N章/节/回」或特殊标记的起始下标；找不到返回 -1。
 func findChapterMarker(s string) int {
 	for i := 0; i < len(s); {
 		if s[i] == 0xE7 { // 「第」的 UTF-8 首字节为 E7 AC AC
-			if strings.HasPrefix(s[i:], "第") {
-				r := s[i+len("第"):]
-				if _, n, ok := parseNumeral(r); ok {
-					if isChapterUnitAt(r, n) || isVolumeUnitAt(r, n) {
-						return i
-					}
+			if _, _, rest, ok := cutDiNum(s[i:]); ok {
+				if isChapterUnitAt(rest, 0) || isVolumeUnitAt(rest, 0) {
+					return i
 				}
 			}
 		}

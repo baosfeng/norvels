@@ -74,7 +74,7 @@ func skipLeadDecor(line string) int {
 func parseInlineMarker(rest string) (heading, int, bool) {
 	if num, numText, after, ok := cutDiNum(rest); ok {
 		u, sz := utf8.DecodeRuneInString(after)
-		consumed := len("第") + len(numText) + sz
+		consumed := len(rest) - len(after) + sz
 		switch {
 		case isVolumeUnitAt(after, 0):
 			return heading{kind: headVolume, volNum: num, volTitle: "第" + numText + string(u), strong: true}, consumed, true

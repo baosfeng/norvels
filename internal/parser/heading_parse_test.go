@@ -19,6 +19,11 @@ func TestParseHeadingDiUnit(t *testing.T) {
 		{"　第三章　女歌手", headChapter, 3, "女歌手"},
 		{"第5节 小结", headChapter, 5, "小结"},
 		{"第2回 重逢", headChapter, 2, "重逢"},
+		{"第 3 章 巷口", headChapter, 3, "巷口"},
+		{"第3 章 巷口", headChapter, 3, "巷口"},
+		{"第 12 章 远处", headChapter, 12, "远处"},
+		{"第　3　章 全角空格", headChapter, 3, "全角空格"},
+		{"第 1 卷 风云", headVolume, 0, ""},
 		{"Chapter 7 The End", headChapter, 7, "The End"},
 		{"序章", headSpecial, 0, ""},
 		{"楔子 缘起", headSpecial, 0, "缘起"},
@@ -49,10 +54,36 @@ func TestParseHeadingRejects(t *testing.T) {
 		"他转过身，看向远方，心里想着很多事情。",
 		"这一段话以句号结尾，所以不是标题。",
 		strings.Repeat("很长的标题行", 40),
+		"第 3 章的钥匙就压在花盆底下，他找了整整一个下午才想起来。",
+		"他翻回第 3 章又看了一遍那段对话，还是没看懂。",
 	}
 	for _, line := range bad {
 		if h, ok := parseHeading(line); ok {
 			t.Errorf("%q 不应识别为标题，得到 %+v", line, h)
+		}
+	}
+}
+
+// TestParseHeadingSpacedArabic 覆盖数字带填充空白的阿拉伯数字标题。
+//
+// marker 必须是行首原文：scanEmbedded 用 len(marker) 推进正文起点，
+// marker 与原文不等长会把正文开头（或标题尾字）切错。
+func TestParseHeadingSpacedArabic(t *testing.T) {
+	cases := map[string]int{
+		"第 3 章 巷口":  3,
+		"第3 章 巷口":   3,
+		"第 12 章 远处": 12,
+		"第1 章":      1,
+		"第 3 节 小结":  3,
+	}
+	for line, want := range cases {
+		h, ok := parseHeading(line)
+		if !ok || h.kind != headChapter || !h.hasNum || h.num != want {
+			t.Errorf("%q = %+v（ok=%v），期望章号 %d", line, h, ok, want)
+			continue
+		}
+		if !strings.HasPrefix(line, h.marker) {
+			t.Errorf("%q marker = %q，期望是行首原文", line, h.marker)
 		}
 	}
 }

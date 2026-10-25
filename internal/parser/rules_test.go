@@ -8,12 +8,15 @@ import (
 	"norvels/internal/model"
 )
 
-// ruleSampleText 造一本「内置策略切不开、自定义 ^=== 第N 节 ===$ 能切开」的合成书。
+// ruleSampleText 造一本「内置策略切不开、自定义 ^=== 节N ===$ 能切开」的合成书。
+//
+// 标记刻意用「节N」而不是「第N 节」：后者内置的「第」+ 数字 + 章级单位已能识别，
+// 拿来当样本就测不出自定义规则的价值了。
 func ruleSampleText() string {
 	var b strings.Builder
 	b.WriteString("书名：合成试切\n作者：青川客\n\n")
 	for i := 1; i <= 3; i++ {
-		b.WriteString("=== 第" + string(rune('0'+i)) + " 节 ===\n")
+		b.WriteString("=== 节" + string(rune('0'+i)) + " ===\n")
 		b.WriteString("风起于青萍之末，合成段落用于验证自定义规则的切章结果。\n")
 		b.WriteString("这一段正文没有任何内置策略认识的标题形态。\n\n")
 	}
@@ -22,7 +25,7 @@ func ruleSampleText() string {
 
 // sectionRule 是样本书的自定义规则。
 func sectionRule() Rule {
-	return Rule{Name: "节标记", Pattern: regexp.MustCompile("^=== 第\\d+ 节 ===$")}
+	return Rule{Name: "节标记", Pattern: regexp.MustCompile("^=== 节\\d+ ===$")}
 }
 
 // TestParseBytesWithRulesCustomSplit 覆盖自定义正则切开内置切不开的书。
@@ -43,7 +46,7 @@ func TestParseBytesWithRulesCustomSplit(t *testing.T) {
 	if len(book.Chapters) != 3 {
 		t.Fatalf("自定义规则章数 = %d，期望 3（%v）", len(book.Chapters), chapterTitles(book.Chapters))
 	}
-	if got := book.Chapters[1].Title; got != "=== 第2 节 ===" {
+	if got := book.Chapters[1].Title; got != "=== 节2 ===" {
 		t.Errorf("第 2 章标题 = %q，期望命中行原文", got)
 	}
 	if !strings.Contains(book.Chapters[1].Content, "合成段落") {
