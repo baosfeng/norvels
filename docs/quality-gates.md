@@ -220,7 +220,7 @@ norvels 的 `store` 写入路径（`SaveBook`）与 `api` 的导入任务状态�
 - golangci-lint v2.x（门禁 4 首选；**缺失时自动回退**到 `tests/tools/gostats`，不会跳过门禁）
 - godog 已在 `go.mod` 声明（`github.com/cucumber/godog`），`go test` 直接跑，无需额外安装
 - 脚本兼容 macOS 自带 bash 3.2（不用 `mapfile` / 关联数组）
-- **并行 worktree 后跑门禁 4 先清 lint 缓存**：`golangci-lint cache clean`。缓存里存的是绝对路径，worktree 删掉后会把已删除目录里的旧文件当成本次结果，报出源码并不存在的「幻影超标」（实测：`(*Store).readMetrics = 11`，路径指向已删的 `/tmp/xxx/internal/store/metrics.go`）。
+- **并行 worktree 后跑门禁 4 先清 lint 缓存**：`golangci-lint cache clean`。缓存里存的是绝对路径，worktree 删掉后会把已删除目录里的旧文件当成本次结果，报出源码并不存在的「幻影超标」（实测：`(*Store).readMetrics = 11`，路径指向已删的 `/tmp/xxx/internal/store/metrics.go`）。**收尾顺序**：删 worktree 后同样先 `golangci-lint cache clean` 再跑门禁 4。
 
 ## 隐私约定（与门禁 9 交叉）
 
