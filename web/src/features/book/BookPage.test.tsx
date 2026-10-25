@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookDetail, BookMetaPatch } from "../../api/types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BookDetail, BookMetaPatch, ReadingProgress } from "../../api/types";
 import { ToastHost } from "../../lib/toast";
+import { TierProvider } from "../../lib/tier";
 
 const book: BookDetail = {
   id: 7,
@@ -38,6 +39,55 @@ const book: BookDetail = {
   ],
 };
 
+/** 阅读进度（默认空）：用例按需塞一条已读进度来验「打开即定位当前章」。 */
+const progressState: { items: ReadingProgress[] } = { items: [] };
+
+/** jsdom 里没有真实滚动容器高度，useVirtualizer 会一行都不渲染；这里换成「全部行都渲染」的桩。 */
+const scrollToIndexSpy = vi.hoisted(() => vi.fn());
+
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (options: { count: number; estimateSize: () => number }) => {
+    const items = Array.from({ length: options.count }, (_, index) => ({
+      index,
+      key: index,
+      start: index * options.estimateSize(),
+      size: options.estimateSize(),
+    }));
+    return {
+      getTotalSize: () => options.count * options.estimateSize(),
+      getVirtualItems: () => items,
+      scrollToIndex: scrollToIndexSpy,
+    };
+  },
+}));
+
+/** 多卷样书：卷层级只在 ≥2 卷时才有意义，用它对照单卷形态。 */
+const multiVolumeBook: BookDetail = {
+  ...book,
+  volumeCount: 2,
+  chapterCount: 4,
+  volumes: [
+    {
+      id: 1,
+      idx: 0,
+      title: "上卷",
+      chapters: [
+        { id: 20, idx: 0, title: "第一章", volumeId: 1, wordCount: 2000 },
+        { id: 21, idx: 1, title: "第二章", volumeId: 1, wordCount: 2100 },
+      ],
+    },
+    {
+      id: 2,
+      idx: 1,
+      title: "下卷",
+      chapters: [
+        { id: 30, idx: 2, title: "第三章", volumeId: 2, wordCount: 2200 },
+        { id: 31, idx: 3, title: "第四章", volumeId: 2, wordCount: 2300 },
+      ],
+    },
+  ],
+};
+
 const bookState = {
   data: book as BookDetail | null,
   loading: false,
@@ -49,7 +99,7 @@ const updateBook = vi.fn<(id: number, patch: BookMetaPatch) => Promise<BookDetai
 
 vi.mock("../../api/hooks", () => ({
   useBook: () => bookState,
-  useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: vi.fn() }),
+  useReadingProgress: () => ({ data: { items: progressState.items }, loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock("../../api/client", async () => {
@@ -60,18 +110,34 @@ vi.mock("../../api/client", async () => {
 const { BookPage } = await import("./BookPage");
 const { ApiError } = await import("../../api/client");
 
-function renderPage() {
+/** 档位要用 Provider 显式给：jsdom 没有 matchMedia，默认档位是 PC。 */
+function renderPage(tier: "pc" | "h5" = "pc") {
   return render(
-    <MemoryRouter initialEntries={["/book/7"]}>
-      <Routes>
-        <Route path="/book/:bookId" element={<BookPage />} />
-        <Route path="/shelf" element={<p>书架页</p>} />
-        <Route path="/admin/books/:bookId" element={<p>单书管理页</p>} />
-      </Routes>
-      <ToastHost />
-    </MemoryRouter>,
+    <TierProvider value={tier}>
+      <MemoryRouter initialEntries={["/book/7"]}>
+        <Routes>
+          <Route path="/book/:bookId" element={<BookPage />} />
+          <Route path="/shelf" element={<p>书架页</p>} />
+          <Route path="/admin/books/:bookId" element={<p>单书管理页</p>} />
+        </Routes>
+        <ToastHost />
+      </MemoryRouter>
+    </TierProvider>,
   );
 }
+
+/** jsdom 默认 innerWidth=1024；目录列数按窗口宽度算，用例要能换成 1280/390。 */
+function setWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width });
+}
+
+const DEFAULT_WIDTH = window.innerWidth;
+
+afterEach(() => {
+  setWidth(DEFAULT_WIDTH);
+  progressState.items = [];
+  scrollToIndexSpy.mockReset();
+});
 
 const coverVersion = String(Date.parse(book.updatedAt));
 
@@ -182,5 +248,103 @@ describe("书籍详情：管理入口已迁出（P1 管理页）", () => {
     expect(link.getAttribute("href")).toBe("/admin/books/7");
     fireEvent.click(link);
     await waitFor(() => expect(screen.getByText("单书管理页")).toBeTruthy());
+  });
+});
+
+describe("书籍详情：目录形态（单卷 / 多卷）", () => {
+  beforeEach(() => {
+    bookState.data = book;
+    updateBook.mockReset();
+  });
+
+  it("单卷书不渲染卷跳转与卷头，章节直接铺出来", () => {
+    renderPage();
+    expect(screen.queryByRole("group", { name: "卷跳转" })).toBeNull();
+    expect(document.querySelector(".vol-jump")).toBeNull();
+    expect(document.querySelector(".vol-head")).toBeNull();
+    // 章节仍然在里面：2 章都在
+    expect(screen.getByTestId("chapter-scroll").querySelectorAll(".cv-row")).toHaveLength(2);
+  });
+
+  it("多卷书照旧：卷跳转胶囊 + 可折叠卷头 + 每卷一个列表", () => {
+    bookState.data = multiVolumeBook;
+    renderPage();
+    const jump = screen.getByRole("group", { name: "卷跳转" });
+    expect(jump.querySelectorAll("button")).toHaveLength(2);
+    const heads = document.querySelectorAll(".vol-head");
+    expect(heads).toHaveLength(2);
+    // 默认只展开第一卷：折叠的卷不渲染列表
+    expect(screen.getAllByTestId("chapter-scroll")).toHaveLength(1);
+    fireEvent.click(heads[1]);
+    expect(screen.getAllByTestId("chapter-scroll")).toHaveLength(2);
+  });
+
+  it("目录不再向内嵌滚动块要高度：既不传 maxHeight 也不占固定高度", () => {
+    renderPage();
+    const scroller = screen.getByTestId("chapter-scroll");
+    expect(scroller.style.maxHeight).toBe("");
+    expect(scroller.style.height).toBe("");
+    expect(scroller.className).not.toContain("is-fill");
+  });
+});
+
+describe("书籍详情：目录列数与行高", () => {
+  beforeEach(() => {
+    bookState.data = book;
+    updateBook.mockReset();
+    scrollToIndexSpy.mockReset();
+  });
+
+  it("PC 宽 1280 三列 + 32px 紧凑行高", () => {
+    setWidth(1280);
+    renderPage();
+    const scroller = screen.getByTestId("chapter-scroll");
+    expect(scroller.getAttribute("data-columns")).toBe("3");
+    expect(scroller.className).toContain("is-dense");
+    const row = screen.getAllByTestId("chapter-word")[0].parentElement as HTMLElement;
+    expect(row.style.height).toBe("32px");
+  });
+
+  it("PC 宽 1000 两列", () => {
+    setWidth(1000);
+    renderPage();
+    expect(screen.getByTestId("chapter-scroll").getAttribute("data-columns")).toBe("2");
+  });
+
+  it("H5 恒一列、44px 触控行高，不使用紧凑行", () => {
+    setWidth(390);
+    renderPage("h5");
+    const scroller = screen.getByTestId("chapter-scroll");
+    expect(scroller.getAttribute("data-columns")).toBe("1");
+    expect(scroller.className).not.toContain("is-dense");
+    const row = screen.getAllByTestId("chapter-word")[0].parentElement as HTMLElement;
+    expect(row.style.height).toBe("44px");
+  });
+
+  it("窗口从 1280 拖到 1000 时列数跟着变", () => {
+    setWidth(1280);
+    renderPage();
+    expect(screen.getByTestId("chapter-scroll").getAttribute("data-columns")).toBe("3");
+    setWidth(1000);
+    fireEvent(window, new Event("resize"));
+    expect(screen.getByTestId("chapter-scroll").getAttribute("data-columns")).toBe("2");
+  });
+
+  it("打开就定位到当前章所在行", () => {
+    setWidth(1280);
+    progressState.items = [
+      {
+        bookId: 7,
+        bookTitle: "示例书简",
+        chapterId: 11,
+        chapterIdx: 1,
+        chapterTitle: "第二章",
+        percent: 12,
+        updatedAt: "2026-10-25T00:00:00.000Z",
+      },
+    ];
+    renderPage();
+    // 2 章、3 列 → 当前章（下标 1）在第 0 行
+    expect(scrollToIndexSpy).toHaveBeenCalledWith(0, { align: "center" });
   });
 });

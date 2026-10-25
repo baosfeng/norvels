@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useBook, useReadingProgress } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
@@ -12,6 +12,7 @@ import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
 import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
+import { columnsForWidth } from "../../lib/tocRows";
 
 /** 书籍详情：PC 双栏（封面侧 + 目录），H5 单列（封面缩为横向头部，简介折叠）。 */
 export function BookPage() {
@@ -27,6 +28,9 @@ export function BookPage() {
   const [notice, setNotice] = useState("");
   /** 状态下拉的乐观值：PATCH 成功即时回显，失败退回后端值 */
   const [readStatus, setReadStatus] = useState<ReadStatus | null>(null);
+  const columns = useTocColumns(isH5);
+  /** PC 鼠标密度：32px 紧凑行（H5 保持 44px 触控行高） */
+  const dense = !isH5;
 
   if (loading) {
     return <LoadingPanel title="正在打开这本书" description="正在取回书名、简介与目录。" testId="book-loading" />;
@@ -93,7 +97,9 @@ export function BookPage() {
     });
   }
 
-  const openByDefault = volumes.length > 0 ? volumes[0].idx : null;
+  /** 默认展开的卷：有阅读进度就展开当前章所在卷，否则第一卷（多卷长目录打开就能看见读到哪） */
+  const resumeVolume = volumes.find((v) => v.chapters.some((c) => c.id === resume?.chapterId));
+  const openByDefault = resumeVolume?.idx ?? (volumes.length > 0 ? volumes[0].idx : null);
 
   return (
     <section data-testid="view:book" data-od-id="book-detail">
@@ -239,6 +245,19 @@ export function BookPage() {
 
           {volumes.length === 0 ? (
             <EmptyPanel title="还没有目录" description="这本书尚未拆出章节，导入完成后会显示目录。" />
+          ) : volumes.length === 1 ? (
+            /* 单卷（含只有「未分卷」伪卷）没有可选的卷：不渲染卷跳转与卷头，直接铺章节，页面自己滚 */
+            <div className="vol-body" data-testid="book-single-volume">
+              <ChapterList
+                bookId={book.id}
+                chapters={volumes[0].chapters}
+                currentChapterId={resume?.chapterId}
+                columns={columns}
+                dense={dense}
+                scrollToCurrent
+                ariaLabel="章节目录"
+              />
+            </div>
           ) : (
             <>
               <div className="dir-meta">
@@ -287,6 +306,9 @@ export function BookPage() {
                             bookId={book.id}
                             chapters={volume.chapters}
                             currentChapterId={resume?.chapterId}
+                            columns={columns}
+                            dense={dense}
+                            scrollToCurrent
                             ariaLabel={`${volumeLabel(volume)} 目录`}
                           />
                         </div>
@@ -302,6 +324,22 @@ export function BookPage() {
 
     </section>
   );
+}
+
+/**
+ * 目录列数：PC 上按窗口宽度流动（≥1180 三列、≥900 两列、其余一列），H5 恒一列。
+ * 监听 resize 而不是只在挂载时算一次：窗口拖窄后列数不跟着变，行高与实际排版会错位。
+ */
+function useTocColumns(isH5: boolean): number {
+  const [columns, setColumns] = useState(() => (typeof window === "undefined" ? 1 : columnsForWidth(window.innerWidth)));
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setColumns(isH5 ? 1 : columnsForWidth(window.innerWidth));
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, [isH5]);
+  return isH5 ? 1 : columns;
 }
 
 function volumeLabel(volume: Volume): string {
