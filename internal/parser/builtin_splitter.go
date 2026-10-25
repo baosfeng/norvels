@@ -255,6 +255,14 @@ func splitWithCandidates(d *Doc, cands []candidate) error {
 		return fmt.Errorf("no candidates")
 	}
 	res := buildFromCandidatesDoc(d, cands)
+	if promoted, ok := promoteVolumeOnly(d, res, cands); ok {
+		// 「卷即章」已经是最贴合原文的切法：单卷仍可能偏大，但那由
+		// postprocess 的超长章再切处理（标题保留「卷名（续N）」），
+		// 不要在这里整体换成无标题的等分切分。
+		d.Volumes, d.Chapters = promoted.volumes, promoted.chapters
+		d.Warnings = append(d.Warnings, promoted.warnings...)
+		return nil
+	}
 	d.Volumes, d.Chapters = res.volumes, res.chapters
 	d.restarts = res.restarts
 	if res.preamble != "" {
@@ -275,6 +283,62 @@ func splitWithCandidates(d *Doc, cands []candidate) error {
 		}
 	}
 	return nil
+}
+
+// promoteVolumeOnly 处理「只有卷标记、没有章标记」的书。
+//
+// 典型语料：按部出版的合集（「第一部」「第二部」…）或只有分卷标记的段落流。
+// 这类书写里卷就是最高层级的分段单位；照常只建卷的话，卷下没有章标记，
+// 整本书会塌成 1 章（或 0 章）。这里把每个卷当作一章来切。
+//
+// 触发条件严格：候选里必须一个可用章标记都没有，且有 ≥2 个卷标记。
+// 一旦存在章标记，说明书本来就是按章写的，交给正常流程。
+func promoteVolumeOnly(d *Doc, res splitResult, cands []candidate) (splitResult, bool) {
+	vols, chapters := 0, 0
+	for _, c := range cands {
+		switch c.h.kind {
+		case headVolume:
+			vols++
+		case headChapter:
+			if c.h.hasNum || c.h.strong {
+				chapters++
+			}
+		}
+	}
+	// 与兜底切分同一口径：章标记少于 3 个说明书其实不是「按章写」的结构，
+	// 零星的一两个章标记通常是正文里的误判或卷内的孤立小标题。
+	if chapters >= 3 || vols < 2 {
+		return splitResult{}, false
+	}
+	cl := d.cleanerOr()
+	out := splitResult{preamble: res.preamble}
+	for i, c := range cands {
+		if c.h.kind != headVolume {
+			continue
+		}
+		end := len(d.Text)
+		if i+1 < len(cands) {
+			end = cands[i+1].start
+		}
+		if end < c.bodyStart {
+			end = c.bodyStart
+		}
+		body := cl.cleanContentAt(d.Text[c.bodyStart:end], c.bodyStart)
+		title := c.h.volTitle
+		if title == "" {
+			title = "未命名卷"
+		}
+		out.chapters = append(out.chapters, model.ParsedChapter{
+			Title: title, VolumeIdx: -1, Content: body, WordCount: countWords(body),
+		})
+	}
+	if len(out.chapters) < 2 {
+		return splitResult{}, false
+	}
+	// 升级为「卷即章」后不再需要卷分组（每卷恰好对应一章）。
+	out.volumes = nil
+	out.warnings = append(out.warnings, "本文只有分卷标记、没有章节标记，已按卷切章")
+	return out, true
 }
 
 // buildFromCandidatesDoc 是 buildFromCandidates 的 Doc 版本。
