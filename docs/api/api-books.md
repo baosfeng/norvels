@@ -57,36 +57,37 @@ body `{ "title": "…" }`：**204** 无响应体。标题去空白后不得为�
 
 ### POST /api/books/{id}/chapters/{chapterId}/split
 body `{ "cutAfter": [0, 11] }`：`cutAfter` 是 0 起的**段落下标**，含义「在这一段之后切开」，必须严格递增、落在 `0 ~ 段落数-2`。
-
-- 成功 200 `{ "chapters": 3 }`（拆完后的章数，最多 100 章）；只在段落边界切，正文一个字节不改：拆出来的章仍是同一压缩块里的不同区间，各章字数之和等于原章；
-- 新章标题为 `原标题（i/N）`，序号紧跟原章、其后各章整体后移；原章的章节 id 保留（阅读进度/书签仍指向它）；拆分点乱序/越界/落在空行上（会切出空章）→ 400 `invalid_param`（消息带原因），章节或书不存在 → 404，正文块损坏 → 503 `content_corrupted`。
+> 成功 200 `{ "chapters": 3 }`（拆完后的章数，最多 100 章）；只在段落边界切，正文一个字节不改：拆出来的章仍是同一压缩块里的不同区间，各章字数之和等于原章。新章标题为 `原标题（i/N）`，序号紧跟原章、其后各章整体后移；原章的章节 id 保留（阅读进度/书签仍指向它）；拆分点乱序/越界/落在空行上（会切出空章）→ 400 `invalid_param`（消息带原因），章节或书不存在 → 404，正文块损坏 → 503 `content_corrupted`。
 
 ### DELETE /api/books/{id}/chapters/{chapterId}
 **204**；后面的章节序号自动前移（`idx` 连续），书级 `chapter_count`/`word_count` 与统计同步减少，正文块不再被任何章节引用时整块回收。重复删除 → 404。
 
 ### PUT /api/books/{id}/chapters/{chapterId}/content
 body `{ "content": "正文……" }`：整章替换正文，**204** 无响应体（前端保存后重拉上面的 GET 拿新正文与新 `wordCount`）。
-
-- 空正文（去空白后为空）/ 正文超 **1 MiB**（1,048,576 字节，UTF-8 编码后）→ 400 `invalid_param`，`message` 写明上限；章节或书不存在、章节不属于本书 → 404 `not_found`；
-- 章 id、`idx`、卷归属不变（阅读进度与书签按 chapter id 指过来）；`books.word_count` 与统计（`chapter_word_sum`/`text_bytes`/`text_bytes_raw`）同事务重算，旧块无人引用时整块回收；
-- 无版本号：后写覆盖先写（本地单用户），但一次写入要么全生效要么全回滚，不接受「正文换了、计数没动」。
+> 空正文（去空白后为空）/ 正文超 **1 MiB**（1,048,576 字节，UTF-8 编码后）→ 400 `invalid_param`，`message` 写明上限；章节或书不存在、章节不属于本书 → 404 `not_found`。章 id、`idx`、卷归属不变（阅读进度与书签按 chapter id 指过来）；`books.word_count` 与统计（`chapter_word_sum`/`text_bytes`/`text_bytes_raw`）同事务重算，旧块无人引用时整块回收。无版本号：后写覆盖先写（本地单用户），但一次写入要么全生效要么全回滚，不接受「正文换了、计数没动」。
 
 ### POST /api/books/{id}/chapters/batch-delete
 body `{ "chapterIds": [10, 11] }`：**204** 无响应体。空数组 / 重复 id / 非正整数 → 400 `invalid_param`；任一章不属于本书（含已被删）→ 404 `not_found`，整批不动。
-
-- 单事务：删完 `idx` 重排成 0 起连续、书级与统计计数同步、无人引用的正文块整块回收；不做「部分成功」（不留「前几章删了、后面没删」的半成品目录）。
+> 单事务：删完 `idx` 重排成 0 起连续、书级与统计计数同步、无人引用的正文块整块回收；不做「部分成功」（不留「前几章删了、后面没删」的半成品目录）。
 
 ### POST /api/books/{id}/chapters/merge
 body `{ "chapterIds": [10, 11] }`：把**同卷且连续**的若干章并成一章，成功 200 `{ "chapters": 3 }`（合并后**全书章数**——不是这次并了几章，那个数恒为 1）。
 
-- 少于 2 章 / 空数组 / 重复 id → 400 `invalid_param`；跨卷或不连续 → **409** `not_mergeable`（`message` 原样带原因：「跨卷（第 3 章在卷 1，第 4 章在卷 2）」/「不连续（第 1 章之后是第 3 章）」）；任一章不属于本书或不存在 → 404 `not_found`；
-- 保留**首章 id**（阅读进度与书签按它指过来）、首章标题与所在卷：正文按目录顺序拼接（不跟请求里的 id 顺序走），相邻两章之间插入**恰好一个换行**（不留分隔读者会把两句连读），字数取各章之和，章节数净减 `n-1`。
+> 少于 2 章 / 空数组 / 重复 id → 400 `invalid_param`；跨卷或不连续 → **409** `not_mergeable`（`message` 原样带原因：「跨卷（第 3 章在卷 1，第 4 章在卷 2）」/「不连续（第 1 章之后是第 3 章）」）；任一章不属于本书或不存在 → 404 `not_found`。保留**首章 id**（阅读进度与书签按它指过来）、首章标题与所在卷：正文按目录顺序拼接（不跟请求里的 id 顺序走），相邻两章之间插入**恰好一个换行**（不留分隔读者会把两句连读），字数取各章之和，章节数净减 `n-1`。
 
 ### POST /api/books/{id}/chapters/renumber
 body `{ "scope": "book" }` 或 `{ "scope": "volume", "volumeId": 7 }`：200 `{ "renamed": 3 }`（范围内被重编号的章数）。
 
-- 标题重写成「第 N 章 + 原标题去掉已有章号后的部分」，N 恒为**全书序号** `idx+1`（单卷重编号也不从 1 重来）；只改 `title`，不动正文与 `idx`；
-- `scope` 非法 / 缺 `volumeId` 或非正 → 400 `invalid_param`（`scope=book` 时忽略 `volumeId`）；卷不属于本书或已删 → 404 `not_found`；标题本来就对的章不写库，`renamed` 是范围章数（不是实际更新行数）。
+> 标题重写成「第 N 章 + 原标题去掉已有章号后的部分」，N 恒为**全书序号** `idx+1`（单卷重编号也不从 1 重来）；只改 `title`，不动正文与 `idx`。`scope` 非法 / 缺 `volumeId` 或非正 → 400 `invalid_param`（`scope=book` 时忽略 `volumeId`）；卷不属于本书或已删 → 404 `not_found`；标题本来就对的章不写库，`renamed` 是范围章数（不是实际更新行数）。
+
+### 卷管理 /api/books/{id}/volumes
+| 端点 | 成功 | 口径 |
+|---|---|---|
+| `POST .../volumes` body `{"title":"卷三"}` | 201 `{"volume":{"id":9,"idx":3,"title":"卷三","chapters":[]}}` | `idx` = 当前卷数；卷名去首尾空白后同书唯一：空名 400 `invalid_param`、重名 409 `volume_name_taken`（「这本书已经有同名卷了」） |
+| `PATCH .../volumes/{vid}` body `{"title":"卷一"}` | 200 同上 | 重名/空名同上；卷不属于本书 → 404 `not_found` |
+| `DELETE .../volumes/{vid}` | 204 | 卷内章节落未分卷（`volumeId=0`，`idx`/正文/`wordCount` 不变）；剩余卷 `idx` 重排 0..n-1、`volume_count` 重算 |
+| `PUT .../volumes/order` body `{"ids":[3,1,2]}` | 200 `{}` | `ids` 必须恰好是本书全部卷 id 的一个排列：缺 id / 多 id / 重复 / 非本书卷 → 400 `invalid_param` |
+| `POST .../chapters/move` body `{"chapterIds":[11,12],"volumeId":3}` | 200 `{"moved":2}` | `volumeId=0` = 移到未分卷；只改 `chapters.volume_id`，不改全书序号/正文/字数；卷或章节不属于本书 → 404 `not_found` |
 
 ### GET /api/books/{id}/bookmarks
 全书书签，按 `createdAt` 倒序（同秒按 `id` 倒序；章节被删时 `chapterTitle` 为空串）。

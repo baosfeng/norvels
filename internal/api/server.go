@@ -67,14 +67,8 @@ func New(st *store.Store, cfg Config) http.Handler {
 
 // newServer 与 New 等价，但返回 *Server 以便测试操纵内部状态与注入 FS。
 func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) {
-	s := &Server{
-		st:          st,
-		cfg:         cfg,
-		fsys:        fsys,
-		log:         log.Default(),
-		start:       time.Now(),
-		placeholder: webui.PlaceholderHTML(),
-	}
+	s := &Server{st: st, cfg: cfg, fsys: fsys, log: log.Default(), start: time.Now(),
+		placeholder: webui.PlaceholderHTML()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/stats", s.handleStats)
@@ -98,6 +92,12 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("POST /api/books/{id}/chapters/batch-delete", s.handleBatchDeleteChapters)
 	mux.HandleFunc("POST /api/books/{id}/chapters/merge", s.handleMergeChapters)
 	mux.HandleFunc("POST /api/books/{id}/chapters/renumber", s.handleRenumberChapters)
+	// 卷管理（C2）：新建 / 改名 / 删除 / 重排 + 章节跨卷移动，均单事务。
+	mux.HandleFunc("POST /api/books/{id}/volumes", s.handleCreateVolume)
+	mux.HandleFunc("PATCH /api/books/{id}/volumes/{vid}", s.handleRenameVolume)
+	mux.HandleFunc("DELETE /api/books/{id}/volumes/{vid}", s.handleDeleteVolume)
+	mux.HandleFunc("PUT /api/books/{id}/volumes/order", s.handleReorderVolumes)
+	mux.HandleFunc("POST /api/books/{id}/chapters/move", s.handleMoveChapters)
 	// 书签（P1 阅读体验 spec §2.2）：GET/POST 挂在书下，DELETE 按书签 id 直删。
 	mux.HandleFunc("GET /api/books/{id}/bookmarks", s.handleListBookmarks)
 	mux.HandleFunc("POST /api/books/{id}/bookmarks", s.handleCreateBookmark)

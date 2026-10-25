@@ -62,6 +62,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 | `invalid_zip` `zip_too_large` `empty_zip` | 202 | zip 包被打回（逐条进 `rejected`） |
 | `not_mergeable` | 409 | 章节合并被拒：跨卷、不连续或不足 2 章（message 带原因） |
 | `not_appendable` | 409 | 追更时新章节不是已有序列的追加（拒绝覆盖，确要整本重导用 force） |
+| `volume_name_taken` | 409 | 同书卷名重复（去首尾空白后比较），前端把错误标到卷名输入框 |
 | `payload_too_large` | 413 | 上传单文件或单批总量超过上限 |
 | `too_many_files` | 400 | 一次上传的文件数超过上限 |
 | `encrypted_epub` | 422 | EPUB 正文条目被加密（DRM），拒绝入库 |

@@ -30,7 +30,10 @@ const (
 	codeConflict     = "conflict"
 	// codeNotMergeable 表示所选章节在这份目录结构上合不了（跨卷 / 不连续）。
 	// 与 conflict 分开：前端要提示的是「重选章节」，不是「稍后重试」。
-	codeNotMergeable     = "not_mergeable"
+	codeNotMergeable = "not_mergeable"
+	// codeVolumeNameTaken 表示同书卷名重复（去首尾空白后比较）：
+	// 与 conflict 分开，前端要把错误标到卷名输入框上，而不是提示「稍后重试」。
+	codeVolumeNameTaken  = "volume_name_taken"
 	codeInternal         = "internal"
 	codeMethodNotAllowed = "method_not_allowed"
 	codeQueryTooShort    = "query_too_short"
@@ -91,6 +94,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error, notFoun
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "请求参数非法")
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, codeConflict, "存在进行中的任务或并发冲突")
+	case errors.Is(err, store.ErrVolumeNameTaken):
+		writeError(w, http.StatusConflict, codeVolumeNameTaken, "这本书已经有同名卷了")
 	case errors.Is(err, store.ErrNotAppendable):
 		s.logf("api: %s %s 追更被拒: %v", r.Method, r.URL.Path, err)
 		writeError(w, http.StatusConflict, codeNotAppendable,

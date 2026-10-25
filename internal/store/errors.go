@@ -18,6 +18,11 @@ var (
 	// 独立哨兵而不是复用 ErrConflict：调用方要能区分「有别的任务在跑（稍后重试）」
 	// 与「这份文件和库里的书对不上（重试也没用，得换文件或 --force）」。
 	ErrNotAppendable = errors.New("store: new chapters are not an extension of the stored ones")
+	// ErrVolumeNameTaken 表示同书卷名重复（去首尾空白后比较，api 映射 409）。
+	//
+	// 独立哨兵而不是复用 ErrConflict：重名是「用户该换个名字」的表单错误，
+	// 与「有任务在跑，稍后重试」的处理方式相反，前端要能按 code 分开提示。
+	ErrVolumeNameTaken = errors.New("store: volume name already taken")
 	// ErrNotMergeable 表示所选章节无法合并成一章（api 映射 409）。
 	//
 	// 独立哨兵而不是复用 ErrInvalidArgument：跨卷 / 不连续不是「参数写错了」，
