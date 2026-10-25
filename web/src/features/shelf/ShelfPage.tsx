@@ -31,6 +31,8 @@ const SORTS = [
   { value: "title", label: "书名" },
   { value: "chapters", label: "章节数" },
   { value: "words", label: "字数" },
+  // 只排已评分的书（0 星 = 未评，后端 sort=rating 不含未评）
+  { value: "rating", label: "评分" },
 ] as const;
 
 type SortValue = (typeof SORTS)[number]["value"];
@@ -55,6 +57,10 @@ export function ShelfPage() {
   const [authorId, setAuthorId] = useState<number | null>(cached?.authorId ?? null);
   const [tag, setTag] = useState<string | null>(cached?.tag ?? null);
   const [readStatus, setReadStatus] = useState<Exclude<ReadStatus, ""> | null>(cached?.readStatus ?? null);
+  /** 评分筛选 1–5；0 星 = 未评，后端不提供「只有未评」，所以这里没有「未评」档 */
+  const [rating, setRating] = useState<number | null>(cached?.rating ?? null);
+  /** 书单筛选（扁平收藏夹，一本书可属多个书单） */
+  const [collection, setCollection] = useState<number | null>(cached?.collection ?? null);
   // 角标点击后的乐观值：列表重新取数会拿回后端值，这里只兜住「刚点完还没刷新」的空窗
   const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -89,6 +95,8 @@ export function ShelfPage() {
     authorId: authorId ?? undefined,
     tag: tag ?? undefined,
     readStatus: readStatus ?? undefined,
+    rating: rating ?? undefined,
+    collection: collection ?? undefined,
     size: pageSize,
     mode: isH5 ? "infinite" : "paged",
     restore,
@@ -96,7 +104,7 @@ export function ShelfPage() {
 
   const { items, total, loading, error, reload, loadMore, hasMore } = feed;
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const filtering = authorId !== null || tag !== null || readStatus !== null;
+  const filtering = authorId !== null || tag !== null || readStatus !== null || rating !== null || collection !== null;
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "";
   // 老浏览器 / 测试环境没有 IntersectionObserver：改用底部「加载更多」按钮兜底
   const canObserve = typeof IntersectionObserver !== "undefined";
@@ -109,6 +117,8 @@ export function ShelfPage() {
       authorId,
       tag,
       readStatus,
+      rating,
+      collection,
       size: pageSize,
       mode: isH5 ? "infinite" : "paged",
       items,
@@ -117,7 +127,7 @@ export function ShelfPage() {
       scrollTop: Math.round(scrollYRef.current),
       lastBookId: lastBookRef.current,
     });
-  }, [sort, authorId, tag, readStatus, pageSize, isH5, items, total, feed.page]);
+  }, [sort, authorId, tag, readStatus, rating, collection, pageSize, isH5, items, total, feed.page]);
 
   /** 进详情/阅读器前记一下「最近打开的书 + 当前滚动位置」，返回时据此定位。 */
   function rememberBook(id: number) {
@@ -129,6 +139,8 @@ export function ShelfPage() {
       authorId,
       tag,
       readStatus,
+      rating,
+      collection,
       size: pageSize,
       mode: isH5 ? "infinite" : "paged",
       items,
@@ -223,6 +235,8 @@ export function ShelfPage() {
     setAuthorId(null);
     setTag(null);
     setReadStatus(null);
+    setRating(null);
+    setCollection(null);
   }
 
   function chooseReadStatus(next: Exclude<ReadStatus, ""> | null) {
@@ -344,6 +358,23 @@ export function ShelfPage() {
           </label>
 
           <label>
+            评分
+            <select
+              className="select"
+              value={rating ?? ""}
+              data-testid="filter-rating"
+              onChange={(e) => setRating(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">全部评分</option>
+              {[5, 4, 3, 2, 1].map((star) => (
+                <option key={star} value={star}>
+                  {star} 星
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
             作者
             <select
               className="select"
@@ -380,6 +411,11 @@ export function ShelfPage() {
             <button className="btn btn-ghost" type="button" onClick={resetFilters}>
               清除筛选
             </button>
+          ) : null}
+          {rating !== null ? (
+            <span className="meta" data-testid="rating-filter-hint">
+              只列已评分的书（0 星 = 未评，不参与评分筛选与按评分排序）。
+            </span>
           ) : null}
         </div>
       )}

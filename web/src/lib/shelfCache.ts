@@ -15,6 +15,10 @@ export interface ShelfCache {
   authorId: number | null;
   tag: string | null;
   readStatus: Exclude<ReadStatus, ""> | null;
+  /** 评分筛选（1–5）；null = 全部 */
+  rating: number | null;
+  /** 书单筛选；null = 全部 */
+  collection: number | null;
   size: number;
   mode: "paged" | "infinite";
   items: BookSummary[];
@@ -52,6 +56,8 @@ export function readShelfCache(now = Date.now()): ShelfCache | null {
       authorId: typeof parsed.authorId === "number" ? parsed.authorId : null,
       tag: typeof parsed.tag === "string" ? parsed.tag : null,
       readStatus: (parsed.readStatus ?? null) as Exclude<ReadStatus, ""> | null,
+      rating: typeof parsed.rating === "number" && parsed.rating > 0 ? parsed.rating : null,
+      collection: typeof parsed.collection === "number" && parsed.collection > 0 ? parsed.collection : null,
       size: typeof parsed.size === "number" && parsed.size > 0 ? parsed.size : 30,
       mode: parsed.mode === "paged" ? "paged" : "infinite",
       items: parsed.items as BookSummary[],

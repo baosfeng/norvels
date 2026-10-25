@@ -6,6 +6,7 @@ import type { BookDetail, ReadStatus, SerialStatus, Volume } from "../../api/typ
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { ChapterList } from "./ChapterList";
+import { BookRating } from "./RatingStars";
 import { formatCount, formatDate } from "../../lib/format";
 import { authorsOf } from "../../lib/metaDraft";
 import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
@@ -174,6 +175,12 @@ export function BookPage() {
                     </option>
                   ))}
                 </select>
+              </dd>
+            </div>
+            <div>
+              <dt>评分</dt>
+              <dd>
+                <BookRating book={book} />
               </dd>
             </div>
             {typeof book.bookmarkCount === "number" && book.bookmarkCount > 0 ? (
