@@ -18,7 +18,7 @@ import (
 
 // Options 描述一次导入。
 type Options struct {
-	Dir       string // 源目录（绝对路径）
+	Dir       string // 源路径（绝对路径）：目录或单个 .txt 文件
 	Recursive bool   // 是否递归子目录
 	Force     bool   // 忽略 SHA256 幂等检查，覆盖更新
 	DryRun    bool   // 只解析不写库，用于试跑与报告
@@ -120,7 +120,7 @@ func prepareRun(ctx context.Context, st *store.Store, opt Options) (*runState, s
 		return nil, "", nil, err
 	}
 
-	if reason, verr := verifySourceDir(dir); verr != nil {
+	if reason, verr := verifySource(dir); verr != nil {
 		state.failJob(ctx, reason)
 		return nil, "", nil, verr
 	}

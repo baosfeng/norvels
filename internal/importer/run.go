@@ -199,17 +199,18 @@ func resolveSourceDir(dir string) (string, error) {
 	return abs, nil
 }
 
-// verifySourceDir 确认路径存在且是目录。
+// verifySource 确认路径存在，且是目录或单个 .txt 文件。
 // 返回的 reason 用于写任务记录（不带包前缀），error 用于返回给调用方。
-func verifySourceDir(dir string) (string, error) {
-	fi, err := os.Stat(dir)
+func verifySource(path string) (string, error) {
+	fi, err := os.Stat(path)
 	if err != nil {
-		return fmt.Sprintf("stat dir: %v", err), fmt.Errorf("importer: stat dir: %w", err)
+		return fmt.Sprintf("stat: %v", err), fmt.Errorf("importer: stat: %w", err)
 	}
-	if !fi.IsDir() {
-		return fmt.Sprintf("not a directory: %s", dir), fmt.Errorf("importer: %s is not a directory", dir)
+	if fi.IsDir() || IsTxtFile(fi.Name()) {
+		return "", nil
 	}
-	return "", nil
+	reason := fmt.Sprintf("not a directory or .txt file: %s", path)
+	return reason, fmt.Errorf("importer: %s 既不是目录也不是 .txt 文件", path)
 }
 
 // resolveWorkers 决定并发解析数：未指定时取 min(NumCPU, maxWorkers)，并夹在 [1, 文件数]。

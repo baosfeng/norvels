@@ -135,6 +135,12 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 ```
 → 202 `{ "jobId": 7 }`；已有运行中的任务时返回 409。
 
+`dir` 可以是目录，也可以是单个 `.txt` 文件（如 `/books/某本书.txt`）：
+
+- 目录：扫描其下 txt，`recursive` 决定是否进子目录（缺省 true）。
+- 单个文件：只导这一本，`recursive` 被忽略；任务记录里 `sourceDir` 存该文件路径。
+- 路径既不是目录也不是 `.txt` 文件 → 400 `invalid_param`，不会建任务。
+
 ### GET /api/import/jobs
 ```json
 { "items": [{ "id": 7, "sourceDir": "/books", "status": "running", "total": 865, "imported": 120, "skipped": 3, "failed": 1, "startedAt": "…", "finishedAt": null, "message": "" }] }

@@ -14,8 +14,8 @@ import (
 func TestStartImportValidation(t *testing.T) {
 	env := newEnv(t)
 	dir := t.TempDir()
-	filePath := filepath.Join(dir, "not-a-dir.txt")
-	if err := os.WriteFile(filePath, []byte("x"), 0o644); err != nil {
+	notTxt := filepath.Join(dir, "not-a-txt.md")
+	if err := os.WriteFile(notTxt, []byte("x"), 0o644); err != nil {
 		t.Fatalf("写入临时文件失败: %v", err)
 	}
 
@@ -28,7 +28,7 @@ func TestStartImportValidation(t *testing.T) {
 		{"多个 JSON 对象", `{"dir":"/tmp"} {"dir":"/tmp"}`},
 		{"dir 缺失", `{"workers":2}`},
 		{"dir 不存在", `{"dir":"/no/such/dir/norvels"}`},
-		{"dir 不是目录", fmt.Sprintf(`{"dir":%q}`, filePath)},
+		{"既不是目录也不是 txt", fmt.Sprintf(`{"dir":%q}`, notTxt)},
 		{"workers 越界", fmt.Sprintf(`{"dir":%q,"workers":99}`, dir)},
 		{"workers 负数", fmt.Sprintf(`{"dir":%q,"workers":-1}`, dir)},
 	}
@@ -87,6 +87,29 @@ func TestStartImportAccepted(t *testing.T) {
 
 	// 非法 limit
 	requireError(t, env.get("/api/import/jobs?limit=0"), http.StatusBadRequest, codeInvalidParam)
+}
+
+// TestStartImportSingleTxtFile 确认 POST /api/import 的 dir 可以直接是一个 txt 文件。
+func TestStartImportSingleTxtFile(t *testing.T) {
+	env := newEnv(t)
+	dir := t.TempDir()
+	txt := filepath.Join(dir, "单本.txt")
+	if err := os.WriteFile(txt, []byte("书名：单本\n作者：测试\n第一章 起\n正文。\n"), 0o644); err != nil {
+		t.Fatalf("写入临时 txt 失败: %v", err)
+	}
+
+	rr := env.do(http.MethodPost, "/api/import",
+		strings.NewReader(fmt.Sprintf(`{"dir":%q,"dryRun":true}`, txt)),
+		map[string]string{"Content-Type": "application/json"})
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("状态码 = %d，期望 202 接受单文件，body=%s", rr.Code, rr.Body.String())
+	}
+	resp := decodeBody[struct {
+		JobID int64 `json:"jobId"`
+	}](t, rr)
+	if resp.JobID <= 0 {
+		t.Fatalf("jobId = %d，期望 > 0", resp.JobID)
+	}
 }
 
 func TestGetImportJobValidation(t *testing.T) {

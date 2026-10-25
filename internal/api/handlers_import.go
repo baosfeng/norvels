@@ -41,19 +41,19 @@ func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	dir, ok := validateImportDir(w, req)
+	source, ok := validateImportSource(w, req)
 	if !ok {
 		return
 	}
-	job, ok := s.acquireImportJob(w, r, dir)
+	job, ok := s.acquireImportJob(w, r, source)
 	if !ok {
 		return
 	}
-	opts := importOptions(req, dir, job.ID)
+	opts := importOptions(req, source, job.ID)
 
 	// 导入任务随服务退出而取消（Config.Context 由 serve 的 signal ctx 注入）。
 	ctx, cancel := context.WithCancel(s.baseContext())
-	go s.runImport(ctx, cancel, job.ID, dir, opts)
+	go s.runImport(ctx, cancel, job.ID, source, opts)
 
 	writeJSON(w, http.StatusAccepted, struct {
 		JobID int64 `json:"jobId"`
@@ -80,21 +80,22 @@ func decodeImportRequest(w http.ResponseWriter, r *http.Request) (importRequest,
 	return req, true
 }
 
-// validateImportDir 校验 dir 与 workers，并把 dir 归一化为绝对路径。
+// validateImportSource 校验源路径与 workers，并把源路径归一化为绝对路径。
+// 源路径可以是目录，也可以是单个 .txt 文件。
 // 出错时已写好 400 响应，返回 ok=false。
-func validateImportDir(w http.ResponseWriter, req importRequest) (string, bool) {
-	dir := strings.TrimSpace(req.Dir)
-	if dir == "" {
-		writeError(w, http.StatusBadRequest, codeInvalidParam, "dir 必填")
+func validateImportSource(w http.ResponseWriter, req importRequest) (string, bool) {
+	source := strings.TrimSpace(req.Dir)
+	if source == "" {
+		writeError(w, http.StatusBadRequest, codeInvalidParam, "dir 必填（目录或 .txt 文件路径）")
 		return "", false
 	}
-	info, err := os.Stat(dir)
+	info, err := os.Stat(source)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, codeInvalidParam, "目录不存在或不可读: "+dir)
+		writeError(w, http.StatusBadRequest, codeInvalidParam, "路径不存在或不可读: "+source)
 		return "", false
 	}
-	if !info.IsDir() {
-		writeError(w, http.StatusBadRequest, codeInvalidParam, "dir 不是目录: "+dir)
+	if !info.IsDir() && !importer.IsTxtFile(info.Name()) {
+		writeError(w, http.StatusBadRequest, codeInvalidParam, "路径既不是目录也不是 .txt 文件: "+source)
 		return "", false
 	}
 	if req.Workers < 0 || req.Workers > maxImportWorkers {
@@ -102,10 +103,10 @@ func validateImportDir(w http.ResponseWriter, req importRequest) (string, bool) 
 			fmt.Sprintf("workers 必须在 0~%d 之间", maxImportWorkers))
 		return "", false
 	}
-	if abs, absErr := filepath.Abs(dir); absErr == nil {
-		dir = abs
+	if abs, absErr := filepath.Abs(source); absErr == nil {
+		source = abs
 	}
-	return dir, true
+	return source, true
 }
 
 // acquireImportJob 在临界区内查运行中任务并建新任务，返回新建的任务。
@@ -129,7 +130,7 @@ func (s *Server) acquireImportJob(w http.ResponseWriter, r *http.Request, dir st
 		return nil, false
 	case running != nil:
 		writeError(w, http.StatusConflict, codeConflict,
-			fmt.Sprintf("已有导入任务正在运行（job %d，目录 %s）", running.ID, running.SourceDir))
+			fmt.Sprintf("已有导入任务正在运行（job %d，来源 %s）", running.ID, running.SourceDir))
 		return nil, false
 	case createErr != nil:
 		s.fail(w, r, createErr, "")
@@ -139,6 +140,7 @@ func (s *Server) acquireImportJob(w http.ResponseWriter, r *http.Request, dir st
 }
 
 // importOptions 把请求体翻译成 importer.Options（recursive 缺省为 true）。
+// dir 既可以是目录也可以是单个 .txt 文件；recursive 对文件无意义，会被扫描器忽略。
 func importOptions(req importRequest, dir string, jobID int64) importer.Options {
 	recursive := true
 	if req.Recursive != nil {

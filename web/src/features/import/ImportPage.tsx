@@ -21,11 +21,13 @@ export function ImportPage() {
   const jobs = data?.items ?? [];
   const running = jobs.find((j) => j.status === "running");
   const finished = jobs.filter((j) => j.status !== "running");
+  // 以 .txt 结尾就按单文件处理：递归选项对它没有意义，勾上也不会改变结果。
+  const isSingleFile = dir.trim().toLowerCase().endsWith(".txt");
 
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!dir.trim()) {
-      setMessage("先填一个目录路径。");
+      setMessage("先填一个目录或 txt 文件路径。");
       return;
     }
     setBusy(true);
@@ -38,7 +40,7 @@ export function ImportPage() {
       setMessage(
         err instanceof Error && "status" in err && (err as { status?: number }).status === 409
           ? "已经有一个导入任务在跑了，等它结束再开新的。"
-          : "任务没能开始，检查一下目录路径是否存在。",
+          : "任务没能开始，检查一下路径是否存在。",
       );
     } finally {
       setBusy(false);
@@ -50,8 +52,8 @@ export function ImportPage() {
       <div className="page-head">
         <div>
           <p className="eyebrow">导入管理</p>
-          <h1>把 txt 目录变成书架</h1>
-          <p className="sub">自动识别目录下的 txt 文件，同一文件不会重复导入</p>
+          <h1>把 txt 变成书架</h1>
+          <p className="sub">填目录批量导入，填单个 txt 只导这一本；同一文件不会重复导入</p>
         </div>
         <span className="pill">{running ? "1 个进行中的任务" : "0 个排队任务"}</span>
       </div>
@@ -60,18 +62,24 @@ export function ImportPage() {
         <form className="import-form" onSubmit={start}>
           <h2>新建导入任务</h2>
           <div className="field">
-            <label htmlFor="dir">目录路径</label>
+            <label htmlFor="dir">目录或 txt 文件路径</label>
             <input
               className="input"
               id="dir"
               value={dir}
               onChange={(e) => setDir(e.target.value)}
-              placeholder="例如 文稿/小说"
+              placeholder="例如 文稿/小说，或 文稿/小说/书名.txt"
             />
           </div>
           <div className="check-row">
-            <input id="rec" type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} />
-            <label htmlFor="rec">递归扫描子目录</label>
+            <input
+              id="rec"
+              type="checkbox"
+              checked={recursive && !isSingleFile}
+              disabled={isSingleFile}
+              onChange={(e) => setRecursive(e.target.checked)}
+            />
+            <label htmlFor="rec">递归扫描子目录{isSingleFile ? "（单个文件用不上）" : ""}</label>
           </div>
           <div className="check-row">
             <input id="force" type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
@@ -167,7 +175,7 @@ export function ImportPage() {
               ) : null}
             </div>
           ) : (
-            <EmptyPanel title="当前没有进行中的任务" description="填好左边的目录路径，开始一次导入。" />
+            <EmptyPanel title="当前没有进行中的任务" description="填好左边的路径（目录或单个 txt），开始一次导入。" />
           )}
 
           <div className="import-jobs">
@@ -184,7 +192,7 @@ export function ImportPage() {
                 <thead>
                   <tr>
                     <th>任务</th>
-                    <th>目录</th>
+                    <th>来源</th>
                     <th className="num">导入</th>
                     <th className="num">跳过</th>
                     <th className="num">失败</th>

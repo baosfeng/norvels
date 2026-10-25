@@ -17,7 +17,7 @@ import (
 func cmdImport(args []string) error {
 	cfg := mustConfig()
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	dir := fs.String("dir", cfg.BooksDir, "txt 所在目录（默认取 NORVELS_BOOKS_DIR）")
+	dir := fs.String("dir", cfg.BooksDir, "txt 所在目录，或单个 txt 文件（默认取 NORVELS_BOOKS_DIR）")
 	dbPath := fs.String("db", cfg.DB, "数据库路径")
 	recursive := fs.Bool("recursive", true, "递归子目录")
 	force := fs.Bool("force", false, "忽略幂等检查，覆盖已有记录")
@@ -28,7 +28,7 @@ func cmdImport(args []string) error {
 	fs.Parse(args)
 	setupLogging(*logLevel)
 	if *dir == "" {
-		return errors.New("必须指定 --dir 或设置 NORVELS_BOOKS_DIR")
+		return errors.New("必须指定 --dir（目录或单个 txt 文件）或设置 NORVELS_BOOKS_DIR")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

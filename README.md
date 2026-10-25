@@ -77,9 +77,13 @@ norvels/
 
 ```bash
 make build-server                                            # 编译后端（产物 bin/norvels）
-./bin/norvels import --dir "/path/to/txt" --db ./data/norvels.db
+./bin/norvels import --dir "/path/to/txt" --db ./data/norvels.db          # 整个目录
+./bin/norvels import --dir "/path/to/某本书.txt" --db ./data/norvels.db   # 或单个 txt
 ./bin/norvels serve --addr :8080 --db ./data/norvels.db
 ```
+
+`--dir` 同时接受目录和单个 `.txt` 文件：给目录就批量扫描（`--recursive` 控制是否进子目录），
+给文件就只导这一本。传入其他扩展名的文件会直接报错，不会静默导 0 本。
 
 打开 <http://127.0.0.1:8080> 可看到占位页，接口在 <http://127.0.0.1:8080/api/stats>。
 前端落地后改用 `make build`（构建前端并同步到 `internal/webui/dist` 再编译）。
