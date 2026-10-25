@@ -78,6 +78,14 @@ type world struct {
 	p1bRetryID    int64
 	p1bRunningID  int64
 	p1bJobsBefore int
+
+	// 章节结构与卷管理（M1–M3 / C2）：最近一次详情快照 + 拆章/合并的守恒基准
+	structBook     bookStructureDTO
+	structChapters []chapterDTO
+	lastVolumeID   int64 // 最近新建的卷 id
+	otherBookID    int64 // 「结构无关的短书」的 id（只用于 404 场景）
+	otherChapterID int64 // 短书的首章 id（不属于本书）
+	wordBase       int   // 记下的字数（拆分/合并前）
 }
 
 // reset 关闭上一个场景留下的资源。
