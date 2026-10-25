@@ -255,8 +255,7 @@ curl -fsS http://127.0.0.1:8080/api/health
 | 场景 | CPU | 内存 | 磁盘 | 依据 |
 |---|---|---|---|---|
 | 浏览/阅读（serve） | 1 vCPU | 1 GB | 数据卷大小 | Go 服务 RSS 约 50–100 MB；`cache_size=-65536` 让 SQLite 页缓存上限约 64 MB（见 `internal/store/open.go`） |
-| 导入 4.4 GB / 865 文件 | 2 vCPU | 2 GB | 源 4.4 GB + 库约 5–6 GB（移除正文索引后）+ 备份 | 解析是 CPU 密集（并发 `min(NumCPU, 8)`），SQLite 写入是 IO 密集；WAL 峰值数十 MB。1C1G 也能跑完，但耗时约翻倍 |
-| 导入 + FTS 重建 | 2–4 vCPU | 2–4 GB | 同上 | `reindex` 需要额外临时页缓存；大库建议先导入再单独建索引 |
+| 导入 4.4 GB / 865 文件 | 2 vCPU | 2 GB | 源 4.4 GB + 库约 1.6 GB + 备份 | 解析是 CPU 密集（并发 `min(NumCPU, 8)`），SQLite 写入是 IO 密集；WAL 峰值数十 MB。1C1G 也能跑完，但耗时约翻倍 |
 
 - 磁盘 IO：SSD 明显优于机械盘（估算 2–3 倍差异），4.4 GB 文本顺序读 + 随机写库。
 - 网络：仅 API 与静态资源，浏览流量很小；导入不需要网络。
@@ -493,4 +492,3 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 
 - 架构与数据模型：[architecture.md](architecture.md)
 - REST API 契约：[api.md](api.md)
-- 容器方案调研：[research.md](research.md)（由 research-docker 维护）

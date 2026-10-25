@@ -105,14 +105,14 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
   }
 }
 ```
-> `snippet` 含 `<b>` 高亮标记（其余 HTML 字符已转义）。前端必须做**受限渲染**：按 `<b>…</b>` 拆段 → 逐段转义 → 再拼回 `<b>`，不要直接把后端字符串塞进 `dangerouslySetInnerHTML`。
+> `snippet` 字段保留但**恒为空字符串**：正文检索已下线，后端不再计算命中片段（见 [ADR-0002](adr/0002-drop-fulltext-index.md)）。
 
 **检索约束（实现现状，前端必须处理）**
 
-- 全文检索是**字级分词**（FTS5 `unicode61` + 汉字逐字分段，查询串过同一个 `Segment` 函数）：
+- 检索范围是**书名 / 作者名 / 章节标题**，三类都走 `LIKE`，**不检索正文**。
   - `q` trim 后 **少于 2 个字符** → `400` `{"error":{"code":"query_too_short","message":"关键词至少 2 个字"}}`；
-  - 中文两字词正常工作（`临川市`、`秋蝉`），前端不需要自己分词。
-- 响应可能带可选字段 `notice`（string），说明降级原因（如关键词过于常见被截断）；前端有则提示、无则忽略。
+  - 不需要分词：中文两字词（`秋蝉`）直接按子串匹配。
+- 响应可能带可选字段 `notice`（string），说明降级原因；前端有则提示、无则忽略。
 
 **错误码一览**
 
@@ -205,9 +205,10 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36 }`，upsert，204。
   "textBytes": 131072, "indexBytes": 16384, "otherBytes": 8192, "lastImportAt": "…" }
 ```
 
-- `textBytes`：各表 TEXT 列字节数汇总（正文 + 标题 + 字级分词镜像列 + 简介/路径等）；
-- `indexBytes`：FTS5 影子表（`chapters_fts_data` / `_idx` / `_docsize` / `_config`）字节数；
-- `otherBytes` = `dbBytes` − 前两者（含 btree 页填充、表头、空闲页）；**三者之和恒等于 `dbBytes`**，
+- `textBytes`：正文压缩块（`chapter_blocks.packed`）与书目文本列之和，即**压缩后**的实际占用；
+- `textBytesRaw`：正文压缩前的原文逻辑字节，只用于说明压缩比，不参与占比；
+- `indexBytes`：库文件大小减去正文与书目文本后的近似值（btree 页、表头等）；
+- `otherBytes` = `dbBytes` − 前两者（页头与空闲页，通常只有几 KB）；**三者之和恒等于 `dbBytes`**，
   可直接画堆叠条，不会出现负值。
 
 ### 实现要点

@@ -134,8 +134,9 @@ INSERT INTO chapters_fts(chapters_fts) VALUES('integrity-check');
 | 章节总数 | **422,715** |
 | 总字数 | **1,411,582,902**（14.1 亿字） |
 | 作者数 | 323 |
-| 库体积 | **13.8 GiB**（14,842,699,776 B，主库，导入后已 checkpoint） |
-| 体积倍率 | **3.4x**（13.8 GiB / 4.1 GiB 原文） |
+| 库体积（旧形态，含全文索引） | **13.8 GiB**（14,842,699,776 B，导入后已 checkpoint） |
+| 库体积（v0.2 迁移 + VACUUM 后） | **1.62 GB**（正文按 1 MB 块 zstd 压缩，见 [ADR-0003](adr/0003-block-compressed-content.md)） |
+| 体积倍率 | 旧形态 3.4x；压缩后 **0.36x**（1.62 GB / 4.4 GB 原文） |
 
 ### 9.2 编码分布（实际入库）
 
@@ -179,16 +180,6 @@ INSERT INTO chapters_fts(chapters_fts) VALUES('integrity-check');
 - **两处长尾**：一本 42 字符书名（站点前缀未完全剥离）、一本仅 4 章的短篇；
 - 未发现乱码或空标题。
 
-### 9.5 搜索性能（真实 13.8 GiB 库，2/3/4 字各 10 次）
-
-| 查询字数 | P50 | P95 | 命中数示例 |
-|---|---|---|---|
-| 2 字 | **170.7 ms** | **304.7 ms** | 1000（触顶） |
-| 3 字 | **48.9 ms** | **84.0 ms** | 11 |
-| 4 字 | **40.9 ms** | **54.7 ms** | 7 |
-
-2 字更慢：命中数触到 1000 上限，需额外排序与截断。3~4 字落在 40~90 ms，交互可接受。
-
 ### 9.6 驾驶舱接口（真实数据）
 
 | 接口 | 耗时 | 响应大小 | 判定 |
@@ -205,8 +196,8 @@ INSERT INTO chapters_fts(chapters_fts) VALUES('integrity-check');
 
 | SQL | 修复前耗时 | 原因 |
 |---|---|---|
-| `SUM(length(content)+length(title_seg)+length(content_seg))` on `chapters` | **99~1024 s** | 逐行读 4.2 GB 正文 + 分词镜像列 |
-| `SUM(length(block))` on `chapters_fts_data` | **20~48 s** | 逐行读 FTS 影子表（3.2 GB） |
+| （旧形态）`SUM(length(content)+length(title_seg)+length(content_seg))` on `chapters` | **99~1024 s** | 逐行读 4.2 GB 正文 + 分词镜像列 |
+| （旧形态）`SUM(length(block))` on `chapters_fts_data` | **20~48 s** | 逐行读 FTS 影子表（3.2 GB） |
 | 把 `chapters.word_count` 全表拉进 Go 逐行分桶 | **73.6 s** | 读整行记录（含正文） |
 | `dbstat` 虚表全库扫描 | **74.9 s** | 逐页读，不可用 |
 

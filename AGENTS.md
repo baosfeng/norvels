@@ -6,8 +6,6 @@
 
 > 改解析→[parser-architecture](docs/parser-architecture.md)｜改数据层/迁移→[architecture](docs/architecture.md)+[ADR](docs/adr/)｜改接口→[api](docs/api.md)｜改前端/图表→[charts.ts](web/src/lib/charts.ts)｜部署升级→[deploy](docs/deploy.md)｜发版→[release](docs/release.md)｜门禁口径→[quality-gates](docs/quality-gates.md)｜全量导航→[README](README.md)
 
-> ⚠️ [HANDOFF.md](HANDOFF.md) 是 2026-10-25 11:00 的历史快照：「字级分词搜索」「体积 3.4x」等结论已被 v0.2 推翻（见 [ADR 0002](docs/adr/0002-drop-fulltext-index.md) / [0003](docs/adr/0003-block-compressed-content.md)）。
-
 ## 隐私红线（不进仓库）
 
 语料、数据库、真实书名/作者、截图都留在本地——代码、文档、测试、示例、提交信息一视同仁。示例用虚构书名与 `/path/to/txt`；真实词表在 `.privacy-denylist.txt`（本机、已 gitignore）。提交前跑 `scripts/privacy-scan.sh --all`。

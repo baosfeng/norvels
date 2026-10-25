@@ -40,7 +40,7 @@ flowchart LR
 ```text
 norvels/
 ├── cmd/
-│   ├── norvels/            # 主程序：import / serve / stats / reindex / version
+│   ├── norvels/            # 主程序：import / serve / stats / check-content / migrate / version
 │   └── healthcheck/        # 镜像内健康检查（distroless 无 curl，用它请求 /api/health）
 ├── internal/
 │   ├── api/                # REST 路由、中间件、SPA 静态资源
@@ -59,8 +59,7 @@ norvels/
 ├── docs/
 │   ├── architecture.md     # 组件划分与数据模型
 │   ├── api.md              # REST API 契约
-│   ├── deploy.md           # 构建、体积、SQLite on volume、资源建议
-│   └── research.md         # 容器方案调研（research-docker 维护）
+│   └── deploy.md           # 构建、体积、SQLite on volume、资源建议
 ├── data/                   # 运行时生成（已 gitignore）
 ├── Makefile
 ├── go.mod
@@ -69,14 +68,10 @@ norvels/
 
 ## 快速开始
 
-> **当前进度**：后端（解析器 / 数据层 / API / CLI / 部署）已可用；前端为 React 实现阶段，
-> `web/` 还没落地，服务会先渲染 `internal/webui/placeholder.html` 占位页。
-> 分阶段状态见 [HANDOFF.md](HANDOFF.md)。
-
 ### 本地（3 条命令）
 
 ```bash
-make build-server                                            # 编译后端（产物 bin/norvels）
+make build                                                   # 构建前端 + 后端（产物 bin/norvels）
 ./bin/norvels import --dir "/path/to/txt" --db ./data/norvels.db          # 整个目录
 ./bin/norvels import --dir "/path/to/某本书.txt" --db ./data/norvels.db   # 或单个 txt
 ./bin/norvels serve --addr :8080 --db ./data/norvels.db
@@ -85,13 +80,13 @@ make build-server                                            # 编译后端（�
 `--dir` 同时接受目录和单个 `.txt` 文件：给目录就批量扫描（`--recursive` 控制是否进子目录），
 给文件就只导这一本。传入其他扩展名的文件会直接报错，不会静默导 0 本。
 
-打开 <http://127.0.0.1:8080> 可看到占位页，接口在 <http://127.0.0.1:8080/api/stats>。
-前端落地后改用 `make build`（构建前端并同步到 `internal/webui/dist` 再编译）。
+打开 <http://127.0.0.1:8080> 即可使用；接口在 <http://127.0.0.1:8080/api/stats>。
+只改后端时用 `make build-server`（复用已有 `internal/webui/dist`，跳过前端构建）。
 
 ### Docker（3 条命令）
 
 ```bash
-docker build -f deploy/Dockerfile -t norvels:0.1.0 .          # 1) 构建镜像
+docker build -f deploy/Dockerfile -t norvels:0.2.4 .          # 1) 构建镜像
 NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml \
   run --rm --entrypoint /norvels norvels import --dir /books --db /data/norvels.db   # 2) 先导入
 NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml up -d         # 3) 启动
@@ -137,7 +132,7 @@ scripts/import.sh --mode docker \
 docker run --rm --entrypoint /norvels \
   -v "/path/to/txt:/books:ro" \
   -v "$PWD/data:/data" \
-  norvels:0.1.0 \
+  norvels:0.2.4 \
   import --dir /books --db /data/norvels.db --workers 4
 ```
 
@@ -146,15 +141,10 @@ docker run --rm --entrypoint /norvels \
 | 指标 | 参考值 | 说明 |
 |---|---|---|
 | 文本总量 | 4.1–4.4 GB | `du -sh` 实测 4.1 GB；`find -iname '*.txt'` 计数 865 个 |
-| 导入耗时（2C2G，SSD） | 约 20–40 分钟（估算） | 解析 CPU 密集 + SQLite 写入；1C1G 约翻倍。**importer 合入后以实际 `time` 输出为准** |
+| 导入耗时（单机 SSD，并发 4） | 约 10 分钟 | 838 个文件 / 4.1 GB 实测 10 分 25 秒；解析 CPU 密集，1C1G 约翻倍 |
 | 导入耗时（单文件） | 数十毫秒–数秒 | 取决于文件大小（单文件最大约 42 MB） |
-| 主库体积 | 约 14–15 GB（旧形态） | **旧形态实测倍率 3.3–3.4x**，其中 65% 是正文索引。移除正文索引后约 5.3 GB（约 1.2x）；**正文按块压缩后实测 1.62 GB**（真实库迁移 + VACUUM 后），推算见 [docs/data-profile.md](docs/data-profile.md#10-容量推算几万本) |
-| 磁盘预留 | ≥ 20 GB（含一份备份建议 ≥ 35 GB） | 源 4.4 GB + 主库 14–15 GB + 备份 |
-
-> 上表耗时是工程估算，来自本机小样本实测的线性外推：8 个真实 txt（5.09 MiB）导入 0.6 s、30 个（13.2 MiB）1.5 s（Apple Silicon，`--workers 4`）。
-> 4.4 GB 全量尚未跑完（库会膨胀到 14–15 GB，磁盘 IO 与 FTS 索引会拖慢后段），首次全量导入请用 `time ./bin/norvels import ...` 记录真实值并更新本文。
->
-> 正文全文索引已移除（[ADR-0002](docs/adr/0002-drop-fulltext-index.md)）：去掉 `content_seg` 镜像列与 `chapters_fts` 后，主库倍率回落到约 1.2x；若再压缩正文列约 0.6x。
+| 主库体积 | **1.62 GB** | 838 本 / 42.3 万章 / 4.87 GB 正文；正文按 1 MB 块 zstd 压缩，压缩率 34.7%（[ADR-0003](docs/adr/0003-block-compressed-content.md)） |
+| 磁盘预留 | ≥ 5 GB | 主库 1.62 GB + 一份备份；**从旧库升级当次峰值 ≥ 35 GB**（迁移期间新旧数据并存） |
 
 导入后可重复执行：内容未变的文件按 SHA-256 命中直接跳过；需要重解析时加 `--force`。
 
@@ -171,7 +161,6 @@ docker run --rm --entrypoint /norvels \
 | `scripts/import.sh --dir <目录>` | 批量导入（本地二进制模式） |
 | `scripts/backup.sh --keep 7` | 备份数据库并保留最近 7 份 |
 | `make bench-capacity` | 容量压测（500 本 x 500 章合成库，不碰生产库） |
-| `./bin/norvels reindex --db ./data/norvels.db` | 重建索引 |
 | `./bin/norvels version` | 版本、commit、构建时间 |
 
 ## API 一览
@@ -189,7 +178,7 @@ docker run --rm --entrypoint /norvels \
 | GET | `/api/books/{id}/chapters/{cid}` | 章节正文（含 prevId/nextId） |
 | GET | `/api/authors` | 作者列表（`q`、分页） |
 | GET | `/api/authors/{id}` | 作者详情 + 作品 |
-| GET | `/api/search` | 全文/书名检索（`q`、`type=chapter|book|all`） |
+| GET | `/api/search` | 书名 / 作者 / 章节标题检索（`q`、`type=chapter|book|all`） |
 | GET | `/api/tags` | 标签列表 |
 | POST | `/api/import` | 触发导入（202 + jobId；并发导入返回 409） |
 | GET | `/api/import/jobs` | 导入任务列表 |
@@ -200,7 +189,7 @@ docker run --rm --entrypoint /norvels \
 | 场景 | CPU | 内存 | 磁盘 | 依据 |
 |---|---|---|---|---|
 | 日常浏览 | 1 vCPU | 1 GB | 数据卷大小 | Go 服务 RSS 约 50–100 MB；SQLite 页缓存上限约 64 MB（`cache_size=-65536`） |
-| 导入 4.4 GB | 2 vCPU | 2 GB | ≥ 20 GB 空闲 | 解析 CPU 密集（并发上限 8）、SQLite 写入 IO 密集、库最终 14–15 GB（实测 3.3–3.4x）、WAL 峰值数十 MB |
+| 导入 4.4 GB | 2 vCPU | 2 GB | ≥ 5 GB 空闲 | 解析 CPU 密集（并发上限 8）、SQLite 写入 IO 密集、库最终约 1.6 GB、WAL 峰值数十 MB |
 | 容量压测 | 1 vCPU | 1 GB | 临时目录 ≥ 2 GB | `make bench-capacity` 默认小规模，库建在系统临时目录、跑完自动删 |
 
 - 磁盘用本地 SSD；网络盘（NFS/SMB）上的 SQLite 锁语义不可靠。
@@ -245,7 +234,7 @@ scripts/backup.sh --keep 7          # 内部用 sqlite3 .backup 或 VACUUM INTO�
 
 ## 设计取舍与调研结论
 
-同类方案调研（[docs/research.md](docs/research.md)）的关键结论：
+几条经过实测的取舍：
 
 - **最接近的参考实现是 zreader**：Go 单二进制 + `modernc.org/sqlite` + React SPA `go:embed`，作者自述约 23 MB 镜像，证明「Go + SQLite + 中文 txt」能在 20 MB 量级落地。
 - **正文检索已主动放弃**：早期用「字级分词镜像列 + FTS5」支持 2 字及以上正文检索，但实测它占掉全库 65% 的体积（838 本 14.84 GB 里 9.58 GB 是索引）。用户不需要按正文内容检索，因此移除正文索引，检索收敛为书名 / 作者 / 章节标题的 `LIKE`（5 万本实测 18.4 ms）。决策与后果见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)。
@@ -271,7 +260,6 @@ make verify       # 完整门禁：gofmt + go vet + go test + 隐私扫描
 - [ADR-002：移除正文全文索引](docs/adr/0002-drop-fulltext-index.md)
 - [REST API 契约](docs/api.md)
 - [部署指南（构建参数、体积、SQLite on volume、资源建议、升级回滚）](docs/deploy.md)
-- [容器方案调研](docs/research.md)
 - [隐私与仓库卫生](docs/privacy.md)
 
 ## 许可证

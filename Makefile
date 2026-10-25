@@ -6,7 +6,7 @@ BUILTAT ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.builtAt=$(BUILTAT)
 BIN := bin/norvels
 
-.PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy gallery \
+.PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy \
         bench-capacity verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance
 
 help:
@@ -51,9 +51,6 @@ docker: ## 构建镜像（需要本机有 docker）
 
 privacy: ## 隐私扫描（工作区全部文件，提交前跑一次）
 	scripts/privacy-scan.sh --all
-
-gallery: ## 重新生成三版原型对比页 + 截图（自动相对化路径）
-	scripts/gallery.sh
 
 # ---------- 容量压测 ----------
 # 默认小规模（500 本 x 500 章，约 1 GB 临时库，几秒跑完），产物是可直接贴进
