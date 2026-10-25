@@ -57,18 +57,17 @@ words=$(q "SELECT sum(word_count) FROM books;")
 printf '  书籍 %s 本 / 章节 %s / 字数 %s\n\n' "$books" "$chapters" "$words"
 
 check "章节数 ≤1 的书"          "$(q "SELECT count(*) FROM books WHERE chapter_count<=1;")" "==0"
-check "空章节"                  "$(q "SELECT count(*) FROM chapters WHERE length(trim(content))=0;")" "==0"
-check "超长单章（>80KB）"        "$(q "SELECT count(*) FROM chapters WHERE length(content)>80000;")" "==0"
+# 正文已按块压缩存储（0007），content 列不存在；用 block_len（该章在块里的字节数）判定。
+check "空章节"                  "$(q "SELECT count(*) FROM chapters WHERE block_len=0;")" "==0"
+check "超长单章（>80KB）"        "$(q "SELECT count(*) FROM chapters WHERE block_len>80000;")" "==0"
 check "书名残留装饰（【】》搜书吧）" "$(q "SELECT count(*) FROM books WHERE title LIKE '%【%' OR title LIKE '%】%' OR title LIKE '%》%' OR title LIKE '%搜书吧%';")" "==0"
 check "作者缺失占比（%）"        "$(q "SELECT printf('%.1f', 100.0*sum(author_id=(SELECT id FROM authors WHERE name='佚名'))/count(*)) FROM books;")" "<=15%"
-# FTS 完整性：integrity-check 无输出即通过（有输出说明索引与主表不一致）
-fts_out=$(sqlite3 "$DB" "INSERT INTO chapters_fts(chapters_fts) VALUES('integrity-check');" 2>&1)
-if [[ -z "$fts_out" ]]; then
-  printf '  ✅ %-34s %s\n' "FTS 完整性" "ok"
-else
-  printf '  ❌ %-34s %s\n' "FTS 完整性" "$fts_out"
-  fails=$((fails+1))
-fi
+# 检索已不含正文（0006 起正文不建索引），因此这里不再做 FTS 完整性检查。
+# 取而代之：确认分词镜像列与 FTS 表确实不存在，避免老库升级漏删把库撑大。
+seg_out=$(q "SELECT count(*) FROM pragma_table_info('chapters') WHERE name IN ('title_seg','content_seg');")
+check "分词镜像列已移除"        "$seg_out" "==0"
+fts_tbl=$(q "SELECT count(*) FROM sqlite_master WHERE name LIKE 'chapters_fts%';")
+check "FTS 索引表已移除"        "$fts_tbl" "==0"
 
 printf '\n'
 if [[ $fails -eq 0 ]]; then

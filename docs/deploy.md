@@ -210,9 +210,27 @@ curl -fsS http://127.0.0.1:8080/api/health
 ```
 
 `/healthcheck` 判定规则：HTTP 200 且 JSON 中 `status == "ok"`，否则退出码 1。
-`start_period: 60s` 给 SQLite 迁移留出时间：大库首次升级要建 FTS 索引，可能远超 10s；
+`start_period: 60s` 给 SQLite 迁移留出时间；
 `start_period` 内失败**不计入** `retries`，否则会出现「迁移中 → 判定 unhealthy → 被重启 → 迁移重来」的死循环。
-库特别大时可按需继续调大。
+
+> ⚠️ **升级到 v0.2（迁移 0006 + 0007）时请把 `start_period` 调到 30 分钟以上**。
+> 0007 要把全库正文逐章压进压缩块并重建 `chapters` 表。
+> **实测：838 本 / 422,715 章 / 13.8 GB 的库，完整迁移耗时 23 分 20 秒**（单机 SSD）；
+> 期间进程没有监听端口，健康检查必然失败。容器被中途重启会让迁移从头再来（事务回滚后重跑），
+> 看起来像「卡住了」。**更稳的做法是先用一次性容器跑完迁移**：
+>
+> ```bash
+> docker compose -f deploy/compose.yml run --rm --entrypoint /norvels norvels \
+>   migrate --db /data/norvels.db
+> # 迁移完再 up -d，此时启动日志会是「应用 0 个迁移」
+> ```
+>
+> 迁移完成后建议跑一次正文自查（见 §7.2），确认正文仍可读。
+> **该迁移需要额外磁盘空间**：过程中旧正文与新压缩块并存，峰值约为「原库大小 + WAL 增长」。
+> 实测 13.83 GB 的库迁移期间 WAL 涨到 **10.8 GB**，峰值约 **25 GB**；
+> 再加上随后 VACUUM 需要的临时空间，**建议预留 35 GB 以上**。
+>
+> **迁移完成后推荐执行一次 VACUUM 回收空间**（见 §7.4）。
 
 ## 5. SQLite on volume 注意事项
 
@@ -222,19 +240,22 @@ curl -fsS http://127.0.0.1:8080/api/health
 4. **checkpoint**：导入结束会执行 `PRAGMA wal_checkpoint(TRUNCATE)`，把 WAL 合并回主库并缩小体积；备份前也可先 checkpoint。
 5. **卷性能**：数据库放本地 SSD 卷。网络盘（NFS/SMB）上的 SQLite 锁语义不可靠，会随机 `database is locked`。
 6. **卷生命周期**：`docker compose down` 保留 bind mount 数据；若改用 named volume，`docker compose down -v` 会删除数据，操作前确认。
-7. **空间（实测倍率 3.3–3.4x，比按原文 1.76x 的初估更高）**：
-   - 本机实测：30 个真实 txt（13.2 MiB）导入后库 **44.3 MB**（3.34x）；8 个（5.09 MiB）导入后 **17.4 MB**（3.42x）。
-   - 原因：`chapters` 同时保存正文 `content` 与字级分词镜像列 `content_seg`（逐字加空格），FTS5 再为分词文本建索引（见 `internal/store/schema.sql`）。
-   - 按 4.4 GB 原文外推，主库约 **14–15 GB**；`/data` 卷建议预留 **≥ 20 GB**，再保留一份备份建议 **≥ 35 GB**。
-   - 若后续把字级分词改为 trigram（调研建议路线，见 [research.md](research.md)）或去掉 `content_seg` 镜像列，倍率会回落，但 trigram 对 2 字查询需要 LIKE 回退。以 `/api/stats` 的 `dbBytes` 为准。
-   - **v2 计划**：FTS 改为 contentless、去掉 `content_seg` 镜像列，主库倍率预计回落到约 2x（4.4 GB 原文约 8–9 GB），届时本表与 README 同步更新。
+7. **空间**：
+   - 旧形态（含字级分词镜像列 + FTS5）实测 3.3–3.4x：838 本 / 4.87 GB 正文 → **14.84 GB**，其中 65% 是正文索引。
+   - 正文全文索引已移除（[ADR-0002](adr/0002-drop-fulltext-index.md)）：去掉 `content_seg` 镜像列与 `chapters_fts` 后每本约 6.3 MB，838 本约 **5.3 GB**（约 1.2x 原文）。
+   - **正文按块压缩后实测 1.62 GB**（13.83 GB 库迁移 + VACUUM 后）：正文压成 5,130 块共 1.69 GB，
+     原始 4.87 GB，压缩率 **34.7%**。每本约 1.93 MB（0.36x 原文）。
+     算法与取舍见 [ADR-0003](adr/0003-block-compressed-content.md)。
+   - 按 4.4 GB 原文规划：跑完迁移 + VACUUM 后 `/data` 约 1.6–2 GB，预留 **≥ 5 GB** 即可；
+     **迁移当次**峰值要 35 GB 以上（见 §4 的说明）。以 `/api/stats` 的 `dbBytes` 为准。
+   - 几万本的体积与延迟推算见 [data-profile.md §10](data-profile.md#10-容量推算几万本)。
 
 ## 6. 资源建议
 
 | 场景 | CPU | 内存 | 磁盘 | 依据 |
 |---|---|---|---|---|
 | 浏览/阅读（serve） | 1 vCPU | 1 GB | 数据卷大小 | Go 服务 RSS 约 50–100 MB；`cache_size=-65536` 让 SQLite 页缓存上限约 64 MB（见 `internal/store/open.go`） |
-| 导入 4.4 GB / 865 文件 | 2 vCPU | 2 GB | 源 4.4 GB + 库 14–15 GB + 备份 | 解析是 CPU 密集（并发 `min(NumCPU, 8)`），SQLite 写入是 IO 密集；WAL 峰值数十 MB。1C1G 也能跑完，但耗时约翻倍 |
+| 导入 4.4 GB / 865 文件 | 2 vCPU | 2 GB | 源 4.4 GB + 库约 5–6 GB（移除正文索引后）+ 备份 | 解析是 CPU 密集（并发 `min(NumCPU, 8)`），SQLite 写入是 IO 密集；WAL 峰值数十 MB。1C1G 也能跑完，但耗时约翻倍 |
 | 导入 + FTS 重建 | 2–4 vCPU | 2–4 GB | 同上 | `reindex` 需要额外临时页缓存；大库建议先导入再单独建索引 |
 
 - 磁盘 IO：SSD 明显优于机械盘（估算 2–3 倍差异），4.4 GB 文本顺序读 + 随机写库。
@@ -283,6 +304,62 @@ NORVELS_VERSION=0.1.0 docker compose -f deploy/compose.yml up -d
   但前提是确认新版本没有应用任何迁移——启动日志会打印「库版本 N → 应用 M 个迁移」，
   日志里 `应用 0 个迁移` 才是可安全回滚 tag 的情形。
 
+### 7.2 升级后自查：`check-content`
+
+v0.2 起正文不再是 SQL 可直接查询的 `content` 列，而是压缩块（`chapter_blocks`）。
+迁移之后**先跑一次正文自查**再放心用：
+
+```bash
+# 抽查 50 章（默认）——正常时最后一行是 OK
+./bin/norvels check-content --db ./data/norvels.db
+
+# 指定抽样数
+./bin/norvels check-content --db ./data/norvels.db --sample 200
+
+# 全量校验（42 万章，几分钟）——迁移后第一次升级建议跑这个
+./bin/norvels check-content --db ./data/norvels.db --all
+```
+
+`--all` 与 `--sample` **互斥**，同时给会直接报错（避免「以为跑了全量、其实只抽样」）。
+
+输出形如：
+
+```text
+全量校验 2531/2531 章，触及 72 个压缩块
+正文总字节 67530158，单章最小 6939、最大 60227（平均 26681）
+OK
+```
+
+判定口径（**只认存储完整性，不认内容质量**）：
+
+- `OK` = 校验到的每一章都成功解压 + 章节区间落在块内不越界 + 能按区间切出字节。
+  这三条成立就意味着「读回来的字节 == 当初写进去的字节」，存储是完好的；
+- **正文不是合法 UTF-8 不算失败**，只打一行提示、退出码仍是 0。这类脏数据几乎总是
+  源 txt 的编码问题（某个文件主体 GBK、夹了一段 UTF-8，解析器按整文件只能挑一个），
+  迁移是逐字节搬运的，会把它原样保留——报成「迁移损坏」既冤枉又误导排障方向：
+
+  ```text
+  提示：20 章正文含非法 UTF-8（源文件编码问题，非迁移损坏，存储完整性不受影响）
+    涉及章节 id（最多列 20 个）：[124657 124658 124667 ...]
+    这些章节阅读时可能显示乱码；如需定位源文件，可用 --sample N 缩小范围后按 id 反查。
+  ```
+
+- 有坏块（解压失败 / 区间越界 / 块缺失）时才会 FAIL，且**列出全部损坏块**
+  （不是遇到第一个就停），每行带 `book_id` / `block_seq` / `block_id` / 章节范围，
+  并以非零码退出——**此时应从升级前的备份恢复**：
+
+  ```text
+  FAIL 发现 2 个损坏的压缩块：
+    - 压缩块损坏：book_id=7 block_seq=3 block_id=21 章节 idx 70-104（触发章节 id=312）：... zstd: invalid input
+    - 压缩块损坏：book_id=9 block_seq=1 block_id=28 章节 idx 0-34（触发章节 id=401）：... zstd: invalid input
+  ```
+
+- 「触及块数」明显小于校验数（例如 5000 章只触及 1 块）说明块切得过大，翻页会变慢，值得排查。
+
+**块损坏是局部故障**：受影响的只是那一块覆盖的章节（约 1 MB / 约 35 章）。
+接口层对这类请求返回 `503` + `{"error":{"code":"content_corrupted"}}`，
+书架、目录、其他章节都不受影响——前端应只在当前章提示「本章读取失败」，不要整本禁用。
+
 #### 升级与回滚完整示例
 
 ```bash
@@ -309,6 +386,44 @@ curl -fsS http://127.0.0.1:8080/api/health
 | 库版本 < 二进制版本 | 老库（`user_version=1`、无 `schema_migrations`） | 正常迁移到最新，且**不重跑建表**、数据条数不变 |
 | 拒绝后库不变 | 用例 1 打开失败后重新读库 | `schema_migrations` 最大版本仍为 99，`user_version` 未被改写（守卫必须**只读**，失败路径不写库） |
 | 空/损坏库 | 零字节文件或非 SQLite 文件 | 报错清晰（区分"不是数据库"与"版本过新"），不误判为老库 |
+
+### 7.4 迁移后回收空间：`VACUUM`
+
+迁移完成后推荐执行一次 `VACUUM` 回收空间：
+
+```bash
+norvels migrate --db /data/norvels.db && sqlite3 /data/norvels.db 'VACUUM;'
+```
+
+**为什么需要这一步**：0007 把正文从 `chapters.content` 搬到了 `chapter_blocks`，
+但原来存正文的页并不会立刻归还给文件系统——它们变成空闲页留在库里。
+所以迁移刚跑完时**文件大小几乎没变**，看起来像「迁移没生效」。
+
+实测（13.83 GB / 838 本 / 422,715 章）：
+
+| 阶段 | 库文件大小 | 说明 |
+|---|---|---|
+| 迁移前 | 13.83 GB | 含分词镜像与 FTS |
+| 迁移完成 | 仍是 13.83 GB | `PRAGMA freelist_count` 实测 **2,860,134 页空闲**（约 10.9 GB） |
+| 执行 `VACUUM` 后 | **1.62 GB** | 耗时 **24.7 秒** |
+
+`VACUUM` 会重建整个库文件，需要额外约一份库大小的临时空间（SQLite 写临时文件再替换）。
+13.83 GB 的库执行前建议确认有 15 GB 以上余量；小库可以忽略。
+
+**顺序建议**：迁移 → `VACUUM` → 跑 `check-content` 自查（§7.2）。
+`VACUUM` 只搬页不改数据，放在自查前后都可以；但放在自查之前能让自查跑得更快（文件更小）。
+
+> 容器部署：`VACUUM` 需要写锁且会重建文件，请在**服务停止**的窗口执行。
+> 镜像基于 distroless，里面没有 `sqlite3` 命令，所以用宿主机的 sqlite3 直接操作卷里的文件：
+>
+> ```bash
+> docker compose -f deploy/compose.yml stop
+> sqlite3 ./data/norvels.db 'VACUUM;'      # 宿主机的 sqlite3，操作 bind mount 的同一个文件
+> docker compose -f deploy/compose.yml up -d
+> ```
+>
+> 若用的是 named volume，先 `docker compose cp` 出来、VACUUM 完再拷回去，或临时起一个带
+> sqlite3 的容器挂同一个卷。
 
 ### 7.1 版本化迁移（v0.2.0 起）
 

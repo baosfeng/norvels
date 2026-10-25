@@ -7,7 +7,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.bui
 BIN := bin/norvels
 
 .PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy gallery \
-        verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance
+        bench-capacity verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -54,6 +54,15 @@ privacy: ## 隐私扫描（工作区全部文件，提交前跑一次）
 
 gallery: ## 重新生成三版原型对比页 + 截图（自动相对化路径）
 	scripts/gallery.sh
+
+# ---------- 容量压测 ----------
+# 默认小规模（500 本 x 500 章，约 1 GB 临时库，几秒跑完），产物是可直接贴进
+# docs/data-profile.md 的 markdown 表格。大库压测请显式传参：
+#   python3 scripts/bench-capacity.py --books 5000 --chapters 5000
+# 脚本会先查磁盘余量，不够直接拒绝并打印需要多少 GB；跑完自动清临时库（--keep 保留）。
+# 不碰 data/norvels.db，也不需要先编译 Go 二进制。
+bench-capacity: ## 容量压测（500 本 x 500 章合成库，输出 markdown 表格，不碰生产库）
+	@python3 scripts/bench-capacity.py
 
 # ---------- 质量门禁（quality-gates 9 项，逐项可单独跑）----------
 # 每个 gate-* 都如实报告：不达标即 exit 1，不调阈值、不 skip。详见 docs/quality-gates.md。
