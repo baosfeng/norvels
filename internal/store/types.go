@@ -81,6 +81,10 @@ type BookSummary struct {
 	HasCover bool `json:"hasCover"`
 	// Format 是来源格式：txt / epub。
 	Format string `json:"format,omitempty"`
+	// Rating 是评分 0–5（0014 起）：0 = 未评，不参与 rating 筛选与 sort=rating。
+	Rating int `json:"rating"`
+	// NewChapters 是追更累计的新章数（0014 起），书架/详情角标读它，ack 后清零。
+	NewChapters int `json:"newChapters"`
 }
 
 // VolumeNode 是书籍详情里的一卷。

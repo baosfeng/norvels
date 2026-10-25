@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // unknownAuthor 是作者缺失时的统一占位名。
@@ -18,7 +19,8 @@ const unknownAuthor = "佚名"
 const bookSummaryColumns = "b.id, b.title, b.author_id, COALESCE(a.name, ''), " +
 	"b.chapter_count, b.word_count, b.volume_count, b.intro, b.status, b.serial_status, " +
 	"b.read_status, b.imported_at, b.updated_at, " +
-	"b.language, b.publisher, b.isbn, b.pub_date, b.series, b.series_index, b.has_cover, b.source_format"
+	"b.language, b.publisher, b.isbn, b.pub_date, b.series, b.series_index, b.has_cover, b.source_format, " +
+	"b.rating, b.new_chapters"
 
 // rowScanner 抽象 *sql.Row / *sql.Rows 的 Scan。
 type rowScanner interface {
@@ -34,7 +36,7 @@ func summaryScanTargets(bs *BookSummary, imported, updated *string) []any {
 		&bs.ID, &bs.Title, &bs.AuthorID, &bs.AuthorName, &bs.ChapterCount, &bs.WordCount,
 		&bs.VolumeCount, &bs.Intro, &bs.Status, &bs.SerialStatus, &bs.ReadStatus, imported, updated,
 		&bs.Language, &bs.Publisher, &bs.ISBN, &bs.PubDate, &bs.Series, &bs.SeriesIndex,
-		&bs.HasCover, &bs.Format,
+		&bs.HasCover, &bs.Format, &bs.Rating, &bs.NewChapters,
 	}
 }
 
@@ -171,13 +173,21 @@ type BookMetaPatch struct {
 	SerialStatus *string
 	// ReadStatus 是阅读状态（''|want|reading|done），与解析状态/连载状态互不覆写。
 	ReadStatus *string
+	// Rating 是评分 0–5（0 = 未评）；越界 ErrInvalidArgument。
+	Rating *int
+	// 出版信息（P3 管理侧补全）：给出即全量写入，空串表示清空。
+	Publisher *string
+	PubDate   *string // 只接受 YYYY-MM-DD 或空串
+	ISBN      *string
+	Language  *string
 }
 
 // IsEmpty 报告 patch 是否什么都没包含（空 patch 不写库）。
 func (p BookMetaPatch) IsEmpty() bool {
 	return p.Title == nil && p.Author == nil && p.Authors == nil && p.Intro == nil &&
 		p.Series == nil && p.SeriesIndex == nil && p.Tags == nil &&
-		p.SerialStatus == nil && p.ReadStatus == nil
+		p.SerialStatus == nil && p.ReadStatus == nil && p.Rating == nil &&
+		p.Publisher == nil && p.PubDate == nil && p.ISBN == nil && p.Language == nil
 }
 
 // authorNames 返回本次补丁要落库的有序作者；nil 表示「作者这一项不改」。
@@ -262,14 +272,100 @@ func bookAuthorIDInTx(ctx context.Context, tx *sql.Tx, id int64) (int64, error) 
 	return authorID, nil
 }
 
-// applyColumnPatch 写 books 上的标量列（文本列 + 状态列）并刷新 updated_at。
+// applyColumnPatch 写 books 上的标量列（文本/状态/出版信息/评分）并刷新 updated_at。
 //
-// 具体拼 SET 的逻辑按「文本列 / 枚举状态列」拆到两个 helper：一处新增状态列
-// 只改 statusColumnSets 的表，不会把这条函数推过复杂度阈值。
+// 具体拼 SET 的逻辑按字段类别拆到多个 helper：加一类字段只改一处，
+// 不会把任何单个函数推过复杂度阈值。
 func applyColumnPatch(ctx context.Context, tx *sql.Tx, id int64, patch BookMetaPatch) error {
+	sets, args, err := buildColumnPatchSets(patch)
+	if err != nil {
+		return err
+	}
+	args = append(args, id)
+	if _, err := tx.ExecContext(ctx, "UPDATE books SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+		return fmt.Errorf("store: update book meta columns %d: %w", id, err)
+	}
+	return nil
+}
+
+// buildColumnPatchSets 把 patch 编译成 SET 片段与参数，并在拼接时完成全部标量校验。
+//
+// 抽出来是为了让批量入口在开事务前先验一遍：单本 PATCH 与批量 PATCH 共用这一份
+// 校验，错误文案一致，不会出现「批量时每本书各失败一次、单本时直接 400」的口径漂移。
+func buildColumnPatchSets(patch BookMetaPatch) ([]string, []any, error) {
 	sets := []string{"updated_at = ?"}
 	args := []any{formatTime(nowUTC())}
-	return execColumnPatch(ctx, tx, id, sets, args, patch)
+	var err error
+	if sets, args, err = textColumnSets(sets, args, patch); err != nil {
+		return nil, nil, err
+	}
+	if sets, args, err = identityColumnSets(sets, args, patch); err != nil {
+		return nil, nil, err
+	}
+	if sets, args, err = statusColumnSets(sets, args, patch); err != nil {
+		return nil, nil, err
+	}
+	return ratingColumnSet(sets, args, patch)
+}
+
+// 出版信息四列的写入上限：展示型字段，超长只会在详情页里撑破布局。
+const (
+	maxPublisherRunes = 120
+	maxISBNRunes      = 32
+	maxLanguageRunes  = 32
+)
+
+// identityColumnSets 拼接出版信息四列：publisher / isbn / language 截断即写入。
+func identityColumnSets(sets []string, args []any, patch BookMetaPatch) ([]string, []any, error) {
+	cols := []struct {
+		column string
+		value  *string
+		limit  int
+	}{
+		{"publisher", patch.Publisher, maxPublisherRunes},
+		{"isbn", patch.ISBN, maxISBNRunes},
+		{"language", patch.Language, maxLanguageRunes},
+	}
+	for _, c := range cols {
+		if c.value == nil {
+			continue
+		}
+		sets, args = append(sets, c.column+" = ?"),
+			append(args, truncateRunes(strings.TrimSpace(*c.value), c.limit))
+	}
+	if patch.PubDate == nil {
+		return sets, args, nil
+	}
+	date, err := normalizePubDate(*patch.PubDate)
+	if err != nil {
+		return nil, nil, err
+	}
+	return append(sets, "pub_date = ?"), append(args, date), nil
+}
+
+// normalizePubDate 校验出版日期：空串合法（清空），其余必须是 YYYY-MM-DD。
+func normalizePubDate(raw string) (string, error) {
+	date := strings.TrimSpace(raw)
+	if date == "" {
+		return "", nil
+	}
+	parsed, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return "", fmt.Errorf("%w: pubDate %q 不是 YYYY-MM-DD", ErrInvalidArgument, date)
+	}
+	return parsed.Format("2006-01-02"), nil
+}
+
+// ratingColumnSet 拼接评分列：0 = 未评，越界即 ErrInvalidArgument（不静默截断）。
+func ratingColumnSet(sets []string, args []any, patch BookMetaPatch) ([]string, []any, error) {
+	if patch.Rating == nil {
+		return sets, args, nil
+	}
+	if *patch.Rating < 0 || *patch.Rating > maxBookRating {
+		return nil, nil, fmt.Errorf("%w: rating %d 必须在 0~%d 之间",
+			ErrInvalidArgument, *patch.Rating, maxBookRating)
+	}
+	return append(sets, "rating = ?"), append(args, *patch.Rating), nil
 }
 
 // textColumnSets 把文本类标量列拼进 SET 片段（title/intro/series/seriesIndex）。
@@ -318,22 +414,6 @@ func statusColumnSets(sets []string, args []any, patch BookMetaPatch) ([]string,
 		sets, args = append(sets, c.column+" = ?"), append(args, v)
 	}
 	return sets, args, nil
-}
-
-// execColumnPatch 执行列更新（books 行不存在时 RowsAffected 为 0，交由调用方语义处理）。
-func execColumnPatch(ctx context.Context, tx *sql.Tx, id int64, sets []string, args []any, patch BookMetaPatch) error {
-	sets, args, err := textColumnSets(sets, args, patch)
-	if err != nil {
-		return err
-	}
-	if sets, args, err = statusColumnSets(sets, args, patch); err != nil {
-		return err
-	}
-	args = append(args, id)
-	if _, err := tx.ExecContext(ctx, "UPDATE books SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
-		return fmt.Errorf("store: update book meta columns %d: %w", id, err)
-	}
-	return nil
 }
 
 // ensureBookExistsInTx 是写子表（book_covers/book_tags）前的存在性守卫：
