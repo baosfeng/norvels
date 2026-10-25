@@ -38,6 +38,10 @@ const (
 	// 上传接口的错误码（docs/specs/2026-10-25-import-formats.md §2）：
 	// 前端按 code 分支给「逐个文件的友好提示」，message 才是给用户看的人话。
 	codeUnsupportedFormat = "unsupported_format"
+	// ZIP 批量包的三类失败：不是合法 zip、解包超限、包内没有可导入条目。
+	codeInvalidZip  = "invalid_zip"
+	codeZipTooLarge = "zip_too_large"
+	codeEmptyZip    = "empty_zip"
 	// codeNotAppendable 表示追更时新文件不是已有章节的追加（章节变少或标题改了）：
 	// 拒绝覆盖，用户可换回正确文件，或显式用 force 整本重导。
 	codeNotAppendable   = "not_appendable"

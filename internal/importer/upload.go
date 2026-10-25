@@ -30,12 +30,23 @@ func RunUpload(ctx context.Context, st *store.Store, opt Options) (*Result, erro
 		return nil, err
 	}
 	start := time.Now()
-	if err := state.openJob(ctx, dir, len(files), opt); err != nil {
+	// 解包目录放在本次上传的临时目录里，导入结束随会话一起删除。
+	scratch, err := makeScratch(dir)
+	if err != nil {
 		return nil, err
 	}
-	workers := resolveWorkers(opt.Workers, len(files))
-	outcomes := startParseWorkers(ctx, st, parser.New(opt.ParserOpts), files, workers, opt)
-	state.consume(ctx, rewriteUploadSources(outcomes), len(files), start, nil, opt)
+	cands, issues := expandRoots(files, scratch)
+	if err := state.openJob(ctx, dir, len(cands), opt); err != nil {
+		return nil, err
+	}
+	state.recordIssues(ctx, issues)
+	if len(cands) == 0 {
+		state.failJob(ctx, "no importable files found")
+		return state.res, ErrNoFiles
+	}
+	workers := resolveWorkers(opt.Workers, len(cands))
+	outcomes := startParseWorkers(ctx, st, parser.New(opt.ParserOpts), cands, workers, opt)
+	state.consume(ctx, rewriteUploadSources(outcomes), len(cands), start, nil, opt)
 	return state.closing(ctx)
 }
 
@@ -65,8 +76,10 @@ func prepareUpload(ctx context.Context, st *store.Store, opt Options) (*runState
 	return state, dir, files, nil
 }
 
-// CollectUploadFiles 收集上传目录下受支持（.txt/.epub）的普通文件，按文件名排序。
+// CollectUploadFiles 收集上传目录下受支持（.txt/.epub/.zip）的普通文件，按文件名排序。
+//
 // 只看一层目录：上传接口把每个文件平铺落在同一个任务目录里，隐藏文件一律跳过。
+// 返回的是磁盘路径（zip 的解包要等拿到临时目录后再做，避免在准备阶段失败）。
 func CollectUploadFiles(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -98,15 +111,18 @@ func rewriteUploadSources(in <-chan parseOutcome) <-chan parseOutcome {
 	return out
 }
 
-// rewriteUploadSource 把书籍来源改成 upload://<sha256>/<文件名>。
-// 文件名取临时目录里落盘时的 base 名（上传接口已清洗过）。
+// rewriteUploadSource 把书籍来源改成 upload://<sha256>/<对外名称>。
+//
+// 对外名称取候选名：普通文件是落盘时的 base 名，zip 条目是「包名.zip:包内路径」。
 func (oc *parseOutcome) rewriteUploadSource() {
-	if oc.book == nil || oc.book.SHA256 == "" {
-		return
+	name := oc.cand.name
+	for _, book := range oc.books {
+		if book.SHA256 == "" {
+			continue
+		}
+		book.SourceName = name
+		book.SourcePath = UploadSourcePath(book.SHA256, name)
 	}
-	name := filepath.Base(oc.path)
-	oc.book.SourceName = name
-	oc.book.SourcePath = UploadSourcePath(oc.book.SHA256, name)
 }
 
 // UploadSourcePath 生成上传文件的来源路径：不含磁盘位置，导入后删临时目录也不会失效。

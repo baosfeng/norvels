@@ -195,7 +195,7 @@ func TestUploadImportPartialRejected(t *testing.T) {
 	if rejected.Name != "说明.pdf" || rejected.Code != codeUnsupportedFormat {
 		t.Fatalf("rejected = %+v，期望 unsupported_format 与原名", rejected)
 	}
-	if !strings.Contains(rejected.Message, "目前支持 TXT 与 EPUB") || !strings.Contains(rejected.Message, ".pdf") {
+	if !strings.Contains(rejected.Message, "目前支持 TXT、EPUB 与 ZIP") || !strings.Contains(rejected.Message, ".pdf") {
 		t.Fatalf("rejected.message = %q，期望含 .pdf 与支持格式提示", rejected.Message)
 	}
 	env.waitJobDone(resp.JobID, 5*time.Second)
@@ -210,7 +210,7 @@ func TestUploadImportAllRejected(t *testing.T) {
 	}, "")
 	requireError(t, rr, http.StatusBadRequest, codeUnsupportedFormat)
 	body := decodeBody[errResp](t, rr)
-	if !strings.Contains(body.Error.Message, "目前支持 TXT 与 EPUB") {
+	if !strings.Contains(body.Error.Message, "目前支持 TXT、EPUB 与 ZIP") {
 		t.Fatalf("message = %q，期望含支持格式提示", body.Error.Message)
 	}
 	assertUploadRootEmpty(t, root)

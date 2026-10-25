@@ -165,7 +165,7 @@ func (sess *uploadSession) finish(w http.ResponseWriter) bool {
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "请选择要上传的文件（字段名 files）")
 		return false
 	case len(sess.files) == 0:
-		writeError(w, http.StatusBadRequest, codeUnsupportedFormat, "上传的文件都不受支持，目前支持 TXT 与 EPUB")
+		writeError(w, http.StatusBadRequest, codeUnsupportedFormat, "上传的文件都不受支持，"+supportedFormatsHint())
 		return false
 	}
 	if name := sess.firstEncryptedEPUB(); name != "" {

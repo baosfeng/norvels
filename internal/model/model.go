@@ -17,7 +17,7 @@ type ParsedBook struct {
 	Intro      string          // 简介，最多 500 字符
 	Volumes    []ParsedVolume  // 卷/部，可为空
 	Chapters   []ParsedChapter // 扁平章节列表，按阅读顺序
-	MultiBook  bool            // 该文件是否为多书合集（v1 只标记，不拆分）
+	MultiBook  bool            // 该文件是否为多书合集（importer 按 SplitSegments 拆成多本后，每本为 false）
 	Warnings   []string        // 解析告警，便于抽样排查
 
 	// ---- 书籍身份（EPUB 等带元数据的格式才可能填，txt 走文件名规则）----

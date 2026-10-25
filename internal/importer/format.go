@@ -9,6 +9,8 @@ import (
 const (
 	FormatTXT  = "txt"
 	FormatEPUB = "epub"
+	// FormatZIP 是批量包：包内 .txt/.epub 逐条导入，结果条目名为「包名.zip:包内路径」。
+	FormatZIP = "zip"
 )
 
 // FormatOf 返回文件名的导入格式；不支持的扩展名返回空串。
@@ -21,6 +23,8 @@ func FormatOf(name string) string {
 		return FormatTXT
 	case ".epub":
 		return FormatEPUB
+	case ".zip":
+		return FormatZIP
 	default:
 		return ""
 	}
@@ -30,4 +34,4 @@ func FormatOf(name string) string {
 func SupportedExt(name string) bool { return FormatOf(name) != "" }
 
 // SupportedFormats 返回面向用户的支持格式列表（错误提示用）。
-func SupportedFormats() []string { return []string{"TXT", "EPUB"} }
+func SupportedFormats() []string { return []string{"TXT", "EPUB", "ZIP"} }

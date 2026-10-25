@@ -71,11 +71,13 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 > **书籍身份的增量字段**（0008 起，只加不改）：`language`、`publisher`、`isbn`、`pubDate`、`series`、`seriesIndex`、`hasCover`、`format`（`txt`/`epub`），以及详情独有 `tags`（字符串数组，空数组表示无标签）。这些字段只有 EPUB 等带元数据的来源才会填，txt 路径留空/零值，前端按零值降级。
 
 ### PATCH /api/books/{id}
-body 为任意子集：`title`、`author`、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`。
+body 为任意子集：`title`、`author`、`authors`（字符串数组，**全量替换**，最多 10 个）、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`。
 
-- 成功 200，返回更新后的 BookDetail（含 tags/hasCover）；
+- 成功 200，返回更新后的 BookDetail（含 tags/hasCover/authors/volumes）；
+- 清空语义：`intro`/`series` 传 `""` 即清空，`seriesIndex` 传 `0` 即清空；`authors` 传空数组 → 400（至少要保留一个作者）；
+- `author` 与 `authors` 同时给出时 `authors` 优先；只给 `author` 等价于 `authors=[author]`；
 - 空 body、空对象、只含未知字段、title 为空白 → 400 `invalid_param`；id 非数字 → 400 `invalid_id`；书不存在 → 404；
-- 改 `author` 会同步重建作者聚合（新旧作者都刷新）；改 `tags` 会清理不再被引用的孤儿标签。
+- 改作者会同步重建作者聚合（新旧作者都刷新）；改 `tags` 会清理不再被引用的孤儿标签。
 
 ### GET /api/books/{id}/cover
 - 有封面：200，`Content-Type` 为 `image/jpeg|png|webp|gif`，`Cache-Control: public, max-age=86400`；
@@ -135,7 +137,9 @@ body 为任意子集：`title`、`author`、`intro`、`tags`（字符串数组�
 | `invalid_param` | 400 | 参数缺失/格式错（page/size/id/dir/percent 等） |
 | `unauthorized` | 401 | 启用鉴权后未提供或提供了错误的令牌 |
 | `query_too_short` | 400 | 搜索关键词少于 2 字符 |
-| `unsupported_format` | 400 | 上传/导入的文件格式不在 TXT/EPUB 白名单内 |
+| `unsupported_format` | 400 | 上传/导入的文件格式不在 TXT/EPUB/ZIP 白名单内 |
+| `invalid_zip` `zip_too_large` `empty_zip` | 202 | zip 包被打回（逐条进 `rejected`） |
+| `not_appendable` | 409 | 追更时新章节不是已有序列的追加（拒绝覆盖，确要整本重导用 force） |
 | `payload_too_large` | 413 | 上传单文件或单批总量超过上限 |
 | `too_many_files` | 400 | 一次上传的文件数超过上限 |
 | `encrypted_epub` | 422 | EPUB 正文条目被加密（DRM），拒绝入库 |
@@ -153,29 +157,37 @@ body 为任意子集：`title`、`author`、`intro`、`tags`（字符串数组�
 ```
 → 202 `{ "jobId": 7 }`；已有运行中的任务时返回 409。
 
-`dir` 可以是目录，也可以是单个 `.txt` / `.epub` 文件（如 `/books/某本书.epub`）：
+`dir` 可以是目录，也可以是单个 `.txt` / `.epub` / `.zip` 文件（如 `/books/某本书.epub`）：
 
-- 目录：扫描其下 txt/epub，`recursive` 决定是否进子目录（缺省 true）。
+- 目录：扫描其下 txt/epub/zip，`recursive` 决定是否进子目录（缺省 true）。
 - 单个文件：只导这一本，`recursive` 被忽略；任务记录里 `sourceDir` 存该文件路径。
 - 路径既不是目录也不是支持的文件 → 400 `invalid_param`，不会建任务。
+- `update`（布尔，默认 false）：追更，只追加新章节；对不上已有章节序列 → `not_appendable`，绝不覆盖。
+- `.zip` 按包内条目逐条导入，条目名为 `包名.zip:包内路径`；四道闸：条目 ≤1000、解压总量 ≤512 MiB、单条目 ≤64 MiB、拒绝绝对路径/../符号链接；嵌套 zip 按不支持条目记 `import_errors`。
 
 ### POST /api/import/upload
-`multipart/form-data`：`files`（可重复，最多 20 个）+ `force`（文本 true/false）。服务端流式读取，文件落到数据卷 `uploads/` 后建一个导入任务，任务结束整目录删除。
+`multipart/form-data`：`files`（可重复，最多 20 个）+ `force` / `update`（文本 true/false）。服务端流式读取，文件落到数据卷 `uploads/` 后建一个导入任务，任务结束整目录删除。
 
-只接受 `.txt` 与 `.epub`（大小写不敏感）。不支持的扩展名**逐个**进 `rejected`，同批合法文件照常导入；全部不支持时返回 400。
+只接受 `.txt` / `.epub` / `.zip`（大小写不敏感）。不支持的扩展名**逐个**进 `rejected`，同批合法文件照常导入；全部不支持时返回 400。
 
 ```json
 202 {
   "jobId": 7,
-  "accepted": [{ "name": "示例书.epub", "format": "epub" }],
-  "rejected": [{ "name": "示例.pdf", "code": "unsupported_format",
-                 "message": "暂不支持 .pdf，目前支持 TXT 与 EPUB" }]
+  "accepted": [{ "name": "合订包.zip:包内书.epub", "format": "epub" }],
+  "rejected": [{ "name": "合订包.zip:说明.pdf", "code": "unsupported_format",
+                 "message": "暂不支持 .pdf" }]
 }
 ```
+
+zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包名.zip:包内路径`，`format` 取包内真实格式；整包打不开或超限时 `name` 只是包名。
 
 | 情况 | HTTP | code |
 |---|---|---|
 | 全部文件都不支持 | 400 | `unsupported_format` |
+| zip 打不开 / 含越界路径 / 符号链接 | 202，该包进 `rejected` | `invalid_zip` |
+| zip 解包超过条目数或体积上限 | 202，该包进 `rejected` | `zip_too_large` |
+| zip 里没有可导入条目 | 202，该包进 `rejected` | `empty_zip` |
+| 追更对不上已有章节序列 | 409 | `not_appendable` |
 | 单文件超上限（默认 64 MiB）或单批总量超上限（默认 256 MiB） | 413 | `payload_too_large` |
 | 文件数超过 20 | 400 | `too_many_files` |
 | 加密 EPUB（正文条目被加密） | 422 | `encrypted_epub` |

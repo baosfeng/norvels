@@ -89,9 +89,69 @@ func (s *Server) addFile(sess *uploadSession, w http.ResponseWriter, part *multi
 		s.writeUploadError(w, limits, name, err)
 		return false
 	}
+	if format == importer.FormatZIP {
+		return s.addZipEntries(sess, path)
+	}
 	sess.files = append(sess.files, path)
 	sess.accepted = append(sess.accepted, uploadAccepted{Name: filepath.Base(path), Format: format})
 	return true
+}
+
+// addZipEntries 展开 zip 的中央目录，把包内每个条目单独报成 accepted / rejected。
+//
+// 条目名对外是「包名.zip:包内路径」；一个 zip 只要有一个条目被接受，整包就进入导入队列
+// （真正的解包在 importer 里做，避免上传期把字节摊到磁盘上两次）。
+func (s *Server) addZipEntries(sess *uploadSession, path string) bool {
+	base := filepath.Base(path)
+	entries, err := importer.ListZIP(path)
+	if err != nil {
+		_ = os.Remove(path)
+		sess.rejected = append(sess.rejected, uploadRejected{
+			Name: base, Code: zipErrorCode(err), Message: zipErrorMessage(err),
+		})
+		return true
+	}
+	accepted := 0
+	for _, e := range entries {
+		name := base + ":" + e.Name
+		if e.Format == "" {
+			sess.rejected = append(sess.rejected, uploadRejected{
+				Name: name, Code: codeUnsupportedFormat, Message: e.Reason,
+			})
+			continue
+		}
+		sess.accepted = append(sess.accepted, uploadAccepted{Name: name, Format: e.Format})
+		accepted++
+	}
+	if accepted > 0 {
+		sess.files = append(sess.files, path)
+	}
+	return true
+}
+
+// zipErrorCode 把解包错误映射成前端可分支的错误码。
+func zipErrorCode(err error) string {
+	switch {
+	case errors.Is(err, importer.ErrZIPTooLarge):
+		return codeZipTooLarge
+	case errors.Is(err, importer.ErrZIPEmpty):
+		return codeEmptyZip
+	default:
+		return codeInvalidZip
+	}
+}
+
+// zipErrorMessage 生成 zip 级失败的人话原因。
+func zipErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, importer.ErrZIPTooLarge):
+		return "zip 解压超过上限（1000 个条目 / 512 MiB 合计 / 64 MiB 单条目）"
+	case errors.Is(err, importer.ErrZIPEmpty):
+		return "zip 里没有可导入的文件（只收 .txt 与 .epub）"
+	case errors.Is(err, importer.ErrZIPInvalid):
+		return "不是合法的 zip 包，或包内含有越界路径 / 符号链接"
+	}
+	return "zip 解包失败"
 }
 
 // writeUploadError 把落盘错误翻译成响应：超限 413，其余视为服务端故障。
@@ -190,9 +250,17 @@ func unsupportedFormatMessage(name string) string {
 	return "暂不支持 " + ext + "，" + supportedFormatsHint()
 }
 
-// supportedFormatsHint 是「目前支持 TXT 与 EPUB」这类提示的唯一出处。
+// supportedFormatsHint 是「目前支持 TXT、EPUB 与 ZIP」这类提示的唯一出处。
 func supportedFormatsHint() string {
-	return "目前支持 " + strings.Join(importer.SupportedFormats(), " 与 ")
+	return "目前支持 " + joinAnd(importer.SupportedFormats())
+}
+
+// joinAnd 把列表拼成「A、B 与 C」。
+func joinAnd(items []string) string {
+	if len(items) <= 1 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], "、") + " 与 " + items[len(items)-1]
 }
 
 // humanBytes 把字节数写成人话：整 MiB 用 MiB，其余用字节（测试会注入小上限）。

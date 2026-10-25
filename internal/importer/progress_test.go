@@ -206,8 +206,8 @@ func TestApplyOutcomeBranches(t *testing.T) {
 
 	t.Run("低于最小章节数算跳过", func(t *testing.T) {
 		state := &runState{st: st, res: &Result{}}
-		state.applyOutcome(ctx, parseOutcome{index: 3, path: "/path/to/txt/thin.txt", book: book},
-			Options{MinChapters: 999})
+		state.applyOutcome(ctx, parseOutcome{index: 3, path: "/path/to/txt/thin.txt",
+			books: []*model.ParsedBook{book}}, Options{MinChapters: 999})
 		if state.res.Skipped != 1 {
 			t.Errorf("skipped=%d，期望 1（章节数不足应跳过）", state.res.Skipped)
 		}
@@ -217,7 +217,8 @@ func TestApplyOutcomeBranches(t *testing.T) {
 
 	t.Run("正常写入累加 id", func(t *testing.T) {
 		state := &runState{st: st, res: &Result{}}
-		state.applyOutcome(ctx, parseOutcome{index: 5, path: book.SourcePath, book: book}, Options{})
+		state.applyOutcome(ctx, parseOutcome{index: 5, path: book.SourcePath,
+			books: []*model.ParsedBook{book}}, Options{})
 		if len(state.res.Imported) != 1 || state.res.Imported[0] == 0 {
 			t.Errorf("imported=%v，期望写入 1 本并带回真实 id", state.res.Imported)
 		}
@@ -245,8 +246,8 @@ func checkApplyParseError(t *testing.T, ctx context.Context, st *store.Store) {
 func checkApplyDryRun(t *testing.T, ctx context.Context, st *store.Store, book *model.ParsedBook) {
 	t.Helper()
 	state := &runState{st: st, res: &Result{}}
-	title := state.applyOutcome(ctx, parseOutcome{index: 4, path: "/path/to/txt/dry.txt", book: book},
-		Options{DryRun: true})
+	title := state.applyOutcome(ctx, parseOutcome{index: 4, path: "/path/to/txt/dry.txt",
+		books: []*model.ParsedBook{book}}, Options{DryRun: true})
 	if len(state.res.Imported) != 1 || state.res.Imported[0] != 0 {
 		t.Errorf("imported=%v，期望占位 [0]", state.res.Imported)
 	}

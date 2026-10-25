@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// scanFiles 收集候选文件（.txt/.epub，跳过隐藏文件），结果按路径排序保证可复现。
+// scanFiles 收集候选文件（.txt/.epub/.zip，跳过隐藏文件），结果按路径排序保证可复现。
 //
 // root 可以是目录，也可以是单个可导入文件；后者直接作为唯一候选返回，
 // recursive 对它没有意义（一个文件没有子目录可递归）。
@@ -36,7 +36,7 @@ func scanFiles(ctx context.Context, root string, recursive bool) ([]string, erro
 	return files, nil
 }
 
-// isSingleImportableFile 判断 path 是否是一个可直接导入的文件（.txt/.epub）。
+// isSingleImportableFile 判断 path 是否是一个可直接导入的文件（.txt/.epub/.zip）。
 //
 // 目录返回 false；存在但不是可导入文件返回错误——否则用户会看到
 // 「没有可导入的文件」，误以为是自己目录选错了，实际是扩展名不对。
@@ -49,7 +49,7 @@ func isSingleImportableFile(path string) (bool, error) {
 		return false, nil
 	}
 	if !SupportedExt(fi.Name()) {
-		return false, fmt.Errorf("importer: %s 不是 .txt 文件，也不是 .epub 文件", filepath.Base(path))
+		return false, fmt.Errorf("importer: %s 不是 .txt / .epub / .zip 文件", filepath.Base(path))
 	}
 	return true, nil
 }
