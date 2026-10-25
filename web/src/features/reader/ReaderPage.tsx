@@ -7,8 +7,10 @@ import { ErrorPanel, LoadingPanel, EmptyPanel } from "../../components/StatePane
 import { ChapterList } from "../book/ChapterList";
 import { useTheme, type Theme } from "../../lib/theme";
 import { useIsH5 } from "../../lib/tier";
+import { useReaderControls } from "../../lib/useReaderControls";
 import { useSwipePaging } from "../../lib/useSwipePaging";
 import { prefersReducedMotion } from "../../lib/theme";
+import { ReaderBottomBar } from "./ReaderBottomBar";
 
 const FONT_KEY = "norvels.reader.font";
 const LEADING_KEY = "norvels.reader.leading";
@@ -44,6 +46,29 @@ export function ReaderPage() {
   const [font, setFont] = useState(() => readNumber(FONT_KEY, 19));
   const [leading, setLeading] = useState(() => readNumber(LEADING_KEY, 1.9));
   const { theme, setTheme, themes } = useTheme();
+
+  // 控制层：H5 默认收起、单击正文唤出、3 秒无操作收起；设置/目录打开时暂停收起
+  const controls = useReaderControls({ isH5, paused: settingsOpen || drawerOpen });
+
+  // 全屏：只有浏览器真的支持才给按钮（iOS Safari 没有 Fullscreen API，静默降级为沉浸式阅读）
+  const canFullscreen = typeof document !== "undefined" && document.fullscreenEnabled === true;
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  async function toggleFullscreen() {
+    if (!canFullscreen) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      // 被拒（策略限制 / 不支持）：静默降级为沉浸式——收起控制层，正文照常可读
+      if (controls.visible) controls.toggle();
+    }
+  }
 
   const chapters = useMemo<ChapterBrief[]>(
     () => (book.data?.volumes ?? []).flatMap((v) => v.chapters).sort((a, b) => a.idx - b.idx),
@@ -115,8 +140,18 @@ export function ReaderPage() {
   const bookTitle = book.data?.title ?? chapter.data?.bookTitle ?? "";
 
   return (
-    <div className="reader-shell" data-testid="view:reader" data-od-id="reader" style={{ ["--reader-font" as string]: `${font}px`, ["--reader-leading" as string]: String(leading) }}>
-      <header className="reader-top" data-od-id="reader-top">
+    <div
+      className={`reader-shell${isH5 ? " is-h5" : ""}${controls.visible ? " is-controls" : ""}`}
+      data-testid="view:reader"
+      data-od-id="reader"
+      style={{ ["--reader-font" as string]: `${font}px`, ["--reader-leading" as string]: String(leading) }}
+    >
+      <header
+        className="reader-top"
+        data-testid="reader-top"
+        data-od-id="reader-top"
+        aria-hidden={isH5 && !controls.visible}
+      >
         <Link className="icon-btn" to={bookId ? `/book/${bookId}` : "/shelf"} aria-label="返回目录">
           <ChevronLeftIcon />
         </Link>
@@ -135,10 +170,23 @@ export function ReaderPage() {
           <button className="btn" type="button" onClick={() => setSettingsOpen((v) => !v)} aria-expanded={settingsOpen}>
             设置
           </button>
+          {isH5 && canFullscreen ? (
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label={fullscreen ? "退出全屏" : "全屏阅读"}
+              aria-pressed={fullscreen}
+              onClick={toggleFullscreen}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+              </svg>
+            </button>
+          ) : null}
         </div>
       </header>
 
-      <div className="reader-main" ref={swipeRef} data-testid="reader-swipe-area">
+      <div className="reader-main" ref={swipeRef} data-testid="reader-swipe-area" {...controls.surfaceProps}>
         {chapter.loading ? (
           <div className="reader-loading-layer">
             <LoadingPanel title="正在载入正文" description="单章 3000–6000 字，首次打开需要整理分段。" testId="reader-loading" />
@@ -187,6 +235,20 @@ export function ReaderPage() {
           <EmptyPanel title="还没有正文" description="这一章的内容还没入库，稍后再来看看。" testId="reader-empty" />
         )}
       </div>
+
+      {isH5 ? (
+        <ReaderBottomBar
+          hidden={!controls.visible}
+          prev={prev}
+          next={next}
+          onPrev={() => goChapter(prev)}
+          onNext={() => goChapter(next)}
+          onOpenDrawer={() => setDrawerOpen(true)}
+          onToggleSettings={() => setSettingsOpen((v) => !v)}
+          settingsOpen={settingsOpen}
+          drawerOpen={drawerOpen}
+        />
+      ) : null}
 
       <div className={`settings-panel${settingsOpen ? " is-open" : ""}`} role="dialog" aria-label="阅读设置" aria-hidden={!settingsOpen}>
         <div className="settings-row">

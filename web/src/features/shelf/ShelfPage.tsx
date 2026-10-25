@@ -72,6 +72,12 @@ export function ShelfPage() {
     return () => observer.disconnect();
   }, [isH5, loadMore, items.length, hasMore]);
 
+  // 底部弹层打开时锁住页面滚动，避免背景跟着滑
+  useEffect(() => {
+    document.body.classList.toggle("h5-sheet-open", sheetOpen);
+    return () => document.body.classList.remove("h5-sheet-open");
+  }, [sheetOpen]);
+
   // 底部弹层：Esc 收起（点遮罩与「关闭」同理）
   useEffect(() => {
     if (!sheetOpen) return;
