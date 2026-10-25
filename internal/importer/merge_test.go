@@ -54,77 +54,87 @@ func TestSplitVolumeSuffix(t *testing.T) {
 	}
 }
 
-// TestBuildImportUnits 覆盖分组门控：全带后缀才归并，无后缀/卷号重复/跨目录不归并。
-func TestBuildImportUnits(t *testing.T) {
+// TestBuildImportUnitsMergesVolumes 覆盖「三分卷归并为一个单元」：单元数、卷号升序、
+// 同组的无后缀文件保持一文件一本。
+func TestBuildImportUnitsMergesVolumes(t *testing.T) {
 	dir := "/path/to/txt"
-	t.Run("三分卷归并为一个单元", func(t *testing.T) {
-		cands := []candidate{
-			testCand(dir, "合成书名（第1卷）.txt"),
-			testCand(dir, "合成书名（第3卷）.txt"),
-			testCand(dir, "合成书名（第2卷）.txt"),
-			testCand(dir, "合成书名.txt"),
-			testCand(dir, "另一本.txt"),
+	cands := []candidate{
+		testCand(dir, "合成书名（第1卷）.txt"),
+		testCand(dir, "合成书名（第3卷）.txt"),
+		testCand(dir, "合成书名（第2卷）.txt"),
+		testCand(dir, "合成书名.txt"),
+		testCand(dir, "另一本.txt"),
+	}
+	units := buildImportUnits(cands)
+	if len(units) != 3 {
+		t.Fatalf("单元数 = %d，期望 3", len(units))
+	}
+	first := units[0]
+	if first.group == nil || len(first.cands) != 3 {
+		t.Fatalf("首单元应为 3 卷组，实际 %d 个候选", len(first.cands))
+	}
+	want := []string{"合成书名（第1卷）.txt", "合成书名（第2卷）.txt", "合成书名（第3卷）.txt"}
+	for i, name := range want {
+		if first.cands[i].name != name {
+			t.Errorf("第 %d 卷 = %q，期望 %q（应按卷号升序）", i+1, first.cands[i].name, name)
 		}
-		units := buildImportUnits(cands)
-		if len(units) != 3 {
-			t.Fatalf("单元数 = %d，期望 3", len(units))
-		}
-		first := units[0]
-		if first.group == nil || len(first.cands) != 3 {
-			t.Fatalf("首单元应为 3 卷组，实际 %d 个候选", len(first.cands))
-		}
-		want := []string{"合成书名（第1卷）.txt", "合成书名（第2卷）.txt", "合成书名（第3卷）.txt"}
-		for i, name := range want {
-			if first.cands[i].name != name {
-				t.Errorf("第 %d 卷 = %q，期望 %q（应按卷号升序）", i+1, first.cands[i].name, name)
-			}
-		}
-		if units[1].group != nil || len(units[1].cands) != 1 {
-			t.Errorf("无后缀文件应保持一文件一本")
-		}
-	})
-	t.Run("无后缀同名不归并", func(t *testing.T) {
-		cands := []candidate{
-			testCand(dir, "合成书名.txt"),
-			testCand(dir, "合成书名（第1卷）.txt"),
-		}
-		units := buildImportUnits(cands)
-		if len(units) != 2 || units[0].group != nil || units[1].group != nil {
-			t.Fatalf("单元数 = %d，期望 2 个单文件单元", len(units))
-		}
-	})
-	t.Run("卷号重复不归并", func(t *testing.T) {
-		cands := []candidate{
-			testCand(dir, "合成书名（第1卷）.txt"),
-			testCand(dir, "合成书名_卷1.txt"),
-			testCand(dir, "合成书名_卷2.txt"),
-		}
-		if units := buildImportUnits(cands); len(units) != 3 {
-			t.Fatalf("单元数 = %d，期望 3（卷号重复说明不是一套书）", len(units))
-		}
-	})
-	t.Run("跨目录不归并", func(t *testing.T) {
-		cands := []candidate{
-			testCand("/path/to/a", "合成书名_卷1.txt"),
-			testCand("/path/to/a", "合成书名_卷2.txt"),
-			testCand("/path/to/b", "合成书名_卷1.txt"),
-			testCand("/path/to/b", "合成书名_卷2.txt"),
-		}
-		units := buildImportUnits(cands)
-		if len(units) != 2 || len(units[0].cands) != 2 || len(units[1].cands) != 2 {
-			t.Fatalf("单元数 = %d（各 %d 个候选），期望每个目录各 1 个 2 卷单元",
-				len(units), len(units[0].cands))
-		}
-	})
-	t.Run("非 txt 不参与归并", func(t *testing.T) {
-		cands := []candidate{
-			testCand(dir, "合成书名（第1卷）.epub"),
-			testCand(dir, "合成书名（第2卷）.epub"),
-		}
-		if units := buildImportUnits(cands); len(units) != 2 {
-			t.Fatalf("单元数 = %d，期望 2（EPUB 不参与多卷归并）", len(units))
-		}
-	})
+	}
+	if units[1].group != nil || len(units[1].cands) != 1 {
+		t.Errorf("无后缀文件应保持一文件一本")
+	}
+}
+
+// TestBuildImportUnitsKeepsSuffixlessSingle 覆盖「无后缀同名不归并」：不满足门控就两本。
+func TestBuildImportUnitsKeepsSuffixlessSingle(t *testing.T) {
+	dir := "/path/to/txt"
+	cands := []candidate{
+		testCand(dir, "合成书名.txt"),
+		testCand(dir, "合成书名（第1卷）.txt"),
+	}
+	units := buildImportUnits(cands)
+	if len(units) != 2 || units[0].group != nil || units[1].group != nil {
+		t.Fatalf("单元数 = %d，期望 2 个单文件单元", len(units))
+	}
+}
+
+// TestBuildImportUnitsRejectsDuplicateNumbers 覆盖「卷号重复不归并」（重复说明不是一套书）。
+func TestBuildImportUnitsRejectsDuplicateNumbers(t *testing.T) {
+	dir := "/path/to/txt"
+	cands := []candidate{
+		testCand(dir, "合成书名（第1卷）.txt"),
+		testCand(dir, "合成书名_卷1.txt"),
+		testCand(dir, "合成书名_卷2.txt"),
+	}
+	if units := buildImportUnits(cands); len(units) != 3 {
+		t.Fatalf("单元数 = %d，期望 3（卷号重复说明不是一套书）", len(units))
+	}
+}
+
+// TestBuildImportUnitsDoesNotCrossDirectories 覆盖「跨目录不归并」：每个目录各自成组。
+func TestBuildImportUnitsDoesNotCrossDirectories(t *testing.T) {
+	cands := []candidate{
+		testCand("/path/to/a", "合成书名_卷1.txt"),
+		testCand("/path/to/a", "合成书名_卷2.txt"),
+		testCand("/path/to/b", "合成书名_卷1.txt"),
+		testCand("/path/to/b", "合成书名_卷2.txt"),
+	}
+	units := buildImportUnits(cands)
+	if len(units) != 2 || len(units[0].cands) != 2 || len(units[1].cands) != 2 {
+		t.Fatalf("单元数 = %d（各 %d 个候选），期望每个目录各 1 个 2 卷单元",
+			len(units), len(units[0].cands))
+	}
+}
+
+// TestBuildImportUnitsSkipsNonTxt 覆盖「非 txt 不参与归并」（EPUB 自带卷层级）。
+func TestBuildImportUnitsSkipsNonTxt(t *testing.T) {
+	dir := "/path/to/txt"
+	cands := []candidate{
+		testCand(dir, "合成书名（第1卷）.epub"),
+		testCand(dir, "合成书名（第2卷）.epub"),
+	}
+	if units := buildImportUnits(cands); len(units) != 2 {
+		t.Fatalf("单元数 = %d，期望 2（EPUB 不参与多卷归并）", len(units))
+	}
 }
 
 // volumeText 造一本指定章数的分卷文本（虚构书名，隐私红线）。
