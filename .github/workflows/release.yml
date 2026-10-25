@@ -64,7 +64,7 @@ jobs:
       #   v1.2.3-rc1（含 "-" 视为预发布）-> 1.2.3-rc1 / 1.2 / 1 / sha-<短sha>，不动 latest
       - name: 生成镜像元数据
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           # latest 完全由下面那条 raw 规则显式决定（含预发布判断），
