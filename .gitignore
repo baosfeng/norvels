@@ -50,3 +50,6 @@ internal/webui/dist/*
 # 且定稿后会被重新生成——留在本地即可（这里覆盖上面的 ! 规则，规则以后者为准）。
 .open-design/shots/
 .open-design/03-compare.jpg
+
+# 本机专属交接信息（含真实路径，不入库）
+HANDOFF.local.md
