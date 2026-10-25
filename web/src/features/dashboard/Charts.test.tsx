@@ -149,6 +149,16 @@ describe("六张图都有四态", () => {
     expect(screen.queryByText("数据更新中")).toBeNull();
   });
 
+  it("占比不足 0.1% 的段不出图例（避免一行「其他 0.0 MB」的噪音）", () => {
+    const { container } = render(
+      <StorageChart stats={{ ...stats, otherBytes: 8272 }} {...idle} />,
+    );
+    const legend = container.querySelector(".stack-legend") as HTMLElement;
+    expect(legend.textContent).toContain("正文");
+    expect(legend.textContent).toContain("书目信息");
+    expect(legend.textContent).not.toContain("其他");
+  });
+
   it("每张图的结论都由数据实算（不是固定文案）", () => {
     const { unmount, container } = render(<ImportTrendChart points={points} {...idle} />);
     // 只有最后一天有数据：说「只有 1 天有导入」，而不是把 12 本摊成「日均 1 本」

@@ -216,10 +216,10 @@ export function StorageChart({ stats, ...state }: { stats: Stats | null } & Char
           ))}
         </div>
         <div className="stack-legend">
-          {/* 0 字节的段不出图例：真实库里 otherBytes 恒为 0（三段口径下没有剩余空间），
-              固定显示一行「其他 0.0 MB」只会让人以为漏统计了 */}
+          {/* 占比不足 0.1% 的段不出图例：真实库里「其他」只有 8 KB（页头、空闲页），
+              按 1024 进制四舍五入成「0.0 MB」——一行 0 字节的图例只会让人怀疑漏统计 */}
           {model.data.parts
-            .filter((part) => part.bytes > 0)
+            .filter((part) => part.bytes > 0 && part.sharePct >= 0.1)
             .map((part) => (
               <span className="legend-row" key={part.key}>
                 <span className="legend-dot" style={{ background: part.color }} />
