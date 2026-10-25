@@ -85,7 +85,7 @@ describe("阅读设置：默认值与键名", () => {
     expect(settings.width).toBe("normal");
     expect(settings.align).toBe("left");
     expect(settings.indent).toBe(true);
-    expect(settings.autoScrollSpeed).toBe(1); // 夹到下限
+    expect(settings.autoScrollSpeed).toBe(0.5); // 夹到下限（0.5 步进）
   });
 
   it("getItem 抛异常（隐私模式）时仍返回默认值", () => {

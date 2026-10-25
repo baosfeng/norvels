@@ -5,15 +5,20 @@ import {
   ALIGN_LABELS,
   FONT_FAMILY_LABELS,
   PARA_LEVELS,
+  SPEED_MAX,
+  SPEED_MIN,
   WIDTH_LABELS,
+  formatSpeed,
   stepFont,
   stepLeading,
   stepParaLevel,
+  stepSpeed,
   type ReaderAlign,
   type ReaderFontFamily,
   type ReaderSettings,
   type ReaderWidth,
 } from "./readerSettings";
+import { speedToPxPerSec } from "../../lib/autoScroll";
 
 /** 段距四档的人话名字：与 PARA_LEVELS 一一对应。 */
 export const PARA_LABELS: Record<number, string> = { 0.4: "紧凑", 0.7: "偏紧", 1: "标准", 1.6: "宽松" };
@@ -198,6 +203,52 @@ export function ReaderSettingsPanel({
       <div className="settings-row">
         <span>繁体转简体</span>
         <Switch checked={settings.script} label="繁体转简体" onChange={(next) => onChange({ script: next })} />
+      </div>
+
+      <div className="settings-row">
+        <span>自动滚动</span>
+        <Switch
+          checked={settings.autoScroll}
+          label="自动滚动"
+          onChange={(next) => onChange({ autoScroll: next, autoScrollNext: next ? settings.autoScrollNext : false })}
+        />
+      </div>
+
+      <div className="settings-row is-indent">
+        <span>滚动速度</span>
+        <div className="stepper">
+          <button
+            type="button"
+            aria-label="减慢自动滚动"
+            disabled={settings.autoScrollSpeed <= SPEED_MIN}
+            onClick={() => onChange({ autoScrollSpeed: stepSpeed(settings.autoScrollSpeed, -0.5) })}
+          >
+            −
+          </button>
+          <span className="num" data-testid="reader-speed-value" title={`约 ${speedToPxPerSec(settings.autoScrollSpeed)} 像素/秒`}>
+            {formatSpeed(settings.autoScrollSpeed)}
+          </span>
+          <button
+            type="button"
+            aria-label="加快自动滚动"
+            disabled={settings.autoScrollSpeed >= SPEED_MAX}
+            onClick={() => onChange({ autoScrollSpeed: stepSpeed(settings.autoScrollSpeed, 0.5) })}
+          >
+            +
+          </button>
+        </div>
+      </div>
+      <p className="settings-note" data-testid="reader-speed-hint">
+        {SPEED_MIN}–{SPEED_MAX} 档，步进 0.5 · 当前约 {speedToPxPerSec(settings.autoScrollSpeed)} 像素/秒
+      </p>
+
+      <div className="settings-row">
+        <span>到底自动下一章</span>
+        <Switch
+          checked={settings.autoScrollNext}
+          label="到底自动下一章"
+          onChange={(next) => onChange({ autoScrollNext: next })}
+        />
       </div>
 
       <div className="settings-row">

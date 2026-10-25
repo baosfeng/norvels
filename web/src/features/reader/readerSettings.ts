@@ -50,8 +50,10 @@ export const FONT_MIN = 14;
 export const FONT_MAX = 28;
 export const LEADING_MIN = 1.4;
 export const LEADING_MAX = 2.4;
-export const SPEED_MIN = 1;
+/** 自动滚动速度：0.5–5，步进 0.5（慢档更适合中文长文）。 */
+export const SPEED_MIN = 0.5;
 export const SPEED_MAX = 5;
+export const SPEED_STEP = 0.5;
 
 export interface ReaderSettings {
   /** 正文字号（px）；「跟随系统字号」开启时按 rem 折算，跟随浏览器默认字号缩放。 */
@@ -69,7 +71,7 @@ export interface ReaderSettings {
   followSystemFont: boolean;
   /** 自动滚动开关（默认关：避免进章节就自己跑）。 */
   autoScroll: boolean;
-  /** 自动滚动速度 1–5 档。 */
+  /** 自动滚动速度档：0.5–5，步进 0.5。 */
   autoScrollSpeed: number;
   /** 滚到底自动翻下一章（默认关：避免误触跑掉位置）。 */
   autoScrollNext: boolean;
@@ -142,7 +144,7 @@ export function readReaderSettings(storage: ReadStorage = typeof window === "und
     script: readBool(storage, READER_KEYS.script, READER_DEFAULTS.script),
     followSystemFont: readBool(storage, READER_KEYS.followSystemFont, READER_DEFAULTS.followSystemFont),
     autoScroll: readBool(storage, READER_KEYS.autoScroll, READER_DEFAULTS.autoScroll),
-    autoScrollSpeed: Math.round(readNumber(storage, READER_KEYS.autoScrollSpeed, READER_DEFAULTS.autoScrollSpeed, SPEED_MIN, SPEED_MAX)),
+    autoScrollSpeed: snapSpeed(readNumber(storage, READER_KEYS.autoScrollSpeed, READER_DEFAULTS.autoScrollSpeed, SPEED_MIN, SPEED_MAX)),
     autoScrollNext: readBool(storage, READER_KEYS.autoScrollNext, READER_DEFAULTS.autoScrollNext),
   };
 }
@@ -203,6 +205,24 @@ export function stepFont(current: number, delta: number): number {
 /** 行距步进（±0.1，夹在 1.4–2.4，保留一位小数）。 */
 export function stepLeading(current: number, delta: number): number {
   return Number(Math.min(LEADING_MAX, Math.max(LEADING_MIN, current + delta)).toFixed(1));
+}
+
+/** 速度吸附到 0.5 的整数倍并夹在 0.5–5。 */
+export function snapSpeed(value: number): number {
+  if (!Number.isFinite(value)) return READER_DEFAULTS.autoScrollSpeed;
+  const snapped = Math.round(value / SPEED_STEP) * SPEED_STEP;
+  return Math.min(SPEED_MAX, Math.max(SPEED_MIN, Number(snapped.toFixed(1))));
+}
+
+/** 速度步进（±0.5 档，夹在 0.5–5）。 */
+export function stepSpeed(current: number, delta: number): number {
+  return snapSpeed(snapSpeed(current) + delta);
+}
+
+/** 速度显示：整数档不带小数点（3 → "3"），半档保留一位（3.5 → "3.5"）。 */
+export function formatSpeed(speed: number): string {
+  const value = snapSpeed(speed);
+  return value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
 }
 
 /** 段距步进：在四档之间前后移动，到头停住。 */

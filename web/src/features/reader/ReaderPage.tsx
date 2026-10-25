@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useBook, useBookmarks, useChapter, useSaveProgress } from "../../api/hooks";
@@ -19,8 +19,10 @@ import { BookmarksDrawer } from "./BookmarksDrawer";
 import { ReaderBottomBar } from "./ReaderBottomBar";
 import { ReaderSearchPanel } from "./ReaderSearchPanel";
 import { ReaderSettingsPanel } from "./ReaderSettingsPanel";
+import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
 import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 import { tradToSimp } from "../../lib/trad2simp";
+import { createAutoScroll, isAtBottom } from "../../lib/autoScroll";
 
 /**
  * 阅读器：产品核心，两端能力等价。
@@ -48,6 +50,9 @@ export function ReaderPage() {
   const [searchQuery, setSearchQuery] = useState("");
   // 当前命中：query 与本次搜索一致时 position 才有效，换关键词自动回到第 1 处
   const [hitState, setHitState] = useState({ query: "", position: 0 });
+  // 自动滚动：读者手动暂停 + 窗口是否在前台（失焦 / 页面隐藏都算不活跃）
+  const [autoPaused, setAutoPaused] = useState(false);
+  const [windowActive, setWindowActive] = useState(true);
   const [deletingBookmark, setDeletingBookmark] = useState<number | null>(null);
   // 段落锚点 = 视口里最靠上的段落（书签记在这里）；没有 IntersectionObserver 时恒为第 0 段
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
@@ -119,6 +124,21 @@ export function ReaderPage() {
   useEffect(() => {
     writeReaderSettings(settings);
   }, [settings]);
+
+  // 失焦 / 页面隐藏时暂停自动滚动：切到别的窗口不该继续偷跑进度
+  useEffect(() => {
+    const onVisibility = () => setWindowActive(document.visibilityState === "visible");
+    const onBlur = () => setWindowActive(false);
+    const onFocus = () => setWindowActive(true);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
   // 进度上报：章节打开即记录，失败不打断阅读（本地仍在）
   const percent = chapters.length > 0 && index >= 0 ? (index + 1) / chapters.length : 0;
@@ -278,6 +298,37 @@ export function ReaderPage() {
     const node = document.getElementById(`para-${pendingJump.paraIndex}`);
     if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
   }, [pendingJump, chapter.data?.id]);
+
+  // 自动滚动：开关开着、没被手动暂停、没有面板打开、窗口在前台时才真的滚
+  const overlayOpen = settingsOpen || drawerOpen || bookmarksOpen || searchOpen;
+  const autoRunning = settings.autoScroll && !autoPaused && !overlayOpen && windowActive;
+  // 到底时的动作走 ref：滚动引擎只该在速度 / 运行状态变化时重建，不该因为换了一章就重来
+  const autoBottomRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    autoBottomRef.current = () => {
+      // 到底自动下一章默认关：开着且确有下一章才翻，否则直接停住，别把读者带跑
+      if (settings.autoScrollNext && next) goChapter(next);
+      else updateSettings({ autoScroll: false });
+    };
+  });
+  useEffect(() => {
+    if (!autoRunning) return;
+    const controller = createAutoScroll(
+      {
+        scrollBy: (deltaY) => window.scrollBy({ top: deltaY }),
+        atBottom: () =>
+          isAtBottom({
+            scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
+            clientHeight: window.innerHeight || 0,
+            scrollHeight: document.documentElement.scrollHeight || 0,
+          }),
+        onBottom: () => autoBottomRef.current(),
+      },
+      settings.autoScrollSpeed,
+    );
+    controller.start();
+    return () => controller.stop();
+  }, [autoRunning, settings.autoScrollSpeed]);
 
   // 章节切换淡入：用 key 让正文在换章时重新挂载，CSS 动画只播一次（不在 effect 里 setState）
   const reducedMotion = prefersReducedMotion();
@@ -449,6 +500,19 @@ export function ReaderPage() {
           drawerOpen={drawerOpen}
           bookmarksOpen={bookmarksOpen}
           searchOpen={searchOpen}
+        />
+      ) : null}
+
+      {settings.autoScroll ? (
+        <ReaderAutoScrollBar
+          running={autoRunning}
+          paused={autoPaused || !windowActive || overlayOpen}
+          speed={settings.autoScrollSpeed}
+          onTogglePause={() => setAutoPaused((paused) => !paused)}
+          onExit={() => {
+            setAutoPaused(false);
+            updateSettings({ autoScroll: false });
+          }}
         />
       ) : null}
 
