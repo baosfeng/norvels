@@ -6,7 +6,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 { "error": { "code": "not_found", "message": "book not found" } }
 ```
 
-状态码：200 正常 / 400 参数错误 / 404 未找到 / 409 冲突（导入任务进行中）/ 500 内部错误。
+状态码：200 正常 / 202 已接受（异步任务）/ 204 无内容 / 400 参数错误 / 404 未找到 / 409 冲突（任务进行中或已结束）/ 500 内部错误。
 
 分页参数统一：`page`（从 1 开始，默认 1）、`size`（默认 20，最大 200）。分页响应统一：
 
@@ -48,6 +48,8 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
   "id": 1, "title": "山居杂记", "authorId": 12, "authorName": "示例作者",
   "chapterCount": 1300, "wordCount": 2800000, "intro": "…", "encoding": "gb18030",
   "sourceName": "☆文笔好10%△《山居杂记（七改）》.txt", "fileSize": 5639497,
+  "status": "parsed", "serialStatus": "ongoing",
+  "lastChapterIdx": 1299, "lastChapterTitle": "第1299章 风起",
   "volumes": [
     { "id": 1, "idx": 0, "title": "第一卷", "chapters": [ { "id": 10, "idx": 1, "title": "第1章 穿越" } ] },
     { "id": 0, "idx": -1, "title": "未分卷", "chapters": [ { "id": 9, "idx": 0, "title": "序章" } ] }
@@ -70,14 +72,25 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 > **书籍身份的增量字段**（0008 起，只加不改）：`language`、`publisher`、`isbn`、`pubDate`、`series`、`seriesIndex`、`hasCover`、`format`（`txt`/`epub`），以及详情独有 `tags`（字符串数组，空数组表示无标签）。这些字段只有 EPUB 等带元数据的来源才会填，txt 路径留空/零值，前端按零值降级。
 
+> **0010 起详情再增三项**：`serialStatus`（`""` 未知 / `ongoing` 连载中 / `completed` 已完结）与 `lastChapterIdx`、`lastChapterTitle`（`idx` 最大的那一章，无章节时为 `0` 与 `""`）。`serialStatus` 与 `status` 是两个语义（见下方 PATCH 一节）。
+
 ### PATCH /api/books/{id}
-body 为任意子集：`title`、`author`、`authors`（字符串数组，**全量替换**，最多 10 个）、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`。
+body 为任意子集：`title`、`author`、`authors`（字符串数组，**全量替换**，最多 10 个）、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`、`serialStatus`。
 
 - 成功 200，返回更新后的 BookDetail（含 tags/hasCover/authors/volumes）；
 - 清空语义：`intro`/`series` 传 `""` 即清空，`seriesIndex` 传 `0` 即清空；`authors` 传空数组 → 400（至少要保留一个作者）；
 - `author` 与 `authors` 同时给出时 `authors` 优先；只给 `author` 等价于 `authors=[author]`；
 - 空 body、空对象、只含未知字段、title 为空白 → 400 `invalid_param`；id 非数字 → 400 `invalid_id`；书不存在 → 404；
-- 改作者会同步重建作者聚合（新旧作者都刷新）；改 `tags` 会清理不再被引用的孤儿标签。
+- 改作者会同步重建作者聚合（新旧作者都刷新）；改 `tags` 会清理不再被引用的孤儿标签；
+- `serialStatus` 只接受 `""`（未知）/ `ongoing` / `completed`，其它值 → 400 `invalid_param`；
+  它只改连载状态，不动解析状态 `status`，覆盖重导也不会被重置。
+
+### DELETE /api/books/{id}
+单事务级联删除：`chapters` / `chapter_blocks` / `volumes` / `book_covers` / `books_authors` / `reading_progress` / `book_tags`，并重算作者聚合（作者行保留，作品数与字数归零）。
+
+- 成功 **204**，无响应体；
+- 书不存在 → 404 `not_found`（再删同一个 id 也是 404）；
+- 删掉的书立即从书架/搜索/作者页消失，「最近在读」不再返回它；同一 `source_path` 可以重新导入。
 
 ### GET /api/books/{id}/cover
 - 有封面：200，`Content-Type` 为 `image/jpeg|png|webp|gif`，`Cache-Control: public, max-age=86400`；
@@ -115,7 +128,7 @@ body 为任意子集：`title`、`author`、`authors`（字符串数组，**全�
   "chapters": {
     "items": [{
       "bookId": 1, "bookTitle": "风流名将", "chapterId": 88, "chapterTitle": "第88章 夜宴",
-      "snippet": "……华夏国<b>临川市</b>，午后的秋日……", "score": 12.3
+      "snippet": "", "score": 12.3
     }],
     "total": 57, "page": 1, "size": 20
   }
@@ -145,7 +158,8 @@ body 为任意子集：`title`、`author`、`authors`（字符串数组，**全�
 | `encrypted_epub` | 422 | EPUB 正文条目被加密（DRM），拒绝入库 |
 | `not_found` | 404 | 书籍/章节/作者/任务不存在，或未知 `/api/*` 路径 |
 | `method_not_allowed` | 405 | 路径存在但方法不对（带 `Allow` 头） |
-| `conflict` | 409 | 已有导入任务在运行 |
+| `invalid_pattern` | 400 | 自定义章节规则的正则编译失败 |
+| `conflict` | 409 | 已有导入任务在运行，或要取消的任务已结束/无取消入口 |
 | `unavailable` | 503 | 数据库不可用（`/api/health`） |
 | `internal` | 500 | 未预期错误（已脱敏） |
 
@@ -207,20 +221,45 @@ zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包�
 ### GET /api/import/jobs/{id}
 同上单条 + `errors: [{ "filePath": "…", "reason": "…" }]`（最多 200 条）。
 
-## 6. 其它
+`status` 取值：`running` / `completed` / `completed_with_errors` / `failed` / **`canceled`**（用户取消或服务退出，已入库的书保留）。
+
+### POST /api/import/jobs/{id}/cancel
+- 任务在跑 → **202** `{ "status": "canceling" }`：取消信号已发出，终态 `canceled` 由导入收尾写入（本接口不写库）；
+- 任务不存在 → 404 `not_found`；
+- 任务已结束（`completed` / `completed_with_errors` / `failed` / `canceled`），或进程重启后遗留的 `running` 记录在本进程没有取消入口 → 409 `conflict`。此时回 202 会让前端一直等一个不会到来的终态。
+
+## 6. 设置
+
+### GET /api/settings/chapter-rules
+全局的**自定义章节识别规则**（导入时优先于内置策略，按顺序尝试，命中即作为章节边界）。
+未配置时返回空数组而非 null：
+
+```json
+{ "rules": [{ "name": "分节符", "pattern": "^=== 第\\d+ 节 ===$" }] }
+```
+
+### PUT /api/settings/chapter-rules
+body 同 GET（`rules` 为**全量替换**，传空数组即清空）。
+
+- 成功 **204**，无响应体（与 `PUT /api/reading/progress` 一致，前端按「无内容」处理）；
+- 正则编译失败 → 400 `invalid_pattern`（消息里带第几条）；
+- 条数 > 20 或单条正则 > 200 字、正则为空 → 400 `invalid_param`；
+- `name` 只用于展示：留空补「规则N」，超过 60 字截断（不因此拒绝保存）。
+
+## 7. 其它
 
 - `GET /api/tags` → `{ "items": [{ "id": 1, "name": "武侠", "bookCount": 120 }] }`
 - `GET /api/version` → `{ "version": "0.1.0", "commit": "abc123", "builtAt": "…" }`
 - 前端 SPA 路由：非 `/api/*` 且非静态资源命中时，返回 `index.html`（200）。
 - 静态资源带内容哈希，`/assets/*` 设置 `Cache-Control: public, max-age=31536000, immutable`。
 
-## 7. 前端约定
+## 8. 前端约定
 
-- 阅读进度：**服务端为准**（见 §8 `/api/reading/progress`），`localStorage` 降级为离线缓存。
+- 阅读进度：**服务端为准**（见 §9 `/api/reading/progress`），`localStorage` 降级为离线缓存。
 - 章节正文为纯文本，前端按段渲染（`\n` 分段），不做富文本。
-- 搜索高亮：后端返回的 `snippet` 中只有 `<b>` 标签合法，其余 HTML 字符已转义。
+- 搜索无高亮：`snippet` 恒为空，前端不要按标签渲染。
 
-## 8. 驾驶舱端点（已实现）
+## 9. 驾驶舱端点（已实现）
 
 驾驶舱（仅 PC 可见）的配套端点，2026-10 起已实现（迁移 `0003_reading_progress.sql`）。
 
@@ -295,7 +334,7 @@ curl -s 'http://127.0.0.1:8080/api/authors?sort=words&size=10'
 curl -s 'http://127.0.0.1:8080/api/stats'
 ```
 
-## 9. 鉴权（可选）
+## 10. 鉴权（可选）
 
 默认开放模式（单人本地/内网使用）。设置环境变量 `NORVELS_AUTH_TOKEN` 后：
 
