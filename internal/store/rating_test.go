@@ -16,31 +16,20 @@ func TestSetBookRating(t *testing.T) {
 	bookID := seedRatingBooks(t, ctx, st, 1)[0]
 
 	for _, rating := range []int{5, 3, 0} {
-		if err := st.SetBookRating(ctx, bookID, rating); err != nil {
-			t.Fatalf("SetBookRating(%d): %v", rating, err)
-		}
-		if got := mustBookDetail(t, ctx, st, bookID).Rating; got != rating {
-			t.Errorf("评分 = %d，期望 %d", got, rating)
-		}
+		requireOK(t, fmt.Sprintf("SetBookRating(%d)", rating), st.SetBookRating(ctx, bookID, rating))
+		requireEqual(t, fmt.Sprintf("评分 %d", rating), mustBookDetail(t, ctx, st, bookID).Rating, rating)
 	}
 	for _, bad := range []int{-1, 6, 100} {
-		if err := st.SetBookRating(ctx, bookID, bad); !errors.Is(err, ErrInvalidArgument) {
-			t.Errorf("rating=%d err = %v，期望 ErrInvalidArgument", bad, err)
-		}
+		requireErr(t, fmt.Sprintf("rating=%d", bad), st.SetBookRating(ctx, bookID, bad), ErrInvalidArgument)
 	}
-	if err := st.SetBookRating(ctx, 0, 3); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("id=0 err = %v，期望 ErrInvalidArgument", err)
-	}
-	if err := st.SetBookRating(ctx, 999999, 3); !errors.Is(err, ErrNotFound) {
-		t.Errorf("不存在的书 err = %v，期望 ErrNotFound", err)
-	}
+	requireErr(t, "id=0", st.SetBookRating(ctx, 0, 3), ErrInvalidArgument)
+	requireErr(t, "不存在的书", st.SetBookRating(ctx, 999999, 3), ErrNotFound)
 }
 
 func TestPatchBooksBatchAppliesAllFields(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	ids := seedRatingBooks(t, ctx, st, 3)
-
 	patch := BookMetaPatch{
 		Title:       ptr("统一书名"),
 		Series:      ptr("示例系列"),
@@ -54,32 +43,27 @@ func TestPatchBooksBatchAppliesAllFields(t *testing.T) {
 		Language:    ptr("zh-CN"),
 	}
 	updated, failed, err := st.PatchBooksBatch(ctx, ids, patch)
-	if err != nil {
-		t.Fatalf("PatchBooksBatch: %v", err)
-	}
-	if len(failed) != 0 {
-		t.Fatalf("不该有失败项: %v", failed)
-	}
-	if fmt.Sprint(updated) != fmt.Sprint(ids) {
-		t.Fatalf("updated = %v，期望保持入参顺序 %v", updated, ids)
-	}
+	requireOK(t, "PatchBooksBatch", err)
+	requireEqual(t, "失败项数", len(failed), 0)
+	requireEqual(t, "updated 保持入参顺序", fmt.Sprint(updated), fmt.Sprint(ids))
 	for _, id := range ids {
-		d := mustBookDetail(t, ctx, st, id)
-		if d.Title != "统一书名" || d.Series != "示例系列" || d.SeriesIndex != 2 || d.Rating != 4 {
-			t.Errorf("书 %d 元数据未落全: %+v", id, d.BookSummary)
-		}
-		if d.Publisher != "示例出版社" || d.PubDate != "2024-05-01" ||
-			d.ISBN != "978-7-000-00000-0" || d.Language != "zh-CN" {
-			t.Errorf("书 %d 出版信息未落全: %+v", id, d.BookSummary)
-		}
-		// ListBookTags 按名称升序（字节序），不是入参顺序。
-		if fmt.Sprint(d.Tags) != "[悬疑 玄幻]" {
-			t.Errorf("书 %d 标签 = %v，期望去重后按名称升序", id, d.Tags)
-		}
-		if fmt.Sprint(d.Authors) != "[示例作者甲 示例作者乙]" {
-			t.Errorf("书 %d 作者 = %v", id, d.Authors)
-		}
+		requirePatchedBook(t, mustBookDetail(t, ctx, st, id))
 	}
+}
+
+// requirePatchedBook 断言一本书落齐了批量 patch 的全部字段（表驱动断言，无分支）。
+func requirePatchedBook(t *testing.T, d *BookDetail) {
+	t.Helper()
+	requireEqual(t, "标题", d.Title, "统一书名")
+	requireEqual(t, "系列", d.Series, "示例系列")
+	requireEqual(t, "系列序号", d.SeriesIndex, 2)
+	requireEqual(t, "评分", d.Rating, 4)
+	requireEqual(t, "出版社", d.Publisher, "示例出版社")
+	requireEqual(t, "出版日期", d.PubDate, "2024-05-01")
+	requireEqual(t, "ISBN", d.ISBN, "978-7-000-00000-0")
+	requireEqual(t, "语言", d.Language, "zh-CN")
+	requireSliceEqual(t, "标签（去重后按名称升序）", d.Tags, []string{"悬疑", "玄幻"})
+	requireSliceEqual(t, "作者", d.Authors, []string{"示例作者甲", "示例作者乙"})
 }
 
 func TestPatchBooksBatchIsolatesFailures(t *testing.T) {
@@ -89,19 +73,12 @@ func TestPatchBooksBatchIsolatesFailures(t *testing.T) {
 	batch := []int64{ids[0], 999999, ids[1]}
 
 	updated, failed, err := st.PatchBooksBatch(ctx, batch, BookMetaPatch{Rating: ptr(2)})
-	if err != nil {
-		t.Fatalf("PatchBooksBatch: %v", err)
-	}
-	if fmt.Sprint(updated) != fmt.Sprint(ids) {
-		t.Errorf("updated = %v，期望 %v", updated, ids)
-	}
-	if len(failed) != 1 || !errors.Is(failed[999999], ErrNotFound) {
-		t.Fatalf("failed = %v，期望只含 999999 的 ErrNotFound", failed)
-	}
+	requireOK(t, "PatchBooksBatch", err)
+	requireEqual(t, "updated", fmt.Sprint(updated), fmt.Sprint(ids))
+	requireEqual(t, "失败项数", len(failed), 1)
+	requireErr(t, "不存在的书", failed[999999], ErrNotFound)
 	for _, id := range ids {
-		if got := mustBookDetail(t, ctx, st, id).Rating; got != 2 {
-			t.Errorf("书 %d 评分 = %d，期望 2（别的书失败不该连坐）", id, got)
-		}
+		requireEqual(t, "别的书不受连坐", mustBookDetail(t, ctx, st, id).Rating, 2)
 	}
 }
 
@@ -128,9 +105,7 @@ func TestPatchBooksBatchRejectsBadInput(t *testing.T) {
 	}
 	for _, c := range cases {
 		_, _, err := st.PatchBooksBatch(ctx, c.ids, c.patch)
-		if !errors.Is(err, ErrInvalidArgument) {
-			t.Errorf("%s err = %v，期望 ErrInvalidArgument", c.name, err)
-		}
+		requireErr(t, c.name, err, ErrInvalidArgument)
 	}
 }
 
@@ -140,12 +115,9 @@ func TestPatchBooksBatchDedupesIDs(t *testing.T) {
 	id := seedRatingBooks(t, ctx, st, 1)[0]
 
 	updated, failed, err := st.PatchBooksBatch(ctx, []int64{id, id}, BookMetaPatch{Rating: ptr(1)})
-	if err != nil || len(failed) != 0 {
-		t.Fatalf("PatchBooksBatch = %v, %v", failed, err)
-	}
-	if len(updated) != 1 || updated[0] != id {
-		t.Errorf("updated = %v，期望去重后只有 %d", updated, id)
-	}
+	requireOK(t, "PatchBooksBatch", err)
+	requireEqual(t, "失败项数", len(failed), 0)
+	requireEqual(t, "去重后只有一条", fmt.Sprint(updated), fmt.Sprintf("[%d]", id))
 }
 
 // TestInSavepointRollsBackOnError 锁死「某本失败不连坐」的底层机制：
@@ -168,17 +140,11 @@ func TestInSavepointRollsBackOnError(t *testing.T) {
 		}
 		return boom
 	})
-	if !errors.Is(err, boom) {
-		t.Fatalf("inSavepoint err = %v，期望透传 boom", err)
-	}
+	requireErr(t, "inSavepoint 透传 boom", err, boom)
 	var title string
-	if err := tx.QueryRowContext(ctx,
-		"SELECT title FROM books WHERE id = ?", bookID).Scan(&title); err != nil {
-		t.Fatalf("读回标题: %v", err)
-	}
-	if title == "不该留下的标题" {
-		t.Errorf("保存点回滚失效：标题仍是 %q", title)
-	}
+	requireOK(t, "读回标题", tx.QueryRowContext(ctx,
+		"SELECT title FROM books WHERE id = ?", bookID).Scan(&title))
+	requireEqual(t, "保存点已回滚", title != "不该留下的标题", true)
 }
 
 // seedRatingBooks 造 n 本互不冲突的示例书（同一作者），返回按创建顺序的书 id。
