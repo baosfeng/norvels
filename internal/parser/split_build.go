@@ -133,7 +133,9 @@ func postProcess(res *splitResult, minLen int) {
 	}
 	merged := make([]model.ParsedChapter, 0, len(res.chapters))
 	for _, c := range res.chapters {
-		if c.Content == "" {
+		if isEmptyChapter(c) {
+			// 空壳章节：标题并到上一章，避免丢章节名；正文本来就没有，直接丢。
+			carryTitleToPrev(merged, c)
 			continue
 		}
 		if len(merged) > 0 && len(c.Content) < minLen && !isSpecialTitle(c.Title) {
@@ -194,4 +196,29 @@ func headOfText(text string, n int) string {
 		cut = i
 	}
 	return text[:cut]
+}
+
+// isEmptyChapter 判断一章是否没有可读内容。
+//
+// 不能只判 Content == ""：噪声清洗 + 超长章再切之后，空壳章节经常剩下一串
+// 装饰符（星号、全角等号、破折号、波浪线…）。这类内容 TrimSpace 去不掉，
+// 但统计字数为 0——用字数判定才是「有没有可读内容」的准确口径。
+func isEmptyChapter(c model.ParsedChapter) bool {
+	if strings.TrimSpace(c.Content) == "" {
+		return true
+	}
+	return countWords(c.Content) == 0
+}
+
+// carryTitleToPrev 把空壳章节的标题并入上一章的末尾。
+//
+// 只做标题搬运：正文为空，没有内容可合。首章位置的空壳没有上一章可并，
+// 其标题会被丢弃——这时正文本来就还没开始，留标题反而会造出孤立空章。
+func carryTitleToPrev(merged []model.ParsedChapter, c model.ParsedChapter) {
+	if len(merged) == 0 || c.Title == "" || c.Title == "正文" {
+		return
+	}
+	prev := &merged[len(merged)-1]
+	prev.Content += "\n" + c.Title
+	prev.WordCount += countWords(c.Title)
 }

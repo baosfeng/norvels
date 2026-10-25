@@ -151,6 +151,10 @@ func postProcessDoc(d *Doc) {
 	res := splitResult{volumes: d.Volumes, chapters: d.Chapters}
 	postProcess(&res, minLen)
 	d.Volumes, d.Chapters = res.volumes, res.chapters
+	if len(d.Chapters) == 0 {
+		// 全书都是空壳章节：退化为整篇一章，保证能入库。
+		fillWholeText(d)
+	}
 	splitOversized(d)
 }
 
