@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookSummary } from "../../api/types";
 
-const { booksState, tagsState, seenParams, updateBook, deleteBook } = vi.hoisted(() => {
+const { booksState, tagsState, seenParams, updateBook, deleteBook, batchUpdateBooks } = vi.hoisted(() => {
   const book = (id: number, title: string, serial: "" | "ongoing" | "completed"): unknown => ({
     id,
     title,
@@ -30,6 +30,7 @@ const { booksState, tagsState, seenParams, updateBook, deleteBook } = vi.hoisted
     seenParams: { last: null as Record<string, unknown> | null },
     updateBook: vi.fn(),
     deleteBook: vi.fn(),
+    batchUpdateBooks: vi.fn(),
   };
 });
 
@@ -43,7 +44,7 @@ vi.mock("../../api/hooks", () => ({
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return { ...actual, api: { updateBook, deleteBook } };
+  return { ...actual, api: { updateBook, deleteBook, batchUpdateBooks } };
 });
 
 const { AdminBooksPage } = await import("./AdminBooksPage");
@@ -74,6 +75,7 @@ describe("书籍管理列表", () => {
     } as typeof booksState.data;
     updateBook.mockReset();
     deleteBook.mockReset();
+    batchUpdateBooks.mockReset();
   });
 
   it("表格列出书名、作者与连载状态", () => {
@@ -101,15 +103,86 @@ describe("书籍管理列表", () => {
     expect(screen.queryByTestId("admin-batch-bar")).toBeNull();
   });
 
-  it("批量设作者：逐本下发 PATCH authors，完成后提示并刷新", async () => {
-    updateBook.mockResolvedValue({});
+  it("批量设作者走一次 batchUpdateBooks，不再逐本 PATCH", async () => {
+    batchUpdateBooks.mockResolvedValue({ updated: [7, 8], failed: [] });
     renderPage();
     fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    fireEvent.click(screen.getByTestId("admin-book-pick-8"));
     fireEvent.click(screen.getByTestId("admin-batch-author"));
     fireEvent.change(screen.getByTestId("admin-batch-input"), { target: { value: "新作者" } });
     fireEvent.click(screen.getByTestId("admin-batch-confirm"));
-    await waitFor(() => expect(updateBook).toHaveBeenCalledWith(7, { authors: ["新作者"] }));
-    await waitFor(() => expect(screen.getByTestId("admin-list-notice").textContent).toContain("作者"));
+
+    await waitFor(() => expect(batchUpdateBooks).toHaveBeenCalledTimes(1));
+    expect(batchUpdateBooks).toHaveBeenCalledWith({ ids: [7, 8], patch: { authors: ["新作者"] } });
+    expect(updateBook).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("admin-list-notice").textContent).toContain("新作者"));
+    // 全部成功才关弹窗并清空选择
+    expect(screen.queryByTestId("admin-batch-dialog")).toBeNull();
+    expect(screen.queryByTestId("admin-batch-bar")).toBeNull();
+  });
+
+  it("批量设标签与设状态都走同一次 batch 端点，patch 只带对应字段", async () => {
+    batchUpdateBooks.mockResolvedValue({ updated: [7], failed: [] });
+    renderPage();
+
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    fireEvent.click(screen.getByTestId("admin-batch-tag"));
+    fireEvent.change(screen.getByTestId("admin-batch-input"), { target: { value: "武侠, 群像" } });
+    fireEvent.click(screen.getByTestId("admin-batch-confirm"));
+    await waitFor(() => expect(batchUpdateBooks).toHaveBeenCalledWith({ ids: [7], patch: { tags: ["武侠", "群像"] } }));
+
+    batchUpdateBooks.mockClear();
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    fireEvent.click(screen.getByTestId("admin-batch-serial"));
+    fireEvent.change(screen.getByTestId("admin-batch-serial-input"), { target: { value: "completed" } });
+    fireEvent.click(screen.getByTestId("admin-batch-confirm"));
+    await waitFor(() =>
+      expect(batchUpdateBooks).toHaveBeenCalledWith({ ids: [7], patch: { serialStatus: "completed" } }),
+    );
+  });
+
+  it("部分失败：失败清单带后端原因，可只重试那一本", async () => {
+    batchUpdateBooks
+      .mockResolvedValueOnce({ updated: [7], failed: [{ id: 8, message: "作者太长" }] })
+      .mockResolvedValueOnce({ updated: [8], failed: [] });
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    fireEvent.click(screen.getByTestId("admin-book-pick-8"));
+    fireEvent.click(screen.getByTestId("admin-batch-author"));
+    fireEvent.change(screen.getByTestId("admin-batch-input"), { target: { value: "新作者" } });
+    fireEvent.click(screen.getByTestId("admin-batch-confirm"));
+
+    await waitFor(() => expect(screen.getByTestId("admin-batch-failed-8").textContent).toContain("作者太长"));
+    expect(screen.getByTestId("admin-batch-failed-8").textContent).toContain("另一本书");
+    // 部分失败不关弹窗、不清选择：先让用户看到哪几本没成
+    expect(screen.getByTestId("admin-batch-dialog")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("admin-batch-retry-8"));
+    await waitFor(() => expect(batchUpdateBooks).toHaveBeenCalledTimes(2));
+    expect(batchUpdateBooks.mock.calls[1][0]).toEqual({ ids: [8], patch: { authors: ["新作者"] } });
+    await waitFor(() => expect(screen.queryByTestId("admin-batch-failures")).toBeNull());
+  });
+
+  it("作者留空在本地就挡下，不打一次注定 400 的请求", async () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    fireEvent.click(screen.getByTestId("admin-batch-author"));
+    fireEvent.click(screen.getByTestId("admin-batch-confirm"));
+
+    expect(batchUpdateBooks).not.toHaveBeenCalled();
+    expect(screen.getByTestId("admin-batch-error").textContent).toContain("作者不能为空");
+  });
+
+  it("整批请求失败时把原因说清楚，弹窗不关", async () => {
+    const { ApiError } = await import("../../api/client");
+    batchUpdateBooks.mockRejectedValueOnce(new ApiError("http", "请求超时", 408, "timeout"));
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    fireEvent.click(screen.getByTestId("admin-batch-serial"));
+    fireEvent.click(screen.getByTestId("admin-batch-confirm"));
+
+    await waitFor(() => expect(screen.getByTestId("admin-batch-error").textContent).toContain("批量更新没能完成"));
+    expect(screen.getByTestId("admin-batch-dialog")).toBeTruthy();
   });
 
   it("批量删除走 DELETE，并在完成后清空选择", async () => {
