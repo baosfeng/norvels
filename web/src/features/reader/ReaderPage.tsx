@@ -23,6 +23,10 @@ import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
 import { ReaderHelpPanel } from "./ReaderHelpPanel";
 import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 import { tradToSimp } from "../../lib/trad2simp";
+import { pickStoredParaIndex, useReaderProgress } from "./readerProgress";
+
+/** 章内位置的上报防抖：滚动停下 1 秒才发一次；切章 / 隐藏 / 卸载不等防抖。 */
+const PROGRESS_DEBOUNCE_MS = 1000;
 import { createAutoScroll, isAtBottom } from "../../lib/autoScroll";
 
 /**
@@ -43,6 +47,8 @@ export function ReaderPage() {
   const saveProgress = useSaveProgress();
   // 书签列表随阅读器一起取：抽屉打开即可见，同段已有书签时也不重复发请求
   const bookmarks = useBookmarks(Number.isFinite(bookId) ? bookId : null);
+  // 上次读到哪一段：进章节后据此把正文滚回原处（与书签跳转共用段落 anchor）
+  const progressList = useReaderProgress(bookId);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -56,8 +62,15 @@ export function ReaderPage() {
   const [autoPaused, setAutoPaused] = useState(false);
   const [windowActive, setWindowActive] = useState(true);
   const [deletingBookmark, setDeletingBookmark] = useState<number | null>(null);
+  const [addingBookmark, setAddingBookmark] = useState(false);
   // 段落锚点 = 视口里最靠上的段落（书签记在这里）；没有 IntersectionObserver 时恒为第 0 段
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
+  // 位置上报的去重与「立刻补发」时机（切章 / 隐藏 / 卸载）都要看最新锚点，所以镜像进 ref
+  const lastSent = useRef({ chapterId: 0, para: -1 });
+  const anchorRef = useRef(anchor);
+  useEffect(() => {
+    anchorRef.current = anchor;
+  });
   const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
   // 排版设置集中在一个对象里：面板改一项只 patch 一项，落盘统一写 norvels.reader.*
   const [settings, setSettings] = useState<ReaderSettings>(() => readReaderSettings());
@@ -121,6 +134,11 @@ export function ReaderPage() {
     return map;
   }, [search]);
   const anchorPara = anchor.chapterId === (chapter.data?.id ?? 0) ? anchor.para : 0;
+  // 上次读到的段落下标：只有「本书 + 本章」对得上才生效
+  const storedParaIndex = useMemo(
+    () => pickStoredParaIndex(progressList.data?.items ?? [], bookId, chapterId),
+    [progressList.data, bookId, chapterId],
+  );
 
   // 排版设置持久化（隐私模式下写入失败不影响当前阅读）
   useEffect(() => {
@@ -142,13 +160,63 @@ export function ReaderPage() {
     };
   }, []);
 
-  // 进度上报：章节打开即记录，失败不打断阅读（本地仍在）
+  // 全书进度（章节维度）与章内位置（段落维度）分开记：percent 跟章节下标走，paraIndex 跟锚点走
   const percent = chapters.length > 0 && index >= 0 ? (index + 1) / chapters.length : 0;
+  const sendProgress = useCallback(
+    (targetChapter: number, paraIndex: number) => {
+      if (!Number.isFinite(bookId)) return;
+      const at = chapters.findIndex((chapter) => chapter.id === targetChapter);
+      if (at < 0) return;
+      lastSent.current = { chapterId: targetChapter, para: paraIndex };
+      // 失败不打断阅读：本地位置还在，下一次滚动/切章会再试
+      void saveProgress({ bookId, chapterId: targetChapter, percent: (at + 1) / chapters.length, paraIndex });
+    },
+    [bookId, chapters, saveProgress],
+  );
+
+  // 打开 / 切章：立刻记一次（含恢复出来的 paraIndex），首屏位置也落库
   useEffect(() => {
     if (!Number.isFinite(bookId) || !Number.isFinite(chapterId)) return;
     if (chapters.length === 0 || index < 0) return;
-    void saveProgress({ bookId, chapterId, percent });
-  }, [bookId, chapterId, chapters.length, index, percent, saveProgress]);
+    if (chapter.data?.id !== chapterId) return;
+    if (lastSent.current.chapterId === chapterId && lastSent.current.para === storedParaIndex) return;
+    sendProgress(chapterId, storedParaIndex);
+  }, [bookId, chapterId, chapter.data?.id, chapters.length, index, storedParaIndex, sendProgress]);
+
+  // 滚动停下 1s 才上报 paraIndex：长章里每滚一下发一次，写放大到没法看
+  useEffect(() => {
+    if (anchor.chapterId !== chapterId || !Number.isFinite(bookId)) return;
+    const para = anchor.para;
+    const timer = window.setTimeout(() => {
+      if (lastSent.current.chapterId === chapterId && lastSent.current.para === para) return;
+      sendProgress(chapterId, para);
+    }, PROGRESS_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [anchor, chapterId, bookId, sendProgress]);
+
+  // 切章 / 卸载：不等防抖，立刻把最后一次位置补发
+  useEffect(() => {
+    const watching = chapterId;
+    return () => {
+      const latest = anchorRef.current;
+      if (latest.chapterId !== watching) return;
+      if (lastSent.current.chapterId === latest.chapterId && lastSent.current.para === latest.para) return;
+      sendProgress(latest.chapterId, latest.para);
+    };
+  }, [chapterId, sendProgress]);
+
+  // 页面隐藏（手机切后台 / 锁屏 / 浏览器关标签）：不指望卸载时机，立刻补发
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState !== "hidden") return;
+      const latest = anchorRef.current;
+      if (!latest.chapterId) return;
+      if (lastSent.current.chapterId === latest.chapterId && lastSent.current.para === latest.para) return;
+      sendProgress(latest.chapterId, latest.para);
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, [sendProgress]);
 
   /** 回书架：直接落到 /shelf（带 restore），书架按会话缓存恢复滚动位置与已加载列表 */
   const goShelf = useCallback(() => {
@@ -207,6 +275,7 @@ export function ReaderPage() {
       showToast("这个位置已经有书签了。");
       return;
     }
+    setAddingBookmark(true);
     try {
       await api.createBookmark(bookId, {
         chapterId,
@@ -217,6 +286,8 @@ export function ReaderPage() {
       showToast("已加入书签。");
     } catch {
       showToast("书签没能保存，稍后再试。");
+    } finally {
+      setAddingBookmark(false);
     }
   }
 
@@ -320,6 +391,23 @@ export function ReaderPage() {
     const node = document.getElementById(`para-${pendingJump.paraIndex}`);
     if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
   }, [pendingJump, chapter.data?.id]);
+
+  // 章内位置恢复：进入章节时按进度里的 paraIndex 滚回原段。
+  // 与书签跳转（pendingJump）不打架——书签跳转自己会滚到目标段，这里的恢复让位。
+  const restoredChapter = useRef(0);
+  useEffect(() => {
+    if (!chapter.data || chapter.data.id !== chapterId) return;
+    if (restoredChapter.current === chapterId) return;
+    // 进度还在路上时先别定稿：否则会把「章首」当成要恢复的位置，等它回来又不再重试
+    if (progressList.loading) return;
+    restoredChapter.current = chapterId;
+    if (pendingJump && pendingJump.chapterId === chapterId) return;
+    if (storedParaIndex <= 0) return;
+    // 先把锚点对齐：否则首帧会把「第 0 段」当成位置写回去
+    setAnchor({ chapterId, para: storedParaIndex });
+    const node = document.getElementById(`para-${storedParaIndex}`);
+    if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
+  }, [chapter.data, chapterId, pendingJump, storedParaIndex, progressList.loading]);
 
   // 自动滚动：开关开着、没被手动暂停、没有面板打开、窗口在前台时才真的滚
   const overlayOpen = settingsOpen || drawerOpen || bookmarksOpen || searchOpen || helpOpen;
@@ -572,7 +660,7 @@ export function ReaderPage() {
         bookmarks={bookmarks}
         currentChapterId={Number.isFinite(chapterId) ? chapterId : 0}
         deletingId={deletingBookmark}
-        adding={false}
+        adding={addingBookmark}
         canAdd={Boolean(chapter.data)}
         onClose={() => setBookmarksOpen(false)}
         onAdd={() => void addBookmark()}

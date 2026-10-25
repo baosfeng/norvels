@@ -41,6 +41,17 @@ function chapterOf(chapterId: number): ChapterDetail {
   };
 }
 
+
+// 阅读器会用 /reading/progress 恢复章内位置：这些用例不关心真实请求，统一给空列表，
+// 避免 jsdom 里发真网络请求把测试拖慢（也避免 act 警告）。
+vi.mock("../../api/client", async () => {
+  const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
+  return {
+    ...actual,
+    api: { ...actual.api, readingProgress: async () => ({ items: [] }) },
+  };
+});
+
 vi.mock("../../api/hooks", () => ({
   useBook: () => ({ data: book, loading: false, error: null, reload: vi.fn() }),
   useChapter: (_bookId: number, chapterId: number) => ({
