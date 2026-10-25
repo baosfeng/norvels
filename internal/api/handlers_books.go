@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"norvels/internal/store"
 )
@@ -16,6 +15,8 @@ var bookSorts = map[string]bool{
 	"chapters": true,
 	"words":    true,
 	"imported": true,
+	// rating：评分倒序（0 = 未评自然排在最后），同分按最近更新。
+	"rating": true,
 }
 
 func (s *Server) handleListBooks(w http.ResponseWriter, r *http.Request) {
@@ -42,36 +43,72 @@ func bookListQuery(r *http.Request) (store.BookQuery, error) {
 	if err != nil {
 		return store.BookQuery{}, err
 	}
-	sort := strings.TrimSpace(r.URL.Query().Get("sort"))
-	if sort == "" {
-		sort = "updated"
+	sort, ok := normalizeSort(r.URL.Query().Get("sort"), "updated", bookSorts)
+	if !ok {
+		return store.BookQuery{}, badParam("参数 sort 只支持 updated|title|chapters|words|imported|rating")
 	}
-	if !bookSorts[sort] {
-		return store.BookQuery{}, badParam("参数 sort 只支持 updated|title|chapters|words|imported")
-	}
-	authorID, _, err := int64Query(r, "authorId")
+	ids, err := parseBookIDFilters(r)
 	if err != nil {
 		return store.BookQuery{}, err
 	}
-	readStatus := strings.TrimSpace(r.URL.Query().Get("readStatus"))
-	if readStatus != "" && !store.ValidReadStatus(readStatus) {
-		return store.BookQuery{}, badParam("参数 readStatus 只支持 want|reading|done（留空表示不过滤）")
+	rating, err := intQuery(r, "rating", 0, 1, 5)
+	if err != nil {
+		return store.BookQuery{}, err
 	}
-	// 连载状态筛选（管理页的筛选条）：none 筛出「未知」，留空表示不过滤。
-	serialStatus := strings.TrimSpace(r.URL.Query().Get("serialStatus"))
-	if serialStatus != "" && serialStatus != store.SerialStatusNone && !store.ValidSerialStatus(serialStatus) {
-		return store.BookQuery{}, badParam("参数 serialStatus 只支持 ongoing|completed|none（留空表示不过滤）")
+	status, err := parseBookStatusFilters(r)
+	if err != nil {
+		return store.BookQuery{}, err
 	}
 	return store.BookQuery{
 		Q:            strings.TrimSpace(r.URL.Query().Get("q")),
-		AuthorID:     authorID,
+		AuthorID:     ids.authorID,
 		Tag:          strings.TrimSpace(r.URL.Query().Get("tag")),
+		Series:       strings.TrimSpace(r.URL.Query().Get("series")),
+		Rating:       rating,
+		Collection:   ids.collectionID,
 		Sort:         sort,
 		Page:         page,
 		Size:         size,
-		ReadStatus:   readStatus,
-		SerialStatus: serialStatus,
+		ReadStatus:   status.read,
+		SerialStatus: status.serial,
 	}, nil
+}
+
+// bookIDFilterValues 是整数型筛选：作者 id 与书单 id。
+type bookIDFilterValues struct {
+	authorID     int64
+	collectionID int64
+}
+
+func parseBookIDFilters(r *http.Request) (bookIDFilterValues, error) {
+	authorID, _, err := int64Query(r, "authorId")
+	if err != nil {
+		return bookIDFilterValues{}, err
+	}
+	collectionID, _, err := int64Query(r, "collection")
+	if err != nil {
+		return bookIDFilterValues{}, err
+	}
+	return bookIDFilterValues{authorID: authorID, collectionID: collectionID}, nil
+}
+
+// bookStatusFilterValues 是枚举型筛选，空串一律表示「不过滤」。
+type bookStatusFilterValues struct {
+	read   string
+	serial string
+}
+
+func parseBookStatusFilters(r *http.Request) (bookStatusFilterValues, error) {
+	read := strings.TrimSpace(r.URL.Query().Get("readStatus"))
+	if read != "" && !store.ValidReadStatus(read) {
+		return bookStatusFilterValues{}, badParam("参数 readStatus 只支持 want|reading|done（留空表示不过滤）")
+	}
+	// 连载状态筛选（管理页的筛选条）：none 筛出「未知」，留空表示不过滤。
+	serial := strings.TrimSpace(r.URL.Query().Get("serialStatus"))
+	if serial != "" && serial != store.SerialStatusNone && !store.ValidSerialStatus(serial) {
+		return bookStatusFilterValues{}, badParam("参数 serialStatus 只支持 ongoing|completed|none（留空表示不过滤）")
+	}
+	return bookStatusFilterValues{read: read, serial: serial}, nil
 }
 
 func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {
@@ -140,95 +177,6 @@ func (s *Server) handleGetChapter(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, chapter)
 }
 
-// bookPatch 是 PATCH /api/books/{id} 的请求体：任意字段子集，nil 表示「不改」。
-//
-// 未知字段按 encoding/json 默认行为忽略；但「只含未知字段」的 body 会归一化成空
-// patch，最终按 400 invalid_param 拒绝——否则用户拼错字段名会得到一次静默成功。
-type bookPatch struct {
-	Title *string `json:"title"`
-	// Author 与 Authors 同时给出时 Authors 优先（前端详情页可能同时持有两者）；
-	// 只给 Author 时等价于 authors=[author]——两者都走「全量替换 books_authors」。
-	Author      *string   `json:"author"`
-	Authors     *[]string `json:"authors"`
-	Intro       *string   `json:"intro"`
-	Tags        *[]string `json:"tags"`
-	Series      *string   `json:"series"`
-	SeriesIndex *int      `json:"seriesIndex"`
-	// SerialStatus 是连载状态（''|ongoing|completed），与解析状态 status 无关。
-	SerialStatus *string `json:"serialStatus"`
-	// ReadStatus 是阅读状态（''|want|reading|done），与 status / serialStatus 互不覆写。
-	ReadStatus *string `json:"readStatus"`
-}
-
-// PATCH authors 的跨信任边界上限：条数与单名长度。
-const (
-	maxPatchAuthors    = 10
-	maxAuthorNameRunes = 100
-)
-
-// validateAuthors 校验 PATCH 带来的作者列表：条数与单名长度受限；空数组合法（= 清空作者）。
-//
-// 「什么算同一个作者」由 store.NormalizeAuthors 单点定义（去空白、去空名、保序去重）。
-// 空数组不再 400（P1-B §2.5 口径覆盖）：前端批量设作者时留空即清空，下发 [] 应当成功。
-func validateAuthors(authors *[]string) error {
-	if authors == nil {
-		return nil
-	}
-	names := store.NormalizeAuthors(*authors)
-	if len(names) > maxPatchAuthors {
-		return badParam("authors 最多 %d 个作者", maxPatchAuthors)
-	}
-	for _, name := range names {
-		if utf8.RuneCountInString(name) > maxAuthorNameRunes {
-			return badParam("单个作者名不能超过 %d 字", maxAuthorNameRunes)
-		}
-	}
-	return nil
-}
-
-// validateSerialStatus 校验 PATCH 带来的连载状态：” / ongoing / completed，其它值 400。
-//
-// 合法取值集合由 store.ValidSerialStatus 单点定义（写入侧还有一道同样的守卫），
-// api 只负责把它翻译成 400 invalid_param。
-func validateSerialStatus(status *string) error {
-	if status == nil {
-		return nil
-	}
-	if !store.ValidSerialStatus(strings.TrimSpace(*status)) {
-		return badParam("serialStatus 只支持 ''（未知）/ ongoing / completed")
-	}
-	return nil
-}
-
-// validateReadStatus 校验 PATCH 带来的阅读状态：” / want / reading / done，其它值 400。
-//
-// 合法取值集合由 store.ValidReadStatus 单点定义（写入侧还有一道同样的守卫），
-// api 只负责把它翻译成 400 invalid_param。
-func validateReadStatus(status *string) error {
-	if status == nil {
-		return nil
-	}
-	if !store.ValidReadStatus(strings.TrimSpace(*status)) {
-		return badParam("readStatus 只支持 ''（未标记）/ want / reading / done")
-	}
-	return nil
-}
-
-// toStorePatch 把请求体转成库层补丁（两层的字段集合故意一一对应，转换是纯搬运）。
-func (p bookPatch) toStorePatch() store.BookMetaPatch {
-	return store.BookMetaPatch{
-		Title:        p.Title,
-		Author:       p.Author,
-		Authors:      p.Authors,
-		Intro:        p.Intro,
-		Series:       p.Series,
-		SeriesIndex:  p.SeriesIndex,
-		Tags:         p.Tags,
-		SerialStatus: p.SerialStatus,
-		ReadStatus:   p.ReadStatus,
-	}
-}
-
 // handlePatchBook 处理 PATCH /api/books/{id}：改元数据/标签，成功返回最新 BookDetail。
 func (s *Server) handlePatchBook(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r, "id")
@@ -240,22 +188,13 @@ func (s *Server) handlePatchBook(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &body, "请求体必须是书籍字段组成的 JSON 对象") {
 		return
 	}
-	if err := validateAuthors(body.Authors); err != nil {
-		s.badRequest(w, err, codeInvalidParam)
-		return
-	}
-	if err := validateSerialStatus(body.SerialStatus); err != nil {
-		s.badRequest(w, err, codeInvalidParam)
-		return
-	}
-	if err := validateReadStatus(body.ReadStatus); err != nil {
+	if err := validateBookPatch(body); err != nil {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
 	patch := body.toStorePatch()
 	if patch.IsEmpty() {
-		writeError(w, http.StatusBadRequest, codeInvalidParam,
-			"请求体至少包含一个可修改字段：title/author/authors/intro/tags/series/seriesIndex/serialStatus/readStatus")
+		writeError(w, http.StatusBadRequest, codeInvalidParam, bookPatchFieldsHint)
 		return
 	}
 	if err := s.st.UpdateBookMeta(r.Context(), id, patch); err != nil {
