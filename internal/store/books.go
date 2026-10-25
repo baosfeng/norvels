@@ -84,6 +84,8 @@ func bookOrder(sortKey string) string {
 		return "b.word_count DESC, b.id DESC"
 	case "imported":
 		return "b.imported_at DESC, b.id DESC"
+	case "rating":
+		return "b.rating DESC, b.updated_at DESC, b.id DESC"
 	default: // updated
 		return "b.updated_at DESC, b.id DESC"
 	}

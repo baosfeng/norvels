@@ -21,6 +21,10 @@ type BookQuery struct {
 	// SerialStatus 是连载状态筛选：''（不过滤）| ongoing | completed | none（= 未知）。
 	// none 是「筛出没标状态的存量书」的哨兵值——空串已经被「不过滤」占用。
 	SerialStatus string
+	// Series 是系列名精确匹配（TRIM 后比较），空表示不过滤（P3）。
+	Series string
+	// Rating 是评分筛选 1–5；0 表示不过滤（0 本身是「未评」，不能拿来筛）。
+	Rating int
 }
 
 // AuthorQuery 描述作者列表的过滤与排序。
