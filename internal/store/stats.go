@@ -28,9 +28,11 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		}
 	}
 	st.DBBytes = s.diskUsage()
-	// 体积构成是估算值；估算失败不影响主统计（前端仍能画「未知」退化）。
-	if textBytes, indexBytes, cerr := s.estimateComposition(ctx); cerr == nil {
-		fillComposition(&st, textBytes, indexBytes)
+	// 体积构成：优先读缓存（精确、毫秒级），缺失时退化为抽样估算。
+	// 估算失败不影响主统计（前端仍能画「未知」退化）。
+	if comp, cerr := s.Composition(ctx); cerr == nil {
+		fillComposition(&st, comp.TextBytes, comp.IndexBytes)
+		st.CompositionEstimated = comp.Estimated
 	}
 	return st, nil
 }

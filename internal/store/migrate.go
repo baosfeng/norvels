@@ -96,6 +96,10 @@ func (s *Store) MigrateTo(ctx context.Context, target int) (migrationStatus, err
 		return st, applyErr
 	}
 	st.AlreadyAtMax = st.FromVersion >= latest
+	// 性能索引不进迁移文件（老库升级路径上 chapters 可能还不存在），迁移成功后幂等补齐。
+	if err := s.ensureCompositionIndex(ctx); err != nil {
+		return st, err
+	}
 	return st, nil
 }
 

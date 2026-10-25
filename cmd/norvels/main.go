@@ -144,6 +144,17 @@ func cmdServe(args []string) error {
 	}
 	defer st.Close()
 
+	// 库级聚合值（store_metrics）缺失或口径落后时后台补算一次：不阻塞启动，
+	// 算完前 /api/stats 与 /api/health/report 返回 stale 标记。
+	st.OnMetricsRefreshed(func(err error) {
+		if err != nil {
+			log.Printf("后台重算库级聚合值失败: %v", err)
+			return
+		}
+		log.Print("后台重算库级聚合值完成")
+	})
+	st.EnsureMetricsAsync(ctx)
+
 	token := *authToken
 	warnAuthMode(token == "")
 	srv := &http.Server{

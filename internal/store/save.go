@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"norvels/internal/model"
 )
@@ -191,6 +192,17 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 
 	bookID := existingID
 	if bookID != 0 {
+		// 覆盖写入会先删旧章节，旧值必须先从 metrics 里减掉，否则会重复计数。
+		oldText, oldWords, err := bookTextStats(ctx, tx, bookID)
+		if err != nil {
+			return 0, fmt.Errorf("store: save book old metrics: %w", err)
+		}
+		if err := bumpMetrics(ctx, tx, -oldText, -oldWords); err != nil {
+			return 0, err
+		}
+		if err := subtractBookTextBytes(ctx, tx, bookID); err != nil {
+			return 0, err
+		}
 		if err := replaceBookRow(ctx, tx, bookID, w, authorID); err != nil {
 			return 0, err
 		}
@@ -261,7 +273,15 @@ func insertVolumes(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Parse
 	return volMap, nil
 }
 
-// insertChapters 用一条预处理语句批量写入章节（含 FTS 镜像列 title_seg/content_seg）。
+// insertChapters 用一条预处理语句批量写入章节（含 FTS 镜像列 title_seg/content_seg），
+// 并顺手累加 store_metrics 需要的聚合量。
+//
+// 导入路径本来就要遍历所有章节，在这里累加几乎零额外成本——比事后跑
+// SUM(length(content)) 全表扫（42 万行实测 54 s）便宜三个数量级。
+// 累加与章节写入在同一事务内完成，二者不会漂移。
+//
+// 口径必须与 SQL 的 length() 一致：SQLite 的 length(TEXT) 返回**字符数**，
+// 因此这里用 utf8.RuneCountInString 而不是 len()（后者是字节数）。
 func insertChapters(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook, volMap map[int]int64) error {
 	stmt, err := tx.PrepareContext(ctx, chapterInsertSQL)
 	if err != nil {
@@ -269,16 +289,62 @@ func insertChapters(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Pars
 	}
 	defer stmt.Close() //nolint:errcheck // 只读句柄
 
+	var textRunes, words int64
 	for i := range b.Chapters {
 		c := &b.Chapters[i]
-		_, err := stmt.ExecContext(ctx, bookID, volumeIDFor(c, volMap), c.Idx, c.Title,
-			Segment(c.Title), c.Content, Segment(c.Content), chapterWordCount(c))
-		if err != nil {
+		titleSeg := Segment(c.Title)
+		contentSeg := Segment(c.Content)
+		wc := chapterWordCount(c)
+		if _, err := stmt.ExecContext(ctx, bookID, volumeIDFor(c, volMap), c.Idx, c.Title,
+			titleSeg, c.Content, contentSeg, wc); err != nil {
 			return fmt.Errorf("store: save chapter idx=%d: %w", c.Idx, err)
 		}
+		textRunes += runeLen(c.Title) + runeLen(c.Content) + runeLen(titleSeg) + runeLen(contentSeg)
+		words += int64(wc)
 	}
+	if err := bumpMetrics(ctx, tx, textRunes, words); err != nil {
+		return err
+	}
+	// books 侧文本量（标题/简介/路径等）随书籍主体变化，一并增量维护，
+	// 保证「增量累加」与「全量重算」在同一个口径上（有测试守着）。
+	bookText, err := bumpBookTextBytes(ctx, tx, bookID)
+	if err != nil {
+		return err
+	}
+	_ = bookText
 	return nil
 }
+
+// bumpBookTextBytes 重算单本书的文本字节并把差值并入 book_text_bytes。
+//
+// books 表只有千级行，按 book_id 取一行是主键查询，代价可忽略；
+// 用「重算差值」而不是「猜增量」，因此覆盖写入/标题变更都不会漏。
+func bumpBookTextBytes(ctx context.Context, tx *sql.Tx, bookID int64) (int64, error) {
+	var current int64
+	if err := tx.QueryRowContext(ctx,
+		"SELECT COALESCE(length(title) + length(intro) + length(source_path) + length(source_name) + "+
+			"length(encoding) + length(status), 0) FROM books WHERE id = ?", bookID).Scan(&current); err != nil {
+		return 0, fmt.Errorf("store: book text bytes: %w", err)
+	}
+	if err := bumpMetricKey(ctx, tx, metricBookTextBytes, current); err != nil {
+		return 0, err
+	}
+	return current, nil
+}
+
+// subtractBookTextBytes 在删除/覆盖前把这本书的文本字节从 book_text_bytes 里减掉。
+func subtractBookTextBytes(ctx context.Context, tx *sql.Tx, bookID int64) error {
+	var current int64
+	if err := tx.QueryRowContext(ctx,
+		"SELECT COALESCE(length(title) + length(intro) + length(source_path) + length(source_name) + "+
+			"length(encoding) + length(status), 0) FROM books WHERE id = ?", bookID).Scan(&current); err != nil {
+		return fmt.Errorf("store: book text bytes: %w", err)
+	}
+	return bumpMetricKey(ctx, tx, metricBookTextBytes, -current)
+}
+
+// runeLen 返回字符串的字符数，与 SQLite 的 length(TEXT) 口径一致。
+func runeLen(s string) int64 { return int64(utf8.RuneCountInString(s)) }
 
 // volumeIDFor 返回章节所属卷的库内 id；未归卷（VolumeIdx < 0 或卷未落库）返回 0。
 func volumeIDFor(c *model.ParsedChapter, volMap map[int]int64) int64 {

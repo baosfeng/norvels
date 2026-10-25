@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite" // 纯 Go SQLite 驱动（CGO-free）
@@ -15,6 +16,10 @@ import (
 type Store struct {
 	db   *sql.DB
 	path string
+	// metricsRefreshing 去重后台补算（同一时刻只允许一个 goroutine 重算）。
+	metricsRefreshing atomic.Bool
+	// staleCallback 在后台补算完成后调用（api 层用来记日志），可为 nil。
+	staleCallback func(err error)
 }
 
 // Open 打开（不存在则创建）数据库并应用 PRAGMA。

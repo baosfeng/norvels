@@ -153,10 +153,13 @@ type Stats struct {
 	Words        int64      `json:"words"`
 	DBBytes      int64      `json:"dbBytes"`
 	LastImportAt *time.Time `json:"lastImportAt"`
-	// 体积构成估算（字节）。
+	// 体积构成（字节）。
 	TextBytes  int64 `json:"textBytes"`
 	IndexBytes int64 `json:"indexBytes"`
 	OtherBytes int64 `json:"otherBytes"`
+	// CompositionEstimated 为 true 表示上面三项来自抽样外推而非全表精确统计。
+	// 增量字段：前端未适配时忽略即可，不影响既有渲染。
+	CompositionEstimated bool `json:"compositionEstimated"`
 }
 
 // ImportJob 是一次导入任务的记录。
