@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { useBook, useBookmarks, useChapter, useSaveProgress } from "../../api/hooks";
+import { useBook, useBookmarks, useChapter, useRecordReadingSession, useSaveProgress } from "../../api/hooks";
 import type { Bookmark, ChapterBrief } from "../../api/types";
 import { ChevronLeftIcon } from "../../components/Icons";
 import { ErrorPanel, LoadingPanel, EmptyPanel } from "../../components/StatePanel";
@@ -24,6 +24,7 @@ import { ReaderHelpPanel } from "./ReaderHelpPanel";
 import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 import { tradToSimp } from "../../lib/trad2simp";
 import { pickStoredParaIndex, useReaderProgress } from "./readerProgress";
+import { useReadingSessionReporter } from "../../lib/readingTimer";
 
 /** 章内位置的上报防抖：滚动停下 1 秒才发一次；切章 / 隐藏 / 卸载不等防抖。 */
 const PROGRESS_DEBOUNCE_MS = 1000;
@@ -45,6 +46,9 @@ export function ReaderPage() {
   const book = useBook(Number.isFinite(bookId) ? bookId : null);
   const chapter = useChapter(Number.isFinite(bookId) ? bookId : null, Number.isFinite(chapterId) ? chapterId : null);
   const saveProgress = useSaveProgress();
+  // 阅读时长：可见时计时，切章/隐藏/卸载落一次会话（单次 ≥60s 才上报）。
+  const recordSession = useRecordReadingSession();
+  useReadingSessionReporter({ bookId, chapterId, report: recordSession });
   // 书签列表随阅读器一起取：抽屉打开即可见，同段已有书签时也不重复发请求
   const bookmarks = useBookmarks(Number.isFinite(bookId) ? bookId : null);
   // 上次读到哪一段：进章节后据此把正文滚回原处（与书签跳转共用段落 anchor）

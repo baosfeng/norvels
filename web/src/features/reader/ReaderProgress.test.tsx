@@ -73,6 +73,7 @@ vi.mock("../../api/hooks", () => ({
     reload: vi.fn(),
   }),
   useSaveProgress: () => spies.saveProgress,
+  useRecordReadingSession: () => vi.fn(async () => true),
   useBookmarks: () => ({ data: { bookmarks: [] }, loading: false, error: null, reload: vi.fn() }),
 }));
 

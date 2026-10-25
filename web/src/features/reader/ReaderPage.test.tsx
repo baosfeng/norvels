@@ -105,6 +105,7 @@ vi.mock("../../api/hooks", () => ({
   useBook: () => ({ data: activeBook, loading: false, error: null, reload: vi.fn() }),
   useChapter: (bookId: number, chapterId: number) => chapterState(bookId, chapterId),
   useSaveProgress: () => vi.fn(async () => true),
+  useRecordReadingSession: () => vi.fn(async () => true),
   useBookmarks: () => ({ data: { bookmarks: [] }, loading: false, error: null, reload: vi.fn() }),
 }));
 
