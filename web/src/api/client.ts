@@ -12,6 +12,7 @@ import type {
   ReadingProgress,
   SearchResult,
   Stats,
+  TagSummary,
 } from "./types";
 
 /** 错误分类：调用方按 kind 决定文案与重试策略，不解析 message 字符串。 */
@@ -32,6 +33,9 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+/** 驾驶舱统计类接口放宽到 20s：后端查预计算表，刷新窗口内会比列表接口慢。 */
+export const STATS_TIMEOUT_MS = 20_000;
 const TOKEN_KEY = "norvels.authToken";
 
 /** 鉴权 token 只在同一浏览器存一次，随每个请求带 Bearer；未设置时后端为开放模式。 */
@@ -138,16 +142,18 @@ function query(params: Record<string, string | number | undefined>): string {
 export interface BookQuery {
   q?: string;
   authorId?: number;
+  tag?: string;
   sort?: "updated" | "title" | "chapters" | "words" | "imported";
   page?: number;
   size?: number;
 }
 
 export const api = {
-  stats: (opts?: RequestOptions) => request<Stats>("/stats", opts),
-  healthReport: (opts?: RequestOptions) => request<HealthReport>("/health/report", opts),
+  stats: (opts?: RequestOptions) => request<Stats>("/stats", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
+  healthReport: (opts?: RequestOptions) =>
+    request<HealthReport>("/health/report", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   importTrend: (days: number, opts?: RequestOptions) =>
-    request<ImportTrendPoint[]>(`/stats/import-trend${query({ days })}`, opts),
+    request<ImportTrendPoint[]>(`/stats/import-trend${query({ days })}`, { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   books: (params: BookQuery, opts?: RequestOptions) =>
     request<Page<BookSummary>>(`/books${query({ ...params })}`, opts),
   book: (id: number, opts?: RequestOptions) => request<BookDetail>(`/books/${id}`, opts),
@@ -164,11 +170,13 @@ export const api = {
   search: (q: string, params: { type?: "chapter" | "book" | "all"; page?: number; size?: number } = {}, opts?: RequestOptions) =>
     request<SearchResult>(`/search${query({ q, ...params })}`, opts),
   importJobs: (opts?: RequestOptions) => request<{ items: ImportJob[] }>("/import/jobs", opts),
+  tags: (opts?: RequestOptions) => request<{ items: TagSummary[] }>("/tags", opts),
   importJob: (id: number, opts?: RequestOptions) => request<ImportJob>(`/import/jobs/${id}`, opts),
   startImport: (body: { dir: string; recursive?: boolean; force?: boolean; workers?: number; dryRun?: boolean }, opts?: RequestOptions) =>
     request<{ jobId: number }>("/import", { ...opts, method: "POST", body }),
-  readingProgress: (opts?: RequestOptions) =>
-    request<{ items: ReadingProgress[] }>("/reading/progress", opts),
+  // limit 默认 5、上限 50（后端 intQuery 约束），传错值会 400
+  readingProgress: (opts?: RequestOptions, limit?: number) =>
+    request<{ items: ReadingProgress[] }>(`/reading/progress${query({ limit })}`, opts),
   saveProgress: (body: { bookId: number; chapterId: number; percent: number }, opts?: RequestOptions) =>
     request<void>("/reading/progress", { ...opts, method: "PUT", body }),
 };

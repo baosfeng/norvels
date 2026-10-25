@@ -109,6 +109,10 @@ export interface Stats {
   textBytes?: number;
   indexBytes?: number;
   otherBytes?: number;
+  /** 体积构成为估算值（后端按表长度推算） */
+  compositionEstimated?: boolean;
+  /** 预计算表正在刷新：数值可用但可能不是最新，前端据此提示「数据更新中」 */
+  stale?: boolean;
 }
 
 export interface Bucket {
@@ -125,6 +129,8 @@ export interface HealthReport {
   chapterBuckets: Bucket[];
   chapterLengthBuckets: Bucket[];
   warnings: string[];
+  /** 同上：统计表刷新期间为 true */
+  stale?: boolean;
 }
 
 export interface ReadingProgress {
@@ -141,4 +147,9 @@ export interface ImportTrendPoint {
   date: string;
   books: number;
   chapters: number;
+}
+export interface TagSummary {
+  id: number;
+  name: string;
+  bookCount: number;
 }

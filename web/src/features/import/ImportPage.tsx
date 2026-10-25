@@ -46,7 +46,7 @@ export function ImportPage() {
   }
 
   return (
-    <section data-testid="view:import">
+    <section data-testid="view:import" data-od-id="import">
       <div className="page-head">
         <div>
           <p className="eyebrow">导入管理</p>

@@ -52,7 +52,7 @@ export function AppShell() {
               showViewToggle={location.pathname === "/shelf"}
             />
           )}
-          <main className="container">
+          <main className="container" data-od-id="main">
             <Outlet />
           </main>
         </div>

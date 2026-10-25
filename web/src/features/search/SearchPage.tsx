@@ -30,7 +30,7 @@ export function SearchPage() {
   const tooShort = q.trim().length > 0 && q.trim().length < 2;
 
   return (
-    <section data-testid="view:search">
+    <section data-testid="view:search" data-od-id="search">
       <div className="search-head">
         <p className="eyebrow">全文检索</p>
         <h1>{q ? `“${q}”` : "搜索"}</h1>
@@ -85,7 +85,7 @@ export function SearchPage() {
       ) : (
         <div className="search-layout" style={isH5 ? { gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           {tab !== "chapter" && (data?.books.items.length ?? 0) > 0 ? (
-            <aside aria-label="书名结果">
+            <aside aria-label="书名结果" data-od-id="search-books-col">
               <h2>
                 书名结果 <span className="meta">{bookCount}</span>
               </h2>

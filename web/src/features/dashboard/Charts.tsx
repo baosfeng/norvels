@@ -1,0 +1,225 @@
+import type { ReactNode } from "react";
+import {
+  buildChapterBuckets,
+  buildChapterLength,
+  buildImportTrend,
+  buildReadingDist,
+  buildStorage,
+  buildTopAuthors,
+  RADIUS,
+} from "../../lib/charts";
+import type { Bucket, ImportTrendPoint, ReadingProgress, Stats } from "../../api/types";
+
+/**
+ * 六张图：纯 SVG/CSS 手写，不引图表库（ADR-0001 §6）。
+ * 每张图结构一致：标题 → 一句实算结论 → 图体。结论与图体由同一份转换结果生成，不会各说各话。
+ * 四态由 ChartFrame 统一处理（读取中 / 失败 / 空 / 有数据），颜色全取 CSS 变量，深浅主题自动跟随。
+ */
+
+export type ChartId = "trend" | "authors" | "buckets" | "reading" | "storage" | "chapterlen";
+
+/** 单张图的取数状态：与页面其它数据区同一套四态口径。 */
+export interface ChartState {
+  loading: boolean;
+  failed: boolean;
+  onRetry: () => void;
+  /** 后端统计表正在刷新：数值可用，但提示用户「数据更新中」而不是报错 */
+  stale?: boolean;
+}
+
+interface ChartFrameProps extends ChartState {
+  id: ChartId;
+  title: string;
+  note: string;
+  isEmpty: boolean;
+  children: ReactNode;
+}
+
+function ChartFrame({ id, title, note, loading, failed, onRetry, isEmpty, stale, children }: ChartFrameProps) {
+  return (
+    <article className="chart-card" data-chart={id} data-testid={`chart:${id}`} data-od-id={`chart:${id}`}>
+      <div className="chart-head">
+        <h3>{title}</h3>
+        <p className="chart-note">
+          {loading ? "正在读取…" : note}
+          {!loading && !failed && stale ? <span className="chart-stale">数据更新中</span> : null}
+        </p>
+      </div>
+      <div className="chart-body">
+        {loading ? (
+          <div className="chart-empty" data-testid={`chart:${id}:loading`}>
+            正在读取…
+          </div>
+        ) : failed ? (
+          <div className="chart-empty" data-testid={`chart:${id}:error`}>
+            <span>数据暂不可用</span>
+            <button className="load-more" type="button" onClick={onRetry}>
+              重试
+            </button>
+          </div>
+        ) : isEmpty ? (
+          <div className="chart-empty" data-testid={`chart:${id}:empty`}>
+            暂无数据
+          </div>
+        ) : (
+          children
+        )}
+      </div>
+    </article>
+  );
+}
+
+/* ── 1 近 14 天导入量（竖条） ── */
+export function ImportTrendChart({ points, ...state }: { points: ImportTrendPoint[] } & ChartState) {
+  const model = buildImportTrend(points);
+  return (
+    <ChartFrame id="trend" title="近 14 天导入量" note={model.note} isEmpty={model.empty} {...state}>
+      <div className="bars">
+        {model.data.bars.map((bar) => (
+          <div className="bar-col" key={bar.label} title={bar.title}>
+            <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} />
+            <span className="bar-lbl">{bar.labelVisible ? bar.label : ""}</span>
+          </div>
+        ))}
+      </div>
+    </ChartFrame>
+  );
+}
+
+/* ── 2 章节数分布（直方图） ── */
+export function ChapterBucketsChart({ buckets, ...state }: { buckets: Bucket[] } & ChartState) {
+  const model = buildChapterBuckets(buckets);
+  return (
+    <ChartFrame id="buckets" title="章节数分布" note={model.note} isEmpty={model.empty} {...state}>
+      <div className="bars">
+        {model.data.bars.map((bar) => (
+          <div className="bar-col" key={bar.label} title={bar.title}>
+            <span className="bar-val">{bar.value}</span>
+            <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} />
+            <span className="bar-lbl">{bar.label}</span>
+          </div>
+        ))}
+      </div>
+    </ChartFrame>
+  );
+}
+
+/* ── 3 字数 Top 10 作者（横条） ── */
+export function TopAuthorsChart({
+  authors,
+  totalWords,
+  ...state
+}: { authors: { name: string; wordCount: number }[]; totalWords: number } & ChartState) {
+  const model = buildTopAuthors(authors, totalWords);
+  return (
+    <ChartFrame id="authors" title="字数 Top 10 作者" note={model.note} isEmpty={model.empty} {...state}>
+      <div className="hbars">
+        {model.data.rows.map((row) => (
+          <div className="hbar-row" key={row.name}>
+            <span className="hbar-name" title={row.name}>
+              {row.name}
+            </span>
+            <span className="hbar-track">
+              <span className="hbar-fill" style={{ width: `${row.widthPct}%` }} />
+            </span>
+            <span className="hbar-val">{row.display}</span>
+          </div>
+        ))}
+      </div>
+    </ChartFrame>
+  );
+}
+
+/* ── 4 阅读进度分布（环形） ── */
+export function ReadingDistChart({
+  progress,
+  totalBooks,
+  limitReached,
+  ...state
+}: { progress: ReadingProgress[]; totalBooks: number; limitReached: boolean } & ChartState) {
+  const model = buildReadingDist(progress, totalBooks, limitReached);
+  const note = model.data.partial ? `${model.note}（按最近 50 条记录聚合）` : model.note;
+  return (
+    <ChartFrame id="reading" title="阅读进度分布" note={note} isEmpty={model.empty} {...state}>
+      <div className="donut-wrap">
+        <svg className="donut" viewBox="0 0 120 120" role="img" aria-label={note}>
+          {model.data.segments.map((segment) =>
+            segment.value > 0 ? (
+              <circle
+                key={segment.key}
+                cx="60"
+                cy="60"
+                r={RADIUS}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth="16"
+                strokeDasharray={segment.dash}
+                strokeDashoffset={String(segment.offset)}
+                transform="rotate(-90 60 60)"
+              >
+                <title>{`${segment.label} ${segment.value} 本`}</title>
+              </circle>
+            ) : null,
+          )}
+        </svg>
+        <div className="donut-legend">
+          {model.data.segments.map((segment) => (
+            <span className="legend-row" key={segment.key}>
+              <span className="legend-dot" style={{ background: segment.color }} />
+              {segment.label} {segment.value} 本
+            </span>
+          ))}
+        </div>
+      </div>
+    </ChartFrame>
+  );
+}
+
+/* ── 5 库体积构成（堆叠条） ── */
+export function StorageChart({ stats, ...state }: { stats: Stats | null } & ChartState) {
+  const model = buildStorage(stats);
+  return (
+    <ChartFrame id="storage" title="库体积构成" note={model.note} isEmpty={model.empty} {...state}>
+      <div style={{ width: "100%" }}>
+        <div className="stack">
+          {model.data.parts.map((part) => (
+            <span
+              className="stack-seg"
+              key={part.key}
+              style={{ width: `${part.widthPct}%`, background: part.color }}
+              title={`${part.label} ${part.display}`}
+            />
+          ))}
+        </div>
+        <div className="stack-legend">
+          {model.data.parts.map((part) => (
+            <span className="legend-row" key={part.key}>
+              <span className="legend-dot" style={{ background: part.color }} />
+              {part.label} {part.display}
+            </span>
+          ))}
+        </div>
+      </div>
+    </ChartFrame>
+  );
+}
+
+/* ── 6 章节长度分布 ── */
+export function ChapterLengthChart({ buckets, ...state }: { buckets: Bucket[] } & ChartState) {
+  const model = buildChapterLength(buckets);
+  return (
+    <ChartFrame id="chapterlen" title="章节长度分布" note={model.note} isEmpty={model.empty} {...state}>
+      <div className="cols">
+        {model.data.cols.map((col) => (
+          <div className="col-item" key={col.label} title={col.title}>
+            <span
+              className={`col-fill${col.label === model.data.peak ? " is-peak" : ""}`}
+              style={{ height: `${col.heightPct}%` }}
+            />
+            <span className="bar-lbl">{col.label}</span>
+          </div>
+        ))}
+      </div>
+    </ChartFrame>
+  );
+}

@@ -19,7 +19,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const authors = stats.data?.authors ?? 0;
 
   return (
-    <aside className="sidebar" data-testid="sidebar" aria-label="站点导航">
+    <aside className="sidebar" data-testid="sidebar" data-od-id="sidebar" aria-label="站点导航">
       <NavLink className="brand" to={isH5 ? "/home" : "/shelf"} onClick={onNavigate}>
         <strong>norvels</strong>
         <span>本地中文小说库</span>

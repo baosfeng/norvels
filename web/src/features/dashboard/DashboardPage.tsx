@@ -1,25 +1,62 @@
 import { Link } from "react-router-dom";
-import { useHealthReport, useImportJobs, useReadingProgress, useStats } from "../../api/hooks";
+import {
+  useHealthReport,
+  useImportJobs,
+  useImportTrend,
+  useReadingProgress,
+  useReadingProgressAll,
+  useStats,
+  useTopAuthors,
+} from "../../api/hooks";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount, formatDate } from "../../lib/format";
+import {
+  ChapterBucketsChart,
+  ChapterLengthChart,
+  ImportTrendChart,
+  ReadingDistChart,
+  StorageChart,
+  TopAuthorsChart,
+  type ChartState,
+} from "./Charts";
+
+const TREND_DAYS = 14;
+const PROGRESS_LIMIT = 50;
 
 /**
- * 驾驶舱（PC 专属）。第一段只接真实接口的概览与列表；
- * 六张图表在第二段接入（数据已就绪，本轮不引图表库先留骨架位）。
+ * 驾驶舱（PC 专属）。六张图全部来自真实接口，每张图自带一句实算结论。
+ * 图与结论都由 lib/charts.ts 的同一份转换结果生成，不会各说各话。
  */
 export function DashboardPage() {
   const stats = useStats();
   const progress = useReadingProgress();
+  const progressAll = useReadingProgressAll();
   const jobs = useImportJobs();
   const health = useHealthReport();
+  const trend = useImportTrend(TREND_DAYS);
+  const topAuthors = useTopAuthors(10);
 
   const loading = stats.loading && !stats.data;
   const error = stats.error;
   const empty = !loading && !error && (stats.data?.books ?? 0) === 0;
 
+  const chartState = (
+    source: { loading: boolean; error: unknown; reload: () => void },
+    stale = false,
+  ): ChartState => ({
+    loading: source.loading,
+    failed: Boolean(source.error),
+    onRetry: source.reload,
+    stale,
+  });
+
+  // 后端把统计改成查预计算表后，刷新窗口内会带 stale 标记：此时照常出图，只提示「数据更新中」
+  const statsStale = Boolean(stats.data?.stale);
+  const healthStale = Boolean(health.data?.stale);
+
   return (
-    <section data-testid="view:dashboard">
+    <section data-testid="view:dashboard" data-od-id="dashboard">
       <div className="page-head">
         <div>
           <p className="eyebrow">库总览</p>
@@ -45,14 +82,14 @@ export function DashboardPage() {
       ) : (
         <div className="dash-layout">
           <div className="dash-main">
-            <div className="dash-stats">
+            <div className="dash-stats" data-od-id="dashboard:stats">
               <StatCard label="书籍总数" value={formatCount(stats.data?.books ?? 0)} hint="本" />
               <StatCard label="章节总数" value={formatCount(stats.data?.chapters ?? 0)} hint="章" />
               <StatCard label="作者" value={formatCount(stats.data?.authors ?? 0)} hint="位" />
               <StatCard label="总字数" value={formatCount(stats.data?.words ?? 0)} hint="字" />
             </div>
 
-            <section className="dash-block">
+            <section className="dash-block" data-od-id="dashboard:reading">
               <div className="dash-block-head">
                 <h2>最近在读</h2>
                 <Link className="meta" to="/shelf">
@@ -87,7 +124,7 @@ export function DashboardPage() {
               )}
             </section>
 
-            <section className="dash-block">
+            <section className="dash-block" data-od-id="dashboard:import">
               <div className="dash-block-head">
                 <h2>导入概况</h2>
                 <Link className="meta" to="/import">
@@ -105,19 +142,27 @@ export function DashboardPage() {
               )}
             </section>
 
-            <section className="dash-block">
-              <div className="dash-block-head">
-                <h2>六张图表</h2>
-                <span className="meta">数据已就绪，绘图在下一段接入</span>
-              </div>
-              <p className="meta">
-                近 14 天导入量、章节数分布、字数 Top 10 作者、阅读进度分布、库体积构成、章节长度分布。
-              </p>
-            </section>
+            <div className="chart-grid" data-testid="dashboard:charts" data-od-id="dashboard:charts">
+              <ImportTrendChart points={trend.data ?? []} {...chartState(trend)} />
+              <TopAuthorsChart
+                authors={(topAuthors.data?.items ?? []).map((a) => ({ name: a.name, wordCount: a.wordCount }))}
+                totalWords={stats.data?.words ?? 0}
+                {...chartState(topAuthors)}
+              />
+              <ChapterBucketsChart buckets={health.data?.chapterBuckets ?? []} {...chartState(health, healthStale)} />
+              <ReadingDistChart
+                progress={progressAll.data?.items ?? []}
+                totalBooks={stats.data?.books ?? 0}
+                limitReached={(progressAll.data?.items.length ?? 0) >= PROGRESS_LIMIT}
+                {...chartState(progressAll)}
+              />
+              <StorageChart stats={stats.data} {...chartState(stats, statsStale)} />
+              <ChapterLengthChart buckets={health.data?.chapterLengthBuckets ?? []} {...chartState(health, healthStale)} />
+            </div>
           </div>
 
-          <aside className="dash-side">
-            <section className="dash-block">
+          <aside className="dash-side" data-od-id="dashboard:health">
+            <section className="dash-block" data-od-id="dashboard:health-card">
               <div className="dash-block-head">
                 <h2>库健康状况</h2>
               </div>
@@ -186,28 +231,39 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint: 
   );
 }
 
-function ImportSummary({ jobs }: { jobs: { id: number; status: string; total: number; imported: number; skipped: number; failed: number; sourceDir: string; startedAt: string | null }[] }) {
+function ImportSummary({
+  jobs,
+}: {
+  jobs: {
+    id: number;
+    status: string;
+    total: number;
+    imported: number;
+    skipped: number;
+    failed: number;
+    sourceDir: string;
+    startedAt: string | null;
+  }[];
+}) {
   const latest = jobs[0];
   return (
-    <>
-      <div className="dash-recent">
-        <div>
-          <span className="meta">上次导入</span>
-          <b>{formatDate(latest?.startedAt ?? null)}</b>
-        </div>
-        <div>
-          <span className="meta">导入</span>
-          <b className="num">{latest?.imported ?? 0} 本</b>
-        </div>
-        <div>
-          <span className="meta">跳过</span>
-          <b className="num">{latest?.skipped ?? 0} 本</b>
-        </div>
-        <div>
-          <span className="meta">未成功</span>
-          <b className="num">{latest?.failed ?? 0} 本</b>
-        </div>
+    <div className="dash-recent">
+      <div>
+        <span className="meta">上次导入</span>
+        <b>{formatDate(latest?.startedAt ?? null)}</b>
       </div>
-    </>
+      <div>
+        <span className="meta">导入</span>
+        <b className="num">{latest?.imported ?? 0} 本</b>
+      </div>
+      <div>
+        <span className="meta">跳过</span>
+        <b className="num">{latest?.skipped ?? 0} 本</b>
+      </div>
+      <div>
+        <span className="meta">未成功</span>
+        <b className="num">{latest?.failed ?? 0} 本</b>
+      </div>
+    </div>
   );
 }

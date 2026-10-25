@@ -34,6 +34,23 @@ body {
   font-weight: 600;
   border: 1px solid var(--border);
 }
+.chart-stale {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 1px 6px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-pill);
+  color: var(--warn-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.filter-hints {
+  margin: 10px 0 2px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
 .sr-only-focusable:not(:focus) {
   position: absolute;
   width: 1px;

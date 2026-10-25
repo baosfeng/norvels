@@ -14,7 +14,7 @@ export function AuthorsPage() {
   const items = data?.items ?? [];
 
   return (
-    <section data-testid="view:authors">
+    <section data-testid="view:authors" data-od-id="authors">
       <div className="page-head">
         <div>
           <p className="eyebrow">作者 · {loading ? "读取中" : `${formatCount(total)} 位`}</p>

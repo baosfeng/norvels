@@ -7,6 +7,7 @@ import { ErrorPanel, LoadingPanel, EmptyPanel } from "../../components/StatePane
 import { ChapterList } from "../book/ChapterList";
 import { useTheme, type Theme } from "../../lib/theme";
 import { useIsH5 } from "../../lib/tier";
+import { useSwipePaging } from "../../lib/useSwipePaging";
 
 const FONT_KEY = "norvels.reader.font";
 const LEADING_KEY = "norvels.reader.leading";
@@ -99,11 +100,18 @@ export function ReaderPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [goChapter, prev, next]);
 
+  // H5 左右滑动翻页：只在窄屏启用（PC 上鼠标拖拽不是翻页手势）
+  const swipeHandlers = useMemo(
+    () => ({ enabled: isH5, onPrev: () => goChapter(prev), onNext: () => goChapter(next) }),
+    [isH5, goChapter, prev, next],
+  );
+  const swipeRef = useSwipePaging(swipeHandlers);
+
   const bookTitle = book.data?.title ?? chapter.data?.bookTitle ?? "";
 
   return (
-    <div className="reader-shell" data-testid="view:reader" style={{ ["--reader-font" as string]: `${font}px`, ["--reader-leading" as string]: String(leading) }}>
-      <header className="reader-top">
+    <div className="reader-shell" data-testid="view:reader" data-od-id="reader" style={{ ["--reader-font" as string]: `${font}px`, ["--reader-leading" as string]: String(leading) }}>
+      <header className="reader-top" data-od-id="reader-top">
         <Link className="icon-btn" to={bookId ? `/book/${bookId}` : "/shelf"} aria-label="返回目录">
           <ChevronLeftIcon />
         </Link>
@@ -125,7 +133,7 @@ export function ReaderPage() {
         </div>
       </header>
 
-      <div className="reader-main">
+      <div className="reader-main" ref={swipeRef} data-testid="reader-swipe-area">
         {chapter.loading ? (
           <div className="reader-loading-layer">
             <LoadingPanel title="正在载入正文" description="单章 3000–6000 字，首次打开需要整理分段。" testId="reader-loading" />
@@ -153,7 +161,7 @@ export function ReaderPage() {
                 下一章 →
               </button>
             </nav>
-            <div className="reader-progress">
+            <div className="reader-progress" data-od-id="reader-progress">
               <div className="reader-progress-row">
                 <span>
                   第 <strong className="num">{index + 1}</strong> / {chapters.length} 章
@@ -226,7 +234,7 @@ export function ReaderPage() {
         onClick={() => setDrawerOpen(false)}
       />
 
-      <aside className={`drawer${drawerOpen ? " is-open" : ""}`} aria-label="章节目录" aria-hidden={!drawerOpen}>
+      <aside className={`drawer${drawerOpen ? " is-open" : ""}`} aria-label="章节目录" aria-hidden={!drawerOpen} data-od-id="reader-drawer">
         <div className="drawer-head">
           <strong>目录</strong>
           <span className="meta">

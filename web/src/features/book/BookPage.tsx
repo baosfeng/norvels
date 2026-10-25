@@ -58,7 +58,7 @@ export function BookPage() {
   const openByDefault = volumes.length > 0 ? volumes[0].idx : null;
 
   return (
-    <section data-testid="view:book">
+    <section data-testid="view:book" data-od-id="book-detail">
       <nav className="crumbs" aria-label="面包屑">
         <Link to="/shelf">书架</Link>
         <span aria-hidden="true">/</span>
@@ -66,7 +66,7 @@ export function BookPage() {
       </nav>
 
       <div className="book-layout">
-        <aside className="book-aside">
+        <aside className="book-aside" data-od-id="book-aside">
           <Cover title={book.title} showLabel={!isH5} />
           <div className="actions">
             {target ? (

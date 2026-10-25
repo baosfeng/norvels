@@ -26,7 +26,7 @@ export function HomePage() {
   }
 
   return (
-    <div className="h5-home" data-testid="view:home">
+    <div className="h5-home" data-testid="view:home" data-od-id="home">
       <div className="h5-top">
         <button
           className="icon-btn h5-burger"
@@ -45,7 +45,7 @@ export function HomePage() {
       {progress.loading ? (
         <LoadingPanel title="正在读取阅读进度" description="稍等一下，正在取回你上次读到的地方。" />
       ) : resume ? (
-        <Link className="resume-card" to={`/read/${resume.bookId}/${resume.chapterId}`} data-testid="home:resume">
+        <Link className="resume-card" to={`/read/${resume.bookId}/${resume.chapterId}`} data-testid="home:resume" data-od-id="home:resume">
           <Cover title={resume.bookTitle} showLabel={false} />
           <div className="resume-body">
             <span className="meta">继续阅读 · {resume.chapterTitle}</span>
