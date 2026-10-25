@@ -16,7 +16,8 @@ const unknownAuthor = "佚名"
 // 末段 8 列是 0008 加的书籍身份（language…source_format）与 has_cover：
 // 列表与详情共用同一份口径，避免两个 SELECT 漂移。
 const bookSummaryColumns = "b.id, b.title, b.author_id, COALESCE(a.name, ''), " +
-	"b.chapter_count, b.word_count, b.volume_count, b.intro, b.status, b.imported_at, b.updated_at, " +
+	"b.chapter_count, b.word_count, b.volume_count, b.intro, b.status, b.serial_status, " +
+	"b.imported_at, b.updated_at, " +
 	"b.language, b.publisher, b.isbn, b.pub_date, b.series, b.series_index, b.has_cover, b.source_format"
 
 // rowScanner 抽象 *sql.Row / *sql.Rows 的 Scan。
@@ -31,7 +32,7 @@ type rowScanner interface {
 func summaryScanTargets(bs *BookSummary, imported, updated *string) []any {
 	return []any{
 		&bs.ID, &bs.Title, &bs.AuthorID, &bs.AuthorName, &bs.ChapterCount, &bs.WordCount,
-		&bs.VolumeCount, &bs.Intro, &bs.Status, imported, updated,
+		&bs.VolumeCount, &bs.Intro, &bs.Status, &bs.SerialStatus, imported, updated,
 		&bs.Language, &bs.Publisher, &bs.ISBN, &bs.PubDate, &bs.Series, &bs.SeriesIndex,
 		&bs.HasCover, &bs.Format,
 	}
@@ -189,12 +190,14 @@ type BookMetaPatch struct {
 	Series      *string
 	SeriesIndex *int
 	Tags        *[]string
+	// SerialStatus 是连载状态（''|ongoing|completed），与解析状态 Status 无关。
+	SerialStatus *string
 }
 
 // IsEmpty 报告 patch 是否什么都没包含（空 patch 不写库）。
 func (p BookMetaPatch) IsEmpty() bool {
 	return p.Title == nil && p.Author == nil && p.Authors == nil && p.Intro == nil &&
-		p.Series == nil && p.SeriesIndex == nil && p.Tags == nil
+		p.Series == nil && p.SeriesIndex == nil && p.Tags == nil && p.SerialStatus == nil
 }
 
 // authorNames 返回本次补丁要落库的有序作者；nil 表示「作者这一项不改」。
@@ -298,6 +301,13 @@ func applyColumnPatch(ctx context.Context, tx *sql.Tx, id int64, patch BookMetaP
 	}
 	if patch.SeriesIndex != nil {
 		sets, args = append(sets, "series_index = ?"), append(args, maxInt(*patch.SeriesIndex, 0))
+	}
+	if patch.SerialStatus != nil {
+		status := strings.TrimSpace(*patch.SerialStatus)
+		if !ValidSerialStatus(status) {
+			return fmt.Errorf("%w: serial status %q", ErrInvalidArgument, status)
+		}
+		sets, args = append(sets, "serial_status = ?"), append(args, status)
 	}
 	args = append(args, id)
 	if _, err := tx.ExecContext(ctx, "UPDATE books SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {

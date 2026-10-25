@@ -46,15 +46,18 @@ type SearchQuery struct {
 
 // BookSummary 用于列表/搜索结果。
 type BookSummary struct {
-	ID           int64     `json:"id"`
-	Title        string    `json:"title"`
-	AuthorID     int64     `json:"authorId"`
-	AuthorName   string    `json:"authorName"`
-	ChapterCount int       `json:"chapterCount"`
-	WordCount    int       `json:"wordCount"`
-	VolumeCount  int       `json:"volumeCount"`
-	Intro        string    `json:"intro"`
-	Status       string    `json:"status"`
+	ID           int64  `json:"id"`
+	Title        string `json:"title"`
+	AuthorID     int64  `json:"authorId"`
+	AuthorName   string `json:"authorName"`
+	ChapterCount int    `json:"chapterCount"`
+	WordCount    int    `json:"wordCount"`
+	VolumeCount  int    `json:"volumeCount"`
+	Intro        string `json:"intro"`
+	Status       string `json:"status"`
+	// SerialStatus 是作品连载状态：''=未知 / ongoing / completed（0010 起）。
+	// 与 Status（解析状态，导入链路写入）是两个语义，互不覆写。
+	SerialStatus string    `json:"serialStatus"`
 	ImportedAt   time.Time `json:"importedAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 
@@ -92,6 +95,10 @@ type BookDetail struct {
 	// 存量书没有 books_authors 行时按主作者兜底，因此这里不会是空数组。
 	Authors []string     `json:"authors"`
 	Volumes []VolumeNode `json:"volumes"`
+	// LastChapterIdx / LastChapterTitle 是 idx 最大的那一章（无章节时 0 与空串）。
+	// 详情页用它渲染「最后更新 · 最新章节」，因此只在详情查询里算，不进入列表。
+	LastChapterIdx   int    `json:"lastChapterIdx"`
+	LastChapterTitle string `json:"lastChapterTitle"`
 }
 
 // ChapterBrief 是目录中的一章（不含正文）。

@@ -48,6 +48,9 @@ const (
 	codePayloadTooLarge = "payload_too_large"
 	codeTooManyFiles    = "too_many_files"
 	codeEncryptedEPUB   = "encrypted_epub"
+	// codeInvalidPattern 表示自定义章节规则里的正则编译失败（spec §2.2）：
+	// 与其它参数错误分开成独立码，前端才能把错误标到具体那一行正则上。
+	codeInvalidPattern = "invalid_pattern"
 )
 
 // writeJSON 以 JSON 写响应；序列化失败时退化为 500。

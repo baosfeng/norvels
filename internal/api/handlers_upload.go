@@ -108,7 +108,7 @@ func (s *Server) handleUploadImport(w http.ResponseWriter, r *http.Request) {
 	}
 	opts := uploadOptions(sess, job.ID)
 	ctx, cancel := context.WithCancel(s.baseContext())
-	go s.runUploadImport(ctx, cancel, job.ID, sess, opts)
+	s.spawnImport(job.ID, cancel, func() { s.runUploadImport(ctx, cancel, job.ID, sess, opts) })
 	writeJSON(w, http.StatusAccepted, uploadResponse{JobID: job.ID, Accepted: sess.accepted, Rejected: sess.rejected})
 }
 
@@ -216,7 +216,7 @@ func uploadFailure(err error) (string, string) {
 	case errors.Is(err, importer.ErrNoFiles):
 		return "failed", "上传中没有可导入的文件"
 	case errors.Is(err, context.Canceled):
-		return "canceled", "服务退出，导入已取消"
+		return "canceled", "导入已取消"
 	}
 	return "failed", err.Error()
 }

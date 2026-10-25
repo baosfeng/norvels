@@ -134,6 +134,8 @@ type bookPatch struct {
 	Tags        *[]string `json:"tags"`
 	Series      *string   `json:"series"`
 	SeriesIndex *int      `json:"seriesIndex"`
+	// SerialStatus 是连载状态（''|ongoing|completed），与解析状态 status 无关。
+	SerialStatus *string `json:"serialStatus"`
 }
 
 // PATCH authors 的跨信任边界上限：条数与单名长度。
@@ -165,16 +167,31 @@ func validateAuthors(authors *[]string) error {
 	return nil
 }
 
+// validateSerialStatus 校验 PATCH 带来的连载状态：” / ongoing / completed，其它值 400。
+//
+// 合法取值集合由 store.ValidSerialStatus 单点定义（写入侧还有一道同样的守卫），
+// api 只负责把它翻译成 400 invalid_param。
+func validateSerialStatus(status *string) error {
+	if status == nil {
+		return nil
+	}
+	if !store.ValidSerialStatus(strings.TrimSpace(*status)) {
+		return badParam("serialStatus 只支持 ''（未知）/ ongoing / completed")
+	}
+	return nil
+}
+
 // toStorePatch 把请求体转成库层补丁（两层的字段集合故意一一对应，转换是纯搬运）。
 func (p bookPatch) toStorePatch() store.BookMetaPatch {
 	return store.BookMetaPatch{
-		Title:       p.Title,
-		Author:      p.Author,
-		Authors:     p.Authors,
-		Intro:       p.Intro,
-		Series:      p.Series,
-		SeriesIndex: p.SeriesIndex,
-		Tags:        p.Tags,
+		Title:        p.Title,
+		Author:       p.Author,
+		Authors:      p.Authors,
+		Intro:        p.Intro,
+		Series:       p.Series,
+		SeriesIndex:  p.SeriesIndex,
+		Tags:         p.Tags,
+		SerialStatus: p.SerialStatus,
 	}
 }
 
@@ -193,10 +210,14 @@ func (s *Server) handlePatchBook(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
+	if err := validateSerialStatus(body.SerialStatus); err != nil {
+		s.badRequest(w, err, codeInvalidParam)
+		return
+	}
 	patch := body.toStorePatch()
 	if patch.IsEmpty() {
 		writeError(w, http.StatusBadRequest, codeInvalidParam,
-			"请求体至少包含一个可修改字段：title/author/authors/intro/tags/series/seriesIndex")
+			"请求体至少包含一个可修改字段：title/author/authors/intro/tags/series/seriesIndex/serialStatus")
 		return
 	}
 	if err := s.st.UpdateBookMeta(r.Context(), id, patch); err != nil {
@@ -204,6 +225,23 @@ func (s *Server) handlePatchBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeBookDetail(w, r, id)
+}
+
+// handleDeleteBook 处理 DELETE /api/books/{id}：单事务级联删除，成功 204 无响应体。
+//
+// 不存在返回 404；删掉的书连同章节、正文块、卷、封面、作者关联、阅读进度一起消失，
+// 作者的作品数/字数在同一事务内重算（见 store.DeleteBook）。
+func (s *Server) handleDeleteBook(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.badRequest(w, err, codeInvalidID)
+		return
+	}
+	if err := s.st.DeleteBook(r.Context(), id); err != nil {
+		s.fail(w, r, err, "book not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleGetBookCover 处理 GET /api/books/{id}/cover：命中返回原始图片，无封面 404。
