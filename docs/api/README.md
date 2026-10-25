@@ -22,7 +22,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 | [api-import.md](api-import.md) | 导入任务（dry-run 预检/上传/重试/取消）与设置（章节规则/标签规则） |
 | [api-dashboard.md](api-dashboard.md) | 元信息（health/stats）、驾驶舱端点、其它端点 |
 
-原 `docs/api.md` 章节号对照：§1/§7/§9 → api-dashboard.md；§2/§3 → api-books.md；§4/§8/§10 → 本文件；§5/§6 → api-import.md。
+原 `docs/api.md` 章节号对照：§1/§7/§9 → [api-dashboard.md](api-dashboard.md)；§2/§3 → [api-books.md](api-books.md)；§4/§8/§10 → 本文件；§5/§6 → [api-import.md](api-import.md)。
 
 ## 搜索
 
@@ -74,7 +74,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 ## 前端约定
 
-- 阅读进度：**服务端为准**（见 §9 `/api/reading/progress`），`localStorage` 降级为离线缓存。
+- 阅读进度：**服务端为准**（见 [api-dashboard.md §9](api-dashboard.md#get-apireadingprogress) 的 `GET /api/reading/progress`），`localStorage` 降级为离线缓存。
 - 章节正文为纯文本，前端按段渲染（`\n` 分段），不做富文本。
 - 搜索无高亮：`snippet` 恒为空，前端不要按标签渲染。
 
