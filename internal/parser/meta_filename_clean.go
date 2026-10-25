@@ -192,7 +192,7 @@ func stripTrailingTags(s string) string {
 
 // cleanTitleText 清理书名两端的装饰与多余空白。
 func cleanTitleText(t string) string {
-	t = strings.TrimSpace(t)
+	t = trimOrphanClosers(strings.TrimSpace(t))
 	t = strings.Trim(t, " \t\u3000★☆◆◇●○■□▲△·•|-_—=#*＊")
 	t = strings.Join(strings.Fields(t), " ")
 	if runeLen(t) > 80 {

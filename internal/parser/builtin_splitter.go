@@ -20,7 +20,10 @@ func (d *Doc) titleCandidates() []candidate {
 			d.cands = mergeCandidates(d.cands, extra)
 		}
 	}
-	d.cands = validateCandidates(d.cands)
+	var st validateStats
+	d.cands, st = validateCandidatesStats(d.cands)
+	d.Stat("candidates_before", st.Before)
+	d.Stat("candidates_after", st.After)
 	return d.cands
 }
 
@@ -269,30 +272,16 @@ func splitWithCandidates(d *Doc, cands []candidate) error {
 		d.pre = res.preamble
 	}
 	d.Warnings = append(d.Warnings, res.warnings...)
-	// 切出来的章太少而正文很长（说明标题格式不规范）→ 交给兜底策略。
-	total := 0
-	for _, c := range d.Chapters {
-		total += runeLen(c.Content)
-	}
-	if total > 12000 && (len(d.Chapters) <= 2 || total/len(d.Chapters) > 30000) {
-		fb := fallbackSplitDoc(d)
-		if len(fb.chapters) > len(d.Chapters) {
-			d.Volumes, d.Chapters = fb.volumes, fb.chapters
-			d.Warnings = append(d.Warnings, "章节标记过少，已按长度兜底切分")
-			return nil
-		}
-	}
+	d.keepPreambleAsChapter(res.preamble)
+	d.refineSplit(cands)
 	return nil
 }
 
-// promoteVolumeOnly 处理「只有卷标记、没有章标记」的书。
+// preambleAsChapterChars 是「前置正文值得单独成章」的字符门槛。
 //
-// 典型语料：按部出版的合集（「第一部」「第二部」…）或只有分卷标记的段落流。
-// 这类书写里卷就是最高层级的分段单位；照常只建卷的话，卷下没有章标记，
-// 整本书会塌成 1 章（或 0 章）。这里把每个卷当作一章来切。
-//
-// 触发条件严格：候选里必须一个可用章标记都没有，且有 ≥2 个卷标记。
-// 一旦存在章标记，说明书本来就是按章写的，交给正常流程。
+// 首个标题之前的正文在大多数书里只有几百字（书名/作者/简介），丢掉可惜但无伤
+// 大雅；但有些书的前置区长达十几万字（作者把序卷或前几十章写成了无标题段落流），
+// 那部分正文绝不能丢。
 func promoteVolumeOnly(d *Doc, res splitResult, cands []candidate) (splitResult, bool) {
 	vols, chapters := 0, 0
 	for _, c := range cands {

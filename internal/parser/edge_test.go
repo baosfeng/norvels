@@ -245,3 +245,67 @@ func TestIsPlausibleAuthor(t *testing.T) {
 		}
 	}
 }
+
+// TestContainsInt 覆盖下标集合查找。
+func TestContainsInt(t *testing.T) {
+	set := []int{1, 5, 9}
+	if !containsInt(set, 5) {
+		t.Error("5 应在集合内")
+	}
+	if containsInt(set, 3) {
+		t.Error("3 不应在集合内")
+	}
+	if containsInt(nil, 0) {
+		t.Error("空集合不应命中")
+	}
+}
+
+// TestDecodeBestEffort 覆盖「所有候选都不合法」时的打分兜底。
+func TestDecodeBestEffort(t *testing.T) {
+	// 这组字节既不是合法 UTF-8，也不是严格合法的 GB18030/Big5。
+	raw := []byte{0xFF, 0xFE, 0xFD, 0xFC, 0xFB}
+	enc, text, warns := decodeBestEffort(raw, "")
+	if enc == "" {
+		t.Error("应给出编码判定")
+	}
+	if len(warns) == 0 {
+		t.Error("应记录告警")
+	}
+	_ = text
+	// GB18030 文本质量更高时应选 GB。
+	gb := []byte{0xD6, 0xD0, 0xCE, 0xC4}
+	if enc, _, _ := decodeBestEffort(gb, "中文"); enc != EncGB18030 {
+		t.Errorf("高质量 GB 文本应选 gb18030，实际 %q", enc)
+	}
+}
+
+// TestDecodeLossy 覆盖非法字节的「尽力解码」路径。
+func TestDecodeLossy(t *testing.T) {
+	// 这组字节恰好是合法 GB18030（0xFF 落在合法范围内），所以走的是严格路径；
+	// 这里只断言「无论如何都不返回空」。
+	if text, _ := decodeGB18030([]byte{0xD6, 0xD0, 0xCE, 0xC4, 0xFF}); text == "" {
+		t.Error("GB18030 解码不应返回空")
+	}
+	// Big5 的 lossy 分支。
+	if text, _ := decodeBig5([]byte{0xA4, 0xA4, 0xFF}); text == "" {
+		t.Error("Big5 lossy 不应返回空")
+	}
+}
+
+// TestAppendRune 覆盖各码位的 UTF-8 追加。
+func TestAppendRune(t *testing.T) {
+	cases := []struct {
+		r    rune
+		want string
+	}{
+		{'A', "A"},
+		{'é', "é"},
+		{'中', "中"},
+		{'𠀋', "𠀋"},
+	}
+	for _, c := range cases {
+		if got := string(appendRune(nil, c.r)); got != c.want {
+			t.Errorf("appendRune(%q) = %q", c.r, got)
+		}
+	}
+}

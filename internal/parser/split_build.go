@@ -13,62 +13,93 @@ func buildFromCandidates(text string, cands []candidate, cl *cleaner) splitResul
 	if len(cands) > 0 {
 		res.preamble = text[:cands[0].start]
 	}
-	curVol := -1
-	var curTitle, curInline string
-	curBody := 0
-	started := false
-	lastNum := 0
-	flush := func(end int) {
-		if !started {
-			return
-		}
-		body := text[curBody:min(end, len(text))]
-		content := cl.cleanContentAt(body, curBody)
-		if curInline != "" {
-			if head := cl.cleanContent(curInline); head != "" {
-				if content == "" {
-					content = head
-				} else {
-					content = head + "\n" + content
-				}
-			}
-		}
-		title := curTitle
-		if title == "" {
-			title = "正文"
-		}
-		res.chapters = append(res.chapters, model.ParsedChapter{
-			Title: title, VolumeIdx: curVol, Content: content, WordCount: countWords(content),
-		})
-		started = false
-	}
+	cur := chapterCursor{vol: -1, pendingBody: -1}
 	for _, c := range cands {
-		h := c.h
-		if h.kind == headVolume {
-			flush(c.start)
-			vt := h.volTitle
-			if vt == "" {
-				vt = "未命名卷"
-			}
-			res.volumes = append(res.volumes, model.ParsedVolume{Idx: len(res.volumes), Title: vt})
-			curVol = len(res.volumes) - 1
+		if c.h.kind == headVolume {
+			res.addVolume(c, &cur, text, cl)
 			continue
 		}
-		// 章号重置检测（合集/多部作品）
-		if h.hasNum {
-			if lastNum > 10 && h.num <= 2 && len(res.chapters) > 3 {
-				res.restarts++
-			}
-			lastNum = h.num
-		}
-		flush(c.start)
-		curTitle = joinTitle(h.marker, h.title)
-		curInline = h.inline
-		curBody = c.bodyStart
-		started = true
+		res.addChapter(c, &cur, text, cl)
 	}
-	flush(len(text))
+	// 卷标记之后再也没有章标记：由卷收尾成章，保证正文不丢。
+	if cur.pendingBody >= 0 && !cur.started && cur.pendingBody < len(text) {
+		cur.title, cur.inline, cur.body, cur.started = cur.pendingTitle, "", cur.pendingBody, true
+	}
+	res.flushChapter(len(text), text, &cur, cl)
 	return res
+}
+
+// chapterCursor 是切分过程中的游标状态。
+type chapterCursor struct {
+	vol          int    // 当前卷下标，-1 表示未分卷
+	title        string // 当前章标题
+	inline       string // 标题行里被并进来的正文
+	body         int    // 当前章正文起点
+	started      bool   // 是否已经开始一章
+	lastNum      int    // 上一章章号（用于检测章号重置）
+	pendingBody  int    // 卷标记后挂起、等待章标记认领的正文起点
+	pendingTitle string // 对应的卷标题
+}
+
+// addVolume 处理一个卷标记。
+func (res *splitResult) addVolume(c candidate, cur *chapterCursor, text string, cl *cleaner) {
+	res.flushChapter(c.start, text, cur, cl)
+	vt := c.h.volTitle
+	if vt == "" {
+		vt = "未命名卷"
+	}
+	res.volumes = append(res.volumes, model.ParsedVolume{Idx: len(res.volumes), Title: vt})
+	cur.vol = len(res.volumes) - 1
+	// 卷标记之后的正文先挂起：等后面第一个章标记来认领，否则由卷自己收尾。
+	cur.pendingBody, cur.pendingTitle = c.bodyStart, vt
+}
+
+// addChapter 处理一个章标记。
+func (res *splitResult) addChapter(c candidate, cur *chapterCursor, text string, cl *cleaner) {
+	h := c.h
+	if h.hasNum {
+		if cur.lastNum > 10 && h.num <= 2 && len(res.chapters) > 3 {
+			res.restarts++
+		}
+		cur.lastNum = h.num
+	}
+	res.flushChapter(c.start, text, cur, cl)
+	cur.title = joinTitle(h.marker, h.title)
+	cur.inline = h.inline
+	cur.body = c.bodyStart
+	if cur.pendingBody >= 0 && !cur.started {
+		// 卷标记之后、本章标题之前的正文属于本卷，必须并进本章，
+		// 否则这段内容不在任何章节的区间里，会被静默丢弃。
+		cur.body = cur.pendingBody
+	}
+	cur.pendingBody, cur.pendingTitle = -1, ""
+	cur.started = true
+}
+
+// flushChapter 把当前章落到 res.chapters（end 是本章正文的结束偏移）。
+func (res *splitResult) flushChapter(end int, text string, cur *chapterCursor, cl *cleaner) {
+	if !cur.started {
+		return
+	}
+	body := text[cur.body:min(end, len(text))]
+	content := cl.cleanContentAt(body, cur.body)
+	if cur.inline != "" {
+		if head := cl.cleanContent(cur.inline); head != "" {
+			if content == "" {
+				content = head
+			} else {
+				content = head + "\n" + content
+			}
+		}
+	}
+	title := cur.title
+	if title == "" {
+		title = "正文"
+	}
+	res.chapters = append(res.chapters, model.ParsedChapter{
+		Title: title, VolumeIdx: cur.vol, Content: content, WordCount: countWords(content),
+	})
+	cur.started = false
 }
 
 // fallbackOpts 是兜底切分的两个可配参数。

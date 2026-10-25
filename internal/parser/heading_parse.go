@@ -129,7 +129,7 @@ func parseDiUnit(s string, strong bool) (heading, bool) {
 		return heading{}, false
 	}
 	r, sz := utf8.DecodeRuneInString(rest)
-	if !isChapterUnit(r) {
+	if !isChapterUnitAt(rest, 0) {
 		return heading{}, false
 	}
 	marker := "第" + numText + string(r)
@@ -155,6 +155,11 @@ func parseSpecial(s string) (heading, bool) {
 				}
 			}
 		}
+		// 裸标记词（序章/前言/正文…）必须落在边界上，否则「前言不搭后语」
+		// 这类正文句子会被当成标题，把正文凭空切断。
+		if !isMarkerBoundary(rest) {
+			continue
+		}
 		title, inline := splitTitle(rest)
 		return heading{kind: headSpecial, strong: true, marker: m, title: title, inline: inline}, true
 	}
@@ -168,7 +173,7 @@ func parseNumUnit(s string, strong bool) (heading, bool) {
 		return heading{}, false
 	}
 	if rest != "" {
-		if r, sz := utf8.DecodeRuneInString(rest); isChapterUnit(r) {
+		if r, sz := utf8.DecodeRuneInString(rest); isChapterUnitAt(rest, 0) {
 			title, inline := splitTitle(rest[sz:])
 			return heading{
 				kind: headChapter, num: num, hasNum: true, strong: true,

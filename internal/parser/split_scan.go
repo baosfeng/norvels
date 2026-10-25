@@ -126,8 +126,28 @@ func mergeCandidates(a, b []candidate) []candidate {
 	return out
 }
 
+// validateCandidates 的统计结果，用于「候选数守卫」判断与排障日志。
+type validateStats struct {
+	Before int // 进入校验的候选数
+	After  int // 校验后保留的候选数
+}
+
 // validateCandidates 过滤误判，保证章号大体单调递增。
 func validateCandidates(cands []candidate) []candidate {
+	out, _ := validateCandidatesStats(cands)
+	return out
+}
+
+// validateCandidatesStats 与 validateCandidates 同义，额外返回保留统计。
+func validateCandidatesStats(cands []candidate) ([]candidate, validateStats) {
+	st := validateStats{Before: len(cands)}
+	out := validateCandidatesInner(cands)
+	st.After = len(out)
+	return out, st
+}
+
+// validateCandidatesInner 是实际的校验逻辑。
+func validateCandidatesInner(cands []candidate) []candidate {
 	strongCnt := 0
 	for _, c := range cands {
 		if c.h.kind == headVolume || c.h.strong {

@@ -153,8 +153,7 @@ func findChapterMarker(s string) int {
 			if strings.HasPrefix(s[i:], "第") {
 				r := s[i+len("第"):]
 				if _, n, ok := parseNumeral(r); ok {
-					if rr, sz := utf8.DecodeRuneInString(r[n:]); isChapterUnit(rr) || isVolumeUnit(rr) {
-						_ = sz
+					if isChapterUnitAt(r, n) || isVolumeUnitAt(r, n) {
 						return i
 					}
 				}

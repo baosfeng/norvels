@@ -13,7 +13,43 @@ var (
 	reTailNChap = regexp.MustCompile("[\\s\\-_]*[（(【\\[]?(?:全本)?\\d{1,5}\\s*[章节回集卷]\\s*[）)】\\]]?$")
 )
 
-var titleBrackets = map[rune]rune{'【': '】', '[': ']', '［': '］', '『': '』', '《': '》'}
+// titleBrackets 是「书名包装」用的开闭括号对（不含普通圆括号）。
+var titleBrackets = map[rune]rune{
+	'【': '】', '[': ']', '［': '］', '『': '』', '《': '》', '「': '」', '〈': '〉',
+}
+
+// titleParens 是普通圆括号对：只用于标签块判定，不作为书名包装。
+var titleParens = map[rune]rune{'（': '）', '(': ')'}
+
+// closerToOpener 是全部闭括号到开括号的反查表（含圆括号）。
+var closerToOpener = func() map[rune]rune {
+	m := make(map[rune]rune, 16)
+	for o, c := range titleBrackets {
+		m[c] = o
+	}
+	for o, c := range titleParens {
+		m[c] = o
+	}
+	return m
+}()
+
+// isOpener 判断是否为任一开括号。
+func isOpener(r rune) bool {
+	if _, ok := titleBrackets[r]; ok {
+		return true
+	}
+	_, ok := titleParens[r]
+	return ok
+}
+
+// closerOf 返回开括号对应的闭括号。
+func closerOf(r rune) (rune, bool) {
+	if c, ok := titleBrackets[r]; ok {
+		return c, true
+	}
+	c, ok := titleParens[r]
+	return c, ok
+}
 
 // firstBracketBlock 取第一个括号块的内容。
 //
@@ -54,7 +90,7 @@ func isUsableTitle(t string) bool {
 // nearestClose 返回从开头到最近一个闭括号之间的内容（找不到则整段）。
 func nearestClose(s string) string {
 	best := -1
-	for _, r := range "】]］』》（）)" {
+	for _, r := range "】]］』》」〉（）)" {
 		if j := strings.IndexRune(s, r); j >= 0 && (best < 0 || j < best) {
 			best = j
 		}
@@ -101,9 +137,6 @@ func stripTitleTagBlocks(s string) string {
 	}
 	return strings.TrimSpace(b.String())
 }
-
-// titleParens 是「普通」括号对（只用于块内标签剥离，不作为书名包装）。
-var titleParens = map[rune]rune{'（': '）', '(': ')'}
 
 // stripTailTags 反复剥掉串尾的标签块与数字区间。
 func stripTailTags(s string) string {
@@ -208,4 +241,74 @@ func trimUnclosedBracket(s string) string {
 		i += sz
 	}
 	return s
+}
+
+// trimOrphanClosers 删除所有「没有对应开括号」的孤立闭括号。
+//
+// 与 trimUnclosedBracket 严格对称：那个截掉孤立**开**括号及其后内容，
+// 这个剥掉孤立**闭**括号本身。真实语料里「【书名》（1-99）》」这类写法
+// 会在书名中间留下孤立的 》；只做两端 Trim 是清不掉的。
+func trimOrphanClosers(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	// 各类开括号的未闭合计数：遇到开括号 +1，遇到对应闭括号 -1。
+	open := make(map[rune]int, len(titleBrackets)+len(titleParens))
+	for i := 0; i < len(s); {
+		r, sz := utf8.DecodeRuneInString(s[i:])
+		if o, ok := closerToOpener[r]; ok {
+			if open[o] > 0 {
+				open[o]--
+				b.WriteString(s[i : i+sz])
+			}
+			// 没有对应开括号 → 孤立闭括号，直接丢弃。
+			i += sz
+			continue
+		}
+		if isOpener(r) {
+			open[r]++
+		}
+		b.WriteString(s[i : i+sz])
+		i += sz
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// longestBracketFree 取串里最长的「不含任何括号」子串。
+//
+// 用于入库前的最后兜底：书名清洗后仍带括号，说明包装规则没吃干净，
+// 这时「最长纯文本段」比带着括号的串更像书名。
+func longestBracketFree(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if isOpener(r) {
+			b.WriteRune('\n')
+			continue
+		}
+		if _, ok := closerToOpener[r]; ok {
+			b.WriteRune('\n')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	best := ""
+	for _, seg := range strings.Split(b.String(), "\n") {
+		if seg = strings.TrimSpace(seg); runeLen(seg) > runeLen(best) {
+			best = seg
+		}
+	}
+	return strings.TrimSpace(best)
+}
+
+// hasBracket 判断串里是否还残留任何括号字符。
+func hasBracket(s string) bool {
+	for _, r := range s {
+		if isOpener(r) {
+			return true
+		}
+		if _, ok := closerToOpener[r]; ok {
+			return true
+		}
+	}
+	return false
 }

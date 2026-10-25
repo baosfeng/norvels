@@ -17,6 +17,7 @@ func (filenameMeta) Weight() int  { return 80 }
 
 func (filenameMeta) Extract(d *Doc) (Meta, int) {
 	title, author, fromMark := titleFromFilename(d.Name)
+	title = enforceCleanTitle(d, title)
 	m := Meta{}
 	if title != "" {
 		m.Title = title

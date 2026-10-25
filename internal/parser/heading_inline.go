@@ -76,9 +76,9 @@ func parseInlineMarker(rest string) (heading, int, bool) {
 		u, sz := utf8.DecodeRuneInString(after)
 		consumed := len("第") + len(numText) + sz
 		switch {
-		case isVolumeUnit(u):
+		case isVolumeUnitAt(after, 0):
 			return heading{kind: headVolume, volNum: num, volTitle: "第" + numText + string(u), strong: true}, consumed, true
-		case isChapterUnit(u):
+		case isChapterUnitAt(after, 0):
 			return heading{kind: headChapter, num: num, hasNum: true, strong: true,
 				marker: "第" + numText + string(u)}, consumed, true
 		}

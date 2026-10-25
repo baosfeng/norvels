@@ -35,6 +35,21 @@ func (s stubMeta) Extract(d *Doc) (Meta, int) {
 	return Meta{Title: s.name, TitleScore: 50}, 50
 }
 
+// snapshotRegistry 保存当前注册表快照。
+//
+// 注册表是包级全局状态：测试里注册的策略会永久留在里面，进而被后续所有
+// 解析用例命中（例如一个会改文本的 filter 会给每本书加上前缀）。
+// 凡是会写注册表的测试都必须先快照、再 defer 恢复。
+func snapshotRegistry() func() {
+	codecs := append([]Codec(nil), regCodecs...)
+	filters := append([]Filter(nil), regFilters...)
+	metas := append([]MetaExtractor(nil), regMetas...)
+	splitters := append([]Splitter(nil), regSplitters...)
+	return func() {
+		regCodecs, regFilters, regMetas, regSplitters = codecs, filters, metas, splitters
+	}
+}
+
 // TestRegistryBuiltins 验证内置策略清单与文档一致。
 func TestRegistryBuiltins(t *testing.T) {
 	wantCodecs := []string{EncUTF8, EncUTF8BOM, EncGB18030, EncUTF16LE, EncUTF16BE, EncBig5}
@@ -96,6 +111,7 @@ func TestMetasSortedByWeight(t *testing.T) {
 
 // TestRegisterUpsert 验证注册表的「同名覆盖」语义与「注册顺序保持」。
 func TestRegisterUpsert(t *testing.T) {
+	defer snapshotRegistry()()
 	base := len(Filters())
 	RegisterFilter(stubFilter{name: "zz-test-filter", priority: 999})
 	if len(Filters()) != base+1 {
@@ -114,6 +130,7 @@ func TestRegisterUpsert(t *testing.T) {
 
 // TestRegisterIgnoresNil 验证注册 nil 不会 panic，也不会污染注册表。
 func TestRegisterIgnoresNil(t *testing.T) {
+	defer snapshotRegistry()()
 	n := len(Codecs())
 	RegisterCodec(nil)
 	RegisterFilter(nil)
@@ -126,6 +143,7 @@ func TestRegisterIgnoresNil(t *testing.T) {
 
 // TestRegisterCodecAndMeta 覆盖 Codec / Meta 的注册与查询。
 func TestRegisterCodecAndMeta(t *testing.T) {
+	defer snapshotRegistry()()
 	RegisterCodec(stubCodec{name: "zz-test-codec"})
 	found := false
 	for _, c := range Codecs() {
@@ -150,6 +168,7 @@ func TestRegisterCodecAndMeta(t *testing.T) {
 
 // TestRegisterSplitter 覆盖切章策略的注册与查询。
 func TestRegisterSplitter(t *testing.T) {
+	defer snapshotRegistry()()
 	before := len(Splitters())
 	RegisterSplitter(stubSplitter{name: "zz-test-split"})
 	if len(Splitters()) != before+1 {

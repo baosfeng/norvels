@@ -108,3 +108,19 @@ func stripLeadOrder(s string) string {
 	}
 	return s
 }
+
+// enforceCleanTitle 是入库前的不变量校验：书名不应带任何括号。
+//
+// 清洗规则没吃干净时（例如括号嵌套/不配对到了规则之外），取「最长无括号片段」
+// 兜底，并记 warning 让人能从日志定位——比把带括号的书名写进库好得多。
+func enforceCleanTitle(d *Doc, title string) string {
+	if !hasBracket(title) {
+		return title
+	}
+	if t := longestBracketFree(title); isUsableTitle(t) && runeLen(t) >= 2 {
+		d.Warn("书名清洗后仍含括号，已取最长无括号片段：%q → %q", title, t)
+		return t
+	}
+	d.Warn("书名清洗后仍含括号且无可用的无括号片段：%q", title)
+	return title
+}
