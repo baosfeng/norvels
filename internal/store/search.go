@@ -113,9 +113,8 @@ func (s *Store) fillSearchHits(ctx context.Context, out *SearchResult, q SearchQ
 
 // searchChapters 按**章节标题**做 LIKE 匹配，可限定单本书。
 //
-// 返回的 ChapterHit.Snippet 恒为空串：正文检索已下线，后端不再计算命中片段。
-// 字段保留是为了让前端与后端解耦——前端可以先按「无片段」渲染，
-// 后续若接入别的摘要能力也不必再改 JSON 契约。
+// Snippet 填「第 N 章 · 共 M 章」：正文检索已下线，无法给正文片段，
+// 但标题命中没有上下文时，用户看不出这一章在书里的位置。
 func (s *Store) searchChapters(ctx context.Context, query string, bookID int64, page, size int) (Page[ChapterHit], error) {
 	pat := "%" + escapeLike(query) + "%"
 	where := "c.title LIKE ? ESCAPE '!'"
@@ -136,7 +135,8 @@ func (s *Store) searchChapters(ctx context.Context, query string, bookID int64, 
 
 	// 排序口径：先按所属书名、再按章节序号，保证同一本书内命中顺序稳定；
 	// 正文检索时代的 bm25 得分已不存在，Score 恒为 0。
-	dataSQL := "SELECT c.book_id, b.title, c.id, c.idx, c.title " +
+	dataSQL := "SELECT c.book_id, b.title, c.id, c.idx, c.title, " +
+		"(SELECT COUNT(*) FROM chapters x WHERE x.book_id = c.book_id) " +
 		"FROM chapters c JOIN books b ON b.id = c.book_id WHERE " + where +
 		" ORDER BY b.title COLLATE NOCASE ASC, c.book_id ASC, c.idx ASC, c.id LIMIT ? OFFSET ?"
 	dataArgs := append(append([]any{}, args...), size, (page-1)*size)
@@ -149,15 +149,27 @@ func (s *Store) searchChapters(ctx context.Context, query string, bookID int64, 
 
 	items := make([]ChapterHit, 0, size)
 	for rows.Next() {
-		var hit ChapterHit
+		var (
+			hit           ChapterHit
+			totalChapters int
+		)
 		if err := rows.Scan(&hit.BookID, &hit.BookTitle, &hit.ChapterID, &hit.ChapterIdx,
-			&hit.ChapterTitle); err != nil {
+			&hit.ChapterTitle, &totalChapters); err != nil {
 			return Page[ChapterHit]{}, fmt.Errorf("store: scan chapter hit: %w", err)
 		}
+		hit.Snippet = chapterContext(hit.ChapterIdx, totalChapters)
 		items = append(items, hit)
 	}
 	if err := rows.Err(); err != nil {
 		return Page[ChapterHit]{}, fmt.Errorf("store: search chapters rows: %w", err)
 	}
 	return Page[ChapterHit]{Items: items, Total: total, Page: page, Size: size}, nil
+}
+
+// chapterContext 给标题命中补一句位置上下文（正文检索已下线，只能给章序）。
+func chapterContext(idx, total int) string {
+	if total <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("第 %d 章 · 共 %d 章", idx+1, total)
 }

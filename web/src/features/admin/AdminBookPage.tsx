@@ -5,7 +5,8 @@ import { useBook } from "../../api/hooks";
 import type { BookDetail } from "../../api/types";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { DeleteBookDialog } from "../book/DeleteBookDialog";
-import { buildPatch, changedCount, draftOf, parseAuthors, parseSeriesIndex, type MetaDraft } from "../../lib/metaDraft";
+import { parseAuthors, parseSeriesIndex } from "../../lib/metaDraft";
+import { pubBuildPatch, pubChangedCount, pubDraftOf, type PubDraft } from "./pubDraft";
 import { formatCount, formatDate } from "../../lib/format";
 import { AdminChapters } from "./AdminChapters";
 import { AdminCover } from "./AdminCover";
@@ -51,10 +52,10 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
   const navigate = useNavigate();
   // 草稿与服务端初值放在同一个 state 里：reload 换了 updatedAt 时在渲染期对账
   // （章节/封面操作会改 updatedAt，草稿必须原地保留，否则用户改了一半的元信息会丢）
-  const [form, setForm] = useState(() => ({ stamp: book.updatedAt, origin: draftOf(book), draft: draftOf(book) }));
+  const [form, setForm] = useState(() => ({ stamp: book.updatedAt, origin: pubDraftOf(book), draft: pubDraftOf(book) }));
   if (form.stamp !== book.updatedAt) {
-    const nextOrigin = draftOf(book);
-    const untouched = changedCount(form.draft, form.origin) === 0;
+    const nextOrigin = pubDraftOf(book);
+    const untouched = pubChangedCount(form.draft, form.origin) === 0;
     setForm({ stamp: book.updatedAt, origin: nextOrigin, draft: untouched ? nextOrigin : form.draft });
   }
   const { origin, draft } = form;
@@ -63,8 +64,8 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
   const [leaving, setLeaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const changed = changedCount(draft, origin);
-  const patch = buildPatch(draft, origin);
+  const changed = pubChangedCount(draft, origin);
+  const patch = pubBuildPatch(draft, origin);
   const seriesIndexInvalid = Number.isNaN(parseSeriesIndex(draft.seriesIndex));
 
   // 有未保存改动时，关标签页 / 刷新也要拦一次（站内跳转由 leaving 弹窗负责）
@@ -75,7 +76,7 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [changed]);
 
-  function change(key: keyof MetaDraft, value: string) {
+  function change(key: keyof PubDraft, value: string) {
     setForm((prev) => ({ ...prev, draft: { ...prev.draft, [key]: value } }));
     setBanner(null);
   }

@@ -66,12 +66,25 @@ func New(st *store.Store, cfg Config) http.Handler {
 }
 
 // newServer 与 New 等价，但返回 *Server 以便测试操纵内部状态与注入 FS。
+//
+// 路由按领域分四组注册：新端点加进对应的 register*，newServer 本身保持极短
+// （门禁 5 的单函数 70 行上限对路由表同样适用）。
 func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) {
 	s := &Server{st: st, cfg: cfg, fsys: fsys, log: log.Default(), start: time.Now(),
 		placeholder: webui.PlaceholderHTML()}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", s.handleHealth)
-	mux.HandleFunc("GET /api/stats", s.handleStats)
+	s.registerBookRoutes(mux)
+	s.registerLibraryRoutes(mux)
+	s.registerImportRoutes(mux)
+	s.registerMiscRoutes(mux)
+	// 未命中任何 API 路由时统一返回 JSON 错误（否则 mux 会写纯文本）。
+	mux.HandleFunc("/api", s.handleAPINotFound)
+	mux.HandleFunc("/api/", s.handleAPINotFound)
+	return s, s.wrap(mux)
+}
+
+// registerBookRoutes 注册「书 → 章节 → 卷 → 书签」主链路与书的写操作。
+func (s *Server) registerBookRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/books", s.handleListBooks)
 	mux.HandleFunc("GET /api/books/{id}", s.handleGetBook)
 	// P3 发现/管理：随机一本、批量改元信息、新建章节（字面量路由优先于 {id}）。
@@ -106,6 +119,12 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("GET /api/books/{id}/bookmarks", s.handleListBookmarks)
 	mux.HandleFunc("POST /api/books/{id}/bookmarks", s.handleCreateBookmark)
 	mux.HandleFunc("DELETE /api/bookmarks/{id}", s.handleDeleteBookmark)
+	// 追更角标确认：读完最后一章后清零 new_chapters。
+	mux.HandleFunc("POST /api/books/{id}/ack-new-chapters", s.handleAckNewChapters)
+}
+
+// registerLibraryRoutes 注册作者 / 系列 / 检索 / 标签 / 书单的读写端点。
+func (s *Server) registerLibraryRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/authors", s.handleListAuthors)
 	mux.HandleFunc("GET /api/authors/{id}", s.handleGetAuthor)
 	// 系列聚合（P3）：按 books.series 分组，无独立系列实体。
@@ -123,6 +142,10 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("PATCH /api/collections/{id}", s.handleRenameCollection)
 	mux.HandleFunc("DELETE /api/collections/{id}", s.handleDeleteCollection)
 	mux.HandleFunc("PUT /api/collections/{id}/books", s.handleReplaceCollectionBooks)
+}
+
+// registerImportRoutes 注册导入任务、文件级终态与重试。
+func (s *Server) registerImportRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/import", s.handleStartImport)
 	mux.HandleFunc("POST /api/import/upload", s.handleUploadImport)
 	mux.HandleFunc("GET /api/import/jobs", s.handleListImportJobs)
@@ -131,6 +154,12 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	// P1-B 导入侧：文件级终态列表与单文件重试（spec §2.2）。
 	mux.HandleFunc("GET /api/import/jobs/{id}/files", s.handleListImportJobFiles)
 	mux.HandleFunc("POST /api/import/jobs/{id}/retry", s.handleRetryImportJob)
+}
+
+// registerMiscRoutes 注册健康检查、统计、设置、阅读进度与登录。
+func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("GET /api/stats", s.handleStats)
 	// 全局设置（spec §2.2）：自定义章节识别规则 + 词表打标规则。
 	mux.HandleFunc("GET /api/settings/chapter-rules", s.handleGetChapterRules)
 	mux.HandleFunc("PUT /api/settings/chapter-rules", s.handlePutChapterRules)
@@ -146,15 +175,9 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("POST /api/reading/sessions", s.handleAddReadingSession)
 	mux.HandleFunc("GET /api/reading/history", s.handleReadingHistory)
 	mux.HandleFunc("GET /api/stats/reading", s.handleReadingStats)
-	// 追更角标确认：读完最后一章后清零 new_chapters。
-	mux.HandleFunc("POST /api/books/{id}/ack-new-chapters", s.handleAckNewChapters)
 	mux.HandleFunc("GET "+LoginPath, s.handleLoginPage)
 	mux.HandleFunc("POST "+LoginPath, s.handleLoginSubmit)
 	mux.HandleFunc("POST "+logoutPath, s.handleLogout)
-	// 未命中任何 API 路由时统一返回 JSON 错误（否则 mux 会写纯文本）。
-	mux.HandleFunc("/api", s.handleAPINotFound)
-	mux.HandleFunc("/api/", s.handleAPINotFound)
-	return s, s.wrap(mux)
 }
 
 // baseContext 返回导入任务的父 context。

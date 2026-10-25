@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChapterRule, DryRunReport, ImportJob, ImportJobFile, UploadResult } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 import { TierRoute } from "../../layouts/TierRoute";
@@ -574,5 +574,98 @@ describe("导入页：失败清单与重试", () => {
 
     expect(screen.getByText("完成（部分失败）")).toBeTruthy();
     expect(screen.queryByText("排队中")).toBeNull();
+  });
+});
+describe("导入页：运行中任务的进度轮询", () => {
+  beforeEach(() => {
+    jobState.data = { items: [runningJob] };
+    jobState.loading = false;
+    jobState.error = null;
+    jobState.reload.mockReset();
+    importJob.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 把首帧那次 tick（effect 里立刻拉一次）落定。 */
+  async function settle() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
+
+  it("进页面先拉一次，之后每 2 秒一次：进度条与计数跟着动", async () => {
+    vi.useFakeTimers();
+    importJob.mockResolvedValue({ ...runningJob, imported: 6, skipped: 2 });
+    render(<ImportPage />);
+    // 列表里那份是 3 + 1 = 4 个文件；轮询回来后变 6 + 2 = 8
+    expect(screen.getByTestId("import-progress-done").textContent).toBe("4");
+    await settle();
+
+    expect(importJob).toHaveBeenCalledWith(42);
+    expect(screen.getByTestId("import-progress-done").textContent).toBe("8");
+    expect((screen.getByTestId("import-progress-bar") as HTMLElement).style.width).toBe("80%");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(importJob).toHaveBeenCalledTimes(2);
+  });
+
+  it("到终态就停：completed 后不再轮询，并刷新一次任务列表", async () => {
+    vi.useFakeTimers();
+    importJob.mockResolvedValueOnce({ ...runningJob, status: "completed", imported: 10, skipped: 0, failed: 0 });
+    render(<ImportPage />);
+    await settle();
+
+    expect(jobState.reload).toHaveBeenCalledTimes(1);
+    importJob.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(importJob).not.toHaveBeenCalled();
+  });
+
+  it("卸载后定时器清掉：不再发轮询请求", async () => {
+    vi.useFakeTimers();
+    importJob.mockResolvedValue({ ...runningJob });
+    const view = render(<ImportPage />);
+    await settle();
+    view.unmount();
+    importJob.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(importJob).not.toHaveBeenCalled();
+  });
+
+  it("单次轮询失败不中断，下一轮继续把进度补上", async () => {
+    vi.useFakeTimers();
+    importJob
+      .mockRejectedValueOnce(new ApiError("network", "boom"))
+      .mockResolvedValue({ ...runningJob, imported: 8, skipped: 1, failed: 0 });
+    render(<ImportPage />);
+    await settle();
+    // 这一轮失败：仍显示进页面时列表里的 3 + 1 = 4，不报错也不清空
+    expect(screen.getByTestId("import-progress-done").textContent).toBe("4");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(importJob).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("import-progress-done").textContent).toBe("9");
+  });
+
+  it("没有运行中的任务时不轮询", async () => {
+    vi.useFakeTimers();
+    jobState.data = { items: [{ ...runningJob, status: "completed" }] };
+    render(<ImportPage />);
+    await settle();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(importJob).not.toHaveBeenCalled();
   });
 });

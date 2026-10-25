@@ -10,6 +10,14 @@ import { FailedFilesPanel } from "./FailedFilesPanel";
 import { TagRulesPanel } from "./TagRulesPanel";
 import { UploadPanel } from "./UploadPanel";
 
+/** 运行中任务的轮询间隔：后端没有推送通道，进度条与计数靠这一次拉取更新。 */
+const POLL_MS = 2000;
+
+/** 终态（不再变化）：见到它就停轮询，并刷新一次任务列表。 */
+function isTerminal(status: ImportJob["status"]): boolean {
+  return status === "completed" || status === "completed_with_errors" || status === "failed" || status === "canceled";
+}
+
 /**
  * 导入管理（PC 专属，H5 不渲染也不承认这个路由）。
  * 表单 / 进度 / 失败明细 / 任务历史四块，当前任务由进度卡独占、历史只列已结束任务。
@@ -27,8 +35,8 @@ export function ImportPage() {
   // 正在取消的任务 id（按钮变为「正在取消…」），以及取消结果的人话提示
   const [canceling, setCanceling] = useState<number | null>(null);
   const [canceledNote, setCanceledNote] = useState("");
-  // 取消发出后要轮询的任务 id：等到 canceled 才停，不等列表刷新碰运气
-  const [watchId, setWatchId] = useState<number | null>(null);
+  /** 轮询拿到的最新任务快照（同一个 id 才认）：列表里的那份只在进页面时取一次 */
+  const [live, setLive] = useState<ImportJob | null>(null);
   // 只预检：报告是同步返回的只读结果，不建任务
   const [dryBusy, setDryBusy] = useState(false);
   const [dryReport, setDryReport] = useState<DryRunReport | null>(null);
@@ -37,48 +45,61 @@ export function ImportPage() {
 
   const jobs = data?.items ?? [];
   const running = jobs.find((j) => j.status === "running");
+  const runningId = running?.id ?? null;
+  // 进度卡读这份：轮询快照与列表里的 running 是同一个任务才采信快照，
+  // 否则列表已经换了任务、还显示上一单的进度
+  const current = running && live?.id === running.id ? live : running;
   const finished = jobs.filter((j) => j.status !== "running");
   // 失败清单看最新任务：正在跑的优先，否则最近一条历史
   const activeJob = running ?? jobs[0] ?? null;
   // 以 txt / epub / zip 结尾就按单文件处理：递归选项对它没有意义，勾上也不会改变结果。
   const isSingleFile = /\.(txt|epub|zip)$/i.test(dir.trim());
 
-  // 取消后的轮询：每 2 秒问一次任务状态，见到 canceled / 已结束就停并刷新列表
+  // 运行中任务的进度轮询：进页面先拉一次，之后每 2 秒一次，见到终态就停并刷新列表。
+  // 启动条件 = 列表里存在 running 任务；停止条件 = 终态 / 任务从列表消失（runningId 变 null）/ 卸载。
   useEffect(() => {
-    if (watchId === null) return;
+    if (runningId === null) return;
     let active = true;
+    let stopped = false;
+    let timer = 0;
+    const stop = () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
     const tick = async () => {
+      if (!active || stopped) return;
       try {
-        const job = await api.importJob(watchId);
-        if (!active) return;
-        if (job.status === "canceled") {
+        const job = await api.importJob(runningId);
+        if (!active || stopped) return;
+        if (isTerminal(job.status)) {
+          stop();
+          setLive(null);
           setCanceling(null);
-          setCanceledNote(`任务 #${watchId} 已取消，已导入的 ${job.imported} 本书保留在书架。`);
-          setWatchId(null);
+          if (job.status === "canceled") {
+            setCanceledNote(`任务 #${runningId} 已取消，已导入的 ${job.imported} 本书保留在书架。`);
+          }
           reload();
-        } else if (job.status === "completed" || job.status === "completed_with_errors" || job.status === "failed") {
-          setCanceling(null);
-          setWatchId(null);
-          reload();
+          return;
         }
+        setLive(job);
       } catch {
         /* 单次轮询失败不中断：下一轮再试，卸载时整体清掉 */
       }
     };
     void tick();
-    const timer = window.setInterval(() => void tick(), 2000);
+    timer = window.setInterval(() => void tick(), POLL_MS);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      stop();
     };
-  }, [watchId, reload]);
+  }, [runningId, reload]);
 
   async function cancelJob(job: ImportJob) {
     setCanceling(job.id);
     setCanceledNote("");
     try {
+      // 结果由进度轮询发现（见到 canceled 才给提示），不等列表刷新碰运气
       await api.cancelImport(job.id);
-      setWatchId(job.id);
     } catch (err) {
       setCanceling(null);
       setCanceledNote(cancelErrorText(err));
@@ -222,15 +243,15 @@ export function ImportPage() {
             <LoadingPanel title="正在读取任务" description="正在取回最近的导入记录。" />
           ) : error ? (
             <ErrorPanel error={error} title="任务列表没能加载" onRetry={reload} />
-          ) : running ? (
+          ) : current ? (
             <div className="import-progress" data-testid="import-run">
               <div className="top">
                 <span className="pill is-live">处理中</span>
-                <h2>任务 #{running.id}</h2>
+                <h2>任务 #{current.id}</h2>
                 <span className="meta" style={{ marginLeft: "auto" }}>
-                  开始于 {formatDate(running.startedAt)}
+                  开始于 {formatDate(current.startedAt)}
                 </span>
-                {canceling === running.id ? (
+                {canceling === current.id ? (
                   <span className="meta" data-testid="import-cancel-pending">
                     正在取消…
                   </span>
@@ -238,7 +259,7 @@ export function ImportPage() {
                   <button
                     className="btn btn-ghost btn-danger"
                     type="button"
-                    onClick={() => void cancelJob(running)}
+                    onClick={() => void cancelJob(current)}
                     data-testid="import-cancel"
                   >
                     取消任务
@@ -246,41 +267,46 @@ export function ImportPage() {
                 )}
               </div>
               <div className="progress">
-                <span style={{ width: `${progressOf(running.imported + running.skipped + running.failed, running.total)}%` }} />
+                <span
+                  data-testid="import-progress-bar"
+                  style={{ width: `${progressOf(current.imported + current.skipped + current.failed, current.total)}%` }}
+                />
               </div>
               <div className="counters">
                 <div>
-                  <strong className="num">{running.imported + running.skipped + running.failed}</strong>
-                  <span>/ {running.total} 文件</span>
+                  <strong className="num" data-testid="import-progress-done">
+                    {current.imported + current.skipped + current.failed}
+                  </strong>
+                  <span>/ {current.total} 文件</span>
                 </div>
                 <div>
-                  <strong className="num">{running.imported}</strong>
+                  <strong className="num">{current.imported}</strong>
                   <span>已导入</span>
                 </div>
                 <div>
-                  <strong className="num">{running.skipped}</strong>
+                  <strong className="num">{current.skipped}</strong>
                   <span>已跳过</span>
                 </div>
                 <div>
-                  <strong className="num">{running.failed}</strong>
+                  <strong className="num">{current.failed}</strong>
                   <span>失败</span>
                 </div>
               </div>
               <p className="meta" style={{ wordBreak: "break-all" }}>
-                {running.message || `正在处理：${running.sourceDir}`}
+                {current.message || `正在处理：${current.sourceDir}`}
               </p>
-              {running.failed > 0 ? (
+              {current.failed > 0 ? (
                 <button
                   className="failure-toggle"
                   type="button"
                   aria-expanded={showErrors}
                   onClick={() => setShowErrors((v) => !v)}
                 >
-                  <span>{running.failed} 个文件未能导入</span>
+                  <span>{current.failed} 个文件未能导入</span>
                   <span>{showErrors ? "收起" : "查看"}</span>
                 </button>
               ) : null}
-              {showErrors && running.failed > 0 ? (
+              {showErrors && current.failed > 0 ? (
                 <div className="import-errors">
                   <table className="table">
                     <thead>
@@ -290,7 +316,7 @@ export function ImportPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(running.errors ?? []).map((e) => (
+                      {(current.errors ?? []).map((e) => (
                         <tr key={e.filePath}>
                           <td>{e.filePath}</td>
                           <td>{e.reason}</td>

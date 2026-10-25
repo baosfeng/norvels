@@ -89,6 +89,18 @@ const chapterState = vi.fn((_bookId: number, chapterId: number) => ({
   reload: vi.fn(),
 }));
 
+
+// 阅读器会用 /reading/progress 恢复章内位置：这些用例不关心真实请求，统一给空列表，
+// 避免 jsdom 里发真网络请求把测试拖慢（也避免 act 警告）。
+vi.mock("../../api/client", async () => {
+  const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
+  return {
+    ...actual,
+    // 这些用例只关心排版 / 键盘 / 滚动：进度请求挂起不回流，避免异步 setState 出 act 警告
+    api: { ...actual.api, readingProgress: () => new Promise(() => {}) },
+  };
+});
+
 vi.mock("../../api/hooks", () => ({
   useBook: () => ({ data: activeBook, loading: false, error: null, reload: vi.fn() }),
   useChapter: (bookId: number, chapterId: number) => chapterState(bookId, chapterId),

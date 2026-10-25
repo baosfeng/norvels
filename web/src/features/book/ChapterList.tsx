@@ -50,7 +50,8 @@ export function ChapterList({
   bookId: number;
   chapters: ChapterBrief[];
   currentChapterId?: number;
-  onNavigate?: () => void;
+  /** 点某一章时回调（追更角标清零、抽屉收起等都挂在这里） */
+  onNavigate?: (chapter: ChapterBrief) => void;
   maxHeight?: number;
   ariaLabel?: string;
   /** detail：详情页卷内目录（单行省略）；drawer：阅读器抽屉（最多两行） */
@@ -127,7 +128,7 @@ export function ChapterList({
                   className={`cv-row${layout === "drawer" ? " is-drawer" : ""}${current ? " is-current" : ""}`}
                   style={{ height: rowHeight }}
                   aria-current={current ? "true" : undefined}
-                  onClick={onNavigate}
+                  onClick={() => onNavigate?.(chapter)}
                 >
                   <span className="cv-title">{chapter.title}</span>
                   <span className="cv-word" data-testid="chapter-word">

@@ -6,6 +6,7 @@ import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePane
 import { Cover } from "../../components/Cover";
 import { formatCount, formatDate } from "../../lib/format";
 import { AdminBatchDialog, type BatchKind } from "./AdminBatchDialog";
+import { TagManageDialog } from "./TagManageDialog";
 
 const PAGE_SIZE = 20;
 
@@ -23,6 +24,7 @@ export function AdminBooksPage() {
   const [page, setPage] = useState(1);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [batch, setBatch] = useState<BatchKind | null>(null);
+  const [managingTags, setManagingTags] = useState(false);
   const [notice, setNotice] = useState("");
 
   const { data, loading, error, reload } = useBooks({
@@ -130,6 +132,9 @@ export function AdminBooksPage() {
             ))}
           </select>
         </label>
+        <button className="btn btn-sm" type="button" data-testid="admin-tag-manage" onClick={() => setManagingTags(true)}>
+          标签管理…
+        </button>
         <button className="btn btn-sm" type="submit" data-testid="admin-search-submit">
           搜索
         </button>
@@ -244,6 +249,24 @@ export function AdminBooksPage() {
             →
           </button>
         </nav>
+      ) : null}
+
+      {managingTags ? (
+        <TagManageDialog
+          tags={tags.data?.items ?? []}
+          loading={tags.loading}
+          error={tags.error}
+          onReload={tags.reload}
+          onChanged={setNotice}
+          onClose={() => {
+            setManagingTags(false);
+            // 刚删掉的正好是筛选用的那个标签：选项没了还继续筛会得到「没有符合条件的书」
+            if (tag !== "" && !(tags.data?.items ?? []).some((item) => item.name === tag)) {
+              setTag("");
+              setPage(1);
+            }
+          }}
+        />
       ) : null}
 
       {batch ? (

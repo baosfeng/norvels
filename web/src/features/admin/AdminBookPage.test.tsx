@@ -53,6 +53,10 @@ const book: BookDetail = {
   hasCover: false,
   tags: ["武侠"],
   serialStatus: "ongoing",
+  publisher: "示例出版社",
+  pubDate: "2019-01-02",
+  isbn: "978-7-0000-0000-0",
+  language: "zh-CN",
   volumes: [
     {
       id: 1,
@@ -102,6 +106,42 @@ describe("单书管理页", () => {
     fireEvent.click(screen.getByTestId("admin-save"));
     await waitFor(() => expect(updateBook).toHaveBeenCalledWith(7, { title: "新书名" }));
     await waitFor(() => expect(screen.getByTestId("admin-book-banner").textContent).toContain("已保存"));
+  });
+
+  it("出版字段回填进表单：出版社 / 出版日期 / ISBN / 语言", () => {
+    renderPage();
+    expect((screen.getByTestId("admin-publisher") as HTMLInputElement).value).toBe("示例出版社");
+    expect((screen.getByTestId("admin-pub-date") as HTMLInputElement).value).toBe("2019-01-02");
+    expect((screen.getByTestId("admin-isbn") as HTMLInputElement).value).toBe("978-7-0000-0000-0");
+    expect((screen.getByTestId("admin-language") as HTMLInputElement).value).toBe("zh-CN");
+  });
+
+  it("改 ISBN 计入未保存项，保存只下发这一个字段", async () => {
+    updateBook.mockResolvedValue({ ...book, isbn: "978-7-1111-1111-1" });
+    renderPage();
+    fireEvent.change(screen.getByTestId("admin-isbn"), { target: { value: "978-7-1111-1111-1" } });
+    expect(screen.getByTestId("admin-dirty").textContent).toBe("1 项更改还没保存");
+    fireEvent.click(screen.getByTestId("admin-save"));
+    await waitFor(() => expect(updateBook).toHaveBeenCalledWith(7, { isbn: "978-7-1111-1111-1" }));
+    await waitFor(() => expect(screen.getByTestId("admin-book-banner").textContent).toContain("已保存"));
+  });
+
+  it("清空出版社下发空串，放弃更改后退回原值", () => {
+    renderPage();
+    fireEvent.change(screen.getByTestId("admin-publisher"), { target: { value: "" } });
+    expect(screen.getByTestId("admin-dirty").textContent).toBe("1 项更改还没保存");
+    fireEvent.click(screen.getByTestId("admin-discard"));
+    expect((screen.getByTestId("admin-publisher") as HTMLInputElement).value).toBe("示例出版社");
+    expect(screen.getByTestId("admin-dirty").textContent).toBe("全部更改已保存");
+  });
+
+  it("只改出版字段也拦 beforeunload，放弃更改后不再拦", () => {
+    renderPage();
+    fireEvent.change(screen.getByTestId("admin-pub-date"), { target: { value: "2020-03-04" } });
+    // dispatchEvent 返回 false = 有监听器调了 preventDefault（浏览器据此弹「离开？」）
+    expect(window.dispatchEvent(new Event("beforeunload", { cancelable: true }))).toBe(false);
+    fireEvent.click(screen.getByTestId("admin-discard"));
+    expect(window.dispatchEvent(new Event("beforeunload", { cancelable: true }))).toBe(true);
   });
 
   it("放弃更改把草稿退回上次保存的值", () => {
