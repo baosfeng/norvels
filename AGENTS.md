@@ -27,6 +27,7 @@ make gate         # 提交前必跑
 - 容器内路径是 `/books`（宿主路径在容器里不存在）；数据目录属主 65532；镜像 ENTRYPOINT 是 `norvels serve`，跑子命令要 `--entrypoint /norvels`。
 - 镜像 tag 只发 `X.Y.Z` + `latest`，不生成 `x.y` / `x` / `sha-*` / `edge`。
 - 依赖方向由门禁强制，新增内部包先在 `tests/tools/gatedeps/main.go` 登记。
+- **改动收尾即清理**：被取代的文档、失效的引用与链接、临时二进制、构建缓存、遗留脚本随本次改动一起删；文档里的数字按新实测更新，不留旧值。
 
 ## 文档规则
 
