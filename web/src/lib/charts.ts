@@ -40,6 +40,8 @@ export function compact(value: number): string {
 }
 
 function pct(value: number, max: number, floor = 2): number {
+  // 真正的 0 不画柱：给 0 值留 2px 基线，在「多数天没有导入」的场景会变成一片噪音横线。
+  if (value <= 0) return 0;
   if (!max || max <= 0) return floor;
   return Math.max(floor, Math.round((value / max) * 100));
 }
@@ -68,8 +70,13 @@ export function buildImportTrend(points: ImportTrendPoint[]): ChartModel<{ bars:
     b.heightPct = pct(b.value, max);
   });
   const days = points.length || 1;
+  // 日均只在「每天都有导入」时才说：否则 838 本挤在一天也会被算成「日均 60 本」，
+  // 读起来像持续导入，实际是一次性灌库。
+  const activeDays = points.filter((p) => p.books > 0).length;
   const note = total > 0
-    ? `近 ${days} 天导入 ${total} 本，日均 ${Math.round(total / days)} 本`
+    ? activeDays >= days
+      ? `近 ${days} 天导入 ${total} 本，日均 ${Math.round(total / days)} 本`
+      : `近 ${days} 天导入 ${total} 本，只有 ${activeDays} 天有导入`
     : `近 ${days} 天还没有导入记录`;
   return { empty: total === 0, note, data: { bars, total } };
 }

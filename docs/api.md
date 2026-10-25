@@ -219,7 +219,7 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36 }`，upsert，204。
 - `GET /api/health/report` 的每项统计**独立查询**：单项失败该字段为 `null` 并追加进 `warnings`，
   整体仍 200；分桶边界写死在 `internal/store/health.go`：
   - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+
-  - 章节字数：<1千 / 1千-5千 / 5千-2万 / 2万-10万 / 10万+
+  - 章节字数：<1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+
 - `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），
   时区取服务器本地时区，无数据日期补 0；`days` 默认 14、上限 366；
 - `GET /api/authors?sort=words` 复用列表接口，`ORDER BY SUM(word_count) DESC`，`size=10` 即「字数 Top 10」；

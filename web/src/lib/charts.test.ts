@@ -80,17 +80,23 @@ describe("1 近 14 天导入量", () => {
   it("总量与日均按实际条数算，柱高归一到最大值", () => {
     const model = buildImportTrend(trend([0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0]));
     expect(model.data.total).toBe(9);
-    expect(model.note).toBe("近 14 天导入 19 本，日均 1 本".replace("19", "9"));
+    // 只有 2 天有导入时不说「日均」，否则 838 本挤一天也会读成「日均 60 本」
+    expect(model.note).toBe("近 14 天导入 9 本，只有 2 天有导入");
     const max = Math.max(...model.data.bars.map((b) => b.heightPct));
     expect(max).toBe(100);
-    // 0 值也保留可见基线
-    expect(Math.min(...model.data.bars.map((b) => b.heightPct))).toBe(2);
+    // 0 值高度为 0（渲染层据此不画柱），不再给 2% 的噪音基线
+    expect(Math.min(...model.data.bars.map((b) => b.heightPct))).toBe(0);
   });
 
   it("全 0 时判为空，结论说「还没有导入」", () => {
     const model = buildImportTrend(trend([0, 0, 0]));
     expect(model.empty).toBe(true);
     expect(model.note).toContain("还没有导入记录");
+  });
+
+  it("每天都有导入时仍说日均", () => {
+    const model = buildImportTrend(trend(new Array(14).fill(2)));
+    expect(model.note).toBe("近 14 天导入 28 本，日均 2 本");
   });
 
   it("日期标签稀疏化，且末尾两根不会贴在一起", () => {

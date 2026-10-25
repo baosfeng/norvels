@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="norvels">
+  <rect width="64" height="64" rx="14" fill="#3b2417"/>
+  <path d="M14 20.5h12.5c3.4 0 5.5 1.6 5.5 4.8v23.2c0-2.7-2.1-4.2-5.5-4.2H14z" fill="#fbf6ee"/>
+  <path d="M50 20.5H37.5c-3.4 0-5.5 1.6-5.5 4.8v23.2c0-2.7 2.1-4.2 5.5-4.2H50z" fill="#dfc9a9"/>
+  <path d="M32 20v29.5" stroke="#3b2417" stroke-width="2.6" stroke-linecap="round"/>
+</svg>

@@ -85,7 +85,8 @@ export function ImportTrendChart({ points, ...state }: { points: ImportTrendPoin
       <div className="bars">
         {model.data.bars.map((bar) => (
           <div className="bar-col" key={bar.label} title={bar.title}>
-            <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} />
+            {/* 0 值不画柱：CSS 的 min-height 会把它渲染成一条 2px 横线，连续多天没导入时纯噪音 */}
+            {bar.value > 0 ? <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} /> : null}
             <span className="bar-lbl">{bar.labelVisible ? bar.label : ""}</span>
           </div>
         ))}
@@ -103,7 +104,7 @@ export function ChapterBucketsChart({ buckets, ...state }: { buckets: Bucket[] }
         {model.data.bars.map((bar) => (
           <div className="bar-col" key={bar.label} title={bar.title}>
             <span className="bar-val">{bar.value}</span>
-            <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} />
+            {bar.value > 0 ? <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} /> : null}
             <span className="bar-lbl">{bar.label}</span>
           </div>
         ))}
@@ -235,10 +236,12 @@ export function ChapterLengthChart({ buckets, ...state }: { buckets: Bucket[] } 
       <div className="cols">
         {model.data.cols.map((col) => (
           <div className="col-item" key={col.label} title={col.title}>
-            <span
-              className={`col-fill${col.label === model.data.peak ? " is-peak" : ""}`}
-              style={{ height: `${col.heightPct}%` }}
-            />
+            {col.value > 0 ? (
+              <span
+                className={`col-fill${col.label === model.data.peak ? " is-peak" : ""}`}
+                style={{ height: `${col.heightPct}%` }}
+              />
+            ) : null}
             <span className="bar-lbl">{col.label}</span>
           </div>
         ))}

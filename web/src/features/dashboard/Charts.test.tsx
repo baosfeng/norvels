@@ -150,8 +150,11 @@ describe("六张图都有四态", () => {
   });
 
   it("每张图的结论都由数据实算（不是固定文案）", () => {
-    const { unmount } = render(<ImportTrendChart points={points} {...idle} />);
-    expect(screen.getByText("近 14 天导入 12 本，日均 1 本")).toBeTruthy();
+    const { unmount, container } = render(<ImportTrendChart points={points} {...idle} />);
+    // 只有最后一天有数据：说「只有 1 天有导入」，而不是把 12 本摊成「日均 1 本」
+    expect(screen.getByText("近 14 天导入 12 本，只有 1 天有导入")).toBeTruthy();
+    // 0 值的 13 天不画柱，只留最后一天
+    expect(container.querySelectorAll(".bar-fill")).toHaveLength(1);
     unmount();
 
     render(<StorageChart stats={stats} {...idle} />);
