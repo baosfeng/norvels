@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 )
@@ -14,139 +13,119 @@ func TestListTagsWithCountMatchesListTags(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	ids := seedRatingBooks(t, ctx, st, 2)
-	if err := st.SetBookTags(ctx, ids[0], []string{"玄幻", "悬疑"}); err != nil {
-		t.Fatalf("SetBookTags: %v", err)
-	}
-	if err := st.SetBookTags(ctx, ids[1], []string{"玄幻"}); err != nil {
-		t.Fatalf("SetBookTags: %v", err)
-	}
+	requireOK(t, "SetBookTags 书1", st.SetBookTags(ctx, ids[0], []string{"玄幻", "悬疑"}))
+	requireOK(t, "SetBookTags 书2", st.SetBookTags(ctx, ids[1], []string{"玄幻"}))
 
 	withCount, err := st.ListTagsWithCount(ctx)
-	if err != nil {
-		t.Fatalf("ListTagsWithCount: %v", err)
-	}
+	requireOK(t, "ListTagsWithCount", err)
 	legacy, err := st.ListTags(ctx)
-	if err != nil {
-		t.Fatalf("ListTags: %v", err)
-	}
-	if len(withCount) != 2 || withCount[0].Name != "玄幻" || withCount[0].BookCount != 2 {
-		t.Fatalf("标签聚合 = %+v，期望玄幻 2 本在前", withCount)
-	}
-	if len(legacy) != len(withCount) || legacy[0].ID != withCount[0].ID {
-		t.Errorf("两个入口口径不一致: %+v vs %+v", legacy, withCount)
-	}
+	requireOK(t, "ListTags", err)
+	requireEqual(t, "标签数", len(withCount), 2)
+	requireEqual(t, "玄幻书籍数", withCount[0].Name, "玄幻")
+	requireEqual(t, "玄幻计数", withCount[0].BookCount, 2)
+	requireEqual(t, "两个入口行数一致", len(legacy), len(withCount))
+	requireEqual(t, "两个入口顺序一致", legacy[0].ID, withCount[0].ID)
 }
 
-func TestCreateTag(t *testing.T) {
+func TestCreateTagReusesSameName(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	bookID := seedRatingBooks(t, ctx, st, 1)[0]
 
 	created, err := st.CreateTag(ctx, "  玄幻 ")
-	if err != nil {
-		t.Fatalf("CreateTag: %v", err)
-	}
-	if !created.Created || created.ID <= 0 || created.Name != "玄幻" {
-		t.Fatalf("新建标签 = %+v，期望去空白且 Created=true", created)
-	}
+	requireOK(t, "CreateTag", err)
+	requireEqual(t, "新建标记", created.Created, true)
+	requireEqual(t, "名字去空白", created.Name, "玄幻")
+	requireEqual(t, "id 为正", created.ID > 0, true)
+
 	again, err := st.CreateTag(ctx, "玄幻")
-	if err != nil {
-		t.Fatalf("CreateTag 同名: %v", err)
-	}
-	if again.Created || again.ID != created.ID {
-		t.Errorf("同名标签 = %+v，期望返回已有且 Created=false", again)
-	}
-	if err := st.SetBookTags(ctx, bookID, []string{"玄幻"}); err != nil {
-		t.Fatalf("SetBookTags: %v", err)
-	}
+	requireOK(t, "CreateTag 同名", err)
+	requireEqual(t, "同名不新建", again.Created, false)
+	requireEqual(t, "同名返回同一行", again.ID, created.ID)
+
+	requireOK(t, "SetBookTags", st.SetBookTags(ctx, bookID, []string{"玄幻"}))
 	linked, err := st.CreateTag(ctx, "玄幻")
-	if err != nil || linked.BookCount != 1 {
-		t.Errorf("同名标签书籍数 = %d err=%v，期望 1", linked.BookCount, err)
-	}
-	if _, err := st.CreateTag(ctx, "  "); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("空名 err = %v，期望 ErrInvalidArgument", err)
-	}
-	long := strings.Repeat("标", maxTagRunes+1)
-	if _, err := st.CreateTag(ctx, long); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("超长名 err = %v，期望 ErrInvalidArgument", err)
-	}
+	requireOK(t, "CreateTag 已关联", err)
+	requireEqual(t, "同名标签书籍数", linked.BookCount, 1)
+}
+
+func TestCreateTagValidation(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	_, err := st.CreateTag(ctx, "  ")
+	requireErr(t, "空名", err, ErrInvalidArgument)
+	_, err = st.CreateTag(ctx, strings.Repeat("标", maxTagRunes+1))
+	requireErr(t, "超长名", err, ErrInvalidArgument)
 }
 
 func TestRenameTag(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	first, err := st.CreateTag(ctx, "甲标签")
-	if err != nil {
-		t.Fatalf("CreateTag: %v", err)
-	}
-	if _, err := st.CreateTag(ctx, "乙标签"); err != nil {
-		t.Fatalf("CreateTag: %v", err)
-	}
+	first := seedTag(t, ctx, st, "甲标签")
+	seedTag(t, ctx, st, "乙标签")
 
-	if err := st.RenameTag(ctx, first.ID, "乙标签"); !errors.Is(err, ErrConflict) {
-		t.Errorf("改成重名 err = %v，期望 ErrConflict", err)
-	}
-	if err := st.RenameTag(ctx, first.ID, "新标签"); err != nil {
-		t.Errorf("正常改名: %v", err)
-	}
+	requireOK(t, "RenameTag", st.RenameTag(ctx, first.ID, "新标签"))
 	tags, err := st.ListTagsWithCount(ctx)
-	if err != nil {
-		t.Fatalf("ListTagsWithCount: %v", err)
-	}
-	found := false
-	for _, tag := range tags {
-		found = found || (tag.ID == first.ID && tag.Name == "新标签")
-	}
-	if !found {
-		t.Errorf("改名未生效: %+v", tags)
-	}
-	if err := st.RenameTag(ctx, 999999, "随便"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("不存在的标签 err = %v，期望 ErrNotFound", err)
-	}
-	if err := st.RenameTag(ctx, first.ID, " "); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("空名 err = %v，期望 ErrInvalidArgument", err)
-	}
-	if err := st.RenameTag(ctx, 0, "随便"); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("id=0 err = %v，期望 ErrInvalidArgument", err)
-	}
+	requireOK(t, "ListTagsWithCount", err)
+	requireEqual(t, "改名后存在新名字", tagIDByName(tags, "新标签"), first.ID)
 }
 
-func TestDeleteTag(t *testing.T) {
+func TestRenameTagErrors(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	first := seedTag(t, ctx, st, "甲标签")
+	seedTag(t, ctx, st, "乙标签")
+
+	requireErr(t, "改成重名", st.RenameTag(ctx, first.ID, "乙标签"), ErrConflict)
+	requireErr(t, "不存在的标签", st.RenameTag(ctx, 999999, "随便"), ErrNotFound)
+	requireErr(t, "空名", st.RenameTag(ctx, first.ID, " "), ErrInvalidArgument)
+	requireErr(t, "id=0", st.RenameTag(ctx, 0, "随便"), ErrInvalidArgument)
+}
+
+func TestDeleteTagUnbindsBooks(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	bookID := seedRatingBooks(t, ctx, st, 1)[0]
-	if err := st.SetBookTags(ctx, bookID, []string{"玄幻", "悬疑"}); err != nil {
-		t.Fatalf("SetBookTags: %v", err)
-	}
+	requireOK(t, "SetBookTags", st.SetBookTags(ctx, bookID, []string{"玄幻", "悬疑"}))
 	tags, err := st.ListTagsWithCount(ctx)
+	requireOK(t, "ListTagsWithCount", err)
+	xuanhuan := tagIDByName(tags, "玄幻")
+	requireEqual(t, "玄幻标签存在", xuanhuan > 0, true)
+
+	requireOK(t, "DeleteTag", st.DeleteTag(ctx, xuanhuan))
+	remaining, err := st.ListBookTags(ctx, bookID)
+	requireOK(t, "ListBookTags", err)
+	requireSliceEqual(t, "删标签后的书标签", remaining, []string{"悬疑"})
+	_, err = st.GetBook(ctx, bookID)
+	requireOK(t, "书本身不动", err)
+}
+
+func TestDeleteTagErrors(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	tag := seedTag(t, ctx, st, "会删的标签")
+	requireOK(t, "DeleteTag", st.DeleteTag(ctx, tag.ID))
+
+	requireErr(t, "重复删除", st.DeleteTag(ctx, tag.ID), ErrNotFound)
+	requireErr(t, "id=0", st.DeleteTag(ctx, 0), ErrInvalidArgument)
+}
+
+// seedTag 建一个标签，失败即 Fatal。
+func seedTag(t *testing.T, ctx context.Context, st *Store, name string) TagSummary {
+	t.Helper()
+	tag, err := st.CreateTag(ctx, name)
 	if err != nil {
-		t.Fatalf("ListTagsWithCount: %v", err)
+		t.Fatalf("CreateTag(%q): %v", name, err)
 	}
-	var xuanhuan int64
+	return tag
+}
+
+// tagIDByName 返回指定名字的标签 id；找不到返回 0。
+func tagIDByName(tags []TagSummary, name string) int64 {
 	for _, tag := range tags {
-		if tag.Name == "玄幻" {
-			xuanhuan = tag.ID
+		if tag.Name == name {
+			return tag.ID
 		}
 	}
-	if xuanhuan == 0 {
-		t.Fatalf("没有玄幻标签: %+v", tags)
-	}
-
-	if err := st.DeleteTag(ctx, xuanhuan); err != nil {
-		t.Fatalf("DeleteTag: %v", err)
-	}
-	remaining, err := st.ListBookTags(ctx, bookID)
-	if err != nil || len(remaining) != 1 || remaining[0] != "悬疑" {
-		t.Errorf("删标签后书的标签 = %v err=%v，期望只剩悬疑", remaining, err)
-	}
-	// 书本身不动。
-	if _, err := st.GetBook(ctx, bookID); err != nil {
-		t.Errorf("删标签把书弄丢了: %v", err)
-	}
-	if err := st.DeleteTag(ctx, xuanhuan); !errors.Is(err, ErrNotFound) {
-		t.Errorf("重复删除 err = %v，期望 ErrNotFound", err)
-	}
-	if err := st.DeleteTag(ctx, 0); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("id=0 err = %v，期望 ErrInvalidArgument", err)
-	}
+	return 0
 }

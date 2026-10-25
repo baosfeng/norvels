@@ -47,27 +47,26 @@ func TestMigrate0014From0013KeepsDefaults(t *testing.T) {
 	}
 	requireP3Schema(t, ctx, st)
 
+	requireLegacyP3Defaults(t, ctx, st, bookID)
+}
+
+// requireLegacyP3Defaults 断言存量行在 0014 后保持零值（不回填、不猜）。
+func requireLegacyP3Defaults(t *testing.T, ctx context.Context, st *Store, bookID int64) {
+	t.Helper()
 	var (
 		rating, newChapters int
 		lastChapterAt       string
 	)
-	if err := st.DB().QueryRowContext(ctx,
+	requireOK(t, "读存量书", st.DB().QueryRowContext(ctx,
 		"SELECT rating, new_chapters, last_chapter_at FROM books WHERE id = ?", bookID).
-		Scan(&rating, &newChapters, &lastChapterAt); err != nil {
-		t.Fatalf("读存量书: %v", err)
-	}
-	if rating != 0 || newChapters != 0 || lastChapterAt != "" {
-		t.Errorf("存量书 = rating %d / new_chapters %d / last_chapter_at %q，期望全零值",
-			rating, newChapters, lastChapterAt)
-	}
+		Scan(&rating, &newChapters, &lastChapterAt))
+	requireEqual(t, "存量书 rating", rating, 0)
+	requireEqual(t, "存量书 new_chapters", newChapters, 0)
+	requireEqual(t, "存量书 last_chapter_at", lastChapterAt, "")
 	var para int
-	if err := st.DB().QueryRowContext(ctx,
-		"SELECT para_index FROM reading_progress WHERE book_id = ?", bookID).Scan(&para); err != nil {
-		t.Fatalf("读存量进度: %v", err)
-	}
-	if para != 0 {
-		t.Errorf("存量进度 para_index = %d，期望 0", para)
-	}
+	requireOK(t, "读存量进度", st.DB().QueryRowContext(ctx,
+		"SELECT para_index FROM reading_progress WHERE book_id = ?", bookID).Scan(&para))
+	requireEqual(t, "存量进度 para_index", para, 0)
 }
 
 // TestDeleteBookClearsP3Tables 删书要清掉没有外键的 reading_sessions / collection_books。

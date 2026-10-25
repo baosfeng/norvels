@@ -126,86 +126,74 @@ func TestInsertChapterErrors(t *testing.T) {
 	}
 }
 
-func TestNewChaptersCounters(t *testing.T) {
+func TestAddNewChaptersAccumulates(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	bookID := seedInsertBook(t, ctx, st, 1)
 
-	if err := st.AddNewChapters(ctx, bookID, 2); err != nil {
-		t.Fatalf("AddNewChapters: %v", err)
-	}
-	if got := mustBookDetail(t, ctx, st, bookID).NewChapters; got != 2 {
-		t.Errorf("角标 = %d，期望 2", got)
-	}
-	if err := st.AddNewChapters(ctx, bookID, 3); err != nil {
-		t.Fatalf("AddNewChapters: %v", err)
-	}
-	if got := mustBookDetail(t, ctx, st, bookID).NewChapters; got != 5 {
-		t.Errorf("角标 = %d，期望 5（累加）", got)
-	}
-	if err := st.AddNewChapters(ctx, bookID, 0); err != nil {
-		t.Errorf("0 章应是空操作: %v", err)
-	}
-	if err := st.AckNewChapters(ctx, bookID); err != nil {
-		t.Fatalf("AckNewChapters: %v", err)
-	}
-	if got := mustBookDetail(t, ctx, st, bookID).NewChapters; got != 0 {
-		t.Errorf("ack 后角标 = %d，期望 0", got)
-	}
-	if err := st.AddNewChapters(ctx, bookID, -1); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("负数 err = %v，期望 ErrInvalidArgument", err)
-	}
-	if err := st.AddNewChapters(ctx, 999999, 1); !errors.Is(err, ErrNotFound) {
-		t.Errorf("不存在的书 err = %v，期望 ErrNotFound", err)
-	}
-	if err := st.AckNewChapters(ctx, 999999); !errors.Is(err, ErrNotFound) {
-		t.Errorf("ack 不存在的书 err = %v，期望 ErrNotFound", err)
-	}
-	if err := st.AckNewChapters(ctx, 0); !errors.Is(err, ErrInvalidArgument) {
-		t.Errorf("ack id=0 err = %v", err)
-	}
+	requireOK(t, "AddNewChapters 2", st.AddNewChapters(ctx, bookID, 2))
+	requireEqual(t, "角标", mustBookDetail(t, ctx, st, bookID).NewChapters, 2)
+	requireOK(t, "AddNewChapters 3", st.AddNewChapters(ctx, bookID, 3))
+	requireEqual(t, "累加后角标", mustBookDetail(t, ctx, st, bookID).NewChapters, 5)
+	requireOK(t, "AddNewChapters 0 是空操作", st.AddNewChapters(ctx, bookID, 0))
+	requireEqual(t, "空操作后角标", mustBookDetail(t, ctx, st, bookID).NewChapters, 5)
+}
+
+func TestAckNewChaptersResets(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	bookID := seedInsertBook(t, ctx, st, 1)
+	requireOK(t, "AddNewChapters", st.AddNewChapters(ctx, bookID, 2))
+
+	requireOK(t, "AckNewChapters", st.AckNewChapters(ctx, bookID))
+	requireEqual(t, "ack 后角标", mustBookDetail(t, ctx, st, bookID).NewChapters, 0)
+}
+
+func TestNewChaptersErrors(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	bookID := seedInsertBook(t, ctx, st, 1)
+
+	requireErr(t, "负数", st.AddNewChapters(ctx, bookID, -1), ErrInvalidArgument)
+	requireErr(t, "不存在的书", st.AddNewChapters(ctx, 999999, 1), ErrNotFound)
+	requireErr(t, "ack 不存在的书", st.AckNewChapters(ctx, 999999), ErrNotFound)
+	requireErr(t, "ack id=0", st.AckNewChapters(ctx, 0), ErrInvalidArgument)
 }
 
 // TestSaveBookUpdateReportsAppended 追更时库层已算过 tail 长度，上层不再自己数。
 func TestSaveBookUpdateReportsAppended(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	book := seedInsertBookModel(1)
-	first, err := st.SaveBook(ctx, book, SaveOptions{})
-	if err != nil {
-		t.Fatalf("首次 SaveBook: %v", err)
-	}
-	if first.Appended != 0 || first.Updated {
-		t.Errorf("新建结果 = %+v，期望 Appended=0 且非覆盖", first)
-	}
+	first, err := st.SaveBook(ctx, seedInsertBookModel(1), SaveOptions{})
+	requireOK(t, "首次 SaveBook", err)
+	requireEqual(t, "新建 Appended", first.Appended, 0)
+	requireEqual(t, "新建不是覆盖", first.Updated, false)
 
-	same := seedInsertBookModel(1)
-	unchanged, err := st.SaveBook(ctx, same, SaveOptions{Update: true})
-	if err != nil {
-		t.Fatalf("追更（无新章）: %v", err)
-	}
-	if unchanged.Appended != 0 || !unchanged.Updated || unchanged.BookID != first.BookID {
-		t.Errorf("无新章追更 = %+v，期望 Appended=0", unchanged)
-	}
+	unchanged, err := st.SaveBook(ctx, seedInsertBookModel(1), SaveOptions{Update: true})
+	requireOK(t, "追更（无新章）", err)
+	requireEqual(t, "无新章 Appended", unchanged.Appended, 0)
+	requireEqual(t, "追更标记 Updated", unchanged.Updated, true)
+	requireEqual(t, "命中同一本书", unchanged.BookID, first.BookID)
+}
+
+func TestSaveBookUpdateBadge(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	_, err := st.SaveBook(ctx, seedInsertBookModel(1), SaveOptions{})
+	requireOK(t, "首次 SaveBook", err)
 
 	grown := seedInsertBookModel(1)
 	grown.Chapters = append(grown.Chapters, model.ParsedChapter{
 		Idx: len(grown.Chapters), VolumeIdx: -1, Title: "第四章 追更", Content: "追更正文。",
 	})
 	appended, err := st.SaveBook(ctx, grown, SaveOptions{Update: true})
-	if err != nil {
-		t.Fatalf("追更: %v", err)
-	}
-	if appended.Appended != 1 || !appended.Updated {
-		t.Fatalf("追更结果 = %+v，期望 Appended=1", appended)
-	}
-	if err := st.AddNewChapters(ctx, appended.BookID, appended.Appended); err != nil {
-		t.Fatalf("AddNewChapters: %v", err)
-	}
+	requireOK(t, "追更", err)
+	requireEqual(t, "追更 Appended", appended.Appended, 1)
+
+	requireOK(t, "AddNewChapters", st.AddNewChapters(ctx, appended.BookID, appended.Appended))
 	detail := mustBookDetail(t, ctx, st, appended.BookID)
-	if detail.ChapterCount != 4 || detail.NewChapters != 1 {
-		t.Errorf("追更后 detail = 章 %d / 角标 %d，期望 4 / 1", detail.ChapterCount, detail.NewChapters)
-	}
+	requireEqual(t, "追更后章节数", detail.ChapterCount, 4)
+	requireEqual(t, "追更后角标", detail.NewChapters, 1)
 }
 
 // seedInsertBook 造一本示例书（3 章，前两章归第一卷），返回 book id。
