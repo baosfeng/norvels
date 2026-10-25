@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"norvels/internal/model"
@@ -137,6 +138,138 @@ func insertChapters(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Pars
 	// 保证「增量累加」与「全量重算」在同一个口径上（有测试守着）。
 	if _, err := bumpBookTextBytes(ctx, tx, bookID); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ---------- 新建章节（P3 §管理侧补全） ----------
+
+// insertPosition 是新章节的落点：目录序号与卷归属。
+type insertPosition struct {
+	idx      int
+	volumeID int64
+}
+
+// InsertChapter 在指定章节之后插入一章；afterChapterID=0 表示追加到末尾。
+//
+// 正文走压缩块路径（与整章替换同一套 writeContentBlock）：新章独占一块、块内偏移 0，
+// 因此插入不需要重压其它章，也不用改它们的 block_off。插入后 idx 顺延 + 重排，
+// books.chapter_count / word_count 与 store_metrics 在同一事务内维护。
+//
+// 卷归属：插到某章之后时继承那一章的卷；追加到末尾时继承最后一章的卷。
+// 「接着这本书往下写」不该把新章甩进未分卷，否则详情页会把同一本书的目录拆成两段。
+func (s *Store) InsertChapter(ctx context.Context, bookID int64, ch model.ParsedChapter,
+	afterChapterID int64) (int64, error) {
+	if bookID <= 0 {
+		return 0, fmt.Errorf("%w: book id %d", ErrInvalidArgument, bookID)
+	}
+	if afterChapterID < 0 {
+		return 0, fmt.Errorf("%w: afterChapterId %d 不能为负", ErrInvalidArgument, afterChapterID)
+	}
+	title, err := cleanChapterTitle(ch.Title)
+	if err != nil {
+		return 0, err
+	}
+	if err := checkChapterContent(ch.Content); err != nil {
+		return 0, err
+	}
+	var newID int64
+	err = s.inTx(ctx, "insert chapter", func(tx *sql.Tx) error {
+		pos, err := insertPositionInTx(ctx, tx, bookID, afterChapterID)
+		if err != nil {
+			return err
+		}
+		newID, err = insertChapterRowInTx(ctx, tx, bookID, pos, title, &ch)
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+	return newID, nil
+}
+
+// insertPositionInTx 决定新章的 idx 与卷归属；书不存在返回 ErrNotFound。
+//
+// 追加路径要顺带确认书存在：空书没有章节行可供「最后一章」推导，
+// 不确认的话后面写块时才撞外键，错误信息会退化成 SQLite 的约束报错。
+func insertPositionInTx(ctx context.Context, tx *sql.Tx, bookID, afterChapterID int64) (insertPosition, error) {
+	if afterChapterID > 0 {
+		sp, err := loadChapterSpan(ctx, tx, bookID, afterChapterID)
+		if err != nil {
+			return insertPosition{}, err
+		}
+		return insertPosition{idx: sp.idx + 1, volumeID: sp.volumeID}, nil
+	}
+	var (
+		lastIdx  int
+		volumeID int64
+	)
+	err := tx.QueryRowContext(ctx,
+		"SELECT idx, volume_id FROM chapters WHERE book_id = ? ORDER BY idx DESC, id DESC LIMIT 1", bookID).
+		Scan(&lastIdx, &volumeID)
+	if errors.Is(err, sql.ErrNoRows) {
+		if err := ensureBookExistsInTx(ctx, tx, bookID); err != nil {
+			return insertPosition{}, err
+		}
+		return insertPosition{}, nil // 空书：idx 0、未分卷
+	}
+	if err != nil {
+		return insertPosition{}, fmt.Errorf("store: last chapter of book %d: %w", bookID, err)
+	}
+	return insertPosition{idx: lastIdx + 1, volumeID: volumeID}, nil
+}
+
+// insertChapterRowInTx 写正文块与章节行，并同步三处计数。
+func insertChapterRowInTx(ctx context.Context, tx *sql.Tx, bookID int64, pos insertPosition,
+	title string, ch *model.ParsedChapter) (int64, error) {
+	// 先把落点之后的章节整体后移，空出 idx：chapters 没有 UNIQUE(book_id, idx)，
+	// 一条 UPDATE 平移即可（与删除/拆分同一套 shiftChaptersIdx）。
+	if err := shiftChaptersIdx(ctx, tx, bookID, pos.idx-1, 1); err != nil {
+		return 0, err
+	}
+	words := chapterWordCount(ch)
+	ref, packed, raw, err := writeContentBlock(ctx, tx, bookID, chapterSpan{idx: pos.idx}, ch.Content)
+	if err != nil {
+		return 0, err
+	}
+	res, err := tx.ExecContext(ctx, chapterInsertSQL,
+		bookID, pos.volumeID, pos.idx, title, words, ref.id, ref.off, ref.len)
+	if err != nil {
+		return 0, fmt.Errorf("store: insert chapter: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("store: insert chapter id: %w", err)
+	}
+	// adjustBookCounts 顺带刷新 books.updated_at：新增章节就是这本书的最后更新。
+	if err := adjustBookCounts(ctx, tx, bookID, 1, words); err != nil {
+		return 0, err
+	}
+	if err := bumpMetrics(ctx, tx, packed, int64(words)); err != nil {
+		return 0, err
+	}
+	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, raw); err != nil {
+		return 0, err
+	}
+	if _, err := bumpBookTextBytes(ctx, tx, bookID); err != nil {
+		return 0, err
+	}
+	return id, refreshBookBlockRanges(ctx, tx, bookID)
+}
+
+// refreshBookBlockRanges 校正全书各块的 first_idx/last_idx。
+//
+// 插入会让落点之后的章节 idx 整体 +1，块上记的章节范围随之失效；这两个字段只用于
+// 块损坏时的定位文案，但漂移会误导排查。逐块子查询是 O(块数 × 章数)，插入章节
+// 是低频管理操作，值这个代价。
+func refreshBookBlockRanges(ctx context.Context, tx *sql.Tx, bookID int64) error {
+	_, err := tx.ExecContext(ctx,
+		"UPDATE chapter_blocks SET "+
+			"first_idx = COALESCE((SELECT MIN(idx) FROM chapters WHERE block_id = chapter_blocks.id), first_idx), "+
+			"last_idx = COALESCE((SELECT MAX(idx) FROM chapters WHERE block_id = chapter_blocks.id), last_idx) "+
+			"WHERE book_id = ?", bookID)
+	if err != nil {
+		return fmt.Errorf("store: refresh block ranges of book %d: %w", bookID, err)
 	}
 	return nil
 }

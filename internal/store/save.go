@@ -60,13 +60,14 @@ func finishExistingBook(ctx context.Context, tx *sql.Tx, bookID int64,
 	if !update {
 		return SaveResult{BookID: bookID, Skipped: true}, nil
 	}
-	if err := appendBookInTx(ctx, tx, bookID, b, w); err != nil {
+	appended, err := appendBookInTx(ctx, tx, bookID, b, w)
+	if err != nil {
 		return SaveResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return SaveResult{}, fmt.Errorf("store: save book commit: %w", err)
 	}
-	return SaveResult{BookID: bookID, Updated: true}, nil
+	return SaveResult{BookID: bookID, Updated: true, Appended: appended}, nil
 }
 
 // prepareBookWrite 校验入参并归一化展示字段，同时返回按序号排好的卷引用列表。

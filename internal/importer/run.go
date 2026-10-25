@@ -191,8 +191,23 @@ func (r *runState) saveOne(ctx context.Context, source, display string, book *mo
 		r.res.Skipped++
 		r.recordJobFile(ctx, source, display, store.ImportFileStatusSkipped, "库中已存在同一本书", 0)
 	default:
+		r.recordAppendBadge(ctx, sr)
 		r.res.Imported = append(r.res.Imported, sr.BookID)
 		r.recordJobFile(ctx, source, display, store.ImportFileStatusImported, "", sr.BookID)
+	}
+}
+
+// recordAppendBadge 把本次追更追加的章数累加到 books.new_chapters（书架/详情角标）。
+//
+// 写失败只记 lastErr 不打断导入：角标是辅助展示数据，让一份已经入库成功的
+// 追更整体失败、下次还要重导，代价远大于少一个角标。章数来自库层的
+// SaveResult.Appended（appendBookInTx 的 tail 长度），这里不再自己数一遍。
+func (r *runState) recordAppendBadge(ctx context.Context, sr store.SaveResult) {
+	if sr.Appended <= 0 {
+		return
+	}
+	if err := r.st.AddNewChapters(ctx, sr.BookID, sr.Appended); err != nil {
+		r.lastErr = err.Error()
 	}
 }
 

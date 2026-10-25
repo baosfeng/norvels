@@ -250,6 +250,10 @@ type SaveResult struct {
 	BookID  int64
 	Updated bool // true 表示覆盖更新，false 表示新建
 	Skipped bool // true 表示幂等跳过
+	// Appended 是追更时本次追加的章节数（新建/覆盖/跳过为 0）。
+	// 调用方（importer）用它作为 AddNewChapters 的入参：库层已经算过 tail 长度，
+	// 再让上层自己数一遍只会多一处可能数错的地方。
+	Appended int
 }
 
 // TagSummary 是一个标签及其书籍数。
