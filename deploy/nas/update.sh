@@ -65,18 +65,27 @@ echo "== 拉取 $IMAGE =="
 docker pull "$IMAGE"
 
 # ---------- 预跑迁移 ----------
+# --entrypoint /norvels 不能少：镜像 ENTRYPOINT 是 "norvels serve"，不覆盖就会
+# 变成 "serve migrate --dry-run"，静默起一个服务、永远看不到迁移计划。
 echo "== 检查待应用迁移 =="
-docker run --rm --user 65532:65532 -v "$DATA_DIR:/data" "$IMAGE" \
-  migrate --db /data/norvels.db --dry-run
+DRY_OUT=$(docker run --rm --user 65532:65532 --entrypoint /norvels \
+  -v "$DATA_DIR:/data" "$IMAGE" migrate --db /data/norvels.db --dry-run 2>&1)
+echo "$DRY_OUT"
 
-PENDING=$(docker run --rm --user 65532:65532 -v "$DATA_DIR:/data" "$IMAGE" \
-  migrate --db /data/norvels.db --dry-run | grep -c '^  0' || true)
+# 输出里必须出现"待应用"。没有就说明 migrate 根本没执行（例如 ENTRYPOINT 覆盖失效），
+# 这时绝不能当成"0 个迁移"继续往下走。
+case "$DRY_OUT" in
+  *待应用*) ;;
+  *) die "migrate --dry-run 输出异常，未识别到迁移计划（检查 --entrypoint 是否生效）" ;;
+esac
+
+PENDING=$(printf '%s\n' "$DRY_OUT" | grep -c '^  0' || true)
 
 if [ "${PENDING:-0}" -gt 0 ]; then
   echo "== 检测到 $PENDING 个待应用迁移，先单独执行（大库可能需要几十分钟）=="
   echo "   期间不要中断；完成后推荐再跑一次 VACUUM 回收空间（见 README）。"
-  docker run --rm --user 65532:65532 -v "$DATA_DIR:/data" "$IMAGE" \
-    migrate --db /data/norvels.db
+  docker run --rm --user 65532:65532 --entrypoint /norvels \
+    -v "$DATA_DIR:/data" "$IMAGE" migrate --db /data/norvels.db
 else
   echo "无待应用迁移，直接重启容器"
 fi

@@ -64,6 +64,20 @@ sudo chown 65532:65532 /vol1/norvels/data/norvels.db
 sqlite3 data/norvels.db 'VACUUM;'
 ```
 
+## 导入新书
+
+1. 把 txt 放到宿主目录 `/vol1/norvels/books/`（容器内是 `/books`，只读挂载）。
+2. 打开「导入管理」，路径填**容器内路径**：
+   - 整个目录：`/books`
+   - 单个文件：`/books/某本书.txt`
+3. 权限必须让容器内的 65532 用户可读，否则会报「路径不存在或不可读」：
+
+   ```bash
+   sudo chmod -R a+rX /vol1/norvels/books
+   ```
+
+> 填宿主路径 `/vol1/norvels/books/...` 是不行的——那是宿主机视角，容器里只有 `/books`。
+
 ## 更新
 
 ```bash
