@@ -194,6 +194,27 @@ describe("api 其余端点都走同一出口", () => {
     expect(body.get("update")).toBe("true");
   });
 
+  it("阅读状态：readStatus 进列表查询，书签三端点路径与方法都对", async () => {
+    const calls: { method?: string; url: string; body?: unknown }[] = [];
+    mockFetch(async (url, init) => {
+      calls.push({ url: String(url), method: init?.method, body: init?.body });
+      return new Response(JSON.stringify({ bookmarks: [] }), { status: 200 });
+    });
+
+    await api.books({ sort: "updated", readStatus: "want" });
+    await api.bookmarks(3);
+    await api.createBookmark(3, { chapterId: 10, paraIndex: 2, label: "第一段" });
+    await api.deleteBookmark(5);
+
+    expect(calls.map((call) => `${call.method ?? "GET"} ${call.url}`)).toEqual([
+      "GET /api/books?sort=updated&readStatus=want",
+      "GET /api/books/3/bookmarks",
+      "POST /api/books/3/bookmarks",
+      "DELETE /api/bookmarks/5",
+    ]);
+    expect(JSON.parse(String(calls[2].body))).toEqual({ chapterId: 10, paraIndex: 2, label: "第一段" });
+  });
+
   it("updateBook 用 PATCH 提交元数据子集并返回详情", async () => {
     const calls: { url?: string; method?: string; body?: unknown }[] = [];
     mockFetch(async (url, init) => {
@@ -201,11 +222,11 @@ describe("api 其余端点都走同一出口", () => {
       return new Response(JSON.stringify({ id: 1, title: "示例书简", volumes: [] }), { status: 200 });
     });
 
-    const updated = await api.updateBook(1, { title: "示例书简", tags: ["武侠", "连载"] });
+    const updated = await api.updateBook(1, { title: "示例书简", tags: ["武侠", "连载"], readStatus: "done" });
 
     expect(calls[0].url).toBe("/api/books/1");
     expect(calls[0].method).toBe("PATCH");
-    expect(JSON.parse(String(calls[0].body))).toEqual({ title: "示例书简", tags: ["武侠", "连载"] });
+    expect(JSON.parse(String(calls[0].body))).toEqual({ title: "示例书简", tags: ["武侠", "连载"], readStatus: "done" });
     expect(updated.title).toBe("示例书简");
   });
 });

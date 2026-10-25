@@ -2,6 +2,7 @@ import type {
   AuthorDetail,
   AuthorSummary,
   BookDetail,
+  Bookmark,
   BookMetaPatch,
   BookSummary,
   ChapterBrief,
@@ -12,6 +13,7 @@ import type {
   ImportJob,
   ImportTrendPoint,
   Page,
+  ReadStatus,
   ReadingProgress,
   SearchResult,
   Stats,
@@ -159,7 +161,12 @@ export interface BookQuery {
   sort?: "updated" | "title" | "chapters" | "words" | "imported";
   page?: number;
   size?: number;
+  /** 阅读状态筛选：want / reading / done；不传即全部（含未标记）。空串不落进 URL。 */
+  readStatus?: Exclude<ReadStatus, "">;
 }
+
+/** 契约文档（docs/specs/2026-10-25-p1-reading.md §2.3）里的名字；与 BookQuery 是同一份参数。 */
+export type BookListQuery = BookQuery;
 
 /** 上传选项：force 对应「重新导入已入库的文件」，update 对应「追更（只追加新章节）」。 */
 export interface UploadOptions {
@@ -208,7 +215,19 @@ export const api = {
       signal: opts.signal,
     });
   },
-  /** 改书名/作者/简介/标签/系列/连载状态：任意子集，返回更新后的详情。 */
+  /** 本书全部书签，按 created_at 倒序；书签 0 条时返回空数组。 */
+  bookmarks: (bookId: number, opts?: RequestOptions) =>
+    request<{ bookmarks: Bookmark[] }>(`/books/${bookId}/bookmarks`, opts),
+  /**
+   * 加书签：同 (chapterId, paraIndex) 已存在时后端 200 并更新 label（幂等，不重复插入），
+   * 新建 201；chapterId 不属于本书、paraIndex < 0 都 400 invalid_param。
+   */
+  createBookmark: (bookId: number, body: { chapterId: number; paraIndex: number; label?: string }, opts?: RequestOptions) =>
+    request<Bookmark>(`/books/${bookId}/bookmarks`, { ...opts, method: "POST", body }),
+  /** 删书签：204；不存在 404 not_found。 */
+  deleteBookmark: (id: number, opts?: RequestOptions) =>
+    request<void>(`/bookmarks/${id}`, { ...opts, method: "DELETE" }),
+  /** 改书名/作者/简介/标签/系列/连载状态/阅读状态：任意子集，返回更新后的详情。 */
   updateBook: (id: number, patch: BookMetaPatch, opts?: RequestOptions) =>
     request<BookDetail>(`/books/${id}`, { ...opts, method: "PATCH", body: patch }),
   /** 删书：204，级联删章节/封面/进度；书不存在 404。 */

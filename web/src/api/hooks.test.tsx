@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AuthorSummary,
   BookDetail,
+  Bookmark,
   BookSummary,
   ChapterDetail,
   HealthReport,
@@ -82,6 +83,17 @@ const mocks = {
   importJobs: vi.fn(async () => ({ items: [job] })),
   readingProgress: vi.fn(async () => ({ items: [progress] })),
   saveProgress: vi.fn(async () => undefined),
+  bookmarks: vi.fn(async (): Promise<{ bookmarks: Bookmark[] }> => ({ bookmarks: [bookmark] })),
+};
+
+const bookmark: Bookmark = {
+  id: 1,
+  chapterId: 2,
+  chapterIdx: 1,
+  chapterTitle: "第二章",
+  paraIndex: 3,
+  label: "雨从傍晚开始下。",
+  createdAt: "2026-10-25T10:00:00.000Z",
 };
 
 const job: ImportJob = {
@@ -168,6 +180,16 @@ describe("各域取数 hook 都能拿到数据", () => {
 
     const reading = renderHook(() => hooks.useReadingProgress());
     await waitFor(() => expect(reading.result.current.data?.items[0].percent).toBe(0.36));
+  });
+
+  it("useBookmarks 取回本书书签，书不存在时不发请求", async () => {
+    const list = renderHook(() => hooks.useBookmarks(1));
+    await waitFor(() => expect(list.result.current.data?.bookmarks[0].label).toBe("雨从傍晚开始下。"));
+    expect(mocks.bookmarks).toHaveBeenCalledWith(1, expect.anything());
+
+    const disabled = renderHook(() => hooks.useBookmarks(null));
+    expect(disabled.result.current.loading).toBe(false);
+    expect(disabled.result.current.data).toBeNull();
   });
 
   it("useSaveProgress 落库失败返回 false 而不是抛错", async () => {

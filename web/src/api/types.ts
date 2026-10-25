@@ -8,6 +8,12 @@ export type BookStatus = "parsed" | "pending" | "failed";
  */
 export type SerialStatus = "" | "ongoing" | "completed";
 
+/**
+ * 阅读状态（P1）：`""` = 未标记（存量书不回填，前端不猜）。
+ * 与解析状态 `status`、连载状态 `serialStatus` 互不覆盖。
+ */
+export type ReadStatus = "" | "want" | "reading" | "done";
+
 /** 导入时从文件带出的附加元数据；目录导入的老书这些字段缺省，前端一律按「没有」处理。 */
 export interface BookMeta {
   language?: string;
@@ -38,6 +44,8 @@ export interface BookMetaPatch {
   seriesIndex?: number;
   /** 连载状态；`""` 即未知。其它取值后端 400 `invalid_param`。 */
   serialStatus?: SerialStatus;
+  /** 阅读状态；`""` 即未标记。其它取值后端 400 `invalid_param`。 */
+  readStatus?: ReadStatus;
 }
 
 export interface UploadAccepted {
@@ -69,6 +77,10 @@ export interface BookSummary extends BookMeta {
   volumeCount: number;
   intro: string;
   status: BookStatus;
+  /** 阅读状态；后端未升级时缺省，前端一律按 `""`（未标记）处理。 */
+  readStatus?: ReadStatus;
+  /** 本书书签总数；缺省时按「还不知道」处理，不展示。 */
+  bookmarkCount?: number;
   importedAt: string;
   updatedAt: string;
 }
@@ -113,6 +125,21 @@ export interface BookDetail extends BookSummary {
    */
   tags?: string[];
   volumes: Volume[];
+}
+
+/**
+ * 书签（段落级）：`paraIndex` 是正文按 `\n` 切段后的段落下标，与后端同一口径。
+ * 列表按 created_at 倒序返回。
+ */
+export interface Bookmark {
+  id: number;
+  chapterId: number;
+  chapterIdx: number;
+  chapterTitle: string;
+  paraIndex: number;
+  /** 默认取该段前 30 字（去空白），可留空 */
+  label: string;
+  createdAt: string;
 }
 
 export interface ChapterDetail {

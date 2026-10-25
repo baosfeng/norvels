@@ -269,7 +269,8 @@ body.h5-sheet-open {
     bottom: 0;
     z-index: 46;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* 6 格：上一章 / 目录 / 书签 / 搜索 / 设置 / 下一章 */
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 2px;
     padding: 6px calc(6px + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 6px)
       calc(6px + env(safe-area-inset-left));

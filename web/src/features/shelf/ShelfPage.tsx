@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../../api/client";
 import { useAuthors, useTags } from "../../api/hooks";
-import type { BookSummary } from "../../api/types";
+import type { BookSummary, ReadStatus } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { CardSkeleton, EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { useShelfMode } from "../../layouts/shelfMode";
 import { formatCount } from "../../lib/format";
+import {
+  READ_STATUS_FILTERS,
+  READ_STATUS_LABELS,
+  nextReadStatus,
+  readStatusFilterLabel,
+} from "../../lib/readStatus";
 import { stripTags } from "../../lib/text";
+import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { useBookFeed } from "../../lib/useBookFeed";
 
@@ -35,6 +43,9 @@ export function ShelfPage() {
   const [sort, setSort] = useState<SortValue>("updated");
   const [authorId, setAuthorId] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
+  const [readStatus, setReadStatus] = useState<Exclude<ReadStatus, ""> | null>(null);
+  // 角标点击后的乐观值：列表重新取数会拿回后端值，这里只兜住「刚点完还没刷新」的空窗
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -47,13 +58,14 @@ export function ShelfPage() {
     sort,
     authorId: authorId ?? undefined,
     tag: tag ?? undefined,
+    readStatus: readStatus ?? undefined,
     size: pageSize,
     mode: isH5 ? "infinite" : "paged",
   });
 
   const { items, total, loading, error, reload, loadMore, hasMore } = feed;
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const filtering = authorId !== null || tag !== null;
+  const filtering = authorId !== null || tag !== null || readStatus !== null;
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "";
   // 老浏览器 / 测试环境没有 IntersectionObserver：改用底部「加载更多」按钮兜底
   const canObserve = typeof IntersectionObserver !== "undefined";
@@ -103,6 +115,30 @@ export function ShelfPage() {
   function resetFilters() {
     setAuthorId(null);
     setTag(null);
+    setReadStatus(null);
+  }
+
+  function chooseReadStatus(next: Exclude<ReadStatus, ""> | null) {
+    setSheetOpen(false);
+    setReadStatus(next);
+    try {
+      window.scrollTo({ top: 0 });
+    } catch {
+      /* 老浏览器与测试环境可能没有 scrollTo：不影响筛选结果 */
+    }
+  }
+
+  /** 角标循环：想读 → 在读 → 已读 → 未标记；先乐观回显，失败再退回原值。 */
+  async function cycleStatus(book: BookSummary) {
+    const current = statusOverrides[book.id] ?? book.readStatus ?? "";
+    const next = nextReadStatus(current);
+    setStatusOverrides((prev) => ({ ...prev, [book.id]: next }));
+    try {
+      await api.updateBook(book.id, { readStatus: next });
+    } catch {
+      setStatusOverrides((prev) => ({ ...prev, [book.id]: current }));
+      showToast("阅读状态没能保存，稍后再试。");
+    }
   }
 
   return (
@@ -127,7 +163,7 @@ export function ShelfPage() {
             aria-expanded={sheetOpen}
             onClick={() => setSheetOpen(true)}
           >
-            排序：{sortLabel}
+            {readStatus === null ? `排序：${sortLabel}` : `${readStatusFilterLabel(readStatus)} · ${sortLabel}`}
           </button>
         ) : null}
       </div>
@@ -140,6 +176,22 @@ export function ShelfPage() {
               {SORTS.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            阅读状态
+            <select
+              className="select"
+              value={readStatus ?? ""}
+              data-testid="filter-read-status"
+              onChange={(e) => chooseReadStatus((e.target.value || null) as Exclude<ReadStatus, ""> | null)}
+            >
+              {READ_STATUS_FILTERS.map((option) => (
+                <option key={option.label} value={option.value ?? ""}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -225,7 +277,13 @@ export function ShelfPage() {
         <>
           <div className={`book-grid ${mode === "list" && !isH5 ? "is-list" : ""}`.trim()} data-testid="shelf-live">
             {items.map((book) => (
-              <BookCard key={book.id} book={book} compact={isH5} />
+              <BookCard
+                key={book.id}
+                book={book}
+                compact={isH5}
+                status={statusOverrides[book.id] ?? book.readStatus ?? ""}
+                onCycle={() => void cycleStatus(book)}
+              />
             ))}
           </div>
 
@@ -301,6 +359,21 @@ export function ShelfPage() {
                 关闭
               </button>
             </div>
+            <div className="sheet-section" role="group" aria-label="阅读状态筛选">
+              <span className="sheet-section-title">阅读状态</span>
+              {READ_STATUS_FILTERS.map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  className={`sheet-option${option.value === readStatus ? " is-active" : ""}`}
+                  data-testid={`read-status-option-${option.value ?? "all"}`}
+                  aria-pressed={option.value === readStatus}
+                  onClick={() => chooseReadStatus(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <div className="sheet-list">
               {SORTS.map((s) => (
                 <button
@@ -345,9 +418,30 @@ function FilterHints({
   );
 }
 
-function BookCard({ book, compact }: { book: BookSummary; compact: boolean }) {
+/** 书卡：角标是独立按钮（不套在链接里，避免交互元素嵌套），点一下循环切换阅读状态。 */
+function BookCard({
+  book,
+  compact,
+  status,
+  onCycle,
+}: {
+  book: BookSummary;
+  compact: boolean;
+  status: ReadStatus;
+  onCycle: () => void;
+}) {
   return (
-    <article className="book-card">
+    <article className="book-card" data-status={status}>
+      <button
+        className="book-status"
+        type="button"
+        data-testid={`book-status-${book.id}`}
+        data-status={status}
+        aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
+        onClick={onCycle}
+      >
+        {READ_STATUS_LABELS[status]}
+      </button>
       <Link className="book-link" to={`/book/${book.id}`}>
         <Cover
           title={book.title}

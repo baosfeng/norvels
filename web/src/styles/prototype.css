@@ -625,3 +625,210 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
   .resume-card .cover{width:72px;aspect-ratio:3/4}
   .search-book .cover{width:40px;aspect-ratio:3/4}
 }
+/* ══ P1 阅读：书架状态角标 / 书签抽屉 / 章节内搜索 ══ */
+@media (max-width: 768px) {
+  .h5-reader-bar button span {
+    font-size: 10.5px;
+  }
+}
+/* 书架书卡角标：独立按钮压在封面角落，点一下循环切换阅读状态 */
+.book-card {
+  position: relative;
+}
+.book-status {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.book-status:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.book-status[data-status="want"] {
+  border-style: dashed;
+}
+.book-status[data-status="reading"] {
+  border-color: var(--accent);
+  color: var(--fg);
+  font-weight: 600;
+}
+.book-status[data-status="done"] {
+  border-color: var(--success-text);
+  color: var(--success-text);
+}
+@media (max-width: 768px) {
+  .book-status {
+    top: 6px;
+    right: 6px;
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+}
+/* H5 排序弹层里的筛选分组 */
+.sheet-section {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.sheet-section-title {
+  padding: 4px 12px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+/* 章节内搜索面板：贴正文顶部，不新增长驻条 */
+.reader-search {
+  position: sticky;
+  top: 0;
+  z-index: 24;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 42rem;
+  margin: 8px auto 0;
+  padding: 8px 10px;
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius);
+  background: var(--r-raised);
+  color: var(--r-fg);
+}
+.reader-search .input {
+  flex: 1 1 160px;
+  min-height: 36px;
+  background: var(--r-bg);
+  border-color: var(--r-border);
+  color: var(--r-fg);
+}
+.reader-search .meta {
+  color: var(--r-muted);
+  font-variant-numeric: tabular-nums;
+}
+.reader-search-actions {
+  display: flex;
+  gap: 6px;
+}
+.reader-search .btn {
+  min-height: 36px;
+  border-color: var(--r-border);
+  background: var(--r-surface);
+  color: var(--r-fg);
+}
+.reader-search .btn[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+@media (max-width: 768px) {
+  /* H5 顶栏是绝对定位的控制层：面板让开它，不叠在标题上 */
+  .reader-search {
+    margin-top: 52px;
+    padding: 6px 8px;
+  }
+  .reader-search .input,
+  .reader-search .btn {
+    min-height: 44px;
+  }
+}
+.reader-content mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--accent), transparent 62%);
+  color: inherit;
+}
+.reader-content mark.is-current {
+  background: var(--accent);
+  color: var(--r-bg);
+}
+/* 书签抽屉 */
+.bookmark-add {
+  flex: none;
+  width: 100%;
+  margin: 12px 0 8px;
+  border-color: var(--r-border);
+  background: var(--r-surface);
+  color: var(--r-fg);
+}
+.bookmark-add[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+.bookmark-list {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 8px;
+}
+.bookmark-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-bottom: 1px solid var(--r-border);
+}
+.bookmark-row.is-current {
+  background: color-mix(in oklab, var(--r-fg), transparent 92%);
+}
+.bookmark-jump {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--r-fg);
+  font-size: 13.5px;
+  text-align: left;
+}
+.bookmark-jump .num {
+  font-size: 11px;
+  color: var(--r-muted);
+}
+.bookmark-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.bookmark-delete {
+  flex: none;
+  align-self: center;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--r-muted);
+  font-size: 12.5px;
+}
+.bookmark-delete:hover {
+  color: var(--danger-text);
+  border-color: var(--danger-text);
+}
+.bookmark-delete[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+@media (max-width: 768px) {
+  .bookmark-delete {
+    min-height: 44px;
+  }
+}
