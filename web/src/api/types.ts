@@ -192,7 +192,8 @@ export interface SearchResult {
 export interface ImportJob {
   id: number;
   sourceDir: string;
-  status: "queued" | "running" | "completed" | "failed" | "canceled";
+  /** completed_with_errors = 部分文件失败（迁移 0012 起由逐文件终态算出来） */
+  status: "queued" | "running" | "completed" | "completed_with_errors" | "failed" | "canceled";
   total: number;
   imported: number;
   skipped: number;
@@ -201,6 +202,67 @@ export interface ImportJob {
   finishedAt: string | null;
   message: string;
   errors?: { filePath: string; reason: string }[];
+  /** 失败文件数（= import_job_files 里 failed 的条数）；后端未升级时缺省 */
+  failedCount?: number;
+}
+
+/** 导入任务的逐文件终态；重试按 `source` 重放。 */
+export type ImportFileStatus = "imported" | "failed" | "skipped" | "unsupported" | "canceled";
+
+export interface ImportJobFile {
+  id: number;
+  /** 可重放源：目录文件是绝对路径；zip 条目是 `<zip 绝对路径>:<包内路径>` */
+  source: string;
+  /** 只用于展示的路径（可能是相对路径或伪路径） */
+  displayPath: string;
+  status: ImportFileStatus;
+  reason: string;
+  /** 导入成功的书 id；失败 / 跳过为 0 */
+  bookId: number;
+  updatedAt: string;
+}
+
+export interface ImportJobFiles {
+  files: ImportJobFile[];
+  /** 超过 1000 条时后端只返回前面部分 */
+  truncated?: boolean;
+}
+
+/** 只预检（dry-run）报告：不建任务、不占锁、不写库，口径与真实导入一致。 */
+export interface DryRunReport {
+  /** 目录条目 > 200 时只解析前 200 条 */
+  truncated: boolean;
+  files: {
+    total: number;
+    willImport: number;
+    duplicate: number;
+    unsupported: number;
+    failed: number;
+  };
+  books: { new: number; duplicate: number; split: number };
+  /** 最多 20 条，按扫描顺序 */
+  sample: DryRunSample[];
+  /** 最多 50 条 */
+  errors?: { source: string; reason: string }[];
+}
+
+export interface DryRunSample {
+  source: string;
+  title: string;
+  chapters: number;
+  words: number;
+  duplicate: boolean;
+  reason: string;
+}
+
+/** 词表规则：命中关键词就给书打这个标签（导入时执行，只增不删，不覆盖手动标签）。 */
+export interface TagRule {
+  tag: string;
+  keywords: string[];
+}
+
+export interface TagRules {
+  rules: TagRule[];
 }
 
 export interface Stats {

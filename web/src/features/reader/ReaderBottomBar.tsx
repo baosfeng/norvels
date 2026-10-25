@@ -39,6 +39,13 @@ function IconBookmark() {
     </svg>
   );
 }
+function IconShelf() {
+  return (
+    <svg viewBox="0 0 24 24" {...ICON}>
+      <path d="M4 5h16M6 5v14M18 5v14M4 19h16M9 9h6M9 13h6" />
+    </svg>
+  );
+}
 function IconSearch() {
   return (
     <svg viewBox="0 0 24 24" {...ICON}>
@@ -50,7 +57,7 @@ function IconSearch() {
 
 /**
  * H5 底部控制栏：与顶部 header 同属控制层，一起显隐。
- * 上一章 / 目录 / 书签 / 搜索 / 设置 / 下一章，每个可点区域 ≥48px。
+ * 上一章 / 目录 / 书签 / 搜索 / 书架 / 设置 / 下一章，每个可点区域 ≥48px。
  */
 export function ReaderBottomBar({
   hidden,
@@ -59,6 +66,7 @@ export function ReaderBottomBar({
   onPrev,
   onNext,
   onOpenDrawer,
+  onGoShelf,
   onOpenBookmarks,
   onToggleSearch,
   onToggleSettings,
@@ -73,6 +81,7 @@ export function ReaderBottomBar({
   onPrev: () => void;
   onNext: () => void;
   onOpenDrawer: () => void;
+  onGoShelf: () => void;
   onOpenBookmarks: () => void;
   onToggleSearch: () => void;
   onToggleSettings: () => void;
@@ -98,6 +107,10 @@ export function ReaderBottomBar({
       <button type="button" aria-label="搜索本章" aria-expanded={searchOpen} onClick={onToggleSearch}>
         <IconSearch />
         <span>搜索</span>
+      </button>
+      <button type="button" aria-label="返回书架" onClick={onGoShelf}>
+        <IconShelf />
+        <span>书架</span>
       </button>
       <button type="button" aria-label="阅读设置" aria-expanded={settingsOpen} onClick={onToggleSettings}>
         <IconSettings />

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useBook, useBookmarks, useChapter, useSaveProgress } from "../../api/hooks";
 import type { Bookmark, ChapterBrief } from "../../api/types";
@@ -40,6 +40,7 @@ function readNumber(key: string, fallback: number): number {
 export function ReaderPage() {
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isH5 = useIsH5();
   const bookId = Number(params.bookId);
   const chapterId = Number(params.chapterId);
@@ -133,6 +134,17 @@ export function ReaderPage() {
     if (chapters.length === 0 || index < 0) return;
     void saveProgress({ bookId, chapterId, percent });
   }, [bookId, chapterId, chapters.length, index, percent, saveProgress]);
+
+  /** 回书架：直接落到 /shelf（带 restore），书架按会话缓存恢复滚动位置与已加载列表 */
+  const goShelf = useCallback(() => {
+    navigate("/shelf", { state: { restore: true } });
+  }, [navigate]);
+
+  /** 返回：优先浏览器历史（从哪来回哪去），没有历史时才回书架 */
+  const goBack = useCallback(() => {
+    if (location.key !== "default") navigate(-1);
+    else navigate("/shelf", { state: { restore: true } });
+  }, [location.key, navigate]);
 
   const goChapter = useCallback(
     (target: ChapterBrief | null) => {
@@ -302,9 +314,9 @@ export function ReaderPage() {
         data-od-id="reader-top"
         aria-hidden={isH5 && !controls.visible}
       >
-        <Link className="icon-btn" to={bookId ? `/book/${bookId}` : "/shelf"} aria-label="返回目录">
+        <button className="icon-btn" type="button" aria-label="返回目录" onClick={goBack}>
           <ChevronLeftIcon />
-        </Link>
+        </button>
         <div className="reader-top-title">
           <strong>{bookTitle || "正在打开"}</strong>
           <span data-testid="reader-top-progress">
@@ -314,6 +326,9 @@ export function ReaderPage() {
           </span>
         </div>
         <div className="reader-top-actions">
+          <button className="btn" type="button" aria-label="返回书架" onClick={goShelf}>
+            书架
+          </button>
           <button
             className="btn"
             type="button"
@@ -433,6 +448,7 @@ export function ReaderPage() {
           onPrev={() => goChapter(prev)}
           onNext={() => goChapter(next)}
           onOpenDrawer={openDirectory}
+          onGoShelf={goShelf}
           onToggleSettings={() => setSettingsOpen((v) => !v)}
           onOpenBookmarks={openBookmarks}
           onToggleSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { useAuthors, useTags } from "../../api/hooks";
@@ -15,8 +15,15 @@ import {
 } from "../../lib/readStatus";
 import { stripTags } from "../../lib/text";
 import { showToast } from "../../lib/toastStore";
+import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { useIsH5 } from "../../lib/tier";
-import { useBookFeed } from "../../lib/useBookFeed";
+import {
+  SHELF_REFRESH_MIN_AGE_MS,
+  readShelfCache,
+  writeShelfCache,
+  type ShelfFromState,
+} from "../../lib/shelfCache";
+import { useBookFeed, type BookFeedRestore } from "../../lib/useBookFeed";
 
 const SORTS = [
   { value: "updated", label: "最近更新" },
@@ -40,20 +47,43 @@ const H5_PAGE_SIZE = 30;
 export function ShelfPage() {
   const isH5 = useIsH5();
   const { mode } = useShelfMode();
-  const [sort, setSort] = useState<SortValue>("updated");
-  const [authorId, setAuthorId] = useState<number | null>(null);
-  const [tag, setTag] = useState<string | null>(null);
-  const [readStatus, setReadStatus] = useState<Exclude<ReadStatus, ""> | null>(null);
+  // /read 在 AppShell 之外：进阅读器时本页整体卸载，靠会话缓存把列表与滚动位置带回来
+  const cached = useMemo(() => readShelfCache(), []);
+  const [sort, setSort] = useState<SortValue>(() =>
+    SORTS.some((option) => option.value === cached?.sort) ? (cached?.sort as SortValue) : "updated",
+  );
+  const [authorId, setAuthorId] = useState<number | null>(cached?.authorId ?? null);
+  const [tag, setTag] = useState<string | null>(cached?.tag ?? null);
+  const [readStatus, setReadStatus] = useState<Exclude<ReadStatus, ""> | null>(cached?.readStatus ?? null);
   // 角标点击后的乐观值：列表重新取数会拿回后端值，这里只兜住「刚点完还没刷新」的空窗
   const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 多选模式：右上角「选择」进入；选中后批量设作者（循环 PATCH，纯前端）
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // 最近打开的书（返回时滚进视口并高亮）与「滚动位置只恢复一次」的标记
+  const lastBookRef = useRef<number | null>(cached?.lastBookId ?? null);
+  const restoredRef = useRef(false);
+  // 记住「最后一次看到的滚动位置」：卸载时 DOM 已换成更短的下一页，再读 window.scrollY 会被夹到 0
+  const scrollYRef = useRef(cached?.scrollTop ?? 0);
 
   // 筛选项的候选：作者与标签都是 PC 专属，H5 不发这两个请求
   const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: !isH5 });
   const tagOptions = useTags({ enabled: !isH5 });
 
   const pageSize = isH5 ? H5_PAGE_SIZE : PAGE_SIZE;
+  // 缓存命中就先用它渲染；够新（60 秒内）时连后台刷新都不做，返回瞬间不再发第 1 页
+  const restore = useMemo<BookFeedRestore | undefined>(() => {
+    if (!cached || cached.size !== pageSize || cached.items.length === 0) return undefined;
+    return {
+      items: cached.items,
+      total: cached.total,
+      page: cached.page,
+      refresh: Date.now() - cached.savedAt > SHELF_REFRESH_MIN_AGE_MS,
+    };
+  }, [cached, pageSize]);
   const feed = useBookFeed({
     sort,
     authorId: authorId ?? undefined,
@@ -61,6 +91,7 @@ export function ShelfPage() {
     readStatus: readStatus ?? undefined,
     size: pageSize,
     mode: isH5 ? "infinite" : "paged",
+    restore,
   });
 
   const { items, total, loading, error, reload, loadMore, hasMore } = feed;
@@ -69,6 +100,82 @@ export function ShelfPage() {
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "";
   // 老浏览器 / 测试环境没有 IntersectionObserver：改用底部「加载更多」按钮兜底
   const canObserve = typeof IntersectionObserver !== "undefined";
+
+  /** 把当前列表状态写进会话缓存：滚动位置取实时值，最近打开的书取 ref（避免闭包里的旧 state）。 */
+  const persistShelf = useCallback(() => {
+    if (items.length === 0) return;
+    writeShelfCache({
+      sort,
+      authorId,
+      tag,
+      readStatus,
+      size: pageSize,
+      mode: isH5 ? "infinite" : "paged",
+      items,
+      total,
+      page: feed.page,
+      scrollTop: Math.round(scrollYRef.current),
+      lastBookId: lastBookRef.current,
+    });
+  }, [sort, authorId, tag, readStatus, pageSize, isH5, items, total, feed.page]);
+
+  /** 进详情/阅读器前记一下「最近打开的书 + 当前滚动位置」，返回时据此定位。 */
+  function rememberBook(id: number) {
+    lastBookRef.current = id;
+    scrollYRef.current = typeof window === "undefined" ? 0 : window.scrollY || 0;
+    persistShelf();
+    writeShelfCache({
+      sort,
+      authorId,
+      tag,
+      readStatus,
+      size: pageSize,
+      mode: isH5 ? "infinite" : "paged",
+      items,
+      total,
+      page: feed.page,
+      scrollTop: Math.round(scrollYRef.current),
+      lastBookId: id,
+    });
+  }
+
+  // 滚动停止 300ms 写一次；卸载（进阅读器）前再补一次，保证返回时位置准确
+  useEffect(() => {
+    let timer = 0;
+    function onScroll() {
+      scrollYRef.current = window.scrollY || 0;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => persistShelf(), 300);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("scroll", onScroll);
+      persistShelf();
+    };
+  }, [persistShelf]);
+
+  // 加载完成 / 筛选排序变化：立刻落一次
+  useEffect(() => {
+    persistShelf();
+  }, [persistShelf, items.length]);
+
+  // 恢复滚动位置，再把最近打开的那本滚进视口并高亮 1.5 秒（已经在视口里就只高亮，不动位置）
+  useEffect(() => {
+    if (restoredRef.current || !cached || items.length === 0) return;
+    restoredRef.current = true;
+    scrollYRef.current = cached.scrollTop;
+    window.scrollTo({ top: cached.scrollTop });
+    const target = cached.lastBookId;
+    if (target === null) return;
+    const node = document.querySelector<HTMLElement>(`[data-book-id="${target}"]`);
+    if (!node) return;
+    // 位置优先：缓存里有滚动位置就按它恢复，不再把最近那本拽到中间（否则位置差会被放大）。
+    // 只有没有可用位置（新会话 / 从详情页深链进来）时才把这本书滚进视口居中。
+    if (cached.scrollTop <= 0) node.scrollIntoView({ block: "center" });
+    node.classList.add("is-recent");
+    window.setTimeout(() => node.classList.remove("is-recent"), 1500);
+  }, [cached, items.length]);
 
   // H5：滚到底自动取下一页。换排序/筛选会换查询键，钩子自己丢弃在途响应并回到第 1 页。
   useEffect(() => {
@@ -141,6 +248,23 @@ export function ShelfPage() {
     }
   }
 
+  function toggleSelecting() {
+    setSelecting((prev) => !prev);
+    setSelected(new Set());
+    setBatchOpen(false);
+  }
+
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const selectedBooks = items.filter((book) => selected.has(book.id));
+
   return (
     <section className="view-shelf" data-testid="view:shelf" data-od-id="shelf">
       <div className="page-head">
@@ -154,18 +278,40 @@ export function ShelfPage() {
             </p>
           )}
         </div>
-        {isH5 ? (
+        <div className="shelf-head-actions">
           <button
-            className="btn shelf-sort-trigger"
+            className="btn"
             type="button"
-            data-testid="shelf-sort-trigger"
-            aria-haspopup="dialog"
-            aria-expanded={sheetOpen}
-            onClick={() => setSheetOpen(true)}
+            data-testid="shelf-select-toggle"
+            aria-pressed={selecting}
+            onClick={toggleSelecting}
           >
-            {readStatus === null ? `排序：${sortLabel}` : `${readStatusFilterLabel(readStatus)} · ${sortLabel}`}
+            {selecting ? "退出选择" : "选择"}
           </button>
-        ) : null}
+          {selecting ? (
+            <button
+              className="btn btn-primary"
+              type="button"
+              data-testid="shelf-batch-author"
+              disabled={selected.size === 0}
+              onClick={() => setBatchOpen(true)}
+            >
+              批量设作者（{selected.size}）
+            </button>
+          ) : null}
+          {isH5 ? (
+            <button
+              className="btn shelf-sort-trigger"
+              type="button"
+              data-testid="shelf-sort-trigger"
+              aria-haspopup="dialog"
+              aria-expanded={sheetOpen}
+              onClick={() => setSheetOpen(true)}
+            >
+              {readStatus === null ? `排序：${sortLabel}` : `${readStatusFilterLabel(readStatus)} · ${sortLabel}`}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {isH5 ? null : (
@@ -283,6 +429,10 @@ export function ShelfPage() {
                 compact={isH5}
                 status={statusOverrides[book.id] ?? book.readStatus ?? ""}
                 onCycle={() => void cycleStatus(book)}
+                selecting={selecting}
+                selected={selected.has(book.id)}
+                onSelect={() => toggleSelected(book.id)}
+                onOpen={() => rememberBook(book.id)}
               />
             ))}
           </div>
@@ -391,6 +541,19 @@ export function ShelfPage() {
           </div>
         </div>
       ) : null}
+      {batchOpen ? (
+        <BatchAuthorDialog
+          books={selectedBooks}
+          onClose={() => setBatchOpen(false)}
+          onSaved={(count) => {
+            setBatchOpen(false);
+            setSelecting(false);
+            setSelected(new Set());
+            reload();
+            showToast(`已批量更新 ${count} 本书的作者`);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -418,49 +581,98 @@ function FilterHints({
   );
 }
 
-/** 书卡：角标是独立按钮（不套在链接里，避免交互元素嵌套），点一下循环切换阅读状态。 */
+/**
+ * 书卡：角标是独立按钮（不套在链接里，避免交互元素嵌套），点一下循环切换阅读状态。
+ * 多选模式下整张卡片变成选择按钮（同样不嵌套链接），右上角显示勾选状态。
+ */
 function BookCard({
   book,
   compact,
   status,
   onCycle,
+  selecting,
+  selected,
+  onSelect,
+  onOpen,
 }: {
   book: BookSummary;
   compact: boolean;
   status: ReadStatus;
   onCycle: () => void;
+  selecting: boolean;
+  selected: boolean;
+  onSelect: () => void;
+  onOpen: () => void;
 }) {
+  // 角标放在底部元信息行里（静态排布），不再绝对定位压书名
+  const badge = (
+    <button
+      className="book-status"
+      type="button"
+      data-testid={`book-status-${book.id}`}
+      data-status={status}
+      aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
+      onClick={onCycle}
+    >
+      {READ_STATUS_LABELS[status]}
+    </button>
+  );
+
+  const content = (
+    <>
+      <Cover
+        title={book.title}
+        bookId={book.id}
+        updatedAt={book.updatedAt}
+        hasCover={book.hasCover}
+        showLabel={!compact}
+      />
+      <div className="book-card-body">
+        <h3 className="book-title">{book.title}</h3>
+        <p className="book-author">{book.authorName || "佚名"}</p>
+        <p className="book-meta">
+          <span className="num">{formatCount(book.chapterCount)} 章</span>
+          <span className="num">{formatCount(book.wordCount)} 字</span>
+          {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
+          {selecting ? null : badge}
+        </p>
+        {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
+      </div>
+    </>
+  );
+
   return (
-    <article className="book-card" data-status={status}>
-      <button
-        className="book-status"
-        type="button"
-        data-testid={`book-status-${book.id}`}
-        data-status={status}
-        aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
-        onClick={onCycle}
-      >
-        {READ_STATUS_LABELS[status]}
-      </button>
-      <Link className="book-link" to={`/book/${book.id}`}>
-        <Cover
-          title={book.title}
-          bookId={book.id}
-          updatedAt={book.updatedAt}
-          hasCover={book.hasCover}
-          showLabel={!compact}
-        />
-        <div className="book-card-body">
-          <h3>{book.title}</h3>
-          <p className="book-author">{book.authorName || "佚名"}</p>
-          <p className="book-meta">
-            <span className="num">{formatCount(book.chapterCount)} 章</span>
-            <span className="num">{formatCount(book.wordCount)} 字</span>
-            {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
-          </p>
-          {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
-        </div>
-      </Link>
+    <article
+      className={`book-card${selecting ? " is-selecting" : ""}${selected ? " is-selected" : ""}`}
+      data-status={status}
+      data-book-id={book.id}
+    >
+      {selecting ? (
+        <button
+          className="book-link"
+          type="button"
+          aria-pressed={selected}
+          aria-label={`选择《${book.title}》`}
+          data-testid={`book-select-${book.id}`}
+          onClick={onSelect}
+        >
+          {content}
+        </button>
+      ) : (
+        <Link
+          className="book-link"
+          to={`/book/${book.id}`}
+          state={{ from: "shelf", scrollTop: Math.round(typeof window === "undefined" ? 0 : window.scrollY || 0) } satisfies ShelfFromState}
+          onClick={onOpen}
+        >
+          {content}
+        </Link>
+      )}
+      {selecting ? (
+        <span className="book-check" aria-hidden="true">
+          {selected ? "✓" : ""}
+        </span>
+      ) : null}
     </article>
   );
 }

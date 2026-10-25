@@ -84,6 +84,20 @@ const mocks = {
   readingProgress: vi.fn(async () => ({ items: [progress] })),
   saveProgress: vi.fn(async () => undefined),
   bookmarks: vi.fn(async (): Promise<{ bookmarks: Bookmark[] }> => ({ bookmarks: [bookmark] })),
+  tagRules: vi.fn(async () => ({ rules: [{ tag: "奇幻", keywords: ["魔法"] }] })),
+  importJobFiles: vi.fn(async () => ({
+    files: [
+      {
+        id: 1,
+        source: "/path/to/txt/a.txt",
+        displayPath: "a.txt",
+        status: "failed" as const,
+        reason: "parse_failed",
+        bookId: 0,
+        updatedAt: "2026-10-25T10:01:00.000Z",
+      },
+    ],
+  })),
 };
 
 const bookmark: Bookmark = {
@@ -188,6 +202,19 @@ describe("各域取数 hook 都能拿到数据", () => {
     expect(mocks.bookmarks).toHaveBeenCalledWith(1, expect.anything());
 
     const disabled = renderHook(() => hooks.useBookmarks(null));
+    expect(disabled.result.current.loading).toBe(false);
+    expect(disabled.result.current.data).toBeNull();
+  });
+
+  it("useTagRules 与 useFailedFiles 都走同一出口，任务为空时不发请求", async () => {
+    const rules = renderHook(() => hooks.useTagRules());
+    await waitFor(() => expect(rules.result.current.data?.rules[0].tag).toBe("奇幻"));
+
+    const files = renderHook(() => hooks.useFailedFiles(7));
+    await waitFor(() => expect(files.result.current.data?.files[0].displayPath).toBe("a.txt"));
+    expect(mocks.importJobFiles).toHaveBeenCalledWith(7, "failed", expect.anything());
+
+    const disabled = renderHook(() => hooks.useFailedFiles(null));
     expect(disabled.result.current.loading).toBe(false);
     expect(disabled.result.current.data).toBeNull();
   });
