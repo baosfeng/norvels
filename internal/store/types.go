@@ -257,6 +257,9 @@ type TagSummary struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
 	BookCount int    `json:"bookCount"`
+	// Created 只在 CreateTag 的返回值里被置位，供 api 区分 201（新建）与 200（同名已存在）。
+	// 不进 JSON：前端不需要知道，列表里的「是否本次新建」也没有意义。
+	Created bool `json:"-"`
 }
 
 // ImportJobDetail 是任务详情（附失败明细，最多 200 条）。
