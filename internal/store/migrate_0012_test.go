@@ -12,7 +12,7 @@ func TestMigrate0012AddsJobFilesAndTagSource(t *testing.T) {
 	st := newTestStore(t)
 	requireImportJobFilesSchema(t, ctx, st)
 
-	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version = 12"); err != nil {
+	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version >= 12"); err != nil {
 		t.Fatalf("回退版本: %v", err)
 	}
 	if _, err := st.MigrateTo(ctx, LatestVersion()); err != nil {

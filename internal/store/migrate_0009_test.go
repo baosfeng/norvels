@@ -18,7 +18,7 @@ func TestMigrate0009AddsBookAuthors(t *testing.T) {
 
 	requireBookAuthorsSchema(t, ctx, st)
 
-	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version = 9"); err != nil {
+	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version >= 9"); err != nil {
 		t.Fatalf("回退版本: %v", err)
 	}
 	if _, err := st.MigrateTo(ctx, LatestVersion()); err != nil {

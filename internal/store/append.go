@@ -15,22 +15,29 @@ import (
 // 所有章节 id 变化，读者的进度记录随即悬空。只有「旧章节一行不动、只往后加」才能
 // 既追更又保住进度。因此这里不做任何模糊匹配：对不上就直接报 ErrNotAppendable。
 
-// appendBookInTx 把 b 相对库中已有章节多出来的尾部章节追加进书。
-// 调用方（SaveBook）已确认 bookID 有效且 opt.Update 为真。
-func appendBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook, w bookWrite) error {
+// appendBookInTx 把 b 相对库中已有章节多出来的尾部章节追加进书，返回追加章数。
+//
+// 调用方（SaveBook）已确认 bookID 有效且 opt.Update 为真。返回值就是 tail 长度：
+// 追更角标（books.new_chapters）的累加口径只有这里算过一次，上层直接拿去用。
+func appendBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook, w bookWrite) (int, error) {
 	oldTitles, err := loadChapterTitlesInTx(ctx, tx, bookID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := checkAppendable(oldTitles, b.Chapters); err != nil {
-		return err
+		return 0, err
 	}
+	appended := 0
 	if tail := b.Chapters[len(oldTitles):]; len(tail) > 0 {
 		if err := appendChaptersInTx(ctx, tx, bookID, b, tail); err != nil {
-			return err
+			return 0, err
 		}
+		appended = len(tail)
 	}
-	return updateBookAfterAppend(ctx, tx, bookID, w)
+	if err := updateBookAfterAppend(ctx, tx, bookID, w); err != nil {
+		return 0, err
+	}
+	return appended, nil
 }
 
 // loadChapterTitlesInTx 按目录顺序读已有章节标题（排序与 GetBook 一致）。

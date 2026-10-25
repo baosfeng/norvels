@@ -128,6 +128,7 @@ func seedDeletableBook(t *testing.T, ctx context.Context, st *Store) int64 {
 	if _, _, err := st.AddBookmark(ctx, res.BookID, chapterID, 0, "样本书签"); err != nil {
 		t.Fatalf("AddBookmark: %v", err)
 	}
+	seedP3DeleteRows(t, ctx, st, res.BookID, chapterID)
 	// 自检：造出来的样本确实每张子表都有行，否则上面的「清零」断言是空转。
 	for _, table := range bookCascadeTables {
 		if n := bookRowCount(t, ctx, st, table, res.BookID); n == 0 && table != "chapter_blocks" {
@@ -135,6 +136,33 @@ func seedDeletableBook(t *testing.T, ctx context.Context, st *Store) int64 {
 		}
 	}
 	return res.BookID
+}
+
+// seedP3DeleteRows 造 0014 的两张无外键子表的行：阅读会话与书单关联。
+//
+// 直接写 SQL 而不调 store 方法：这里验证的是删除清单，不需要经过写入侧的校验；
+// 两张表都没有 books 外键，漏进 bookCascadeTables 就永远删不掉。
+func seedP3DeleteRows(t *testing.T, ctx context.Context, st *Store, bookID, chapterID int64) {
+	t.Helper()
+	if _, err := st.DB().ExecContext(ctx,
+		"INSERT INTO reading_sessions(book_id, chapter_id, started_at, seconds) VALUES (?, ?, ?, 60)",
+		bookID, chapterID, formatTime(nowUTC())); err != nil {
+		t.Fatalf("写阅读会话: %v", err)
+	}
+	if _, err := st.DB().ExecContext(ctx,
+		"INSERT INTO collections(name, created_at) VALUES ('待删书单', ?)", formatTime(nowUTC())); err != nil {
+		t.Fatalf("写书单: %v", err)
+	}
+	var collID int64
+	if err := st.DB().QueryRowContext(ctx,
+		"SELECT id FROM collections WHERE name = '待删书单'").Scan(&collID); err != nil {
+		t.Fatalf("读书单 id: %v", err)
+	}
+	if _, err := st.DB().ExecContext(ctx,
+		"INSERT INTO collection_books(collection_id, book_id, added_at) VALUES (?, ?, ?)",
+		collID, bookID, formatTime(nowUTC())); err != nil {
+		t.Fatalf("写书单关联: %v", err)
+	}
 }
 
 // bookRowCount 数某张子表里属于某本书的行数。

@@ -44,7 +44,7 @@ func TestMigrate0013Idempotent(t *testing.T) {
 	before := volumeTitlesOf(t, ctx, st, book)
 
 	logs := captureMigrationLog(t)
-	mustExec(t, ctx, st, "DELETE FROM schema_migrations WHERE version = 13")
+	mustExec(t, ctx, st, "DELETE FROM schema_migrations WHERE version >= 13")
 	if _, err := st.MigrateTo(ctx, LatestVersion()); err != nil {
 		t.Fatalf("重跑 0013（应为幂等）: %v", err)
 	}

@@ -21,6 +21,12 @@ type BookQuery struct {
 	// SerialStatus 是连载状态筛选：''（不过滤）| ongoing | completed | none（= 未知）。
 	// none 是「筛出没标状态的存量书」的哨兵值——空串已经被「不过滤」占用。
 	SerialStatus string
+	// Series 是系列名精确匹配（TRIM 后比较），空表示不过滤（P3）。
+	Series string
+	// Rating 是评分筛选 1–5；0 表示不过滤（0 本身是「未评」，不能拿来筛）。
+	Rating int
+	// Collection 是书单 id 筛选；0 表示不过滤。
+	Collection int64
 }
 
 // AuthorQuery 描述作者列表的过滤与排序。
@@ -81,6 +87,10 @@ type BookSummary struct {
 	HasCover bool `json:"hasCover"`
 	// Format 是来源格式：txt / epub。
 	Format string `json:"format,omitempty"`
+	// Rating 是评分 0–5（0014 起）：0 = 未评，不参与 rating 筛选与 sort=rating。
+	Rating int `json:"rating"`
+	// NewChapters 是追更累计的新章数（0014 起），书架/详情角标读它，ack 后清零。
+	NewChapters int `json:"newChapters"`
 }
 
 // VolumeNode 是书籍详情里的一卷。
@@ -240,6 +250,10 @@ type SaveResult struct {
 	BookID  int64
 	Updated bool // true 表示覆盖更新，false 表示新建
 	Skipped bool // true 表示幂等跳过
+	// Appended 是追更时本次追加的章节数（新建/覆盖/跳过为 0）。
+	// 调用方（importer）用它作为 AddNewChapters 的入参：库层已经算过 tail 长度，
+	// 再让上层自己数一遍只会多一处可能数错的地方。
+	Appended int
 }
 
 // TagSummary 是一个标签及其书籍数。
@@ -247,6 +261,9 @@ type TagSummary struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
 	BookCount int    `json:"bookCount"`
+	// Created 只在 CreateTag 的返回值里被置位，供 api 区分 201（新建）与 200（同名已存在）。
+	// 不进 JSON：前端不需要知道，列表里的「是否本次新建」也没有意义。
+	Created bool `json:"-"`
 }
 
 // ImportJobDetail 是任务详情（附失败明细，最多 200 条）。

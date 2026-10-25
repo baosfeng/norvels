@@ -31,6 +31,22 @@ func bookFilter(q BookQuery) ([]string, []any) {
 		where = append(where, "b.read_status = ?")
 		args = append(args, rs)
 	}
+	// 系列名与写入侧同口径（TRIM）；空系列不参与筛选。
+	if se := strings.TrimSpace(q.Series); se != "" {
+		where = append(where, "TRIM(b.series) = ?")
+		args = append(args, se)
+	}
+	// 评分 0 = 未评，不作为一个可见筛选项（与「未标记不筛」同一取舍）。
+	if q.Rating > 0 {
+		where = append(where, "b.rating = ?")
+		args = append(args, q.Rating)
+	}
+	// 书单是 M:N 关联，存在性子查询即可（collection_books 很小，不必 JOIN 去重）。
+	if q.Collection != 0 {
+		where = append(where, "EXISTS (SELECT 1 FROM collection_books cb "+
+			"WHERE cb.book_id = b.id AND cb.collection_id = ?)")
+		args = append(args, q.Collection)
+	}
 	// 连载状态：none 是「未知（''）」的哨兵值，其余按取值精确匹配。
 	if ss := strings.TrimSpace(q.SerialStatus); ss != "" {
 		if ss == SerialStatusNone {
