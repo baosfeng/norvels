@@ -138,6 +138,12 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("GET /api/stats/import-trend", s.handleImportTrend)
 	mux.HandleFunc("GET /api/reading/progress", s.handleListProgress)
 	mux.HandleFunc("PUT /api/reading/progress", s.handleSaveProgress)
+	// 阅读时长与历史（P3）：会话明细 → 统计/热力图与按书聚合的历史。
+	mux.HandleFunc("POST /api/reading/sessions", s.handleAddReadingSession)
+	mux.HandleFunc("GET /api/reading/history", s.handleReadingHistory)
+	mux.HandleFunc("GET /api/stats/reading", s.handleReadingStats)
+	// 追更角标确认：读完最后一章后清零 new_chapters。
+	mux.HandleFunc("POST /api/books/{id}/ack-new-chapters", s.handleAckNewChapters)
 	mux.HandleFunc("GET "+LoginPath, s.handleLoginPage)
 	mux.HandleFunc("POST "+LoginPath, s.handleLoginSubmit)
 	mux.HandleFunc("POST "+logoutPath, s.handleLogout)
