@@ -1,0 +1,50 @@
+# norvels NAS 部署编排（飞牛 fnOS / 群晖 / 威联通等 x86 或 arm64 设备）
+#
+# 与 deploy/compose.yml 的区别：这里面向"镜像已经发布、机器上没有源码"的部署，
+# 数据卷用绝对路径（NAS 上通常落在独立数据盘），并附带 .env 与 update.sh。
+#
+# 首次部署、更新、备份的完整步骤见同目录 README.md。
+
+name: norvels
+
+services:
+  norvels:
+    # 生产请钉具体版本；latest 仅用于第一次试装。
+    image: bsfeng/norvels:${NORVELS_VERSION:-latest}
+    container_name: norvels
+    ports:
+      - "${NORVELS_PORT:-8080}:8080"
+    environment:
+      NORVELS_ADDR: ":8080"
+      NORVELS_DB: "/data/norvels.db"
+      NORVELS_HEALTH_URL: "http://127.0.0.1:8080/api/health"
+      TZ: "${TZ:-Asia/Shanghai}"
+      # 只在小局域网里用可以留空；要从公网访问就设一串随机值。
+      NORVELS_AUTH_TOKEN: "${NORVELS_AUTH_TOKEN:-}"
+    volumes:
+      # 数据库目录：SQLite 主库 + WAL + SHM 都在这里。
+      # 放独立数据盘（如 /vol1/norvels/data），不要放在系统分区。
+      - "${NORVELS_DATA_DIR:-./data}:/data"
+      # 小说 txt 源目录，只读挂载，导入新书时才会用到；不导入可以留空目录。
+      - "${NORVELS_BOOKS_DIR:-./books}:/books:ro"
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      # 首次启动若需要跑 schema 迁移，60s 可能不够；update.sh 会先单独跑迁移，
+      # 所以这里保持 60s 即可，避免"迁移中 → unhealthy → 重启 → 迁移重来"。
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 15s
+    # 大库首次全量导入时把这里打开（浏览本身 1C1G 够用）：
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "2.0"
+    #       memory: 2G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

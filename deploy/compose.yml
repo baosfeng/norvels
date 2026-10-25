@@ -31,7 +31,9 @@ services:
       # NORVELS_AUTH_TOKEN: "${NORVELS_AUTH_TOKEN:?公网部署必须设置 NORVELS_AUTH_TOKEN}"
     volumes:
       # 数据卷：SQLite 主库、WAL、SHM 都在同一目录（/data）。
-      - ../data:/data
+      # NORVELS_DATA_DIR 可指向任意宿主目录（NAS 上常放独立数据盘，例如
+      # /vol2/norvels/data）；不设则沿用仓库根 data/（相对本文件所在目录）。
+      - "${NORVELS_DATA_DIR:-../data}:/data"
       # 小说 txt 目录只读挂载；把 NORVELS_BOOKS_DIR 指向真实目录（含中文/空格也可）。
       - "${NORVELS_BOOKS_DIR:-../books}:/books:ro"
     healthcheck:
