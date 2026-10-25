@@ -96,7 +96,8 @@ vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
   return {
     ...actual,
-    api: { ...actual.api, readingProgress: async () => ({ items: [] }) },
+    // 这些用例只关心排版 / 键盘 / 滚动：进度请求挂起不回流，避免异步 setState 出 act 警告
+    api: { ...actual.api, readingProgress: () => new Promise(() => {}) },
   };
 });
 
