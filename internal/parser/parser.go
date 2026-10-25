@@ -85,7 +85,18 @@ func (p *Parser) ParseFile(path string) (*model.ParsedBook, error) {
 }
 
 // ParseBytes 解析内存中的文件内容；name 用于推断书名/作者。
-func (p *Parser) ParseBytes(name string, b []byte) (book *model.ParsedBook, err error) {
+func (p *Parser) ParseBytes(name string, b []byte) (*model.ParsedBook, error) {
+	return p.parse(name, b, nil)
+}
+
+// ParseBytesWithRules 与 ParseBytes 相同，但先按 rules 顺序尝试自定义切章规则。
+// 规则命中即作为章节边界（优先于内置策略），零命中时记 warning 并退回内置策略。
+func (p *Parser) ParseBytesWithRules(name string, b []byte, rules []Rule) (*model.ParsedBook, error) {
+	return p.parse(name, b, rules)
+}
+
+// parse 是 ParseBytes / ParseBytesWithRules 的共同实现。
+func (p *Parser) parse(name string, b []byte, rules []Rule) (book *model.ParsedBook, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			book, err = nil, fmt.Errorf("parser: 解析 %q 时发生内部错误: %v", name, r)
@@ -107,7 +118,11 @@ func (p *Parser) ParseBytes(name string, b []byte) (book *model.ParsedBook, err 
 	// 扫描结果会被切章层复用，不产生额外开销。
 	d.titleCandidates()
 	runMetas(d, p.Opts.ExtraMetas)
-	runSplitter(d, p.Opts.ForceSplitter, p.Opts.ExtraSplitters)
+	// 自定义规则优先于内置切章策略；全部零命中时由 runRuleSplitter 记过 warning，
+	// 这里才轮到 Detect 打分选择内置策略。
+	if !runRuleSplitter(d, rules) {
+		runSplitter(d, p.Opts.ForceSplitter, p.Opts.ExtraSplitters)
+	}
 	if len(d.Chapters) == 0 {
 		// 极小文件 / 全是噪声的文件：整篇作为一章，保证能入库。
 		fillWholeText(d)
