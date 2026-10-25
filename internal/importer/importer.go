@@ -31,6 +31,9 @@ type Options struct {
 	MinChapters int
 	// ParserOpts 透传给 parser。
 	ParserOpts parser.Options
+	// ChapterRules 是调用方传入的自定义切章规则（api 从 settings 读出后注入），
+	// 按顺序优先于内置切章策略；importer 自己不读 settings，不依赖 store 的新表。
+	ChapterRules []parser.Rule
 	// JobID 由外部先 CreateImportJob 再传入（api 的 POST /api/import 走这条路径）。
 	// >0 时复用该任务（要求 status=running），0 表示由 Run 内部创建。
 	// DryRun 时不写任何任务记录，JobID 被忽略。
@@ -104,19 +107,21 @@ func Run(ctx context.Context, st *store.Store, opt Options, cb func(Progress)) (
 	}
 	defer func() { _ = os.RemoveAll(scratch) }()
 	cands, issues := expandRoots(files, scratch)
+	// 同名多卷的 .txt 先归并成一个处理单元，其余候选保持一文件一个单元。
+	units := buildImportUnits(cands)
 
-	if err := state.openJob(ctx, dir, len(cands), opt); err != nil {
+	if err := state.openJob(ctx, dir, len(units), opt); err != nil {
 		return nil, err
 	}
 	state.recordIssues(ctx, issues)
-	if len(cands) == 0 {
+	if len(units) == 0 {
 		state.failJob(ctx, "没有可导入的文件（.txt / .epub / .zip）")
 		return state.res, ErrNoFiles
 	}
 
-	workers := resolveWorkers(opt.Workers, len(cands))
-	outcomes := startParseWorkers(ctx, st, parser.New(opt.ParserOpts), cands, workers, opt)
-	state.consume(ctx, outcomes, len(cands), start, cb, opt)
+	workers := resolveWorkers(opt.Workers, len(units))
+	outcomes := startUnitWorkers(ctx, st, parser.New(opt.ParserOpts), units, workers, opt)
+	state.consume(ctx, outcomes, len(units), start, cb, opt)
 
 	return state.closing(ctx)
 }
@@ -191,7 +196,7 @@ func processFile(ctx context.Context, st *store.Store, p *parser.Parser, t fileT
 		return oc
 	}
 
-	book, err := parseFile(p, t.cand.path, data)
+	book, err := parseFileWithRules(p, t.cand.path, data, opt.ChapterRules)
 	if err != nil {
 		oc.err = fmt.Errorf("parse: %w", err)
 		return oc
@@ -213,19 +218,29 @@ func sha256Hex(data []byte) string {
 
 // parseFile 按扩展名分发解析：.txt 走 parser；.epub 走 ebook，再转换成 ParsedBook。
 func parseFile(p *parser.Parser, path string, data []byte) (*model.ParsedBook, error) {
+	return parseFileWithRules(p, path, data, nil)
+}
+
+// parseFileWithRules 在 parseFile 之上注入自定义切章规则（空 rules 等价于 parseFile）。
+func parseFileWithRules(p *parser.Parser, path string, data []byte, rules []parser.Rule) (*model.ParsedBook, error) {
 	if FormatOf(path) != FormatEPUB {
-		return p.ParseBytes(filepath.Base(path), data)
+		return p.ParseBytesWithRules(filepath.Base(path), data, rules)
 	}
 	eb, err := ebook.Open(filepath.Base(path), data)
 	if err != nil {
 		return nil, err
 	}
-	return epubToParsedBook(p, eb), nil
+	return epubToParsedBookWithRules(p, eb, rules), nil
 }
 
 // epubToParsedBook 把 ebook.Book 转成 store 认识的 ParsedBook：元数据与封面原样搬运，
 // 章节按 spine 顺序编号；「整本一页」的大书改走 txt 切章策略（spec §4）。
 func epubToParsedBook(p *parser.Parser, eb *ebook.Book) *model.ParsedBook {
+	return epubToParsedBookWithRules(p, eb, nil)
+}
+
+// epubToParsedBookWithRules 是 epubToParsedBook 的带规则版本。
+func epubToParsedBookWithRules(p *parser.Parser, eb *ebook.Book, rules []parser.Rule) *model.ParsedBook {
 	book := &model.ParsedBook{
 		Title:        eb.Title,
 		Author:       eb.Author,
@@ -246,7 +261,7 @@ func epubToParsedBook(p *parser.Parser, eb *ebook.Book) *model.ParsedBook {
 	}
 	if eb.NeedsSplit() {
 		// 「整本一页」的 epub 交给 txt 切章，目录层级随之失效，按平铺口径记录。
-		splitByParser(p, book, eb)
+		splitByParserWithRules(p, book, eb, rules)
 		if len(eb.Volumes) > 0 {
 			book.Warnings = append(book.Warnings, "EPUB 目录层级在全文重切后失效，已按平铺导入")
 		}
@@ -261,7 +276,12 @@ func epubToParsedBook(p *parser.Parser, eb *ebook.Book) *model.ParsedBook {
 // splitByParser 把「spine 只有一两个 XHTML」的全文交给 txt 解析器重新切章，
 // 复用 di-unit 等既有策略；切章失败时退回 spine 原章节，不让一本书因此导入失败。
 func splitByParser(p *parser.Parser, book *model.ParsedBook, eb *ebook.Book) {
-	parsed, err := p.ParseBytes(book.Title+".txt", []byte(eb.FullText()))
+	splitByParserWithRules(p, book, eb, nil)
+}
+
+// splitByParserWithRules 是 splitByParser 的带规则版本。
+func splitByParserWithRules(p *parser.Parser, book *model.ParsedBook, eb *ebook.Book, rules []parser.Rule) {
+	parsed, err := p.ParseBytesWithRules(book.Title+".txt", []byte(eb.FullText()), rules)
 	if err != nil || parsed == nil || len(parsed.Chapters) == 0 {
 		book.Chapters = epubChapters(eb.Chapters)
 		book.Warnings = append(book.Warnings, "全文切章失败，已按 spine 原章节导入")
