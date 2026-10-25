@@ -12,6 +12,16 @@ export const DENSE_ROW_HEIGHT = 32;
 const DRAWER_ROW_HEIGHT = 44;
 /** 多列时列间留白（PC 目录用 20px，与原型一致）。 */
 const COLUMN_GAP = 20;
+/**
+ * 无界高度（不传 maxHeight、也不 fill）时，行数超过这个值就退回「限高 + 内部滚动」。
+ *
+ * 原因：虚拟滚动的视口 = 容器的 clientHeight。容器不设高度时它等于内容高度，
+ * 虚拟化就不再裁剪——6000 章会真的渲染 6000 行，手机直接卡住。
+ * 800 行以内（常见书的规模，441 章 × 3 列 = 147 行）仍走整页滚动，不产生嵌套滚动。
+ */
+const UNBOUNDED_ROW_LIMIT = 800;
+/** 退回限高模式时给 70vh：够满一屏，不会像 340px 那样外面留一大片死区。 */
+const UNBOUNDED_MAX_HEIGHT = "70vh";
 
 /**
  * 目录：虚拟滚动 + 多列。
@@ -58,6 +68,15 @@ export function ChapterList({
   const cols = Math.max(1, Math.trunc(columns) || 1);
   const rowHeight = layout === "drawer" ? DRAWER_ROW_HEIGHT : dense ? DENSE_ROW_HEIGHT : ROW_HEIGHT;
   const rows = useMemo(() => buildTocRows(chapters, cols), [chapters, cols]);
+  // 行数过多时退回限高模式，虚拟化才会真正裁剪（见 UNBOUNDED_ROW_LIMIT）
+  const unbounded = !fill && maxHeight === undefined;
+  const heightStyle = fill
+    ? undefined
+    : maxHeight
+      ? { maxHeight }
+      : unbounded && rows.length > UNBOUNDED_ROW_LIMIT
+        ? { maxHeight: UNBOUNDED_MAX_HEIGHT }
+        : undefined;
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -76,7 +95,7 @@ export function ChapterList({
     <div
       ref={scrollRef}
       className={`vol-virtual${fill ? " is-fill" : ""}${dense ? " is-dense" : ""}`}
-      style={fill ? undefined : maxHeight ? { maxHeight } : undefined}
+      style={heightStyle}
       tabIndex={0}
       aria-label={ariaLabel ?? "章节目录"}
       data-testid="chapter-scroll"

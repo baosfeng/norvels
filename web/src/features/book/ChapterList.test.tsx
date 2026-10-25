@@ -153,6 +153,22 @@ describe("目录：多列与撑满", () => {
     expect(scrollToIndexSpy).toHaveBeenCalledWith(1, { align: "center" });
   });
 
+  it("行数超过 800 时退回 70vh 限高（否则虚拟化不裁剪，几千章会全渲染）", () => {
+    const huge: ChapterBrief[] = Array.from({ length: 900 }, (_, i) => ({
+      id: 1000 + i,
+      idx: i,
+      title: `第${i + 1}章 标题`,
+      volumeId: 1,
+      wordCount: 1000,
+    }));
+    render(
+      <MemoryRouter>
+        <ChapterList bookId={7} chapters={huge} ariaLabel="章节目录" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("chapter-scroll").style.maxHeight).toBe("70vh");
+  });
+
   it("dense 用 32px 行高（PC 鼠标密度）", () => {
     render(
       <MemoryRouter>
