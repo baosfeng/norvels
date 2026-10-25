@@ -66,7 +66,7 @@ jobs:
             org.opencontainers.image.description=本地中文小说库：导入、阅读、全文搜索
 
       - name: 构建并推送（amd64 + arm64）
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/Dockerfile
