@@ -5,6 +5,7 @@ import type { ChapterBrief } from "../../api/types";
 import { bodyIsDirty, bodyStateText, countBodyParagraphs, countBodyWords } from "../../lib/chapterBody";
 import { renamedTitle } from "../../lib/chapterBatch";
 import { formatWords } from "../../lib/format";
+import { bumpStatsRevision } from "../../lib/statsRevision";
 
 /**
  * 章节正文抽屉：从右侧滑入盖住右栏（可切全屏），改完点「保存」才下发。
@@ -53,6 +54,8 @@ export function ChapterBodyDrawer({
     setErrorText("");
     try {
       await api.updateChapterContent(bookId, chapter.id, text);
+      // 本章字数变了 → 左栏「章节 / 字数」要跟着重取（见 lib/statsRevision）
+      bumpStatsRevision();
       onSaved({ words: countBodyWords(text) });
     } catch (error) {
       setErrorText(saveErrorText(error));

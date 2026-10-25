@@ -3,6 +3,7 @@ import { ApiError, api } from "../../api/client";
 import type { BookDetail, ChapterBrief, Volume } from "../../api/types";
 import { CHAPTER_PAGE, mergeVerdict, rowsOf } from "../../lib/chapterBatch";
 import { formatCount, formatWords } from "../../lib/format";
+import { bumpStatsRevision } from "../../lib/statsRevision";
 import { showToast } from "../../lib/toastStore";
 import { isLooseVolume, realVolumes } from "../../lib/volumeOps";
 import { ChapterBatchBar } from "./ChapterBatchBar";
@@ -132,6 +133,7 @@ export function AdminChapters({
   async function removeChapter(chapter: ChapterBrief) {
     try {
       await api.deleteChapter(book.id, chapter.id);
+      bumpStatsRevision();
       setDeleting(null);
       onChanged(`已删除「${titleOf(chapter)}」，后面的章节序号自动补上。`);
     } catch (error) {

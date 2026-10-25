@@ -11,6 +11,7 @@ import {
   toCutAfter,
 } from "../../lib/splitPlan";
 import { formatCount } from "../../lib/format";
+import { bumpStatsRevision } from "../../lib/statsRevision";
 
 /**
  * 拆分章节面板：左边按段落列正文（段落之间点「从这里拆开」），右边实时给出拆成几章。
@@ -67,6 +68,7 @@ export function SplitChapterDialog({
     setSubmitError("");
     try {
       const result = await api.splitChapter(bookId, chapter.id, toCutAfter(cuts));
+      bumpStatsRevision();
       onSplit(result.chapters);
     } catch (err) {
       setSubmitError(splitErrorText(err));

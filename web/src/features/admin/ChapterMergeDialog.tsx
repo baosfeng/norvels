@@ -3,6 +3,7 @@ import { ApiError, api } from "../../api/client";
 import type { ChapterBrief } from "../../api/types";
 import { MERGE_RULE_TEXT, spanOf } from "../../lib/chapterBatch";
 import { formatCount, formatWords } from "../../lib/format";
+import { bumpStatsRevision } from "../../lib/statsRevision";
 
 /**
  * 合并章节面板：列出被合并的章、可编辑合并后标题（默认首章标题）、合并后字数，
@@ -43,6 +44,7 @@ export function ChapterMergeDialog({
     setErrorText("");
     try {
       const result = await api.mergeChapters(bookId, chapters.map((chapter) => chapter.id));
+      bumpStatsRevision();
       let titleSaved = true;
       if (next !== first.title) {
         try {

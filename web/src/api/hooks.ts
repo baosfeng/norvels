@@ -1,11 +1,21 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { api, type BookQuery, type RequestOptions } from "../api/client";
 import { useResource } from "../lib/useResource";
+import { subscribeStatsRevision } from "../lib/statsRevision";
 
 /** 各域取数 hook：组件只消费状态，不直接碰 api 模块。 */
 
+/**
+ * 全局统计（侧栏 / 驾驶舱）。库存量没有自己的查询参数，所以不靠 deps 失效：
+ * 写操作成功后由 lib/statsRevision 广播，这里订阅并 reload。
+ * 用 reload 而不是把版本号塞进 deps —— reload 只重跑请求，旧数字留在屏幕上，
+ * 侧栏不会在每次保存后闪一下「—」。
+ */
 export function useStats() {
-  return useResource((signal: AbortSignal) => api.stats({ signal }), []);
+  const stats = useResource((signal: AbortSignal) => api.stats({ signal }), []);
+  const { reload } = stats;
+  useEffect(() => subscribeStatsRevision(reload), [reload]);
+  return stats;
 }
 
 export function useHealthReport() {

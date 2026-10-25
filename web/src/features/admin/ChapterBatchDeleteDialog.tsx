@@ -3,6 +3,7 @@ import { ApiError, api } from "../../api/client";
 import type { ChapterBrief } from "../../api/types";
 import { spanOf } from "../../lib/chapterBatch";
 import { formatCount, formatWords } from "../../lib/format";
+import { bumpStatsRevision } from "../../lib/statsRevision";
 
 /**
  * 批量删除章节的二次确认：写明书名、删几章、章号区间与总字数，说明无法撤销，
@@ -31,6 +32,7 @@ export function ChapterBatchDeleteDialog({
     setErrorText("");
     try {
       await api.batchDeleteChapters(bookId, chapters.map((chapter) => chapter.id));
+      bumpStatsRevision();
       onDeleted(span.count);
     } catch (error) {
       setErrorText(batchDeleteErrorText(error));

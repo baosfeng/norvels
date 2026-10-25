@@ -11,6 +11,7 @@ import {
   volumeErrorText,
   volumeMetaText,
 } from "../../lib/volumeOps";
+import { bumpStatsRevision } from "../../lib/statsRevision";
 
 /**
  * 「移动到卷」弹窗：把勾选的章节移到目标卷末尾（volumeId=0 = 未分卷）。
@@ -51,6 +52,8 @@ export function VolumeMoveDialog({
     setErrorText("");
     try {
       const result = await api.moveChapters(bookId, chapters.map((chapter) => chapter.id), targetId);
+      // 移动只改组卷归属，章节数与字数不变，但左栏统计本来就是一次性快照 → 一并刷新
+      bumpStatsRevision();
       onMoved({ moved: result.moved, volumeId: targetId, volumeTitle: targetTitle });
     } catch (error) {
       setErrorText(volumeErrorText(error));

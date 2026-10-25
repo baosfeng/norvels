@@ -34,7 +34,7 @@ vi.mock("../../api/client", async () => {
 const { ApiError: ApiErrorClass } = await import("../../api/client");
 const { AdminChapters } = await import("./AdminChapters");
 
-/** 虚构正文：18 个非空白字符、2 段（口径见 lib/chapterBody）。 */
+/** 虚构正文：16 字、2 段（与后端 store.countWords 同口径，见 lib/chapterBody）。 */
 const BODY = "雨从屋檐上垂下来。\n\n守夜人把灯芯挑亮。";
 
 const book: BookDetail = {
@@ -59,7 +59,7 @@ const book: BookDetail = {
       idx: 0,
       title: "卷一",
       chapters: [
-        { id: 10, idx: 0, title: "巷口的灯", volumeId: 1, wordCount: 18 },
+        { id: 10, idx: 0, title: "巷口的灯", volumeId: 1, wordCount: 16 },
         { id: 11, idx: 1, title: "第 2 章 远山", volumeId: 1, wordCount: 2982 },
       ],
     },
@@ -74,7 +74,7 @@ function detail(content: string): ChapterDetail {
     idx: 0,
     title: "巷口的灯",
     content,
-    wordCount: 18,
+    wordCount: 16,
     prevId: 0,
     nextId: 11,
   };
@@ -109,7 +109,7 @@ describe("章节正文抽屉：打开与实时统计", () => {
     renderAndOpen();
     expect(screen.getByTestId("chapter-body-title").textContent).toBe("第 1 章 巷口的灯");
     expect(input().value).toBe(BODY);
-    expect(screen.getByTestId("chapter-body-words").textContent).toContain("18");
+    expect(screen.getByTestId("chapter-body-words").textContent).toContain("16");
     expect(screen.getByTestId("chapter-body-paras").textContent).toBe("2");
     expect(screen.getByTestId("chapter-body-state").textContent).toBe("未改动");
     expect(screen.getByTestId("chapter-body-meta").textContent).toContain("未改动");
@@ -126,7 +126,7 @@ describe("章节正文抽屉：打开与实时统计", () => {
     renderAndOpen();
     fireEvent.change(input(), { target: { value: `${BODY}\n\n又添了一段。` } });
     expect(screen.getByTestId("chapter-body-state").textContent).toBe("有未保存的改动");
-    expect(screen.getByTestId("chapter-body-words").textContent).toContain("24");
+    expect(screen.getByTestId("chapter-body-words").textContent).toContain("21");
     expect(screen.getByTestId("chapter-body-paras").textContent).toBe("3");
   });
 

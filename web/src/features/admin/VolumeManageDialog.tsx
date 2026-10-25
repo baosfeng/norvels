@@ -9,6 +9,7 @@ import {
   volumeErrorText,
   volumeMetaText,
 } from "../../lib/volumeOps";
+import { bumpStatsRevision } from "../../lib/statsRevision";
 
 type Busy = null | "create" | "delete" | "order" | "rename";
 
@@ -55,6 +56,7 @@ export function VolumeManageDialog({
     setErrorText("");
     try {
       await api.createVolume(bookId, check.name);
+      bumpStatsRevision();
       setNewName("");
       onSaved(`已新建空卷「${check.name}」`);
     } catch (error) {
@@ -79,6 +81,7 @@ export function VolumeManageDialog({
     setErrorText("");
     try {
       await api.renameVolume(bookId, volume.id, check.name);
+      bumpStatsRevision();
       setRenamingId(null);
       onSaved(`卷名已改为「${check.name}」`);
     } catch (error) {
@@ -95,6 +98,7 @@ export function VolumeManageDialog({
     setErrorText("");
     try {
       await api.reorderVolumes(bookId, ids);
+      bumpStatsRevision();
       onSaved(dir < 0 ? `「${volume.title}」已上移。` : `「${volume.title}」已下移。`);
     } catch (error) {
       setErrorText(volumeErrorText(error));
@@ -108,6 +112,7 @@ export function VolumeManageDialog({
     setErrorText("");
     try {
       await api.deleteVolume(bookId, volume.id);
+      bumpStatsRevision();
       setPendingDelete(null);
       onSaved(`已删除「${volume.title}」，${volume.chapters.length} 章回到「未分卷」。`);
     } catch (error) {

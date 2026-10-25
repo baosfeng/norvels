@@ -2,22 +2,51 @@
  * 章节正文的纯计算：字数、段数、改动检测。抽出来的理由是这三件事都有口径争议，
  * 埋在组件里只能靠手点验证。
  *
- * 字数口径 = **非空白字符数**（与原型一致）：汉字、字母、标点都各算 1，空白不算。
- * 与后端 countWords（internal/parser/words.go）的差异，写清楚免得以后当 bug 查：
- *   - 后端只数 CJK 与「词」，标点不计；连续的拉丁字母/数字串算 1 个字。
- *     所以 `"你好，世界"` 后端得 4、这里得 5；`"hello world"` 后端得 2、这里得 10。
- *   - 中文正文里两者随手改几个字就同步增长，做「实时字数」够用；它是**本地估算**。
- * 唯一真相是服务端：保存成功后重拉章节目录，目录里的 wordCount 由后端重算，
- * 面板上的估算值不会回写任何地方。
+ * 字数口径 = **后端 internal/store/util.go 的 countWords**，逐条对齐，不做本地估算：
+ * 保存正文后由它重算 chapters.word_count，也就是目录里显示的那个数，两边必须相等，
+ * 否则每次保存后数字都会跳一下。规则有三条：
+ *   - CJK（汉字 / 假名 / 谚文）逐字计 1；
+ *   - 连续的非 CJK 词计 1：`"hello world"` → 2、`"3.5"` → 2（小数点把词断开）；
+ *   - 空白 / 标点 / 符号 / 控制符不计数：`"你好，世界"` → 4。
+ * 边界仍以后端为唯一真相，对齐用例（中英数标点混排）的期望值由 Go 侧同一份源码算出，
+ * 见 chapterBody.test.ts。已知的**后端内部**差异（不改前端口径）：
+ *   - internal/parser/words.go 的导入期字数把扩展 B 区（U+20000 起）也逐字计，
+ *     store 不认这一段、连续的算 1 个词；两者只在生僻字上不同，前端跟保存路径（store）。
  */
 
-/** 非空白字符数：`"你好，世界"` → 5，`"  a b  "` → 2。 */
+/** store.countWords 的 CJK 区间表：统一表意 / 扩展 A / 兼容表意 / 假名 / 谚文。 */
+const CJK_RANGES: readonly (readonly [number, number])[] = [
+  [0x4e00, 0x9fff],
+  [0x3400, 0x4dbf],
+  [0xf900, 0xfaff],
+  [0x3040, 0x30ff],
+  [0xac00, 0xd7af],
+];
+
+/** store.countWords 跳过的字符：Go 的 IsSpace | IsPunct | IsSymbol | IsControl。 */
+const SKIPPED = /[\p{White_Space}\p{P}\p{S}\p{Cc}]/u;
+
+function isCJK(cp: number): boolean {
+  return CJK_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi);
+}
+
+/** 与后端同口径的字数：`"你好，世界"` → 4，`"hello world"` → 2，`"  a b  "` → 2。 */
 export function countBodyWords(text: string): number {
   let n = 0;
-  // 按码点遍历（for…of）而不是 length：扩展 B 区汉字在 UTF-16 里占两个码元，
-  // 后端按 rune 计数，用 length 会多数一次。
+  let inWord = false;
+  // 按码点遍历（for…of + codePointAt）而不是 length：扩展 B 区汉字在 UTF-16 里占两个码元，
+  // 后端按 rune 走一遍，用 length 会多走一次。
   for (const ch of text) {
-    if (!/\s/.test(ch)) n += 1;
+    const cp = ch.codePointAt(0) ?? 0;
+    if (isCJK(cp)) {
+      n += 1;
+      inWord = false;
+    } else if (SKIPPED.test(ch)) {
+      inWord = false;
+    } else if (!inWord) {
+      n += 1;
+      inWord = true;
+    }
   }
   return n;
 }
