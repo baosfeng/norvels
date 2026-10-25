@@ -102,6 +102,22 @@ export interface SplitResult {
   chapters: number;
 }
 
+/** POST /api/books/{id}/chapters/merge 的响应：合并后全书剩多少章。 */
+export interface MergeResult {
+  chapters: number;
+}
+
+/** POST /api/books/{id}/chapters/renumber 的响应：改了多少章的名字。 */
+export interface RenumberResult {
+  renamed: number;
+}
+
+/**
+ * renumber 的请求体：全书，或只改某一卷。
+ * 跨卷 / 不连续 / 单章合并会被后端 409 not_mergeable 挡下（那一项只属于 merge）。
+ */
+export type RenumberBody = { scope: "book" } | { scope: "volume"; volumeId: number };
+
 export interface ChapterBrief {
   id: number;
   idx: number;

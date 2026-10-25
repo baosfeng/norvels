@@ -3,6 +3,7 @@
 @import "./prototype.css";
 @import "./motion.css";
 @import "./admin.css";
+@import "./admin-chapters.css";
 
 /* 应用级补充：只在原型样式未覆盖处添加，避免与移植的 626 行规则冲突 */
 

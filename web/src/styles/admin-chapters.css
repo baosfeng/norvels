@@ -1,0 +1,157 @@
+/* 章节区的批量与结构操作样式（勾选列 / 批量条 / 合并面板 / 重命名面板）。
+   单独成文件：admin.css 已经接近 400 行上限，按区块拆开比继续往上堆更好找。
+   原型来源：.open-design/09-admin.html 的章节表与 merge / rename 弹窗。 */
+
+/* ── 章节表：勾选列与批量条 ── */
+.admin-chapters .table-toolbar .toolbar-end {
+  margin-left: auto;
+}
+.chapter-wrap {
+  /* 窄屏（平板竖屏）不让勾选列把表格撑破：横向滚动留给内容 */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.chapter-table .c-check {
+  width: 40px;
+  padding-right: 0;
+  text-align: center;
+  line-height: 1;
+}
+.chapter-table .c-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.chapter-table .vol-row .vol-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chapter-table .vol-row .vol-head .meta {
+  margin-left: auto;
+}
+.ch-batch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-warm);
+}
+.ch-batch .reason {
+  font-size: 11.5px;
+  color: var(--danger-text);
+}
+.ch-batch .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ── 合并面板 ── */
+.merge-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 30vh;
+  overflow: auto;
+  margin: 8px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.merge-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12.5px;
+}
+.merge-item:last-child {
+  border-bottom: 0;
+}
+.merge-item .seq {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.merge-item .words {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.merge-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-warm);
+  font-size: 12.5px;
+}
+.merge-sum b {
+  font-family: var(--font-display);
+  font-size: 15px;
+}
+.merge-sum .meta {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+/* ── 重命名面板 ── */
+.rename-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-warm);
+  font-size: 12.5px;
+}
+.scope-seg {
+  display: flex;
+  gap: 6px;
+}
+.scope-seg button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.rename-prev {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.rename-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  padding: 7px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 12.5px;
+}
+.rename-row .old {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.rename-row .arrow {
+  color: var(--muted);
+}
+.rename-row .new {
+  font-weight: 600;
+}

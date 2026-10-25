@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail } from "../../api/types";
 
-const { bookState, updateBook, deleteChapter, deleteCover, uploadCover } = vi.hoisted(() => ({
+const { bookState, updateBook, deleteChapter, deleteCover, uploadCover, batchDeleteChapters } = vi.hoisted(() => ({
   bookState: {
     data: null as unknown,
     loading: false,
@@ -14,6 +14,7 @@ const { bookState, updateBook, deleteChapter, deleteCover, uploadCover } = vi.ho
   deleteChapter: vi.fn(),
   deleteCover: vi.fn(),
   uploadCover: vi.fn(),
+  batchDeleteChapters: vi.fn(),
 }));
 
 // useBook 桩带一个 forceUpdate：让 reload() 能真的触发一次重渲染（模拟章节操作后的 reload）
@@ -31,7 +32,7 @@ vi.mock("../../api/hooks", async () => {
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return { ...actual, api: { updateBook, deleteChapter, deleteCover, uploadCover } };
+  return { ...actual, api: { updateBook, deleteChapter, deleteCover, uploadCover, batchDeleteChapters } };
 });
 
 const { AdminBookPage } = await import("./AdminBookPage");
@@ -83,6 +84,7 @@ describe("单书管理页", () => {
     deleteChapter.mockReset();
     deleteCover.mockReset();
     uploadCover.mockReset();
+    batchDeleteChapters.mockReset();
   });
 
   it("左栏元信息、右栏章节都在，改动数为 0", () => {
@@ -157,6 +159,22 @@ describe("单书管理页", () => {
     fireEvent.click(screen.getByTestId("admin-chapter-delete-10"));
     fireEvent.click(screen.getByTestId("chapter-delete-confirm"));
     await waitFor(() => expect(deleteChapter).toHaveBeenCalled());
+    await waitFor(() =>
+      expect((screen.getByTestId("admin-title") as HTMLInputElement).value).toBe("改了一半的书名"),
+    );
+    expect(screen.getByTestId("admin-dirty").textContent).toBe("1 项更改还没保存");
+  });
+
+  it("批量删除章节后 reload 也不冲掉未保存的元信息草稿", async () => {
+    batchDeleteChapters.mockImplementation(async () => {
+      bookState.data = { ...book, chapterCount: 1, updatedAt: "2026-10-25T04:00:00.000Z" };
+    });
+    renderPage();
+    fireEvent.change(screen.getByTestId("admin-title"), { target: { value: "改了一半的书名" } });
+    fireEvent.click(screen.getByTestId("admin-chapter-pick-10"));
+    fireEvent.click(screen.getByTestId("admin-ch-batch-delete"));
+    fireEvent.click(screen.getByTestId("chapter-batch-delete-confirm"));
+    await waitFor(() => expect(batchDeleteChapters).toHaveBeenCalledWith(7, [10]));
     await waitFor(() =>
       expect((screen.getByTestId("admin-title") as HTMLInputElement).value).toBe("改了一半的书名"),
     );

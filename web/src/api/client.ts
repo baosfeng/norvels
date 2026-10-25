@@ -14,8 +14,11 @@ import type {
   ImportJob,
   ImportJobFiles,
   ImportTrendPoint,
+  MergeResult,
   Page,
   ReadStatus,
+  RenumberBody,
+  RenumberResult,
   SerialStatus,
   ReadingProgress,
   SearchResult,
@@ -289,6 +292,18 @@ export const api = {
   /** 删一章：204；后面章节序号由后端补齐。 */
   deleteChapter: (bookId: number, chapterId: number, opts?: RequestOptions) =>
     request<void>(`/books/${bookId}/chapters/${chapterId}`, { ...opts, method: "DELETE" }),
+  /** 批量删章：204；chapterIds 一次最多 500 个，跨卷也允许。 */
+  batchDeleteChapters: (bookId: number, chapterIds: number[], opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/chapters/batch-delete`, { ...opts, method: "POST", body: { chapterIds } }),
+  /**
+   * 合并章节：200 返回合并后**全书章数**。只允许同一卷里相邻连续的 ≥2 章，
+   * 否则 409 code=not_mergeable（message 里带原因，可直接展示）。
+   */
+  mergeChapters: (bookId: number, chapterIds: number[], opts?: RequestOptions) =>
+    request<MergeResult>(`/books/${bookId}/chapters/merge`, { ...opts, method: "POST", body: { chapterIds } }),
+  /** 按序号重命名：200 返回改了几章。scope=book 改全书，scope=volume 只改这一卷。 */
+  renumberChapters: (bookId: number, body: RenumberBody, opts?: RequestOptions) =>
+    request<RenumberResult>(`/books/${bookId}/chapters/renumber`, { ...opts, method: "POST", body }),
   /**
    * 上传封面：multipart 单文件（字段名 cover），单张 ≤2 MiB，JPEG/PNG/WebP/GIF。
    * 成功 204，之后要 reload 详情：封面地址的版本参数取自 books.updatedAt。

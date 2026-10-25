@@ -1,17 +1,22 @@
 import { useMemo, useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { BookDetail, ChapterBrief, Volume } from "../../api/types";
+import { CHAPTER_PAGE, mergeVerdict, rowsOf } from "../../lib/chapterBatch";
 import { formatCount } from "../../lib/format";
+import { ChapterBatchBar } from "./ChapterBatchBar";
+import { ChapterBatchDeleteDialog } from "./ChapterBatchDeleteDialog";
+import { ChapterMergeDialog } from "./ChapterMergeDialog";
+import { ChapterRenumberDialog } from "./ChapterRenumberDialog";
+import { ChapterTable } from "./ChapterTable";
 import { SplitChapterDialog } from "./SplitChapterDialog";
 
-/** 每卷默认展开的章数：6000 章的书不能一次铺满 DOM。 */
-const PAGE = 20;
-
 /**
- * 管理页的章节表：改标题 / 拆分 / 删除三个动作都在行内，即时生效。
+ * 管理页的章节区：行内改标题 / 拆分 / 删除，加三处结构操作——勾选批量删除、
+ * 同卷相邻合并、按序号重命名。这个组件只做编排，表格在 ChapterTable，各面板各一个文件。
  *
  * 为什么不进「保存」批次：章节结构是事实，不是草稿。把「删了 3 章」和
  * 元信息草稿混在一次保存里，最容易出的错是用户以为删掉的章又被存回去了。
+ * 每个结构操作成功后都由父组件 reload 重新拉目录，不做乐观更新。
  */
 export function AdminChapters({
   book,
@@ -24,24 +29,62 @@ export function AdminChapters({
 }) {
   const volumes = useMemo(() => [...book.volumes].sort((a, b) => a.idx - b.idx), [book.volumes]);
   const [query, setQuery] = useState("");
-  const [shown, setShown] = useState<Record<number, number>>(() => initShown(volumes));
+  const [shown, setShown] = useState<Record<number, number>>(() =>
+    Object.fromEntries(volumes.map((volume) => [volume.idx, CHAPTER_PAGE])),
+  );
   const [editing, setEditing] = useState<number | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [savedTitles, setSavedTitles] = useState<Record<number, string>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<ChapterBrief | null>(null);
   const [splitting, setSplitting] = useState<ChapterBrief | null>(null);
+  /** 勾选按 chapterId 集合维护：跨卷、跨「载入更多」都是同一套 */
+  const [picked, setPicked] = useState<Set<number>>(() => new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   const total = volumes.reduce((sum, volume) => sum + volume.chapters.length, 0);
   const filtered = query.trim().toLowerCase();
+
+  // 勾选的章一律从当前目录里取：删除/合并后 reload 换掉目录，旧 id 自然消失
+  const pickedList = useMemo(
+    () =>
+      volumes
+        .flatMap((volume) => volume.chapters)
+        .filter((chapter) => picked.has(chapter.id))
+        .sort((a, b) => a.idx - b.idx),
+    [volumes, picked],
+  );
+  const verdict = useMemo(() => mergeVerdict(pickedList), [pickedList]);
+  const currentVolumeId = pickedList[0]?.volumeId ?? volumes[0]?.id ?? 0;
+
+  function rowsByVolume(volume: Volume): ChapterBrief[] {
+    return rowsOf(volume, filtered, shown[volume.idx] ?? CHAPTER_PAGE);
+  }
 
   function titleOf(chapter: ChapterBrief): string {
     return savedTitles[chapter.id] ?? chapter.title;
   }
 
-  function startEdit(chapter: ChapterBrief) {
-    setEditing(chapter.id);
-    setTitleDraft(titleOf(chapter));
+  function pickRows(rows: ChapterBrief[], on: boolean) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      for (const row of rows) {
+        if (on) next.add(row.id);
+        else next.delete(row.id);
+      }
+      return next;
+    });
+  }
+
+  function togglePick(id: number) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function saveTitle(chapter: ChapterBrief) {
@@ -104,117 +147,56 @@ export function AdminChapters({
             匹配 {countMatches(volumes, filtered)} 章
           </span>
         ) : null}
+        <button
+          className="btn btn-sm toolbar-end"
+          type="button"
+          data-testid="admin-chapter-rename-open"
+          onClick={() => setRenaming(true)}
+        >
+          按序号重命名…
+        </button>
       </div>
 
-      <div className="chapter-wrap">
-        <table className="chapter-table table">
-          <thead>
-            <tr>
-              <th className="is-num" style={{ width: 56 }}>
-                序号
-              </th>
-              <th>标题</th>
-              <th className="is-num" style={{ width: 88 }}>
-                字数
-              </th>
-              <th className="c-actions" style={{ width: 200 }}>
-                操作
-              </th>
-            </tr>
-          </thead>
-          {volumes.map((volume) => (
-            <tbody key={volume.id} data-testid={`admin-volume-${volume.idx}`}>
-              <tr className="vol-row">
-                <td colSpan={4}>
-                  <span className="vol-title">{volumeLabel(volume)}</span>
-                  <span className="meta num">{formatCount(volume.chapters.length)} 章</span>
-                </td>
-              </tr>
-              {rowsOf(volume, filtered, shown[volume.idx] ?? PAGE).map((chapter) => (
-                <tr key={chapter.id} className="ch-row" data-testid={`admin-chapter-${chapter.id}`}>
-                  <td className="is-num">{chapter.idx + 1}</td>
-                  <td className="c-title">
-                    {editing === chapter.id ? (
-                      <form
-                        className="ch-edit"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void saveTitle(chapter);
-                        }}
-                      >
-                        <input
-                          className="input"
-                          value={titleDraft}
-                          autoFocus
-                          aria-label={`第 ${chapter.idx + 1} 章标题`}
-                          data-testid="admin-chapter-title-input"
-                          onChange={(event) => setTitleDraft(event.target.value)}
-                        />
-                        <button className="btn btn-sm btn-primary" type="submit" disabled={savingId === chapter.id}>
-                          {savingId === chapter.id ? "保存中…" : "保存"}
-                        </button>
-                        <button className="btn btn-sm" type="button" onClick={() => setEditing(null)}>
-                          取消
-                        </button>
-                      </form>
-                    ) : (
-                      <span className="ch-title-text">{titleOf(chapter)}</span>
-                    )}
-                  </td>
-                  <td className="c-words is-num">{formatCount(chapter.wordCount)}</td>
-                  <td className="c-actions">
-                    <button
-                      className="btn btn-sm"
-                      type="button"
-                      data-testid={`admin-chapter-edit-${chapter.id}`}
-                      onClick={() => startEdit(chapter)}
-                    >
-                      改标题
-                    </button>
-                    <button
-                      className="btn btn-sm"
-                      type="button"
-                      data-testid={`admin-chapter-split-${chapter.id}`}
-                      onClick={() => setSplitting(chapter)}
-                    >
-                      拆分
-                    </button>
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      type="button"
-                      data-testid={`admin-chapter-delete-${chapter.id}`}
-                      onClick={() => setDeleting(chapter)}
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!filtered && (shown[volume.idx] ?? PAGE) < volume.chapters.length ? (
-                <tr className="more-row">
-                  <td colSpan={4}>
-                    <button
-                      className="btn btn-sm"
-                      type="button"
-                      onClick={() =>
-                        setShown((prev) => ({
-                          ...prev,
-                          [volume.idx]: Math.min((prev[volume.idx] ?? PAGE) + PAGE, volume.chapters.length),
-                        }))
-                      }
-                    >
-                      载入更多
-                    </button>
-                    <span className="meta">本卷还有 {formatCount(volume.chapters.length - (shown[volume.idx] ?? PAGE))} 章</span>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          ))}
-        </table>
-      </div>
+      <ChapterBatchBar
+        count={pickedList.length}
+        mergeReason={verdict.reason}
+        onMerge={() => setMerging(true)}
+        onDelete={() => setBatchDeleting(true)}
+        onClear={() => setPicked(new Set())}
+      />
+
+      <ChapterTable
+        volumes={volumes}
+        rowsByVolume={rowsByVolume}
+        picked={picked}
+        shown={shown}
+        editing={editing}
+        titleDraft={titleDraft}
+        savingId={savingId}
+        filtered={filtered}
+        titleOf={titleOf}
+        actions={{
+          onTogglePick: togglePick,
+          onPickRows: pickRows,
+          onStartEdit: (chapter) => {
+            setEditing(chapter.id);
+            setTitleDraft(titleOf(chapter));
+          },
+          onCancelEdit: () => setEditing(null),
+          onTitleChange: setTitleDraft,
+          onSaveTitle: (chapter) => void saveTitle(chapter),
+          onDelete: setDeleting,
+          onSplit: setSplitting,
+          onLoadMore: (volume) =>
+            setShown((prev) => ({
+              ...prev,
+              [volume.idx]: Math.min((prev[volume.idx] ?? CHAPTER_PAGE) + CHAPTER_PAGE, volume.chapters.length),
+            })),
+        }}
+      />
+
       <p className="meta">
-        章节的改标题、拆分、删除都是即时生效，不进下面的「保存」；元信息改动才需要保存。
+        勾选后可批量删除；同卷相邻的章可以合并；也可以按序号重命名。改动都即时生效，不进下面的「保存」。
       </p>
 
       {deleting ? (
@@ -234,6 +216,50 @@ export function AdminChapters({
           onSplit={(pieces) => {
             setSplitting(null);
             onChanged(`已拆分为 ${pieces} 章。`);
+          }}
+        />
+      ) : null}
+
+      {batchDeleting ? (
+        <ChapterBatchDeleteDialog
+          bookId={book.id}
+          bookTitle={book.title}
+          chapters={pickedList}
+          onClose={() => setBatchDeleting(false)}
+          onDeleted={(count) => {
+            setBatchDeleting(false);
+            setPicked(new Set());
+            onChanged(`已删除 ${formatCount(count)} 章，后面的章节序号自动补上。`);
+          }}
+        />
+      ) : null}
+
+      {merging ? (
+        <ChapterMergeDialog
+          bookId={book.id}
+          chapters={pickedList}
+          totalChapters={total}
+          onClose={() => setMerging(false)}
+          onMerged={(result) => {
+            const count = pickedList.length;
+            setMerging(false);
+            setPicked(new Set());
+            onChanged(`已把 ${count} 章合并为 1 章，全书现在 ${formatCount(result.chapters)} 章。`);
+            if (!result.titleSaved) onError("合并已完成，但新标题没能保存，可以再用「改标题」改一次。");
+          }}
+        />
+      ) : null}
+
+      {renaming ? (
+        <ChapterRenumberDialog
+          bookId={book.id}
+          volumes={volumes}
+          defaultVolumeId={currentVolumeId}
+          onClose={() => setRenaming(false)}
+          onRenumbered={(renamed) => {
+            setRenaming(false);
+            setPicked(new Set());
+            onChanged(`已按序号重命名 ${formatCount(renamed)} 章。`);
           }}
         />
       ) : null}
@@ -280,32 +306,9 @@ function ChapterDeleteDialog({
   );
 }
 
-/** 每卷默认展开数：短卷全展开，长卷先给一页。 */
-function initShown(volumes: Volume[]): Record<number, number> {
-  const map: Record<number, number> = {};
-  for (const volume of volumes) map[volume.idx] = Math.min(PAGE, Math.max(PAGE, volume.chapters.length));
-  return map;
-}
-
-/** 当前要渲染哪些行：搜索时只留命中的（不受分页限制），否则取前 shown 条。 */
-function rowsOf(volume: Volume, query: string, shown: number): ChapterBrief[] {
-  if (query) {
-    return volume.chapters.filter(
-      (chapter) =>
-        chapter.title.toLowerCase().includes(query) || String(chapter.idx + 1).includes(query),
-    );
-  }
-  return volume.chapters.slice(0, shown);
-}
-
 /** 命中的章节数（搜索时显示「匹配 N 章」）。 */
 function countMatches(volumes: Volume[], query: string): number {
-  return volumes.reduce((sum, volume) => sum + rowsOf(volume, query, PAGE).length, 0);
-}
-
-function volumeLabel(volume: Volume): string {
-  if (volume.idx < 0) return "未分卷";
-  return volume.title || `第 ${volume.idx + 1} 卷`;
+  return volumes.reduce((sum, volume) => sum + rowsOf(volume, query, CHAPTER_PAGE).length, 0);
 }
 
 /** 章节写失败文案：400 的 message 已经是人话（「标题不能为空」等），直接用。 */
