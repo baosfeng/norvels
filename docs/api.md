@@ -7,4 +7,4 @@
 - [api-import.md](api/api-import.md)：导入任务（dry-run 预检/上传/重试/取消）与设置（章节规则/标签规则）
 - [api-dashboard.md](api/api-dashboard.md)：元信息（health/stats）、驾驶舱端点、其它端点
 
-原章节号对照：§1/§7/§9 → api-dashboard.md；§2/§3 → api-books.md；§4/§8/§10 → README.md；§5/§6 → api-import.md。
+原章节号对照：§1/§7/§9 → [api-dashboard.md](api/api-dashboard.md)；§2/§3 → [api-books.md](api/api-books.md)；§4/§8/§10 → [README.md](api/README.md)；§5/§6 → [api-import.md](api/api-import.md)。
