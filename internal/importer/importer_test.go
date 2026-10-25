@@ -89,8 +89,9 @@ func assertChapterTitleSearchable(t *testing.T, ctx context.Context, st *store.S
 	if err != nil || r.Chapters.Total < 1 {
 		t.Fatalf("search 第一章 = %+v, err=%v", r.Chapters, err)
 	}
-	if r.Chapters.Items[0].Snippet != "" {
-		t.Errorf("Snippet 应为空串（正文检索已下线），实际 %q", r.Chapters.Items[0].Snippet)
+	// 正文检索已下线，但标题命中要带章序上下文（「第 N 章 · 共 M 章」）。
+	if got := r.Chapters.Items[0].Snippet; got != "第 1 章 · 共 3 章" {
+		t.Errorf("Snippet 应为章序上下文，实际 %q", got)
 	}
 }
 
