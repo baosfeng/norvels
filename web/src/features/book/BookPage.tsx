@@ -1,18 +1,21 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useBook, useReadingProgress } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
-import type { BookDetail, ReadStatus, SerialStatus, Volume } from "../../api/types";
+import type { BookDetail, ChapterBrief, ReadStatus, SerialStatus, Volume } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { ChapterList } from "./ChapterList";
+import { BookRating } from "./RatingStars";
+import { AddToCollectionPanel } from "./AddToCollectionPanel";
 import { formatCount, formatDate } from "../../lib/format";
 import { authorsOf } from "../../lib/metaDraft";
 import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
 import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
-import { columnsForWidth } from "../../lib/tocRows";
+import { useTocColumns } from "./useTocColumns";
+import { ackNewChaptersIfLast } from "./newChapters";
 
 /** 书籍详情：PC 双栏（封面侧 + 目录），H5 单列（封面缩为横向头部，简介折叠）。 */
 export function BookPage() {
@@ -26,6 +29,7 @@ export function BookPage() {
   const [openVolumes, setOpenVolumes] = useState<Set<number>>(new Set());
   const [introOpen, setIntroOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [collectionOpen, setCollectionOpen] = useState(false);
   /** 状态下拉的乐观值：PATCH 成功即时回显，失败退回后端值 */
   const [readStatus, setReadStatus] = useState<ReadStatus | null>(null);
   const columns = useTocColumns(isH5);
@@ -88,6 +92,11 @@ export function BookPage() {
     }
   }
 
+  /** 读到最后一章 = 追更读完了：清角标（失败只影响角标数字，不打断阅读）。 */
+  function openChapter(chapter: ChapterBrief) {
+    void ackNewChaptersIfLast(book, chapter, reload);
+  }
+
   function toggleVolume(index: number) {
     setOpenVolumes((prev) => {
       const next = new Set(prev);
@@ -131,6 +140,14 @@ export function BookPage() {
                 从第一章开始
               </Link>
             ) : null}
+            <button
+              className="btn btn-ghost"
+              type="button"
+              data-testid="book-add-collection"
+              onClick={() => setCollectionOpen(true)}
+            >
+              加入书单
+            </button>
             {/* 详情页只读：改信息、传封面、改章节、删书都在独立的书籍管理页（/admin） */}
             {isH5 ? null : (
               <Link className="btn btn-ghost" to={`/admin/books/${book.id}`} data-testid="book-admin-link">
@@ -176,6 +193,12 @@ export function BookPage() {
                 </select>
               </dd>
             </div>
+            <div>
+              <dt>评分</dt>
+              <dd>
+                <BookRating book={book} />
+              </dd>
+            </div>
             {typeof book.bookmarkCount === "number" && book.bookmarkCount > 0 ? (
               <div>
                 <dt>书签</dt>
@@ -201,6 +224,11 @@ export function BookPage() {
             <span className="meta" data-testid="book-serial">
               {serialLabel(book.serialStatus)}
             </span>
+            {(book.newChapters ?? 0) > 0 ? (
+              <span className="pill is-live" data-testid="book-new-chapters">
+                新章 +{book.newChapters}
+              </span>
+            ) : null}
           </p>
           <p className="meta" data-testid="book-last-chapter">
             最后更新 · {formatDate(book.updatedAt)} · 最新章节 · {lastChapter}
@@ -255,6 +283,7 @@ export function BookPage() {
                 columns={columns}
                 dense={dense}
                 scrollToCurrent
+                onNavigate={openChapter}
                 ariaLabel="章节目录"
               />
             </div>
@@ -309,6 +338,7 @@ export function BookPage() {
                             columns={columns}
                             dense={dense}
                             scrollToCurrent
+                            onNavigate={openChapter}
                             ariaLabel={`${volumeLabel(volume)} 目录`}
                           />
                         </div>
@@ -322,24 +352,11 @@ export function BookPage() {
         </div>
       </div>
 
+      {collectionOpen ? (
+        <AddToCollectionPanel bookId={book.id} bookTitle={book.title} onClose={() => setCollectionOpen(false)} />
+      ) : null}
     </section>
   );
-}
-
-/**
- * 目录列数：PC 上按窗口宽度流动（≥1180 三列、≥900 两列、其余一列），H5 恒一列。
- * 监听 resize 而不是只在挂载时算一次：窗口拖窄后列数不跟着变，行高与实际排版会错位。
- */
-function useTocColumns(isH5: boolean): number {
-  const [columns, setColumns] = useState(() => (typeof window === "undefined" ? 1 : columnsForWidth(window.innerWidth)));
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const sync = () => setColumns(isH5 ? 1 : columnsForWidth(window.innerWidth));
-    sync();
-    window.addEventListener("resize", sync);
-    return () => window.removeEventListener("resize", sync);
-  }, [isH5]);
-  return isH5 ? 1 : columns;
 }
 
 function volumeLabel(volume: Volume): string {

@@ -1,21 +1,147 @@
-import { EmptyPanel } from "../../components/StatePanel";
+import { useMemo, useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useSeries } from "../../api/hooks";
+import { Cover } from "../../components/Cover";
+import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
+import { buildSeriesCards } from "../../lib/seriesGroup";
+import { formatCount } from "../../lib/format";
+
+const PAGE_SIZE = 24;
 
 /**
- * 系列列表（P3 发现域，PC 专属）：路由骨架占位。
- * 数据（书数 / 字数 / 最近更新 / 封面 + 搜索与分页）由发现域接入时整体替换本组件。
+ * 系列列表（P3 发现域，PC 专属）：按系列聚合书目。
+ * 数据全部来自 GET /api/series（后端已把书数 / 字数 / 最近更新 / 封面书算好），
+ * 前端只做「字段 → 人话」与分页；筛选条件放 URL（q/page），刷新与回退都还原同一屏。
  */
 export function SeriesPage() {
+  const [params, setParams] = useSearchParams();
+  const q = (params.get("q") ?? "").trim();
+  const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
+  const [draft, setDraft] = useState(q);
+  const feed = useSeries({ q: q || undefined, page, size: PAGE_SIZE });
+
+  const model = useMemo(() => buildSeriesCards(feed.data?.items ?? []), [feed.data]);
+  const total = feed.data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function apply(next: { q?: string; page?: number }) {
+    const merged = new URLSearchParams(params);
+    const keyword = (next.q ?? q).trim();
+    if (keyword) merged.set("q", keyword);
+    else merged.delete("q");
+    const nextPage = next.page ?? 1;
+    if (nextPage > 1) merged.set("page", String(nextPage));
+    else merged.delete("page");
+    setParams(merged, { replace: false });
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    apply({ q: draft, page: 1 });
+  }
+
   return (
     <section data-testid="view:series" data-od-id="series">
       <div className="page-head">
         <div>
-          <p className="eyebrow">系列</p>
+          <p className="eyebrow">系列 · {feed.loading ? "读取中" : `${formatCount(total)} 个`}</p>
           <h1>系列</h1>
-          <p className="sub">按系列聚合书目</p>
+          <p className="sub">
+            按系列聚合书目
+            {q ? ` · 关键词「${q}」` : ""}
+            {model.cards.length > 0 ? ` · 本页 ${formatCount(model.bookTotal)} 本` : ""}
+          </p>
         </div>
       </div>
 
-      <EmptyPanel title="系列还没接上" description="占位页：系列列表与搜索、分页由发现域接入后展示。" />
+      <form className="searchbar" onSubmit={submit} role="search" data-testid="series-search">
+        <input
+          className="input"
+          type="search"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="搜系列名"
+          aria-label="搜索系列名"
+          data-testid="series-search-input"
+        />
+        <button className="btn btn-primary" type="submit">
+          搜索
+        </button>
+        {q ? (
+          <button
+            className="btn btn-ghost"
+            type="button"
+            data-testid="series-search-clear"
+            onClick={() => {
+              setDraft("");
+              apply({ q: "", page: 1 });
+            }}
+          >
+            清除
+          </button>
+        ) : null}
+      </form>
+
+      {feed.loading ? (
+        <LoadingPanel title="正在整理系列" description="正在按系列归并书目，稍等一下。" />
+      ) : feed.error ? (
+        <ErrorPanel error={feed.error} title="系列没能加载" onRetry={feed.reload} testId="series-error" />
+      ) : model.empty ? (
+        <EmptyPanel
+          title={q ? "没有匹配的系列" : "还没有系列"}
+          description={
+            q
+              ? "换个关键词试试，或者清除搜索看全部系列。"
+              : "书的元信息里带系列名（例如多部成套的作品）时，会聚合到这里。"
+          }
+          testId="series-empty"
+          actions={
+            q ? (
+              <button className="btn btn-primary" type="button" onClick={() => { setDraft(""); apply({ q: "", page: 1 }); }}>
+                清除搜索
+              </button>
+            ) : (
+              <Link className="btn btn-primary" to="/shelf">
+                去书架
+              </Link>
+            )
+          }
+        />
+      ) : (
+        <>
+          <div className="book-grid" data-testid="series-live">
+            {model.cards.map((card) => (
+              <article className="book-card" key={card.name} data-testid={`series-card-${card.name}`}>
+                <Link className="book-link" to={`/series/${encodeURIComponent(card.name)}`}>
+                  <Cover title={card.name} bookId={card.coverBookId} hasCover={card.hasCover} />
+                  <div className="book-card-body">
+                    <h3 className="book-title">{card.name}</h3>
+                    <p className="book-author">
+                      {card.bookCountLabel} · {card.wordCountLabel}
+                    </p>
+                    <p className="book-meta">
+                      <span>最近更新 {card.updatedLabel}</span>
+                    </p>
+                  </div>
+                </Link>
+              </article>
+            ))}
+          </div>
+
+          {pages <= 1 ? null : (
+            <nav className="pagination" aria-label="分页" data-testid="series-pagination">
+              <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => apply({ page: page - 1 })}>
+                ←
+              </button>
+              <span className="is-current num">{page}</span>
+              <span className="meta">/ {pages}</span>
+              <button type="button" aria-label="下一页" disabled={page >= pages} onClick={() => apply({ page: page + 1 })}>
+                →
+              </button>
+            </nav>
+          )}
+        </>
+      )}
     </section>
   );
 }

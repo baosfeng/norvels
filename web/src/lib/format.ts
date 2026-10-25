@@ -56,3 +56,31 @@ export function readingMinutes(words: number): number {
   if (!Number.isFinite(words) || words <= 0) return 1;
   return Math.max(1, Math.round(words / 500));
 }
+
+/**
+ * 秒数 → 阅读时长的「人话」：热力图与阅读历史共用同一口径，避免两处各写一套四舍五入。
+ * 不足 1 分钟按「不到 1 分钟」，1 小时以上带小时（≥10 小时不显示分钟，读数更稳）。
+ */
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0 分钟";
+  if (seconds < 60) return "不到 1 分钟";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 1) return "不到 1 分钟";
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours >= 10 || rest === 0) return `${hours} 小时`;
+  return `${hours} 小时 ${rest} 分`;
+}
+
+/** 秒数 → 「2 小时 5 分」的短口径（卡片数值用），与 formatDuration 同一套取整。 */
+export function formatDurationShort(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0 分";
+  if (seconds < 60) return "<1 分";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 1) return "<1 分";
+  if (minutes < 60) return `${minutes} 分`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} 小时` : `${hours} 小时 ${rest} 分`;
+}

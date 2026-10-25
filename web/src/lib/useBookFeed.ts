@@ -12,6 +12,10 @@ export interface BookFeedQuery {
   tag?: string;
   /** 阅读状态筛选；不传即全部（含未标记） */
   readStatus?: NonNullable<BookQuery["readStatus"]>;
+  /** 评分筛选 1–5（0 = 未评，后端不允许用 0 筛「未评」，所以这里也不接受 0） */
+  rating?: number;
+  /** 书单筛选 */
+  collection?: number;
   size: number;
   mode: BookFeedMode;
   /**
@@ -80,6 +84,8 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
     query.authorId ?? null,
     query.tag ?? null,
     query.readStatus ?? null,
+    query.rating ?? null,
+    query.collection ?? null,
     query.size,
     query.mode,
   ]);
@@ -119,6 +125,8 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
           authorId: query.authorId,
           tag: query.tag,
           readStatus: query.readStatus,
+          rating: query.rating,
+          collection: query.collection,
           page,
           size: query.size,
         },
