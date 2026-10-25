@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookDetail, ChapterDetail } from "../../api/types";
+import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 
 const chapters = [
@@ -26,11 +26,29 @@ const book: BookDetail = {
   volumes: [{ id: 1, idx: 0, title: "正文", chapters }],
 };
 
+/** 长目录用书：420 章，复刻真实库里的「几百章」形态（书名仍是虚构的）。 */
+const longChapters: ChapterBrief[] = Array.from({ length: 420 }, (_, i) => ({
+  id: 1000 + i,
+  idx: i,
+  title: `第${i + 1}章 示例标题${i + 1}`,
+  volumeId: 1,
+  wordCount: 1000 + i,
+}));
+
+const longBook: BookDetail = {
+  ...book,
+  chapterCount: longChapters.length,
+  volumes: [{ id: 1, idx: 0, title: "正文", chapters: longChapters }],
+};
+
+/** 当前生效的书：hooks 桩里读它，用例可以临时换成 longBook。 */
+let activeBook: BookDetail = book;
+
 function chapterOf(id: number): ChapterDetail {
-  const brief = chapters.find((c) => c.id === id) ?? chapters[0];
+  const brief = activeBook.volumes.flatMap((v) => v.chapters).find((c) => c.id === id) ?? chapters[0];
   return {
     bookId: 7,
-    bookTitle: book.title,
+    bookTitle: activeBook.title,
     id: brief.id,
     idx: brief.idx,
     title: brief.title,
@@ -41,6 +59,29 @@ function chapterOf(id: number): ChapterDetail {
   };
 }
 
+/**
+ * jsdom 里没有真实滚动容器高度，真实虚拟化会一行都不渲染。
+ * 目录用例既要数「筛选后剩几行」，又要确认「定位到当前章」，所以这里换成
+ * 全量渲染 + 可观测 scrollToIndex 的桩（与 ChapterList.test.tsx 同一口径）。
+ */
+const scrollToIndexSpy = vi.hoisted(() => vi.fn());
+
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (options: { count: number; estimateSize: () => number }) => {
+    const items = Array.from({ length: options.count }, (_, index) => ({
+      index,
+      key: index,
+      start: index * options.estimateSize(),
+      size: options.estimateSize(),
+    }));
+    return {
+      getTotalSize: () => options.count * options.estimateSize(),
+      getVirtualItems: () => items,
+      scrollToIndex: scrollToIndexSpy,
+    };
+  },
+}));
+
 const chapterState = vi.fn((_bookId: number, chapterId: number) => ({
   data: Number.isFinite(chapterId) ? chapterOf(chapterId) : null,
   loading: false,
@@ -49,7 +90,7 @@ const chapterState = vi.fn((_bookId: number, chapterId: number) => ({
 }));
 
 vi.mock("../../api/hooks", () => ({
-  useBook: () => ({ data: book, loading: false, error: null, reload: vi.fn() }),
+  useBook: () => ({ data: activeBook, loading: false, error: null, reload: vi.fn() }),
   useChapter: (bookId: number, chapterId: number) => chapterState(bookId, chapterId),
   useSaveProgress: () => vi.fn(async () => true),
   useBookmarks: () => ({ data: { bookmarks: [] }, loading: false, error: null, reload: vi.fn() }),
@@ -289,5 +330,92 @@ describe("阅读器：H5 控制层是覆盖层（不占布局）", () => {
     expect(block).toContain("env(safe-area-inset-bottom)");
     // 收起态没有任何 sticky 占位
     expect(block).not.toContain("position: sticky");
+  });
+});
+
+describe("阅读器：目录抽屉（铺满 / 搜索 / 定位）", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    chapterState.mockClear();
+    scrollToIndexSpy.mockClear();
+    activeBook = longBook;
+  });
+
+  afterEach(() => {
+    activeBook = book;
+    vi.restoreAllMocks();
+  });
+
+  /** 打开目录抽屉（H5 在底栏、PC 在 header，同一个 aria 语义按文案点） */
+  function openDrawer() {
+    fireEvent.click(screen.getByRole("button", { name: "目录" }));
+  }
+
+  function rows() {
+    return Array.from(document.querySelectorAll(".cv-row"));
+  }
+
+  // 当前章 id=1200 是 420 章里的第 201 章（下标 200）
+  const CURRENT = "/read/7/1200";
+
+  it("目录在抽屉里铺满可用高度：chapter-scroll 带 is-fill 且不再自带限高", () => {
+    renderReader("pc", [CURRENT]);
+    openDrawer();
+
+    const scroller = screen.getByTestId("chapter-scroll");
+    expect(scroller.className).toContain("is-fill");
+    // 340/520px 的内嵌限高取消，高度交给 .drawer-scroll（父级滚动）
+    expect(scroller.style.maxHeight).toBe("");
+    expect(scroller.closest(".drawer-scroll")).toBeTruthy();
+  });
+
+  it("按章号搜索只剩命中行，清空后恢复全部 420 章", () => {
+    renderReader("pc", [CURRENT]);
+    openDrawer();
+    expect(rows()).toHaveLength(420);
+
+    fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "419" } });
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain("第419章");
+    expect(screen.getByTestId("toc-match").textContent).toContain("匹配 1 章");
+
+    fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "" } });
+    expect(rows()).toHaveLength(420);
+    expect(screen.queryByTestId("toc-match")).toBeNull();
+  });
+
+  it("搜索不到时给出空提示，不渲染空列表", () => {
+    renderReader("pc", [CURRENT]);
+    openDrawer();
+
+    fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "不存在的标题" } });
+
+    expect(rows()).toHaveLength(0);
+    expect(screen.getByTestId("toc-empty")).toBeTruthy();
+    expect(screen.getByTestId("toc-match").textContent).toContain("匹配 0 章");
+  });
+
+  it("打开抽屉即定位到当前章：长目录不从第 1 章开始", () => {
+    renderReader("pc", [CURRENT]);
+    // 打开抽屉会重挂目录，重新触发 scrollToCurrent
+    scrollToIndexSpy.mockClear();
+    openDrawer();
+
+    expect(scrollToIndexSpy).toHaveBeenCalledWith(200, { align: "center" });
+  });
+
+  it("点「跳到当前章」把当前章重新滚进视口中间", () => {
+    renderReader("pc", [CURRENT]);
+    openDrawer();
+    fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "419" } });
+    expect(rows()).toHaveLength(1);
+    scrollToIndexSpy.mockClear();
+
+    fireEvent.click(screen.getByTestId("toc-jump"));
+
+    expect(scrollToIndexSpy).toHaveBeenCalledWith(200, { align: "center" });
+    // 跳转同时清掉搜索，回到完整目录
+    expect(rows()).toHaveLength(420);
+    expect(screen.queryByTestId("toc-match")).toBeNull();
   });
 });

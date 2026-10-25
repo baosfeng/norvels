@@ -5,7 +5,7 @@ import { useBook, useBookmarks, useChapter, useSaveProgress } from "../../api/ho
 import type { Bookmark, ChapterBrief } from "../../api/types";
 import { ChevronLeftIcon } from "../../components/Icons";
 import { ErrorPanel, LoadingPanel, EmptyPanel } from "../../components/StatePanel";
-import { ChapterList } from "../book/ChapterList";
+import { TocDrawer } from "./TocDrawer";
 import { useTheme, type Theme } from "../../lib/theme";
 import { useIsH5 } from "../../lib/tier";
 import { formatWords } from "../../lib/format";
@@ -526,36 +526,15 @@ export function ReaderPage() {
         onDelete={(id) => void removeBookmark(id)}
       />
 
-      <aside className={`drawer${drawerOpen ? " is-open" : ""}`} aria-label="章节目录" aria-hidden={!drawerOpen} data-od-id="reader-drawer">
-        <div className="drawer-head">
-          <strong>目录</strong>
-          <span className="meta">
-            {chapters.length} 章 · {book.data?.volumes.length ?? 0} 卷
-          </span>
-          <button className="btn btn-ghost" type="button" onClick={() => setDrawerOpen(false)}>
-            关闭
-          </button>
-        </div>
-        <div className="drawer-body">
-          {book.loading ? (
-            <LoadingPanel title="正在读取目录" description="稍等一下。" />
-          ) : chapters.length === 0 ? (
-            <EmptyPanel title="还没有目录" description="这本书尚未拆出章节。" />
-          ) : (
-            <div className="drawer-scroll">
-              <ChapterList
-                bookId={bookId}
-                chapters={chapters}
-                currentChapterId={chapterId}
-                onNavigate={() => setDrawerOpen(false)}
-                maxHeight={isH5 ? 520 : 560}
-                ariaLabel="章节目录"
-                layout="drawer"
-              />
-            </div>
-          )}
-        </div>
-      </aside>
+      <TocDrawer
+        open={drawerOpen}
+        loading={book.loading}
+        volumeCount={book.data?.volumes.length ?? 0}
+        bookId={bookId}
+        chapters={chapters}
+        currentChapterId={chapterId}
+        onClose={() => setDrawerOpen(false)}
+      />
     </div>
   );
 }
