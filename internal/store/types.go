@@ -87,7 +87,10 @@ type BookDetail struct {
 	SourceName string `json:"sourceName"`
 	FileSize   int64  `json:"fileSize"`
 	// Tags 是这本书的分类/标签（全量），详情页与编辑表单读它。
-	Tags    []string     `json:"tags"`
+	Tags []string `json:"tags"`
+	// Authors 是这本书的有序作者（position 升序，[0] 与主作者同名）。
+	// 存量书没有 books_authors 行时按主作者兜底，因此这里不会是空数组。
+	Authors []string     `json:"authors"`
 	Volumes []VolumeNode `json:"volumes"`
 }
 
@@ -209,7 +212,10 @@ type ImportError struct {
 
 // SaveOptions 控制写入行为。
 type SaveOptions struct {
-	Force bool // true 时忽略 SHA256 幂等检查，覆盖既有记录
+	Force bool // true 时忽略 SHA256 幂等检查，覆盖既有记录（优先于 Update）
+	// Update 为 true 时走「追更」：命中既有书且新章节序列以旧序列为前缀则只追加尾部章节，
+	// 旧章节 id 与阅读进度原样保留；前缀对不上直接返回 ErrNotAppendable，绝不覆盖。
+	Update bool
 }
 
 // SaveResult 描述一次写入的结果。

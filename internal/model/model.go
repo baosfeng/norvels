@@ -5,7 +5,9 @@ package model
 // ParsedBook 是 parser 对单个文件的解析结果，也是 store 的写入输入。
 type ParsedBook struct {
 	Title      string          // 书名（已清洗）
-	Author     string          // 作者；未知时为空字符串
+	Author     string          // 主作者，兼容只认单作者的旧路径；未知时为空字符串
+	Authors    []string        // 有序作者（EPUB 的多个 dc:creator）；为空时视作 []string{Author}
+	SplitOf    string          // 合集拆分来源（原 SourcePath），未拆分为空
 	SourcePath string          // 绝对路径（或相对导入根的路径）
 	SourceName string          // 原始文件名
 	Encoding   string          // 探测出的编码名，如 utf-8 / utf-8-bom / gb18030 / utf-16le / big5

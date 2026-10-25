@@ -38,9 +38,12 @@ const (
 	// 上传接口的错误码（docs/specs/2026-10-25-import-formats.md §2）：
 	// 前端按 code 分支给「逐个文件的友好提示」，message 才是给用户看的人话。
 	codeUnsupportedFormat = "unsupported_format"
-	codePayloadTooLarge   = "payload_too_large"
-	codeTooManyFiles      = "too_many_files"
-	codeEncryptedEPUB     = "encrypted_epub"
+	// codeNotAppendable 表示追更时新文件不是已有章节的追加（章节变少或标题改了）：
+	// 拒绝覆盖，用户可换回正确文件，或显式用 force 整本重导。
+	codeNotAppendable   = "not_appendable"
+	codePayloadTooLarge = "payload_too_large"
+	codeTooManyFiles    = "too_many_files"
+	codeEncryptedEPUB   = "encrypted_epub"
 )
 
 // writeJSON 以 JSON 写响应；序列化失败时退化为 500。
@@ -76,6 +79,10 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error, notFoun
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "请求参数非法")
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, codeConflict, "存在进行中的任务或并发冲突")
+	case errors.Is(err, store.ErrNotAppendable):
+		s.logf("api: %s %s 追更被拒: %v", r.Method, r.URL.Path, err)
+		writeError(w, http.StatusConflict, codeNotAppendable,
+			"这份文件不是已有章节的追加（章节变少或标题不一致），已拒绝覆盖；确要整本重导请用 force")
 	case errors.Is(err, store.ErrBlockCorrupted):
 		s.failBlockCorrupted(w, r, err)
 	default:

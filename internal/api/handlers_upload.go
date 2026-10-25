@@ -77,6 +77,7 @@ func (c Config) uploadRoot() string {
 type uploadSession struct {
 	dir      string
 	force    bool
+	update   bool
 	files    []string
 	accepted []uploadAccepted
 	rejected []uploadRejected
@@ -105,10 +106,22 @@ func (s *Server) handleUploadImport(w http.ResponseWriter, r *http.Request) {
 		s.discardUpload(sess.dir)
 		return
 	}
-	opts := importer.Options{Dir: sess.dir, Force: sess.force, ParserOpts: parser.DefaultOptions(), JobID: job.ID}
+	opts := uploadOptions(sess, job.ID)
 	ctx, cancel := context.WithCancel(s.baseContext())
 	go s.runUploadImport(ctx, cancel, job.ID, sess, opts)
 	writeJSON(w, http.StatusAccepted, uploadResponse{JobID: job.ID, Accepted: sess.accepted, Rejected: sess.rejected})
+}
+
+// uploadOptions 把会话状态翻译成 importer.Options：force/update 都是用户在上传表单里
+// 显式勾选的开关，缺省一律 false（追更不能默认打开，否则一次误操作就会改库）。
+func uploadOptions(sess *uploadSession, jobID int64) importer.Options {
+	return importer.Options{
+		Dir:        sess.dir,
+		Force:      sess.force,
+		Update:     sess.update,
+		ParserOpts: parser.DefaultOptions(),
+		JobID:      jobID,
+	}
 }
 
 // uploadIdle 在收文件之前先判一次「已有导入任务在跑」，有则写 409 并返回 false。

@@ -179,8 +179,12 @@ func (s *Store) ListBooks(ctx context.Context, q BookQuery) (Page[BookSummary], 
 // 用指针而不是零值判断「有没有提到这个字段」：显式把简介/系列清空与根本没传
 // 这两个字段语义完全不同，前者要写空串，后者不能动库。
 type BookMetaPatch struct {
-	Title       *string
-	Author      *string
+	Title *string
+	// Author 是单值作者；给出时等价于 Authors=[]string{Author}。
+	Author *string
+	// Authors 是有序作者（全量替换）：写 books_authors 并把 books.author_id 同步成 [0]。
+	// 与 Author 同时给出时 Authors 优先（前端可能同时持有两个字段，不该因此报错）。
+	Authors     *[]string
 	Intro       *string
 	Series      *string
 	SeriesIndex *int
@@ -189,8 +193,26 @@ type BookMetaPatch struct {
 
 // IsEmpty 报告 patch 是否什么都没包含（空 patch 不写库）。
 func (p BookMetaPatch) IsEmpty() bool {
-	return p.Title == nil && p.Author == nil && p.Intro == nil &&
+	return p.Title == nil && p.Author == nil && p.Authors == nil && p.Intro == nil &&
 		p.Series == nil && p.SeriesIndex == nil && p.Tags == nil
+}
+
+// authorNames 返回本次补丁要落库的有序作者；nil 表示「作者这一项不改」。
+//
+// 空名单的处置分两种：显式 Authors 传空由 saveBookAuthorsInTx 报 ErrInvalidArgument
+// （api 层先拦成 400）；单值 Author 传空串沿用导入口径落「佚名」，避免 author_id=0。
+func (p BookMetaPatch) authorNames() []string {
+	if p.Authors != nil {
+		return NormalizeAuthors(*p.Authors)
+	}
+	if p.Author == nil {
+		return nil
+	}
+	names := NormalizeAuthors([]string{*p.Author})
+	if len(names) == 0 {
+		return []string{unknownAuthor}
+	}
+	return names
 }
 
 // UpdateBookMeta 按 patch 更新书名/作者/简介/系列/系列序号/标签。
@@ -228,8 +250,8 @@ func updateBookMetaInTx(ctx context.Context, tx *sql.Tx, id int64, patch BookMet
 		return err
 	}
 	newAuthorID := oldAuthorID
-	if patch.Author != nil {
-		if newAuthorID, err = applyAuthorPatch(ctx, tx, id, *patch.Author); err != nil {
+	if names := patch.authorNames(); names != nil {
+		if newAuthorID, err = saveBookAuthorsInTx(ctx, tx, id, names); err != nil {
 			return err
 		}
 	}
@@ -253,23 +275,6 @@ func bookAuthorIDInTx(ctx context.Context, tx *sql.Tx, id int64) (int64, error) 
 	}
 	if err != nil {
 		return 0, fmt.Errorf("store: book author lookup %d: %w", id, err)
-	}
-	return authorID, nil
-}
-
-// applyAuthorPatch 把作者改到新名字（必要时建作者行），返回新作者 id。
-// 空名回落「佚名」，与导入路径同一个口径，避免 author_id=0 的书从作者筛选里消失。
-func applyAuthorPatch(ctx context.Context, tx *sql.Tx, id int64, author string) (int64, error) {
-	name := strings.TrimSpace(author)
-	if name == "" {
-		name = unknownAuthor
-	}
-	authorID, err := ensureAuthor(ctx, tx, name)
-	if err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE books SET author_id = ? WHERE id = ?", authorID, id); err != nil {
-		return 0, fmt.Errorf("store: update book author %d: %w", id, err)
 	}
 	return authorID, nil
 }
