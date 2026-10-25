@@ -1,7 +1,7 @@
 # 部署指南
 
 本文覆盖 norvels 的容器构建、体积构成、运行、SQLite 数据卷注意事项、资源建议与升级回滚。
-接口与架构分别见 [api.md](api.md) 与 [architecture.md](architecture.md)。
+接口与架构分别见 [api/README.md](api/README.md) 与 [architecture.md](architecture.md)。
 
 ## 1. 交付物一览
 
@@ -491,4 +491,4 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 ## 9. 相关文档
 
 - 架构与数据模型：[architecture.md](architecture.md)
-- REST API 契约：[api.md](api.md)
+- REST API 契约：[api/README.md](api/README.md)

@@ -21,7 +21,7 @@
 | **importer** | `internal/importer` | 目录扫描（递归）、并发 worker、去重（文件 SHA-256 + 书名作者指纹）、导入任务记录、失败清单、断点续跑、进度回调 | `importer.Run(ctx, store, importer.Options)` |
 | **api** | `internal/api` | REST API、中间件（日志/gzip/CORS/panic 恢复）、分页、搜索、静态前端 `http.Handler` | `api.New(store, embedFS, opts) http.Handler` |
 | **webui** | `internal/webui` | `go:embed` 前端构建产物（`web/dist` → `internal/webui/dist`） | `webui.FS() fs.FS` |
-| **web** | `web/` | React 19 + TypeScript + Vite + Tailwind 前端：书架 / 书籍详情目录 / 阅读器 / 搜索 / 作者 / 导入管理 | 调 `/api/*`（见 `docs/api.md`） |
+| **web** | `web/` | React 19 + TypeScript + Vite + Tailwind 前端：书架 / 书籍详情目录 / 阅读器 / 搜索 / 作者 / 导入管理 | 调 `/api/*`（见 `docs/api/README.md`） |
 | **cmd/norvels** | `cmd/norvels` | 子命令分发：`import` / `serve` / `stats` / `check-content` / `migrate` / `version` | — |
 | **config** | `internal/config` | 运行配置收敛：flag > env > 默认，统一 `NORVELS_` 前缀 | `config.FromEnv()` / `config.Config` |
 | **deploy** | `deploy/` | 多阶段 Dockerfile（node 构建前端 → Go 静态编译 → distroless/static）、compose、健康检查 | — |
