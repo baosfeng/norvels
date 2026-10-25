@@ -2,7 +2,9 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"norvels/internal/store"
 )
@@ -58,19 +60,7 @@ func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidID)
 		return
 	}
-	detail, err := s.st.GetBook(r.Context(), id)
-	if err != nil {
-		s.fail(w, r, err, "book not found")
-		return
-	}
-	if detail == nil {
-		writeError(w, http.StatusNotFound, codeNotFound, "book not found")
-		return
-	}
-	if detail.Volumes == nil {
-		detail.Volumes = []store.VolumeNode{}
-	}
-	writeJSON(w, http.StatusOK, detail)
+	s.writeBookDetail(w, r, id)
 }
 
 // chapterListResponse 对应 docs/api.md 的 GET /api/books/{id}/chapters（items + total）。
@@ -128,4 +118,130 @@ func (s *Server) handleGetChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, chapter)
+}
+
+// bookPatch 是 PATCH /api/books/{id} 的请求体：任意字段子集，nil 表示「不改」。
+//
+// 未知字段按 encoding/json 默认行为忽略；但「只含未知字段」的 body 会归一化成空
+// patch，最终按 400 invalid_param 拒绝——否则用户拼错字段名会得到一次静默成功。
+type bookPatch struct {
+	Title *string `json:"title"`
+	// Author 与 Authors 同时给出时 Authors 优先（前端详情页可能同时持有两者）；
+	// 只给 Author 时等价于 authors=[author]——两者都走「全量替换 books_authors」。
+	Author      *string   `json:"author"`
+	Authors     *[]string `json:"authors"`
+	Intro       *string   `json:"intro"`
+	Tags        *[]string `json:"tags"`
+	Series      *string   `json:"series"`
+	SeriesIndex *int      `json:"seriesIndex"`
+}
+
+// PATCH authors 的跨信任边界上限：条数与单名长度。
+const (
+	maxPatchAuthors    = 10
+	maxAuthorNameRunes = 100
+)
+
+// validateAuthors 校验 PATCH 带来的作者列表：归一化后不能为空、条数与单名长度受限。
+//
+// 「什么算同一个作者」由 store.NormalizeAuthors 单点定义（去空白、去空名、保序去重），
+// 这里只判收不收：空数组按 400 拒绝，避免「编辑时把作者全删光」被当成合法操作。
+func validateAuthors(authors *[]string) error {
+	if authors == nil {
+		return nil
+	}
+	names := store.NormalizeAuthors(*authors)
+	if len(names) == 0 {
+		return badParam("authors 不能为空数组（至少要保留一个作者）")
+	}
+	if len(names) > maxPatchAuthors {
+		return badParam("authors 最多 %d 个作者", maxPatchAuthors)
+	}
+	for _, name := range names {
+		if utf8.RuneCountInString(name) > maxAuthorNameRunes {
+			return badParam("单个作者名不能超过 %d 字", maxAuthorNameRunes)
+		}
+	}
+	return nil
+}
+
+// toStorePatch 把请求体转成库层补丁（两层的字段集合故意一一对应，转换是纯搬运）。
+func (p bookPatch) toStorePatch() store.BookMetaPatch {
+	return store.BookMetaPatch{
+		Title:       p.Title,
+		Author:      p.Author,
+		Authors:     p.Authors,
+		Intro:       p.Intro,
+		Series:      p.Series,
+		SeriesIndex: p.SeriesIndex,
+		Tags:        p.Tags,
+	}
+}
+
+// handlePatchBook 处理 PATCH /api/books/{id}：改元数据/标签，成功返回最新 BookDetail。
+func (s *Server) handlePatchBook(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.badRequest(w, err, codeInvalidID)
+		return
+	}
+	var body bookPatch
+	if !decodeJSONBody(w, r, &body, "请求体必须是书籍字段组成的 JSON 对象") {
+		return
+	}
+	if err := validateAuthors(body.Authors); err != nil {
+		s.badRequest(w, err, codeInvalidParam)
+		return
+	}
+	patch := body.toStorePatch()
+	if patch.IsEmpty() {
+		writeError(w, http.StatusBadRequest, codeInvalidParam,
+			"请求体至少包含一个可修改字段：title/author/authors/intro/tags/series/seriesIndex")
+		return
+	}
+	if err := s.st.UpdateBookMeta(r.Context(), id, patch); err != nil {
+		s.fail(w, r, err, "book not found")
+		return
+	}
+	s.writeBookDetail(w, r, id)
+}
+
+// handleGetBookCover 处理 GET /api/books/{id}/cover：命中返回原始图片，无封面 404。
+//
+// 封面在导入后就固定不变（只有覆盖导入才会换），给一天缓存足够：书架一屏几十张图，
+// 每次都回源会让 NAS 上的单文件数据库变成瓶颈。
+func (s *Server) handleGetBookCover(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.badRequest(w, err, codeInvalidID)
+		return
+	}
+	cover, err := s.st.GetCover(r.Context(), id)
+	if err != nil {
+		s.fail(w, r, err, "cover not found")
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", cover.MIME)
+	h.Set("Content-Length", strconv.Itoa(len(cover.Bytes)))
+	h.Set("Cache-Control", "public, max-age=86400")
+	h.Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(cover.Bytes)
+}
+
+// writeBookDetail 读详情并写 200（volumes 归一化成 []，前端不必判 null）。
+func (s *Server) writeBookDetail(w http.ResponseWriter, r *http.Request, id int64) {
+	detail, err := s.st.GetBook(r.Context(), id)
+	if err != nil {
+		s.fail(w, r, err, "book not found")
+		return
+	}
+	if detail.Volumes == nil {
+		detail.Volumes = []store.VolumeNode{}
+	}
+	if detail.Authors == nil {
+		detail.Authors = []string{}
+	}
+	writeJSON(w, http.StatusOK, detail)
 }

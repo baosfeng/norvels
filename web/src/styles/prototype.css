@@ -284,7 +284,7 @@ h3{font-size:var(--text-base);font-weight:600}
 @media(max-width:768px){.book-layout{grid-template-columns:minmax(0,1fr);gap:20px}.book-main h1{font-size:28px}.page-head{align-items:flex-start;flex-direction:column}.search-form{flex-direction:column}.demo-state{margin-left:0}.actions .btn{flex:1}}
 @media(max-width:390px){.counters{grid-template-columns:1fr 1fr}.facts{grid-template-columns:1fr 1fr}.search-head h1{font-size:26px}.book-main h1{font-size:24px}}
 
-.layout-a{display:flex;min-height:100vh}
+.layout-a{display:flex;min-height:100vh;min-height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
 .sidebar{position:fixed;left:0;top:0;bottom:0;width:248px;z-index:35;display:flex;flex-direction:column;gap:22px;padding:22px 16px;background:var(--surface);border-right:1px solid var(--border);overflow:auto}
 .brand{display:flex;flex-direction:column;gap:2px;padding:0 6px}
 .brand strong{font-size:22px;letter-spacing:-.03em}

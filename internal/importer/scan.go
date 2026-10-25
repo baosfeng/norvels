@@ -10,12 +10,12 @@ import (
 	"strings"
 )
 
-// scanFiles 收集候选 txt（跳过隐藏文件），结果按路径排序保证可复现。
+// scanFiles 收集候选文件（.txt/.epub/.zip，跳过隐藏文件），结果按路径排序保证可复现。
 //
-// root 可以是目录，也可以是单个 .txt 文件；后者直接作为唯一候选返回，
+// root 可以是目录，也可以是单个可导入文件；后者直接作为唯一候选返回，
 // recursive 对它没有意义（一个文件没有子目录可递归）。
 func scanFiles(ctx context.Context, root string, recursive bool) ([]string, error) {
-	single, err := isSingleTxtFile(root)
+	single, err := isSingleImportableFile(root)
 	if err != nil {
 		return nil, err
 	}
@@ -25,9 +25,9 @@ func scanFiles(ctx context.Context, root string, recursive bool) ([]string, erro
 
 	files := make([]string, 0, 256)
 	if recursive {
-		err = walkTxtFiles(ctx, root, &files)
+		err = walkCandidates(ctx, root, &files)
 	} else {
-		err = readTopLevelTxt(root, &files)
+		err = readTopLevelCandidates(root, &files)
 	}
 	if err != nil {
 		return nil, err
@@ -36,11 +36,11 @@ func scanFiles(ctx context.Context, root string, recursive bool) ([]string, erro
 	return files, nil
 }
 
-// isSingleTxtFile 判断 path 是否是一个可直接导入的 .txt 文件。
+// isSingleImportableFile 判断 path 是否是一个可直接导入的文件（.txt/.epub/.zip）。
 //
-// 目录返回 false；存在但不是 .txt 的文件返回错误——否则用户会看到
-// "no .txt files found"，误以为是自己目录选错了，实际是扩展名不对。
-func isSingleTxtFile(path string) (bool, error) {
+// 目录返回 false；存在但不是可导入文件返回错误——否则用户会看到
+// 「没有可导入的文件」，误以为是自己目录选错了，实际是扩展名不对。
+func isSingleImportableFile(path string) (bool, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return false, fmt.Errorf("importer: stat: %w", err)
@@ -48,14 +48,14 @@ func isSingleTxtFile(path string) (bool, error) {
 	if fi.IsDir() {
 		return false, nil
 	}
-	if !IsTxtFile(fi.Name()) {
-		return false, fmt.Errorf("importer: %s 不是 .txt 文件", filepath.Base(path))
+	if !SupportedExt(fi.Name()) {
+		return false, fmt.Errorf("importer: %s 不是 .txt / .epub / .zip 文件", filepath.Base(path))
 	}
 	return true, nil
 }
 
-// walkTxtFiles 递归收集候选 txt；单个条目不可读时跳过，不影响整批。
-func walkTxtFiles(ctx context.Context, root string, files *[]string) error {
+// walkCandidates 递归收集候选文件；单个条目不可读时跳过，不影响整批。
+func walkCandidates(ctx context.Context, root string, files *[]string) error {
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -75,8 +75,8 @@ func walkTxtFiles(ctx context.Context, root string, files *[]string) error {
 	return nil
 }
 
-// readTopLevelTxt 只收集顶层目录下的候选 txt。
-func readTopLevelTxt(root string, files *[]string) error {
+// readTopLevelCandidates 只收集顶层目录下的候选文件。
+func readTopLevelCandidates(root string, files *[]string) error {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return fmt.Errorf("importer: read dir: %w", err)
@@ -87,23 +87,15 @@ func readTopLevelTxt(root string, files *[]string) error {
 	return nil
 }
 
-// appendCandidate 把非目录、非隐藏的 .txt 追加到候选列表。
+// appendCandidate 把非目录、非隐藏的可导入文件追加到候选列表。
 func appendCandidate(files *[]string, path string, d fs.DirEntry) {
-	if d.IsDir() || !isTxtCandidate(d.Name()) {
+	if d.IsDir() || !isImportableCandidate(d.Name()) {
 		return
 	}
 	*files = append(*files, path)
 }
 
-// isTxtCandidate 判断文件名是否是候选：非隐藏且扩展名为 .txt。
-func isTxtCandidate(name string) bool {
-	return !strings.HasPrefix(name, ".") && IsTxtFile(name)
-}
-
-// IsTxtFile 判断文件名是否是 .txt（大小写不敏感）。
-//
-// 导出给 api 层复用：POST /api/import 需要在建任务前就把「路径既不是目录
-// 也不是 txt」挡回去，判定口径必须与扫描器一致。
-func IsTxtFile(name string) bool {
-	return strings.EqualFold(filepath.Ext(name), ".txt")
+// isImportableCandidate 判断文件名是否是候选：非隐藏且扩展名可导入（TXT/EPUB）。
+func isImportableCandidate(name string) bool {
+	return !strings.HasPrefix(name, ".") && SupportedExt(name)
 }

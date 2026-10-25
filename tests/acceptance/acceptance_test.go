@@ -64,6 +64,11 @@ type world struct {
 	// 最近一次裸请求（用于断言错误响应）
 	lastCode int
 	lastBody []byte
+
+	// 最近一次上传（POST /api/import/upload）
+	uploadAccepted []uploadFileResult
+	uploadRejected []uploadFileResult
+	coverType      string // 最近一次封面响应的 Content-Type
 }
 
 // reset 关闭上一个场景留下的资源。
@@ -109,6 +114,12 @@ func (w *world) ensureDB() error {
 		Commit:           "gherkin",
 		BuiltAt:          "2026-01-01T00:00:00Z",
 		DisableAccessLog: true,
+		// 上传上限注小值：验收测试用少量字节就能触发 413/400，跑得快；
+		// 合成 epub 约 1 KiB，仍在单文件 8 KiB 上限内。
+		MaxUploadFileBytes:  8 << 10,
+		MaxUploadTotalBytes: 32 << 10,
+		MaxUploadFiles:      20,
+		UploadDir:           filepath.Join(root, "uploads"),
 	}))
 	return nil
 }

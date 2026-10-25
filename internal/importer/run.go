@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"norvels/internal/model"
 	"norvels/internal/parser"
 	"norvels/internal/store"
 )
@@ -87,7 +89,7 @@ func (r *runState) consume(ctx context.Context, outcomes <-chan parseOutcome, to
 	}
 }
 
-// applyOutcome 把单个文件的解析结果计入汇总，返回用于进度展示的书名。
+// applyOutcome 把单个条目的解析结果计入汇总，返回用于进度展示的书名。
 func (r *runState) applyOutcome(ctx context.Context, oc parseOutcome, opt Options) string {
 	switch {
 	case oc.err != nil:
@@ -95,17 +97,38 @@ func (r *runState) applyOutcome(ctx context.Context, oc parseOutcome, opt Option
 	case oc.skipped:
 		r.res.Skipped++
 		return ""
-	case oc.book != nil && len(oc.book.Chapters) < opt.MinChapters:
-		r.res.Skipped++
+	case len(oc.books) == 0:
 		return ""
-	case oc.book != nil && opt.DryRun:
-		// DryRun 不写库，这里只占位表达计数。
-		r.res.Imported = append(r.res.Imported, 0)
-		return oc.book.Title
-	case oc.book != nil:
-		return r.saveParsedBook(ctx, oc, opt)
 	}
-	return ""
+	return r.saveBooks(ctx, oc, opt)
+}
+
+// saveBooks 逐本落库（合集拆出的多本各算一本），返回第一本的书名用于进度展示。
+func (r *runState) saveBooks(ctx context.Context, oc parseOutcome, opt Options) string {
+	title := ""
+	for _, book := range oc.books {
+		if title == "" {
+			title = book.Title
+		}
+		if len(book.Chapters) < opt.MinChapters {
+			r.res.Skipped++
+			continue
+		}
+		if opt.DryRun {
+			// DryRun 不写库，这里只占位表达计数。
+			r.res.Imported = append(r.res.Imported, 0)
+			continue
+		}
+		r.saveOne(ctx, oc.path, book, opt)
+	}
+	return title
+}
+
+// recordIssues 把解包阶段的问题（整包失败、条目不支持）逐条记进失败明细。
+func (r *runState) recordIssues(ctx context.Context, issues []expandIssue) {
+	for _, issue := range issues {
+		r.recordFileError(ctx, issue.path, errors.New(issue.reason))
+	}
 }
 
 // recordFileError 记录一次文件级失败：汇总计数、错误列表，并同步写入任务明细。
@@ -121,20 +144,26 @@ func (r *runState) recordFileError(ctx context.Context, path string, err error) 
 	return ""
 }
 
-// saveParsedBook 把解析结果写入库，按「新建/幂等跳过/失败」分别计数，返回书名。
-func (r *runState) saveParsedBook(ctx context.Context, oc parseOutcome, opt Options) string {
-	sr, err := r.st.SaveBook(ctx, oc.book, store.SaveOptions{Force: opt.Force})
+// saveOne 把一本书写入库，按「新建 / 追更 / 幂等跳过 / 失败」分别计数。
+//
+// Force 优先于 Update（store 的既有语义）：显式覆盖时不走追更匹配。
+func (r *runState) saveOne(ctx context.Context, path string, book *model.ParsedBook, opt Options) {
+	sr, err := r.st.SaveBook(ctx, book, store.SaveOptions{Force: opt.Force, Update: opt.Update})
 	switch {
 	case err != nil:
 		r.res.Failed++
-		r.res.Errors = append(r.res.Errors, store.ImportError{FilePath: oc.path, Reason: err.Error()})
+		r.res.Errors = append(r.res.Errors, store.ImportError{FilePath: path, Reason: err.Error()})
 		r.lastErr = err.Error()
+		if r.job != nil {
+			if aerr := r.st.AddImportError(ctx, r.job.ID, path, err.Error()); aerr != nil {
+				r.lastErr = aerr.Error()
+			}
+		}
 	case sr.Skipped:
 		r.res.Skipped++
 	default:
 		r.res.Imported = append(r.res.Imported, sr.BookID)
 	}
-	return oc.book.Title
 }
 
 // progress 生成一次进度快照。
@@ -199,18 +228,18 @@ func resolveSourceDir(dir string) (string, error) {
 	return abs, nil
 }
 
-// verifySource 确认路径存在，且是目录或单个 .txt 文件。
+// verifySource 确认路径存在，且是目录或单个可导入文件（.txt/.epub）。
 // 返回的 reason 用于写任务记录（不带包前缀），error 用于返回给调用方。
 func verifySource(path string) (string, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return fmt.Sprintf("stat: %v", err), fmt.Errorf("importer: stat: %w", err)
 	}
-	if fi.IsDir() || IsTxtFile(fi.Name()) {
+	if fi.IsDir() || SupportedExt(fi.Name()) {
 		return "", nil
 	}
-	reason := fmt.Sprintf("not a directory or .txt file: %s", path)
-	return reason, fmt.Errorf("importer: %s 既不是目录也不是 .txt 文件", path)
+	reason := fmt.Sprintf("not a directory or importable file: %s", path)
+	return reason, fmt.Errorf("importer: %s 既不是目录，也不是 .txt 文件或 .epub 文件", path)
 }
 
 // resolveWorkers 决定并发解析数：未指定时取 min(NumCPU, maxWorkers)，并夹在 [1, 文件数]。
@@ -232,11 +261,11 @@ func resolveWorkers(want, files int) int {
 
 // startParseWorkers 启动解析流水线并返回结果通道：一个 goroutine 投递任务，
 // workers 个 goroutine 并发解析，全部结束后关闭结果通道。
-func startParseWorkers(ctx context.Context, st *store.Store, p *parser.Parser, files []string, workers int, opt Options) <-chan parseOutcome {
+func startParseWorkers(ctx context.Context, st *store.Store, p *parser.Parser, cands []candidate, workers int, opt Options) <-chan parseOutcome {
 	tasks := make(chan fileTask)
 	outcomes := make(chan parseOutcome, workers)
 
-	go feedTasks(ctx, tasks, files)
+	go feedTasks(ctx, tasks, cands)
 
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
@@ -251,11 +280,11 @@ func startParseWorkers(ctx context.Context, st *store.Store, p *parser.Parser, f
 }
 
 // feedTasks 按顺序把候选文件投递给解析 worker；ctx 取消时提前关闭任务通道。
-func feedTasks(ctx context.Context, tasks chan<- fileTask, files []string) {
+func feedTasks(ctx context.Context, tasks chan<- fileTask, cands []candidate) {
 	defer close(tasks)
-	for i, path := range files {
+	for i, cand := range cands {
 		select {
-		case tasks <- fileTask{index: i + 1, path: path}:
+		case tasks <- fileTask{index: i + 1, cand: cand}:
 		case <-ctx.Done():
 			return
 		}

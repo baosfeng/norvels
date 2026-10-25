@@ -57,6 +57,19 @@ type BookSummary struct {
 	Status       string    `json:"status"`
 	ImportedAt   time.Time `json:"importedAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
+
+	// ---- 书籍身份（0008 起）----
+	// 只有带元数据的来源（EPUB）才会填；txt 路径留空，前端按零值降级。
+	Language    string `json:"language,omitempty"`
+	Publisher   string `json:"publisher,omitempty"`
+	ISBN        string `json:"isbn,omitempty"`
+	PubDate     string `json:"pubDate,omitempty"`
+	Series      string `json:"series,omitempty"`
+	SeriesIndex int    `json:"seriesIndex,omitempty"`
+	// HasCover 表示 book_covers 里有这本的封面；前端据此决定渲染 img 还是占位。
+	HasCover bool `json:"hasCover"`
+	// Format 是来源格式：txt / epub。
+	Format string `json:"format,omitempty"`
 }
 
 // VolumeNode 是书籍详情里的一卷。
@@ -70,10 +83,15 @@ type VolumeNode struct {
 // BookDetail 用于书籍详情页（含完整目录）。
 type BookDetail struct {
 	BookSummary
-	Encoding   string       `json:"encoding"`
-	SourceName string       `json:"sourceName"`
-	FileSize   int64        `json:"fileSize"`
-	Volumes    []VolumeNode `json:"volumes"`
+	Encoding   string `json:"encoding"`
+	SourceName string `json:"sourceName"`
+	FileSize   int64  `json:"fileSize"`
+	// Tags 是这本书的分类/标签（全量），详情页与编辑表单读它。
+	Tags []string `json:"tags"`
+	// Authors 是这本书的有序作者（position 升序，[0] 与主作者同名）。
+	// 存量书没有 books_authors 行时按主作者兜底，因此这里不会是空数组。
+	Authors []string     `json:"authors"`
+	Volumes []VolumeNode `json:"volumes"`
 }
 
 // ChapterBrief 是目录中的一章（不含正文）。
@@ -194,7 +212,10 @@ type ImportError struct {
 
 // SaveOptions 控制写入行为。
 type SaveOptions struct {
-	Force bool // true 时忽略 SHA256 幂等检查，覆盖既有记录
+	Force bool // true 时忽略 SHA256 幂等检查，覆盖既有记录（优先于 Update）
+	// Update 为 true 时走「追更」：命中既有书且新章节序列以旧序列为前缀则只追加尾部章节，
+	// 旧章节 id 与阅读进度原样保留；前缀对不上直接返回 ErrNotAppendable，绝不覆盖。
+	Update bool
 }
 
 // SaveResult 描述一次写入的结果。

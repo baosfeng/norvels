@@ -166,4 +166,46 @@ describe("api 其余端点都走同一出口", () => {
     expect(headers[0].Authorization).toBe("Bearer abc");
     expect(headers[1].Authorization).toBeUndefined();
   });
+
+  it("uploadImport 用 multipart 提交文件与 force，Content-Type 交给浏览器", async () => {
+    const calls: RequestInit[] = [];
+    const urls: string[] = [];
+    mockFetch(async (url, init) => {
+      urls.push(url);
+      calls.push(init as RequestInit);
+      return new Response(
+        JSON.stringify({ jobId: 7, accepted: [{ name: "示例书简.txt", format: "txt" }], rejected: [] }),
+        { status: 202 },
+      );
+    });
+
+    const file = new File(["正文"], "示例书简.txt", { type: "text/plain" });
+    const result = await api.uploadImport([file], { force: true, update: true });
+
+    expect(urls[0]).toBe("/api/import/upload");
+    expect(result.jobId).toBe(7);
+    expect(calls[0].method).toBe("POST");
+    const headers = calls[0].headers as Record<string, string>;
+    expect(headers["Content-Type"]).toBeUndefined();
+    const body = calls[0].body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.getAll("files")).toHaveLength(1);
+    expect(body.get("force")).toBe("true");
+    expect(body.get("update")).toBe("true");
+  });
+
+  it("updateBook 用 PATCH 提交元数据子集并返回详情", async () => {
+    const calls: { url?: string; method?: string; body?: unknown }[] = [];
+    mockFetch(async (url, init) => {
+      calls.push({ url, method: init?.method, body: init?.body });
+      return new Response(JSON.stringify({ id: 1, title: "示例书简", volumes: [] }), { status: 200 });
+    });
+
+    const updated = await api.updateBook(1, { title: "示例书简", tags: ["武侠", "连载"] });
+
+    expect(calls[0].url).toBe("/api/books/1");
+    expect(calls[0].method).toBe("PATCH");
+    expect(JSON.parse(String(calls[0].body))).toEqual({ title: "示例书简", tags: ["武侠", "连载"] });
+    expect(updated.title).toBe("示例书简");
+  });
 });

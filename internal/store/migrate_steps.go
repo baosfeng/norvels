@@ -33,6 +33,36 @@ func dropSegColumnsStep(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// addBookMetadataColumnsStep 给 books 补齐 0008 的元数据列（幂等）。
+//
+// 与 0006 同理：SQLite 没有「列存在才加」的条件 DDL，只能先探测再决定执行哪条
+// ALTER。版本回退重跑、或开发期已手工加过列的库，都必须能安全通过。
+func addBookMetadataColumnsStep(ctx context.Context, tx *sql.Tx) error {
+	cols := []struct{ name, ddl string }{
+		{"language", "language TEXT NOT NULL DEFAULT ''"},
+		{"publisher", "publisher TEXT NOT NULL DEFAULT ''"},
+		{"isbn", "isbn TEXT NOT NULL DEFAULT ''"},
+		{"pub_date", "pub_date TEXT NOT NULL DEFAULT ''"},
+		{"series", "series TEXT NOT NULL DEFAULT ''"},
+		{"series_index", "series_index INTEGER NOT NULL DEFAULT 0"},
+		{"source_format", "source_format TEXT NOT NULL DEFAULT 'txt'"},
+		{"has_cover", "has_cover INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, c := range cols {
+		has, err := columnExistsInTx(ctx, tx, "books", c.name)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "ALTER TABLE books ADD COLUMN "+c.ddl); err != nil {
+			return fmt.Errorf("add column books.%s: %w", c.name, err)
+		}
+	}
+	return nil
+}
+
 // tableExistsInTx 在事务内判断表/视图是否存在（迁移步骤专用，不改动连接级状态）。
 func tableExistsInTx(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 	var n int

@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
-/** H5/PC 分档：≤768 是轻量阅读器，≥1024 是全功能工作台（768–1024 归 PC，保留管理能力）。 */
+/**
+ * H5/PC 分档：≤768 是轻量阅读器，≥1024 是全功能工作台（768–1024 归 PC，保留管理能力）。
+ * H5 不是「不渲染工具栏」：书架保留排序（底部弹层）与无限滚动；导入/作者/驾驶舱这类管理入口才按档位不渲染。
+ */
 export type Tier = "pc" | "h5";
 
 export const H5_QUERY = "(max-width: 768px)";

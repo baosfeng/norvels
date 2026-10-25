@@ -2,6 +2,7 @@ import type {
   AuthorDetail,
   AuthorSummary,
   BookDetail,
+  BookMetaPatch,
   BookSummary,
   ChapterBrief,
   ChapterDetail,
@@ -13,6 +14,7 @@ import type {
   SearchResult,
   Stats,
   TagSummary,
+  UploadResult,
 } from "./types";
 
 /** 错误分类：调用方按 kind 决定文案与重试策略，不解析 message 字符串。 */
@@ -36,6 +38,9 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** 驾驶舱统计类接口放宽到 20s：后端查预计算表，刷新窗口内会比列表接口慢。 */
 export const STATS_TIMEOUT_MS = 20_000;
+
+/** 上传是「浏览器 → 后端落盘」的大文件传输，不能用列表接口的 10s 超时。 */
+export const UPLOAD_TIMEOUT_MS = 300_000;
 const TOKEN_KEY = "norvels.authToken";
 
 /** 鉴权 token 只在同一浏览器存一次，随每个请求带 Bearer；未设置时后端为开放模式。 */
@@ -59,8 +64,13 @@ export function setAuthToken(token: string): void {
 export interface RequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
+  /**
+   * 原始请求体（如 FormData）。给了 rawBody 就不做 JSON 序列化、也不设 Content-Type，
+   * 边界串交给浏览器自己补。
+   */
+  rawBody?: BodyInit;
 }
 
 function buildSignal(signal: AbortSignal | undefined, timeoutMs: number) {
@@ -82,11 +92,12 @@ function buildSignal(signal: AbortSignal | undefined, timeoutMs: number) {
 
 /** 唯一的请求出口：超时、取消、错误分类都收敛在这里。 */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { signal, timeoutMs = DEFAULT_TIMEOUT_MS, method = "GET", body } = options;
+  const { signal, timeoutMs = DEFAULT_TIMEOUT_MS, method = "GET", body, rawBody } = options;
   const { signal: composed, cleanup } = buildSignal(signal, timeoutMs);
   const token = getAuthToken();
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // multipart 的 Content-Type 必须带 boundary，只能让浏览器生成，这里不手工设
+  if (body !== undefined && rawBody === undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let response: Response;
@@ -95,7 +106,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       method,
       headers,
       signal: composed,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch (error) {
     cleanup();
@@ -148,6 +159,14 @@ export interface BookQuery {
   size?: number;
 }
 
+/** 上传选项：force 对应「重新导入已入库的文件」，update 对应「追更（只追加新章节）」。 */
+export interface UploadOptions {
+  force?: boolean;
+  update?: boolean;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
 export const api = {
   stats: (opts?: RequestOptions) => request<Stats>("/stats", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   healthReport: (opts?: RequestOptions) =>
@@ -172,8 +191,24 @@ export const api = {
   importJobs: (opts?: RequestOptions) => request<{ items: ImportJob[] }>("/import/jobs", opts),
   tags: (opts?: RequestOptions) => request<{ items: TagSummary[] }>("/tags", opts),
   importJob: (id: number, opts?: RequestOptions) => request<ImportJob>(`/import/jobs/${id}`, opts),
-  startImport: (body: { dir: string; recursive?: boolean; force?: boolean; workers?: number; dryRun?: boolean }, opts?: RequestOptions) =>
+  startImport: (body: { dir: string; recursive?: boolean; force?: boolean; update?: boolean; workers?: number; dryRun?: boolean }, opts?: RequestOptions) =>
     request<{ jobId: number }>("/import", { ...opts, method: "POST", body }),
+  /** 上传文件：multipart；部分文件被拒仍算成功，逐文件原因在 rejected 里。 */
+  uploadImport: (files: File[], opts: UploadOptions = {}) => {
+    const form = new FormData();
+    for (const file of files) form.append("files", file, file.name);
+    form.append("force", opts.force ? "true" : "false");
+    form.append("update", opts.update ? "true" : "false");
+    return request<UploadResult>("/import/upload", {
+      method: "POST",
+      rawBody: form,
+      timeoutMs: opts.timeoutMs ?? UPLOAD_TIMEOUT_MS,
+      signal: opts.signal,
+    });
+  },
+  /** 改书名/作者/简介/标签/系列：任意子集，返回更新后的详情。 */
+  updateBook: (id: number, patch: BookMetaPatch, opts?: RequestOptions) =>
+    request<BookDetail>(`/books/${id}`, { ...opts, method: "PATCH", body: patch }),
   // limit 默认 5、上限 50（后端 intQuery 约束），传错值会 400
   readingProgress: (opts?: RequestOptions, limit?: number) =>
     request<{ items: ReadingProgress[] }>(`/reading/progress${query({ limit })}`, opts),

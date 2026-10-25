@@ -318,6 +318,10 @@ var migrationStepsByVersion = map[int][]migrationStep{
 		Name: "pack chapter content into blocks",
 		Run:  rebuildChaptersForBlocks,
 	}},
+	8: {{
+		Name: "add book metadata columns",
+		Run:  addBookMetadataColumnsStep,
+	}},
 }
 
 // loadMigrations 读取 embed 内的迁移文件，按版本升序返回。

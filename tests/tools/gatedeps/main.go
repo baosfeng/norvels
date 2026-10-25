@@ -41,10 +41,11 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/webui":    {},
 	"norvels/internal/parser":   {"norvels/internal/model"},
 	"norvels/internal/store":    {"norvels/internal/model"},
-	"norvels/internal/importer": {"norvels/internal/model", "norvels/internal/parser", "norvels/internal/store"},
+	"norvels/internal/ebook":    {"norvels/internal/model"},
+	"norvels/internal/importer": {"norvels/internal/model", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/ebook"},
 	"norvels/internal/api": {
 		"norvels/internal/model", "norvels/internal/importer", "norvels/internal/parser",
-		"norvels/internal/store", "norvels/internal/webui",
+		"norvels/internal/store", "norvels/internal/webui", "norvels/internal/ebook",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config"},

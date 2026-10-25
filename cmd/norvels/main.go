@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -172,6 +173,9 @@ func cmdServe(args []string) error {
 			Version: version, Commit: commit, BuiltAt: builtAt,
 			AuthToken: token,
 			Context:   ctx, // 进程收到 SIGTERM 时取消后台导入任务
+			// 上传临时目录放数据卷同目录：容器里的 /tmp 可能是小 tmpfs，
+			// 而单批上传峰值可达 256 MiB；导入结束整目录删除。
+			UploadDir: filepath.Join(filepath.Dir(*dbPath), "uploads"),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,

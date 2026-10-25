@@ -1,15 +1,17 @@
 # norvels
 
-**把一大堆中文 txt 小说变成一个可浏览、可搜索的私人书库**：单二进制 + 单 SQLite 文件 + 轻量容器镜像，无外部依赖、不联网。
+**把一大堆中文 txt / EPUB 小说变成一个可浏览、可搜索的私人书库**：单二进制 + 单 SQLite 文件 + 轻量容器镜像，无外部依赖、不联网。
 
 > 4.4 GB / 865 个文件的中文 txt，一次导入后得到「书架 → 目录 → 阅读 → 找书」的完整使用体验。
 
 ## 功能特性
 
+- **多格式导入**：`.txt` / `.epub` / `.zip`（浏览器上传或目录扫描）。EPUB 自动带出书名/作者/简介/分类/系列、封面与目录层级（卷）；zip 包内逐条导入，条目名带 `包名.zip:包内路径`。不支持的格式与包内条目当场提示原因，不静默跳过。
 - **编码自适应**：UTF-8 / UTF-8 BOM / GB18030 / UTF-16 / Big5 多候选解码 + CJK 命中率打分，乱码文件也能正常入库。
-- **智能切章**：识别「第X章/节/回/卷/部」「数字行」「Chapter N」「序章/楔子/番外」，支持卷/部嵌套、无标记短篇兜底、单文件多书合集标记。
-- **幂等导入**：按文件 SHA-256 去重，重复导入自动跳过；支持 `--force`、`--dry-run`、`--workers`、`--min-chapters`。
+- **智能切章**：识别「第X章/节/回/卷/部」「数字行」「Chapter N」「序章/楔子/番外」，支持卷/部嵌套、无标记短篇兜底；单文件多书合集按章号重置自动拆成多本。
+- **幂等导入**：按文件 SHA-256 去重，重复导入自动跳过；支持 `--force`、`--update`（追更只追加新章）、`--dry-run`、`--workers`、`--min-chapters`。
 - **书名/作者/章节标题检索**：SQLite 索引上的 `LIKE`，毫秒级返回（不含正文全文索引，见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)）。
+- **封面与元数据可编辑**：有封面的书在书架与详情页显示真实封面；书名/作者/简介/标签/系列可在详情页直接改。
 - **零运行时依赖**：前端构建产物 `go:embed` 进二进制，容器里只有两个静态可执行文件。
 - **轻量镜像**：distroless/static + 非 root，约 15.5 MiB（实测二进制 11.1 MiB + 健康检查 2.1 MiB + 基镜像约 2 MiB；前端合入后 16–18 MiB，详见 [docs/deploy.md](docs/deploy.md)）。
 - **数据即文件**：所有内容存在 `/data/norvels.db`（SQLite + WAL），备份/迁移就是复制一个文件（用备份脚本正确处理 WAL）。
@@ -44,7 +46,8 @@ norvels/
 │   └── healthcheck/        # 镜像内健康检查（distroless 无 curl，用它请求 /api/health）
 ├── internal/
 │   ├── api/                # REST 路由、中间件、SPA 静态资源
-│   ├── importer/           # 目录扫描、并发解析、幂等入库、进度
+│   ├── ebook/              # EPUB 解包（zip → OPF → spine → 纯文本/元数据/封面）
+│   ├── importer/           # 目录扫描、并发解析、幂等入库、上传落盘、进度
 │   ├── model/              # 领域类型（ParsedBook / Chapter ...）
 │   ├── parser/             # 编码探测、文本清洗、章节切分
 │   ├── store/              # SQLite 打开/迁移/查询
@@ -77,7 +80,7 @@ make build                                                   # 构建前端 + �
 ./bin/norvels serve --addr :8080 --db ./data/norvels.db
 ```
 
-`--dir` 同时接受目录和单个 `.txt` 文件：给目录就批量扫描（`--recursive` 控制是否进子目录），
+`--dir` 同时接受目录和单个 `.txt` / `.epub` / `.zip` 文件：给目录就批量扫描（`--recursive` 控制是否进子目录），
 给文件就只导这一本。传入其他扩展名的文件会直接报错，不会静默导 0 本。
 
 打开 <http://127.0.0.1:8080> 即可使用；接口在 <http://127.0.0.1:8080/api/stats>。
@@ -176,6 +179,9 @@ docker run --rm --entrypoint /norvels \
 | GET | `/api/books/{id}` | 书籍详情 + 卷/章目录 |
 | GET | `/api/books/{id}/chapters` | 轻量章节列表（目录虚拟滚动） |
 | GET | `/api/books/{id}/chapters/{cid}` | 章节正文（含 prevId/nextId） |
+| GET | `/api/books/{id}/cover` | 封面图片（无封面 404） |
+| PATCH | `/api/books/{id}` | 改书名/多作者/简介/标签/系列（支持清空） |
+| POST | `/api/import/upload` | 浏览器上传 txt/epub/zip（multipart，逐文件 accepted/rejected） |
 | GET | `/api/authors` | 作者列表（`q`、分页） |
 | GET | `/api/authors/{id}` | 作者详情 + 作品 |
 | GET | `/api/search` | 书名 / 作者 / 章节标题检索（`q`、`type=chapter|book|all`） |
@@ -212,7 +218,7 @@ docker run --rm --entrypoint /norvels \
 
 1. 用 `--dry-run` 看该文件的 `Warnings`；
 2. 确认标题行是否被广告清洗规则误删（parser 会去掉含网址/水印的行）；
-3. 若文件是「多书合集」，当前 v1 只标记 `MultiBook`，不自动拆分，建议拆分源文件后重导（`--force`）。
+3. 若文件是「多书合集」：章号重置点会被自动识别并拆成多本（每段至少 3 章，书名取段内书名标记）；拆不开时按单本导入并在 `Warnings` 里说明。
 
 ### 镜像为什么这么小？
 

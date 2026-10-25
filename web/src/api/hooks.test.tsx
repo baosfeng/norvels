@@ -53,7 +53,7 @@ const mocks = {
   })),
   importTrend: vi.fn(async (): Promise<ImportTrendPoint[]> => [{ date: "2026-10-24", books: 12, chapters: 1234 }]),
   books: vi.fn(async () => page(book)),
-  book: vi.fn(async (): Promise<BookDetail> => ({ ...book, volumes: [] })),
+  book: vi.fn(async (): Promise<BookDetail> => ({ ...book, authors: [book.authorName], volumes: [] })),
   chapter: vi.fn(async (): Promise<ChapterDetail> => ({
     bookId: 1,
     bookTitle: book.title,
