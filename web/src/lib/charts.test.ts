@@ -44,6 +44,29 @@ const baseStats: Stats = {
   otherBytes: 151456530,
 };
 
+/**
+ * 真实库实测（838 本 / 42.27 万章，跑完块压缩迁移并 VACUUM 之后）。
+ *
+ * 字节取自库里的实际值，不是换算出来的：
+ *   textBytes     = SUM(length(packed)) + books 侧文本 = 1,690,357,569
+ *   textBytesRaw  = SUM(raw_bytes)                    = 4,874,681,744
+ *   dbBytes       = 主库文件大小                       = 1,743,683,584（1.62 GiB）
+ *   indexBytes    = 文件 − 正文 − 书目文本（后端口径）  = 53,326,015
+ *   otherBytes    = dbBytes − 正文 − 书目（后端 fillComposition 兜底后实际为 0）
+ *
+ * 注：口头常说的「正文 1.69 GB」是十进制 GB，前端按 1024 进制显示为 1.6 GB，两者是同一个数。
+ */
+const realStats: Stats = {
+  ...baseStats,
+  books: 838,
+  chapters: 422715,
+  dbBytes: 1_743_683_584,
+  textBytes: 1_690_357_569,
+  textBytesRaw: 4_874_681_744,
+  indexBytes: 53_326_015,
+  otherBytes: 0,
+};
+
 describe("数字压缩显示", () => {
   it("万级/亿级/零值", () => {
     expect(compact(0)).toBe("0");
@@ -191,17 +214,10 @@ describe("5 库体积构成", () => {
     expect(model.data.parts.map((p) => p.label)).toEqual(["正文", "书目信息", "其他"]);
   });
 
-  // 正文口径改成「压缩后字节」后，正文段会明显变小，三段宽度仍然要落在 100% 上：
+  // 正文口径改成「压缩后字节」后，正文段会明显变大（占满全库），三段宽度仍然要落在 100% 上：
   // 既不能因为最小宽度放大而溢出，也不能因为取整而留下缝。
   it("压缩后的正文口径下，三段渲染宽度之和仍是 100", () => {
-    const model = buildStorage({
-      ...baseStats,
-      // 真实量级：原文 4.87 GB → 压缩后 1.66 GB，而库总共约 2.8 GB
-      textBytes: 1_782_579_200,
-      textBytesRaw: 5_228_281_856,
-      indexBytes: 40_000_000,
-      otherBytes: 1_181_000_000,
-    });
+    const model = buildStorage(realStats);
     const sum = model.data.parts.reduce((acc, p) => acc + p.widthPct, 0);
     expect(Math.round(sum * 100) / 100).toBe(100);
     expect(Math.round(model.data.widthSum * 100) / 100).toBe(100);
@@ -214,17 +230,12 @@ describe("5 库体积构成", () => {
   });
 
   it("压缩率按压缩后 / 原始算，给出「省了多少」的人话", () => {
-    const model = buildStorage({
-      ...baseStats,
-      textBytes: 1_782_579_200,
-      textBytesRaw: 5_228_281_856,
-      indexBytes: 40_000_000,
-      otherBytes: 1_181_000_000,
-    });
-    expect(model.data.compressionPct).toBe(34);
-    // 不复述图例里已有的 1.7 GB，只给「比例 + 省下多少」两个新信息
-    expect(storageRatioNote(model.data)).toBe("正文约为原始文字的 34%，比不压缩省下 3.2 GB");
-    expect(storageRatioNote(model.data)).not.toContain("1.7 GB");
+    const model = buildStorage(realStats);
+    // 实测 34.6763% → 一位小数 34.7%；取整会说成 35%，与真实压缩率差 0.3 个点
+    expect(model.data.compressionPct).toBe(34.7);
+    // 不复述图例里已有的正文体积，只给「比例 + 省下多少」两个新信息
+    expect(storageRatioNote(model.data)).toBe("正文约为原始文字的 34.7%，比不压缩省下 3.0 GB");
+    expect(storageRatioNote(model.data)).not.toContain("1.6 GB");
     // 去术语化：不出现算法名 / 实现词
     expect(findForbiddenTerms(storageRatioNote(model.data))).toEqual([]);
   });

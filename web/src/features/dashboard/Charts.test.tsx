@@ -34,14 +34,19 @@ const stats: Stats = {
   otherBytes: 151456530,
 };
 
-/** 真实量级：原文 4.87 GB 压到 1.66 GB，全库约 2.8 GB。 */
+/**
+ * 真实库实测（838 本 / 42.27 万章，块压缩迁移 + VACUUM 之后），字节全部取自库里的实际值。
+ * 口头常说的「正文 1.69 GB」是十进制 GB，这里按 1024 进制显示为 1.6 GB，是同一个数。
+ */
 const compressedStats: Stats = {
   ...stats,
-  dbBytes: 3_000_000_000,
-  textBytes: 1_782_579_200,
-  textBytesRaw: 5_228_281_856,
-  indexBytes: 40_000_000,
-  otherBytes: 1_177_420_800,
+  books: 838,
+  chapters: 422715,
+  dbBytes: 1_743_683_584,
+  textBytes: 1_690_357_569,
+  textBytesRaw: 4_874_681_744,
+  indexBytes: 53_326_015,
+  otherBytes: 0,
 };
 
 const progress: ReadingProgress[] = [

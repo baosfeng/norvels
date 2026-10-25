@@ -230,7 +230,7 @@ curl -fsS http://127.0.0.1:8080/api/health
 > 实测 13.83 GB 的库迁移期间 WAL 涨到 **10.8 GB**，峰值约 **25 GB**；
 > 再加上随后 VACUUM 需要的临时空间，**建议预留 35 GB 以上**。
 >
-> **迁移完成后推荐执行一次 VACUUM 回收空间**（见 §7.4）。
+> **迁移完成后推荐执行一次 VACUUM 回收空间**（见 §7.3）。
 
 ## 5. SQLite on volume 注意事项
 
@@ -264,7 +264,7 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 ## 7. 升级与回滚
 
-### 7.0 铁律：迁移只前进，回滚必须连数据库一起恢复
+### 7.1 铁律：迁移只前进，回滚必须连数据库一起恢复
 
 > **schema 迁移只前进，不支持降级。回滚镜像版本时，必须同时把数据库从备份恢复**——
 > 先停容器、换回旧镜像 tag、用升级前那份备份覆盖 `/data/norvels.db`，再启动。
@@ -369,12 +369,12 @@ NORVELS_VERSION=0.2.0 docker compose -f deploy/compose.yml up -d
 docker compose -f deploy/compose.yml logs --tail 20 norvels   # 确认迁移日志与版本号
 curl -fsS http://127.0.0.1:8080/api/health
 
-# 回滚：见上面 7.0 的三步（停容器 → 恢复备份 → 换旧 tag 启动）
+# 回滚：见上面 7.1 的三步（停容器 → 恢复备份 → 换旧 tag 启动）
 ```
 
 > **待补的启动期守卫**：理想的形态是二进制启动时读库版本，发现「库版本 > 本二进制支持的最高版本」
 > 直接**拒绝启动**并提示「请升级镜像，或从备份恢复」，把静默损坏变成显式失败。
-> 该守卫需要改 `internal/store/` 的启动路径，当前尚未实现——在那之前，**7.0 的流程是唯一防线**，
+> 该守卫需要改 `internal/store/` 的启动路径，当前尚未实现——在那之前，**7.1 的流程是唯一防线**，
 > 不要省略备份步骤。
 
 **守卫落地时要补的回归用例**（可直接照着写成 `internal/store` 的单测，本文件只登记断言）：
@@ -387,7 +387,7 @@ curl -fsS http://127.0.0.1:8080/api/health
 | 拒绝后库不变 | 用例 1 打开失败后重新读库 | `schema_migrations` 最大版本仍为 99，`user_version` 未被改写（守卫必须**只读**，失败路径不写库） |
 | 空/损坏库 | 零字节文件或非 SQLite 文件 | 报错清晰（区分"不是数据库"与"版本过新"），不误判为老库 |
 
-### 7.4 迁移后回收空间：`VACUUM`
+### 7.3 迁移后回收空间：`VACUUM`
 
 迁移完成后推荐执行一次 `VACUUM` 回收空间：
 
@@ -425,7 +425,7 @@ norvels migrate --db /data/norvels.db && sqlite3 /data/norvels.db 'VACUUM;'
 > 若用的是 named volume，先 `docker compose cp` 出来、VACUUM 完再拷回去，或临时起一个带
 > sqlite3 的容器挂同一个卷。
 
-### 7.1 版本化迁移（v0.2.0 起）
+### 7.4 版本化迁移（v0.2.0 起）
 
 启动时自动把库升级到镜像内的最新版本，失败**拒绝启动**（不带着半迁移的库继续跑）：
 
@@ -442,7 +442,7 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 - **老库兼容**：v0.1.x 的库（`PRAGMA user_version=1`、有业务表、无 `schema_migrations`）
   首次升级会被识别并直接把版本 1 记为已应用，**不重跑建表**，数据条数不变；
 - 迁移版本号只增不减。若需要回退某个结构变更，请从备份恢复，不要删 `schema_migrations` 记录。
-- **只回滚镜像 tag 而不恢复备份 = 静默数据损坏**，完整流程见 [§7.0](#70-铁律迁移只前进回滚必须连数据库一起恢复)。
+- **只回滚镜像 tag 而不恢复备份 = 静默数据损坏**，完整流程见 [§7.1](#71-铁律迁移只前进回滚必须连数据库一起恢复)。
 
 | 版本 | 迁移 | 内容 |
 |---|---|---|
@@ -451,7 +451,7 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 
 > 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续。
 
-### 7.2 鉴权
+### 7.5 鉴权
 
 设置环境变量 `NORVELS_AUTH_TOKEN` 后启用鉴权（**公网部署必须设置**）：
 
@@ -464,7 +464,7 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 - Cookie 为 HttpOnly + SameSite=Lax + Path=/（30 天），比较令牌用恒定时间比较；
 - 未设置 token = **开放模式**，启动日志会打印 `WARN: 未启用鉴权，请勿暴露到公网`。
 
-### 7.3 配置优先级
+### 7.6 配置优先级
 
 命令行 flag > 环境变量 > 默认值。环境变量统一 `NORVELS_` 前缀：
 
@@ -486,7 +486,7 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 | 镜像比预期大 | `docker history norvels:0.1.0`；确认 `-s -w` 与 `CGO_ENABLED=0` 生效，`web/node_modules` 未被 COPY |
 | 中文乱码 | 见 README FAQ；编码探测结果可在 `/api/books/{id}` 的 `encoding` 字段查看 |
 | 备份文件很小 | 检查是否只拷了主库而漏 WAL；用 `scripts/backup.sh` 而非 `cp` |
-| 回滚后数据异常 / 新列丢失 | 只换了镜像 tag 没恢复备份。按 §7.0 停容器 → 删 `-wal`/`-shm` → 从备份恢复 → 再用旧 tag 启动 |
+| 回滚后数据异常 / 新列丢失 | 只换了镜像 tag 没恢复备份。按 §7.1 停容器 → 删 `-wal`/`-shm` → 从备份恢复 → 再用旧 tag 启动 |
 | 启动后反复重启、日志停在迁移 | 首次迁移超过 healthcheck 的 `start_period`。调大 `start_period`（当前 60s）或先单独跑 `migrate` 再 `up` |
 
 ## 9. 相关文档

@@ -293,7 +293,9 @@ export function buildStorage(stats: Stats | null): ChartModel<StorageData> {
       : `全库约 ${formatStorage(totalBytes)}，其中正文占 ${textShare}%`;
 
   const rawText = stats?.textBytesRaw ?? 0;
-  const compressionPct = rawText > 0 && raw.text > 0 ? Math.round((raw.text / rawText) * 100) : null;
+  // 保留一位小数：真实库实测是 34.7%，取整会显示成 35%，与「压缩率」这个数对不上。
+  // 一位小数足够表达「省了多少」，也不会把 34.7 说成 35 这种明显错位的数。
+  const compressionPct = rawText > 0 && raw.text > 0 ? Math.round((raw.text / rawText) * 1000) / 10 : null;
   const savedBytes = compressionPct === null ? 0 : Math.max(0, rawText - raw.text);
 
   return {
