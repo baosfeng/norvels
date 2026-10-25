@@ -20,15 +20,12 @@ var migrationsFS embed.FS
 // migrationsDir 是 embed 内的迁移目录。
 const migrationsDir = "migrations"
 
-// legacyBaselineVersion 是「每次启动跑整份 schema.sql」时代的基线版本：
-// 那时代的库 PRAGMA user_version=1，业务表已建好但没有 schema_migrations 表。
+// legacyBaselineVersion 是老库（跑整份 schema.sql 的时代）的基线：PRAGMA user_version=1。
 const legacyBaselineVersion = 1
 
-// migrationTable 是版本记录表名。
-const migrationTable = "schema_migrations"
+const migrationTable = "schema_migrations" // 版本记录表名。
 
-// migration 是一条待应用的迁移。
-type migration struct {
+type migration struct { // 一条待应用的迁移。
 	Version int    // 文件名里的版本号（0001 → 1）
 	Name    string // 完整文件名，例如 0001_init.sql
 	SQL     string // 迁移 SQL 全文
@@ -329,6 +326,10 @@ var migrationStepsByVersion = map[int][]migrationStep{
 	11: {{
 		Name: "add book read status column",
 		Run:  addBookReadStatusStep,
+	}},
+	12: {{
+		Name: "add book_tags source column",
+		Run:  addBookTagsSourceStep,
 	}},
 }
 

@@ -101,6 +101,30 @@ func addBookReadStatusStep(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// addBookTagsSourceStep 给 book_tags 补 0012 的标签来源列（幂等）。
+//
+// 存量行保持空串（手动 / 历史），不回填：猜不出旧标签是手加的还是导入的。
+func addBookTagsSourceStep(ctx context.Context, tx *sql.Tx) error {
+	// 老库升级路径上 book_tags 可能还不存在（与 0006 的 chapters 同一个坑）：
+	// 表都没有就没什么可加的，直接放行；0001 的建表语句不在这条路径上重跑。
+	exists, err := tableExistsInTx(ctx, tx, "book_tags")
+	if err != nil || !exists {
+		return err
+	}
+	has, err := columnExistsInTx(ctx, tx, "book_tags", "source")
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		"ALTER TABLE book_tags ADD COLUMN source TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("add column book_tags.source: %w", err)
+	}
+	return nil
+}
+
 // tableExistsInTx 在事务内判断表/视图是否存在（迁移步骤专用，不改动连接级状态）。
 func tableExistsInTx(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 	var n int

@@ -65,14 +65,20 @@ func (w bookWrite) execArgs(authorID int64) []any {
 	}
 }
 
-// saveBookExtras 写入随书附加信息：分类标签（EPUB dc:subject）与封面。
+// saveBookExtras 写入随书附加信息：分类标签（dc:subject / 词表）与封面。
 //
-// 标签只在解析结果带 subject 时全量替换：txt 没有分类概念，覆盖导入一本 txt 不该
-// 把用户用 PATCH 手工加的标签清掉。封面则与 books.has_cover 严格同源——没有封面
-// 就保持 0（覆盖导入时旧封面已在 replaceBookRow 里删掉）。
+// 标签一律**只增不删**（P1-B §2.2）：自动标签不能覆盖用户手加的同名标签，
+// 覆盖导入也不该清空旧标签；同名标签（任意 source）只保留最早那条的来源。
+// 用户在 PATCH 里改 tags 才是全量替换（那是显式操作）。
+// 封面与 books.has_cover 严格同源——没有封面就保持 0（旧封面已在 replaceBookRow 删掉）。
 func saveBookExtras(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook) error {
 	if len(b.Subjects) > 0 {
-		if err := setBookTagsInTx(ctx, tx, bookID, b.Subjects); err != nil {
+		if err := addBookTagsWithSourceInTx(ctx, tx, bookID, b.Subjects, TagSourceEPUB); err != nil {
+			return err
+		}
+	}
+	if len(b.AutoTags) > 0 {
+		if err := addBookTagsWithSourceInTx(ctx, tx, bookID, b.AutoTags, TagSourceAuto); err != nil {
 			return err
 		}
 	}

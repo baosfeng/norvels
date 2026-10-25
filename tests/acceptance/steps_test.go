@@ -26,6 +26,7 @@ func registerSteps(sc *godog.ScenarioContext, w *world) {
 	registerUploadSteps(sc, w)
 	registerP1Steps(sc, w)
 	registerBookmarkSteps(sc, w)
+	registerP1BSteps(sc, w)
 	registerCommonAssertSteps(sc, w)
 }
 

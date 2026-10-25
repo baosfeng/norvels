@@ -54,7 +54,9 @@ func bookAuthorNames(b *model.ParsedBook) []string {
 func saveBookAuthorsInTx(ctx context.Context, tx *sql.Tx, bookID int64, names []string) (int64, error) {
 	names = NormalizeAuthors(names)
 	if len(names) == 0 {
-		return 0, fmt.Errorf("%w: empty author list", ErrInvalidArgument)
+		// 空名单 = 显式清空作者（P1-B §2.5）：删关联行并把主作者置 0，
+		// 读取侧据此返回空 authors、authorName 空串；旧作者的聚合列由调用方重算。
+		return clearBookAuthorsInTx(ctx, tx, bookID)
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM books_authors WHERE book_id = ?", bookID); err != nil {
 		return 0, fmt.Errorf("store: clear book authors %d: %w", bookID, err)
@@ -86,6 +88,17 @@ func saveBookAuthorsInTx(ctx context.Context, tx *sql.Tx, bookID int64, names []
 	return primaryID, nil
 }
 
+// clearBookAuthorsInTx 清空一本书的作者：删关联行并把 books.author_id 置 0。
+func clearBookAuthorsInTx(ctx context.Context, tx *sql.Tx, bookID int64) (int64, error) {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM books_authors WHERE book_id = ?", bookID); err != nil {
+		return 0, fmt.Errorf("store: clear book authors %d: %w", bookID, err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE books SET author_id = 0 WHERE id = ?", bookID); err != nil {
+		return 0, fmt.Errorf("store: clear primary author %d: %w", bookID, err)
+	}
+	return 0, nil
+}
+
 // loadBookAuthors 读有序作者名；没有 books_authors 行（存量书）时按主作者兜底。
 func (s *Store) loadBookAuthors(ctx context.Context, bookID int64, primary string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
@@ -111,6 +124,10 @@ func (s *Store) loadBookAuthors(ctx context.Context, bookID int64, primary strin
 	}
 	if len(names) > 0 {
 		return names, nil
+	}
+	if strings.TrimSpace(primary) == "" {
+		// 作者已被显式清空（author_id=0）：返回空数组，不再兜底成「佚名」。
+		return []string{}, nil
 	}
 	return []string{fallbackAuthorName(primary)}, nil
 }

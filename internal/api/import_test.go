@@ -60,7 +60,7 @@ func TestStartImportAccepted(t *testing.T) {
 	dir := t.TempDir()
 
 	rr := env.do(http.MethodPost, "/api/import",
-		strings.NewReader(fmt.Sprintf(`{"dir":%q,"dryRun":true,"recursive":false}`, dir)),
+		strings.NewReader(fmt.Sprintf(`{"dir":%q,"recursive":false}`, dir)),
 		map[string]string{"Content-Type": "application/json"})
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("状态码 = %d，期望 202，body=%s", rr.Code, rr.Body.String())
@@ -99,7 +99,7 @@ func TestStartImportSingleTxtFile(t *testing.T) {
 	}
 
 	rr := env.do(http.MethodPost, "/api/import",
-		strings.NewReader(fmt.Sprintf(`{"dir":%q,"dryRun":true}`, txt)),
+		strings.NewReader(fmt.Sprintf(`{"dir":%q}`, txt)),
 		map[string]string{"Content-Type": "application/json"})
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("状态码 = %d，期望 202 接受单文件，body=%s", rr.Code, rr.Body.String())

@@ -72,6 +72,12 @@ type world struct {
 
 	// 书签（P1 阅读体验）
 	lastBookmarkID int64
+
+	// 导入侧 P1-B（词表 / 预检 / 重试）
+	p1bReport     p1bReport
+	p1bRetryID    int64
+	p1bRunningID  int64
+	p1bJobsBefore int
 }
 
 // reset 关闭上一个场景留下的资源。

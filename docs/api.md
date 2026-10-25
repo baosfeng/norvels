@@ -79,10 +79,10 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 > **0011 起增阅读状态与书签数**（列表与详情都有 `readStatus`，详情独有 `bookmarkCount`）：迁移 `0011`，存量书 `readStatus` 为 `""`，不回填。三套状态互不覆写：`status`（解析）/ `serialStatus`（连载）/ `readStatus`（读者阅读）。
 
 ### PATCH /api/books/{id}
-body 为任意子集：`title`、`author`、`authors`（字符串数组，**全量替换**，最多 10 个）、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`、`serialStatus`、`readStatus`。
+body 为任意子集：`title`、`author`、`authors`（字符串数组，**全量替换**，最多 10 个；空数组 = 清空作者）、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`、`serialStatus`、`readStatus`。
 
 - 成功 200，返回更新后的 BookDetail（含 tags/hasCover/authors/volumes）；
-- 清空语义：`intro`/`series` 传 `""` 即清空，`seriesIndex` 传 `0` 即清空；`authors` 传空数组 → 400（至少要保留一个作者）；
+- 清空语义：`intro`/`series` 传 `""` 即清空，`seriesIndex` 传 `0` 即清空；`authors` 传空数组/只有空白名 → **清空作者**（成功 200，详情 `authors` 返回 `[]`、`authorName` 为空串，`books.author_id` 置 0，旧作者的作品数/字数随之归零）；
 - `author` 与 `authors` 同时给出时 `authors` 优先；只给 `author` 等价于 `authors=[author]`；
 - 空 body、空对象、只含未知字段、title 为空白 → 400 `invalid_param`；id 非数字 → 400 `invalid_id`；书不存在 → 404；
 - 改作者会同步重建作者聚合（新旧作者都刷新）；改 `tags` 会清理不再被引用的孤儿标签；
@@ -184,7 +184,8 @@ body `{ "chapterId": 9, "paraIndex": 12, "label": "…" }`（`chapterId`/`paraIn
 | `not_found` | 404 | 书籍/章节/作者/任务不存在，或未知 `/api/*` 路径 |
 | `method_not_allowed` | 405 | 路径存在但方法不对（带 `Allow` 头） |
 | `invalid_pattern` | 400 | 自定义章节规则的正则编译失败 |
-| `conflict` | 409 | 已有导入任务在运行，或要取消的任务已结束/无取消入口 |
+| `conflict` | 409 | 已有导入任务在运行，或要取消/重试的任务已结束、无取消入口 |
+| `timeout` | 503 | dry-run 预检超过 60 秒（缩小目录范围后重试） |
 | `unavailable` | 503 | 数据库不可用（`/api/health`） |
 | `internal` | 500 | 未预期错误（已脱敏） |
 
@@ -195,6 +196,19 @@ body `{ "chapterId": 9, "paraIndex": 12, "label": "…" }`（`chapterId`/`paraIn
 { "dir": "/books", "recursive": true, "force": false, "workers": 4, "dryRun": false }
 ```
 → 202 `{ "jobId": 7 }`；已有运行中的任务时返回 409。
+
+**只预检**：body 加 `"dryRun": true` → **不建任务、不占锁**，同步返回报告（最长 60 秒，超时 503 `timeout`）：
+```json
+{
+  "truncated": false,
+  "files": { "total": 12, "willImport": 9, "duplicate": 2, "unsupported": 1, "failed": 0 },
+  "books": { "new": 8, "duplicate": 2, "split": 1 },
+  "sample": [{ "source": "/books/a.txt", "title": "示例书名", "chapters": 12, "words": 34567, "duplicate": false, "reason": "" }],
+  "errors": [{ "source": "/books/x.pdf", "reason": "unsupported_format" }]
+}
+```
+- 判定口径与真实导入一致：SHA-256 / 源路径命中即 `duplicate`（追更时再加书名+作者指纹），扩展名不支持即 `unsupported`，解析出 0 章记 `failed`；
+- `sample` 最多 20 条（按扫描顺序）、`errors` 最多 50 条；目录候选超过 200 个只解析前 200 并置 `truncated: true`。
 
 `dir` 可以是目录，也可以是单个 `.txt` / `.epub` / `.zip` 文件（如 `/books/某本书.epub`）：
 
@@ -244,7 +258,24 @@ zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包�
 ```
 
 ### GET /api/import/jobs/{id}
-同上单条 + `errors: [{ "filePath": "…", "reason": "…" }]`（最多 200 条）。
+同上单条 + `errors: [{ "filePath": "…", "reason": "…" }]`（最多 200 条）+ `failedCount`（= `import_job_files` 里 `status=failed` 的条数，0012 起）。
+
+### GET /api/import/jobs/{id}/files?status=failed
+文件级终态清单（0012 起），按行序：
+
+```json
+{ "files": [{ "id": 1, "source": "/books/坏.txt", "displayPath": "坏.txt", "status": "failed",
+  "reason": "解析失败", "bookId": 0, "updatedAt": "…" }], "truncated": false }
+```
+- `status` 取值 `imported|failed|skipped|unsupported|canceled`，其它值 → 400 `invalid_param`；不带返回全部；
+- 最多 1000 条，超出 `truncated: true`；任务不存在 → 404 `not_found`。
+
+### POST /api/import/jobs/{id}/retry
+body `{ "sources": ["…"] }`（省略 = 重试该任务全部 `failed`）→ **202** `{ "jobId": <新任务 id> }`。
+
+- 重试生成**新任务**（原任务记录不变），新任务的 `import_job_files` 只含本次重试的文件；
+- 任务不存在 → 404；任务仍在 `running` → 409 `conflict`；没有可重试项 / 源不在该任务的失败清单里 → 400 `invalid_param`；
+- `source` 是可重放源：目录文件用绝对路径，zip 条目用 `<包绝对路径>:<包内路径>`；源已不存在时该文件记为 `failed`，不中断整批。
 
 `status` 取值：`running` / `completed` / `completed_with_errors` / `failed` / **`canceled`**（用户取消或服务退出，已入库的书保留）。
 
@@ -270,6 +301,20 @@ body 同 GET（`rules` 为**全量替换**，传空数组即清空）。
 - 正则编译失败 → 400 `invalid_pattern`（消息里带第几条）；
 - 条数 > 20 或单条正则 > 200 字、正则为空 → 400 `invalid_param`；
 - `name` 只用于展示：留空补「规则N」，超过 60 字截断（不因此拒绝保存）。
+
+### GET /api/settings/tag-rules
+词表打标规则（标签 ← 关键词列表），导入时按它给书打 `source=auto` 的标签：
+```json
+{ "rules": [{ "tag": "奇幻", "keywords": ["魔法", "精灵"] }] }
+```
+未配置时返回 `{ "rules": [] }`。
+
+### PUT /api/settings/tag-rules
+body 同 GET（`rules` 为**全量替换**，传空数组即清空）→ 成功 **204**，无响应体。
+
+- 条数 > 50、标签名为空或 > 20 字、单条关键词 0 或 > 100 个、单个关键词 > 20 字、同名标签出现两次 → 400 `invalid_param`；
+- 匹配口径（P1-B §2.4）：书名 + 作者 + 前 3 章标题 + 正文前 5000 字，两边去空白后小写子串比较；单书最多 10 个标签，同一标签命中多个关键词只打一次；规则顺序不影响结果（取并集）；
+- 打标只增不删：同书已有同名标签（任意来源）不重复插入且不改其来源；用户 PATCH `tags` 仍是全量替换。
 
 ## 7. 其它
 

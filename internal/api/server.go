@@ -98,9 +98,14 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("GET /api/import/jobs", s.handleListImportJobs)
 	mux.HandleFunc("GET /api/import/jobs/{id}", s.handleGetImportJob)
 	mux.HandleFunc("POST /api/import/jobs/{id}/cancel", s.handleCancelImportJob)
-	// 全局设置（spec §2.2）：目前只有自定义章节识别规则一组。
+	// P1-B 导入侧：文件级终态列表与单文件重试（spec §2.2）。
+	mux.HandleFunc("GET /api/import/jobs/{id}/files", s.handleListImportJobFiles)
+	mux.HandleFunc("POST /api/import/jobs/{id}/retry", s.handleRetryImportJob)
+	// 全局设置（spec §2.2）：自定义章节识别规则 + 词表打标规则。
 	mux.HandleFunc("GET /api/settings/chapter-rules", s.handleGetChapterRules)
 	mux.HandleFunc("PUT /api/settings/chapter-rules", s.handlePutChapterRules)
+	mux.HandleFunc("GET /api/settings/tag-rules", s.handleGetTagRules)
+	mux.HandleFunc("PUT /api/settings/tag-rules", s.handlePutTagRules)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	// 驾驶舱（docs/api.md §8）
 	mux.HandleFunc("GET /api/health/report", s.handleHealthReport)

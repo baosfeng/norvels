@@ -15,11 +15,19 @@ type candidate struct {
 	name   string // 对外名称（普通文件 = 文件名；zip 条目 = 包名 + ":" + 包内路径）
 }
 
-// expandIssue 是解包阶段的一条问题：整包失败或单个条目不支持，都按 import_errors 口径记录。
+// expandIssue 是解包阶段的一条问题：整包失败或单个条目不支持，都按文件级终态记录。
 type expandIssue struct {
-	path   string
+	source string // 可重放源（zip 条目 = 包绝对路径:包内路径；整包失败 = 包路径）
+	path   string // 展示路径
+	kind   string // unsupported（格式不支持）/ failed（整包或条目不可用）
 	reason string
 }
+
+// 解包问题的两类终态（与 store.ImportFileStatus* 取值一致）。
+const (
+	issueKindUnsupported = "unsupported"
+	issueKindFailed      = "failed"
+)
 
 // fileCandidate 把磁盘文件包装成候选。
 func fileCandidate(path string) candidate {
@@ -40,7 +48,9 @@ func expandRoots(roots []string, scratch string) ([]candidate, []expandIssue) {
 		}
 		got, sub, err := extractZIP(root, scratch)
 		if err != nil {
-			issues = append(issues, expandIssue{path: filepath.Base(root), reason: err.Error()})
+			issues = append(issues, expandIssue{
+				source: root, path: filepath.Base(root), kind: issueKindFailed, reason: err.Error(),
+			})
 			continue
 		}
 		cands = append(cands, got...)

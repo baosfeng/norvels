@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -81,14 +80,27 @@ func TestUpdateBookMetaSingleAuthorEqualsList(t *testing.T) {
 	}
 }
 
-// TestUpdateBookMetaEmptyAuthorsRejected 空作者列表在库层也拒绝（api 层先拦 400）。
-func TestUpdateBookMetaEmptyAuthorsRejected(t *testing.T) {
+// TestUpdateBookMetaEmptyAuthorsClears 空作者列表 = 清空作者（P1-B §2.5 口径覆盖）。
+func TestUpdateBookMetaEmptyAuthorsClears(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	id := seedMetaBook(t, st, ctx, "空作者示例书", "原示例作者", "/path/to/patch-empty.txt", strings.Repeat("w", 64))
 
-	err := st.UpdateBookMeta(ctx, id, BookMetaPatch{Authors: ptr([]string{"", "   "})})
-	if !errors.Is(err, ErrInvalidArgument) {
-		t.Fatalf("空 authors 的错误 = %v，期望 ErrInvalidArgument", err)
+	if err := st.UpdateBookMeta(ctx, id, BookMetaPatch{Authors: ptr([]string{"", "   "})}); err != nil {
+		t.Fatalf("清空 authors: %v", err)
+	}
+	detail, err := st.GetBook(ctx, id)
+	if err != nil {
+		t.Fatalf("GetBook: %v", err)
+	}
+	if len(detail.Authors) != 0 || detail.AuthorName != "" {
+		t.Errorf("清空后 authors=%v authorName=%q，期望 [] 与空串", detail.Authors, detail.AuthorName)
+	}
+	var authorID int64
+	if err := st.DB().QueryRowContext(ctx, "SELECT author_id FROM books WHERE id = ?", id).Scan(&authorID); err != nil {
+		t.Fatalf("读 author_id: %v", err)
+	}
+	if authorID != 0 {
+		t.Errorf("清空后 books.author_id = %d，期望 0", authorID)
 	}
 }
