@@ -40,6 +40,12 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </NavLink>
         {isH5 ? null : (
           <>
+            <NavLink to="/series" onClick={onNavigate} data-testid="nav-series">
+              系列
+            </NavLink>
+            <NavLink to="/history" onClick={onNavigate} data-testid="nav-history">
+              阅读历史
+            </NavLink>
             <NavLink to="/admin" onClick={onNavigate} data-testid="nav-admin">
               书籍管理
             </NavLink>
