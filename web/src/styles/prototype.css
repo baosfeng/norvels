@@ -445,18 +445,18 @@ h3{font-size:var(--text-base);font-weight:600}
 }
 
 /* ── 目录虚拟滚动（详情页 + 抽屉共用同一套渲染策略） ── */
-.chapter-virtual{position:relative}
-.chapter-win{position:absolute;left:0;right:0;top:0;will-change:transform}
-.chapter-win .cv-row{display:flex;align-items:baseline;gap:8px;height:36px;padding:0 8px;border-radius:var(--space-1);font-size:var(--text-sm);color:var(--r-fg,var(--fg))}
-.chapter-win .cv-row:hover{background:var(--surface-warm)}
-.chapter-win .cv-row .num{font-family:var(--font-mono);font-size:10px;color:var(--muted);min-width:34px;text-align:right;flex:none}
-.chapter-win .cv-row .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chapter-win .cv-row.is-current{background:var(--surface-warm);font-weight:600}
-.drawer-scroll .chapter-virtual{--cv-bg:var(--r-surface)}
-.drawer-scroll .chapter-win .cv-row{color:var(--r-fg)}
-.drawer-scroll .chapter-win .cv-row:hover{background:color-mix(in oklab,var(--r-fg),transparent 92%)}
-.drawer-scroll .chapter-win .cv-row .num{color:var(--r-muted)}
-.drawer-scroll .chapter-win .cv-row.is-current{background:color-mix(in oklab,var(--r-fg),transparent 88%)}
+/* 目录行：标题区（1fr，可省略）+ 字数区（固定宽度，左边缘逐行对齐），行高由组件内联给出 */
+.cv-row{display:flex;align-items:center;gap:12px;padding:0 8px;border-radius:var(--space-1);font-size:var(--text-sm);color:var(--r-fg,var(--fg));overflow:hidden}
+.cv-row:hover{background:var(--surface-warm)}
+.cv-row.is-current{background:var(--surface-warm);font-weight:600}
+.cv-row .cv-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:anywhere}
+/* 抽屉里允许两行，超出才省略 */
+.cv-row.is-drawer .cv-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3}
+.cv-row .cv-word{flex:0 0 60px;width:60px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-mono);font-size:10px;line-height:1;color:var(--muted);font-variant-numeric:tabular-nums}
+.drawer-scroll .cv-row{color:var(--r-fg)}
+.drawer-scroll .cv-row:hover{background:color-mix(in oklab,var(--r-fg),transparent 92%)}
+.drawer-scroll .cv-row .cv-word{color:var(--r-muted)}
+.drawer-scroll .cv-row.is-current{background:color-mix(in oklab,var(--r-fg),transparent 88%)}
 .vol-virtual{height:340px;overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--border-soft);margin-top:6px}
 .volume .chapter-virtual{margin-top:0}
 .vol-skeleton{padding:8px 0}

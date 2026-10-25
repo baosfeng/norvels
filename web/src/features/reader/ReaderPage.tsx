@@ -550,6 +550,7 @@ export function ReaderPage() {
                 onNavigate={() => setDrawerOpen(false)}
                 maxHeight={isH5 ? 520 : 560}
                 ariaLabel="章节目录"
+                layout="drawer"
               />
             </div>
           )}
