@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail } from "../../api/types";
 
 // vi.mock 的工厂会被提升到文件顶部，桩必须先于它存在 → 用 vi.hoisted 建
-const { batchDeleteChapters, mergeChapters, renumberChapters, updateChapter } = vi.hoisted(() => ({
+const { batchDeleteChapters, mergeChapters, renumberChapters, updateChapter, createChapter } = vi.hoisted(() => ({
   batchDeleteChapters: vi.fn(),
   mergeChapters: vi.fn(),
   renumberChapters: vi.fn(),
   updateChapter: vi.fn(),
+  createChapter: vi.fn(),
 }));
 
 vi.mock("../../api/hooks", () => ({
@@ -16,7 +17,7 @@ vi.mock("../../api/hooks", () => ({
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return { ...actual, api: { batchDeleteChapters, mergeChapters, renumberChapters, updateChapter } };
+  return { ...actual, api: { batchDeleteChapters, mergeChapters, renumberChapters, updateChapter, createChapter } };
 });
 
 const { AdminChapters } = await import("./AdminChapters");
@@ -276,5 +277,29 @@ describe("按序号重命名", () => {
     await waitFor(() => expect(renumberChapters).toHaveBeenCalledWith(7, { scope: "volume", volumeId: 1 }));
     await waitFor(() => expect(screen.queryByTestId("chapter-rename-dialog")).toBeNull());
     expect(onChanged).toHaveBeenCalledWith(expect.stringContaining("已按序号重命名 3 章"));
+  });
+});
+describe("新建章节入口", () => {
+  beforeEach(() => {
+    createChapter.mockReset();
+    onChanged.mockReset();
+    onError.mockReset();
+  });
+
+  it("工具栏入口打开面板；保存后调接口、关面板并刷新目录与统计", async () => {
+    createChapter.mockResolvedValue({ id: 30, idx: 4, title: "第 5 章 新章", volumeId: 2, wordCount: 10 });
+    const onReload = vi.fn();
+    render(<AdminChapters book={book} onChanged={onChanged} onError={onError} onReload={onReload} />);
+
+    fireEvent.click(screen.getByTestId("admin-chapter-new-open"));
+    expect(screen.getByTestId("new-chapter-dialog")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("new-chapter-name"), { target: { value: "第 5 章 新章" } });
+    fireEvent.change(screen.getByTestId("new-chapter-content"), { target: { value: "新写的一段正文" } });
+    fireEvent.click(screen.getByTestId("new-chapter-save"));
+
+    await waitFor(() => expect(createChapter).toHaveBeenCalledWith(7, { title: "第 5 章 新章", content: "新写的一段正文" }));
+    await waitFor(() => expect(screen.queryByTestId("new-chapter-dialog")).toBeNull());
+    expect(onReload).toHaveBeenCalled();
   });
 });

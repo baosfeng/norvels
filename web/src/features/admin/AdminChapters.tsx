@@ -12,6 +12,7 @@ import { ChapterBatchDeleteDialog } from "./ChapterBatchDeleteDialog";
 import { ChapterMergeDialog } from "./ChapterMergeDialog";
 import { ChapterRenumberDialog } from "./ChapterRenumberDialog";
 import { ChapterTable } from "./ChapterTable";
+import { NewChapterDialog } from "./NewChapterDialog";
 import { SplitChapterDialog } from "./SplitChapterDialog";
 import { VolumeManageDialog } from "./VolumeManageDialog";
 import { VolumeMoveDialog } from "./VolumeMoveDialog";
@@ -61,6 +62,8 @@ export function AdminChapters({
   const [managingVolumes, setManagingVolumes] = useState(false);
   /** 「移动到卷」弹窗（勾选的章跨卷移动） */
   const [movingToVolume, setMovingToVolume] = useState(false);
+  /** 新建章节面板（标题 + 正文 + 插入位置） */
+  const [creating, setCreating] = useState(false);
 
   const real = useMemo(() => realVolumes(volumes), [volumes]);
   const loose = useMemo(() => volumes.find(isLooseVolume) ?? null, [volumes]);
@@ -172,6 +175,14 @@ export function AdminChapters({
         <button
           className="btn btn-sm toolbar-end"
           type="button"
+          data-testid="admin-chapter-new-open"
+          onClick={() => setCreating(true)}
+        >
+          新建章节…
+        </button>
+        <button
+          className="btn btn-sm"
+          type="button"
           data-testid="admin-chapter-rename-open"
           onClick={() => setRenaming(true)}
         >
@@ -230,6 +241,22 @@ export function AdminChapters({
         勾选后可批量删除、合并、移动到其他卷；同卷相邻的章可以合并；也可以按序号重命名。改动都即时生效，不进下面的「保存」。
         卷的新建 / 重命名 / 排序 / 删除在「卷管理」里。
       </p>
+
+      {creating ? (
+        <NewChapterDialog
+          bookId={book.id}
+          volumes={volumes}
+          onClose={() => setCreating(false)}
+          onCreated={(chapter) => {
+            setCreating(false);
+            // 反馈走 toast（与正文抽屉一致）：目录与左栏统计由 reload 换新
+            showToast(`已新建章节「${chapter.title}」`);
+            if (onReload) onReload();
+            else onChanged(`已新建章节「${chapter.title}」。`);
+          }}
+          onFailed={(message) => showToast(message, "error")}
+        />
+      ) : null}
 
       {deleting ? (
         <ChapterDeleteDialog
