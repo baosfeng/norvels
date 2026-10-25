@@ -8,6 +8,8 @@ import { ChapterList } from "./ChapterList";
  * jsdom 里没有真实滚动容器高度，useVirtualizer 会一行都不渲染。
  * 这里把虚拟化换成「全部行都渲染」的桩：本用例验的是行内渲染（字数），不是窗口计算。
  */
+const scrollToIndexSpy = vi.hoisted(() => vi.fn());
+
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: { count: number; estimateSize: () => number }) => {
     const items = Array.from({ length: options.count }, (_, index) => ({
@@ -19,6 +21,7 @@ vi.mock("@tanstack/react-virtual", () => ({
     return {
       getTotalSize: () => options.count * options.estimateSize(),
       getVirtualItems: () => items,
+      scrollToIndex: scrollToIndexSpy,
     };
   },
 }));
@@ -102,5 +105,61 @@ describe("目录：长标题 + 4 位字数的两列排版", () => {
     expect(css).toContain(".cv-row.is-drawer .cv-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2");
     // 旧原型选择器（DOM 里已不存在）不残留
     expect(css).not.toContain(".chapter-win");
+  });
+});
+
+describe("目录：多列与撑满", () => {
+  const many: ChapterBrief[] = Array.from({ length: 7 }, (_, i) => ({
+    id: 100 + i,
+    idx: i,
+    title: `第${i + 1}章 标题`,
+    volumeId: 1,
+    wordCount: 1000 + i,
+  }));
+
+  it("columns=3 时一行放 3 章，总行数 = ceil(章数 / 3)", () => {
+    render(
+      <MemoryRouter>
+        <ChapterList bookId={7} chapters={many} columns={3} ariaLabel="章节目录" />
+      </MemoryRouter>,
+    );
+    const scroller = screen.getByTestId("chapter-scroll");
+    expect(scroller.getAttribute("data-columns")).toBe("3");
+    const rows = scroller.querySelectorAll(".cv-grid");
+    expect(rows).toHaveLength(3); // 7 章 = 3 + 3 + 1
+    expect(rows[0].querySelectorAll(".cv-row")).toHaveLength(3);
+    expect(rows[2].querySelectorAll(".cv-row")).toHaveLength(1);
+  });
+
+  it("fill 撑满父容器，不再由组件自己限制高度", () => {
+    render(
+      <MemoryRouter>
+        <ChapterList bookId={7} chapters={many} fill maxHeight={360} ariaLabel="章节目录" />
+      </MemoryRouter>,
+    );
+    const scroller = screen.getByTestId("chapter-scroll");
+    expect(scroller.className).toContain("is-fill");
+    expect(scroller.style.maxHeight).toBe("");
+  });
+
+  it("scrollToCurrent 会把当前章所在行滚到中间", () => {
+    scrollToIndexSpy.mockReset();
+    render(
+      <MemoryRouter>
+        <ChapterList bookId={7} chapters={many} columns={3} currentChapterId={104} scrollToCurrent ariaLabel="章节目录" />
+      </MemoryRouter>,
+    );
+    // 第 5 章（下标 4）在 3 列布局里属于第 1 行（0 起）
+    expect(scrollToIndexSpy).toHaveBeenCalledWith(1, { align: "center" });
+  });
+
+  it("dense 用 32px 行高（PC 鼠标密度）", () => {
+    render(
+      <MemoryRouter>
+        <ChapterList bookId={7} chapters={many} dense ariaLabel="章节目录" />
+      </MemoryRouter>,
+    );
+    const row = screen.getAllByTestId("chapter-word")[0].parentElement as HTMLElement;
+    expect(row.style.height).toBe("32px");
   });
 });

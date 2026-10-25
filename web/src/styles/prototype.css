@@ -457,7 +457,13 @@ h3{font-size:var(--text-base);font-weight:600}
 .drawer-scroll .cv-row:hover{background:color-mix(in oklab,var(--r-fg),transparent 92%)}
 .drawer-scroll .cv-row .cv-word{color:var(--r-muted)}
 .drawer-scroll .cv-row.is-current{background:color-mix(in oklab,var(--r-fg),transparent 88%)}
-.vol-virtual{height:340px;overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--border-soft);margin-top:6px}
+.vol-virtual{overflow:auto;overscroll-behavior:contain;border-top:1px solid var(--border-soft);margin-top:6px}
+/* 抽屉里铺满：父级（.drawer-scroll）负责滚动，这里不再写死高度，避免出现第二层滚动与底部死区 */
+.vol-virtual.is-fill{height:100%;max-height:none;flex:1 1 auto;border-top:0;margin-top:0}
+/* 多列：一行 N 章（N 由 columns 内联给），行内仍是「标题 1fr + 字数定宽」 */
+.cv-grid{display:grid;align-items:stretch}
+.cv-grid .cv-row{width:100%}
+.vol-virtual.is-dense .cv-row{font-size:var(--text-xs)}
 .volume .chapter-virtual{margin-top:0}
 .vol-skeleton{padding:8px 0}
 

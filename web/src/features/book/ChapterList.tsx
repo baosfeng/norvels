@@ -1,32 +1,41 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ChapterBrief } from "../../api/types";
 import { formatWords } from "../../lib/format";
+import { buildTocRows, rowIndexOfChapter } from "../../lib/tocRows";
 
-/**
- * 固定行高与 CSS 里 .cv-row 的行高对齐，虚拟滚动才能算准。
- * H5 的触屏底子给 .cv-row 抬到 min-height:44px，所以两边统一用 44：
- * 行高一致才不会被「36px 步进 + 44px 盒子」叠出 8px 行间重叠。
- */
-const ROW_HEIGHT = 44;
+/** 触控行高（H5）：44px 是触摸目标下限，虚拟滚动步进必须与 CSS 完全一致。 */
+export const ROW_HEIGHT = 44;
+/** 鼠标行高（PC 多列）：目录在桌面上要密，一屏才装得下几十章。 */
+export const DENSE_ROW_HEIGHT = 32;
 const DRAWER_ROW_HEIGHT = 44;
+/** 多列时列间留白（PC 目录用 20px，与原型一致）。 */
+const COLUMN_GAP = 20;
 
 /**
- * 目录虚拟滚动：6000+ 章只渲染视口内的行。
- * 用 @tanstack/react-virtual（单一实现），详情页卷内列表与阅读器抽屉共用。
+ * 目录：虚拟滚动 + 多列。
  *
- * 每行是稳定的两列：标题区 flex:1 + min-width:0（详情单行省略、抽屉最多两行），
- * 字数区固定宽度（左边缘逐行对齐、右对齐、不换行），两列间 12px 间距。
+ * 一行放 N 章（N = columns），行内是「标题 1fr + 字数定宽」两列，所以列的多少只影响
+ * 一屏能看多少章，不影响每一行的排版口径（详情页与阅读器抽屉共用同一套行）。
+ *
+ * 三种高度语义：
+ *   - 默认：页面内一段可滚区域（maxHeight 由调用方给）；
+ *   - fill：撑满父容器（阅读器抽屉），父容器负责滚动，不再产生第二层滚动；
+ *   - 不传 maxHeight 且 fill=false：不限制高度（详情页整页滚动）。
  */
 export function ChapterList({
   bookId,
   chapters,
   currentChapterId,
   onNavigate,
-  maxHeight = 360,
+  maxHeight,
   ariaLabel,
   layout = "detail",
+  columns = 1,
+  dense = false,
+  fill = false,
+  scrollToCurrent = false,
 }: {
   bookId: number;
   chapters: ChapterBrief[];
@@ -36,53 +45,80 @@ export function ChapterList({
   ariaLabel?: string;
   /** detail：详情页卷内目录（单行省略）；drawer：阅读器抽屉（最多两行） */
   layout?: "detail" | "drawer";
+  /** 视觉列数（PC ≥1180 给 3，≥900 给 2，其余 1）；移动端恒为 1 */
+  columns?: number;
+  /** 紧凑行高（32px），PC 鼠标用 */
+  dense?: boolean;
+  /** 高度撑满父容器（抽屉里用；配合父级 overflow:auto） */
+  fill?: boolean;
+  /** 首次渲染后滚到当前章（长目录打开就能看到读到哪了） */
+  scrollToCurrent?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const rowHeight = layout === "drawer" ? DRAWER_ROW_HEIGHT : ROW_HEIGHT;
+  const cols = Math.max(1, Math.trunc(columns) || 1);
+  const rowHeight = layout === "drawer" ? DRAWER_ROW_HEIGHT : dense ? DENSE_ROW_HEIGHT : ROW_HEIGHT;
+  const rows = useMemo(() => buildTocRows(chapters, cols), [chapters, cols]);
   const virtualizer = useVirtualizer({
-    count: chapters.length,
+    count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
-    overscan: 20,
+    overscan: 12,
   });
+
+  const currentRow = rowIndexOfChapter(chapters, cols, currentChapterId);
+  useEffect(() => {
+    if (!scrollToCurrent || currentRow < 0) return;
+    virtualizer.scrollToIndex(currentRow, { align: "center" });
+    // virtualizer 身份随行数与行高变化，跟着重建时才需要重新定位
+  }, [scrollToCurrent, currentRow, virtualizer, rowHeight]);
 
   return (
     <div
       ref={scrollRef}
-      className="vol-virtual"
-      style={{ maxHeight }}
+      className={`vol-virtual${fill ? " is-fill" : ""}${dense ? " is-dense" : ""}`}
+      style={fill ? undefined : maxHeight ? { maxHeight } : undefined}
       tabIndex={0}
       aria-label={ariaLabel ?? "章节目录"}
       data-testid="chapter-scroll"
       data-layout={layout}
+      data-columns={cols}
     >
       <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
-        {virtualizer.getVirtualItems().map((row) => {
-          const chapter = chapters[row.index];
-          const current = chapter.id === currentChapterId;
-          return (
-            <Link
-              key={chapter.id}
-              to={`/read/${bookId}/${chapter.id}`}
-              className={`cv-row${layout === "drawer" ? " is-drawer" : ""}${current ? " is-current" : ""}`}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                transform: `translateY(${row.start}px)`,
-                height: rowHeight,
-              }}
-              aria-current={current ? "true" : undefined}
-              onClick={onNavigate}
-            >
-              <span className="cv-title">{chapter.title}</span>
-              <span className="cv-word" data-testid="chapter-word">
-                {formatWords(chapter.wordCount)}
-              </span>
-            </Link>
-          );
-        })}
+        {virtualizer.getVirtualItems().map((row) => (
+          <div
+            key={row.key}
+            className="cv-grid"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: rowHeight,
+              transform: `translateY(${row.start}px)`,
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              columnGap: COLUMN_GAP,
+            }}
+          >
+            {rows[row.index].items.map((chapter) => {
+              const current = chapter.id === currentChapterId;
+              return (
+                <Link
+                  key={chapter.id}
+                  to={`/read/${bookId}/${chapter.id}`}
+                  className={`cv-row${layout === "drawer" ? " is-drawer" : ""}${current ? " is-current" : ""}`}
+                  style={{ height: rowHeight }}
+                  aria-current={current ? "true" : undefined}
+                  onClick={onNavigate}
+                >
+                  <span className="cv-title">{chapter.title}</span>
+                  <span className="cv-word" data-testid="chapter-word">
+                    {formatWords(chapter.wordCount)}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );
