@@ -179,8 +179,9 @@ func TestSaveBookUpdateReportsAppended(t *testing.T) {
 func TestSaveBookUpdateBadge(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	_, err := st.SaveBook(ctx, seedInsertBookModel(1), SaveOptions{})
+	first, err := st.SaveBook(ctx, seedInsertBookModel(1), SaveOptions{})
 	requireOK(t, "首次 SaveBook", err)
+	before := mustBookDetail(t, ctx, st, first.BookID)
 
 	grown := seedInsertBookModel(1)
 	grown.Chapters = append(grown.Chapters, model.ParsedChapter{
@@ -190,10 +191,15 @@ func TestSaveBookUpdateBadge(t *testing.T) {
 	requireOK(t, "追更", err)
 	requireEqual(t, "追更 Appended", appended.Appended, 1)
 
-	requireOK(t, "AddNewChapters", st.AddNewChapters(ctx, appended.BookID, appended.Appended))
+	// 角标在追更事务内累加，不需要上层再调 AddNewChapters 补一刀。
 	detail := mustBookDetail(t, ctx, st, appended.BookID)
 	requireEqual(t, "追更后章节数", detail.ChapterCount, 4)
 	requireEqual(t, "追更后角标", detail.NewChapters, 1)
+	// 追更必须推进 updated_at：书架「最近更新」与详情页「最后更新」都读它，
+	// 不推进会让刚追更的书排到旧位置（验收里表现为抓到上一本）。
+	if !detail.UpdatedAt.After(before.UpdatedAt) {
+		t.Fatalf("追更后 updatedAt 未前进：之前 %v，之后 %v", before.UpdatedAt, detail.UpdatedAt)
+	}
 }
 
 // seedInsertBook 造一本示例书（3 章，前两章归第一卷），返回 book id。

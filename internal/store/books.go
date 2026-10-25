@@ -201,7 +201,8 @@ func (s *Store) AckNewChapters(ctx context.Context, bookID int64) error {
 	return requireOneRow(res, bookID)
 }
 
-// AddNewChapters 累加追更章数；只由追更链路（importer）在追加成功后调用。
+// AddNewChapters 手工累加追更章数（追更主链路已在 updateBookAfterAppend 的事务内自增，
+// 这里留给测试与运维脚本手工修正角标）。
 //
 // n 为负一律拒绝：累加本身是 +，负值只会来自调用方把「删掉了几章」误当追加，
 // 而 new_chapters 是角标不是账本，写进负数没有任何可解释的含义。

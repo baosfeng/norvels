@@ -34,7 +34,12 @@ func appendBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Pars
 		}
 		appended = len(tail)
 	}
-	if err := updateBookAfterAppend(ctx, tx, bookID, w); err != nil {
+	if appended == 0 {
+		// 没有新章就不动 books：一次「扫到了但没有变化」的追更导入不该刷新
+		// updated_at，否则书架「最近更新」会把没变的书顶到前面。
+		return 0, nil
+	}
+	if err := updateBookAfterAppend(ctx, tx, bookID, w, appended); err != nil {
 		return 0, err
 	}
 	return appended, nil
@@ -192,7 +197,7 @@ func maxBlockSeqInTx(ctx context.Context, tx *sql.Tx, bookID int64) (int, error)
 //
 // file_sha256 有 UNIQUE 约束：新哈希若已被另一本书占用（用户先单独导过更新版），
 // 保留旧哈希、只更新计数，避免把一次合法的追更拖成约束错误。
-func updateBookAfterAppend(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite) error {
+func updateBookAfterAppend(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite, appended int) error {
 	sha := w.sha
 	taken, err := shaTakenByOther(ctx, tx, w.sha, bookID)
 	if err != nil {
@@ -201,12 +206,16 @@ func updateBookAfterAppend(ctx context.Context, tx *sql.Tx, bookID int64, w book
 	if taken {
 		sha = ""
 	}
+	// 追更角标与最后更新时间在同一个事务里落：独立写会让「任务已完成但角标还是 0」
+	// 这种竞态出现在追更刚结束的那一刻（验收里就是偶发红）。
 	_, err = tx.ExecContext(ctx,
 		"UPDATE books SET chapter_count = ?, word_count = ?, file_size = ?, "+
 			"file_sha256 = CASE WHEN ? = '' THEN file_sha256 ELSE ? END, "+
+			"new_chapters = new_chapters + ?, "+
+			"last_chapter_at = CASE WHEN ? > 0 THEN ? ELSE last_chapter_at END, "+
 			"volume_count = (SELECT COUNT(*) FROM volumes WHERE book_id = books.id), updated_at = ? "+
 			"WHERE id = ?",
-		w.chapterCount, w.wordCount, w.fileSize, sha, sha, w.nowText, bookID)
+		w.chapterCount, w.wordCount, w.fileSize, sha, sha, appended, appended, w.nowText, w.nowText, bookID)
 	if err != nil {
 		return fmt.Errorf("store: update book after append %d: %w", bookID, err)
 	}

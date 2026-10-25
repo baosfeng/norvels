@@ -251,8 +251,7 @@ type SaveResult struct {
 	Updated bool // true 表示覆盖更新，false 表示新建
 	Skipped bool // true 表示幂等跳过
 	// Appended 是追更时本次追加的章节数（新建/覆盖/跳过为 0）。
-	// 调用方（importer）用它作为 AddNewChapters 的入参：库层已经算过 tail 长度，
-	// 再让上层自己数一遍只会多一处可能数错的地方。
+	// 角标累加已经在追更事务内完成，这个字段供调用方判断「是否真的有新章」与回报明细。
 	Appended int
 }
 
