@@ -1,5 +1,5 @@
 import type { SerialStatus } from "../../api/types";
-import type { MetaDraft } from "../../lib/metaDraft";
+import type { PubDraft } from "./pubDraft";
 
 /**
  * 书籍元信息表单（受控）：只负责字段与校验提示，草稿状态与保存由页面持有，
@@ -11,8 +11,8 @@ export function AdminMetaForm({
   disabled = false,
   seriesIndexInvalid = false,
 }: {
-  draft: MetaDraft;
-  onChange: (key: keyof MetaDraft, value: string) => void;
+  draft: PubDraft;
+  onChange: (key: keyof PubDraft, value: string) => void;
   disabled?: boolean;
   seriesIndexInvalid?: boolean;
 }) {
@@ -85,6 +85,62 @@ export function AdminMetaForm({
           <option value="ongoing">连载中</option>
           <option value="completed">已完结</option>
         </select>
+      </div>
+
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor="admin-publisher">出版社</label>
+          <input
+            className="input"
+            id="admin-publisher"
+            value={draft.publisher}
+            disabled={disabled}
+            placeholder="留空清空"
+            data-testid="admin-publisher"
+            onChange={(event) => onChange("publisher", event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="admin-pub-date">出版日期</label>
+          <input
+            className="input"
+            id="admin-pub-date"
+            type="date"
+            value={draft.pubDate}
+            disabled={disabled}
+            data-testid="admin-pub-date"
+            onChange={(event) => onChange("pubDate", event.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor="admin-isbn">ISBN</label>
+          <input
+            className="input"
+            id="admin-isbn"
+            value={draft.isbn}
+            disabled={disabled}
+            placeholder="留空清空"
+            spellCheck={false}
+            data-testid="admin-isbn"
+            onChange={(event) => onChange("isbn", event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="admin-language">语言</label>
+          <input
+            className="input"
+            id="admin-language"
+            value={draft.language}
+            disabled={disabled}
+            placeholder="例如 zh-CN"
+            spellCheck={false}
+            data-testid="admin-language"
+            onChange={(event) => onChange("language", event.target.value)}
+          />
+        </div>
       </div>
 
       <div className="field-row">

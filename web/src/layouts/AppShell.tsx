@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { ShelfModeContext, type ShelfMode } from "./shelfMode";
+import { useTier } from "../lib/tier";
 
 /**
  * PC 外壳：常驻侧栏 + 粘性顶栏。
@@ -13,6 +14,9 @@ export function AppShell() {
   const [mode, setMode] = useState<ShelfMode>("grid");
   const location = useLocation();
   const isHome = location.pathname === "/home";
+  // H5 的书架是强制单列简表（ShelfPage 里 mode 只对 PC 生效），
+  // 所以视图切换按钮只在 PC 的书架出现——H5 上放一个按了不动的按钮是缺陷
+  const showViewToggle = location.pathname === "/shelf" && useTier() === "pc";
 
   // 导航抽屉的打开状态绑定到当时的路由：路由一变就自然收起，不需要在 effect 里 setState
   const [openFor, setOpenFor] = useState<string | null>(null);
@@ -49,7 +53,7 @@ export function AppShell() {
               onOpenNav={() => setNavOpen(!navOpen)}
               mode={mode}
               onModeChange={setMode}
-              showViewToggle={location.pathname === "/shelf"}
+              showViewToggle={showViewToggle}
             />
           )}
           <main className="container" data-od-id="main">
