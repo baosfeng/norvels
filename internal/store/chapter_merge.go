@@ -9,17 +9,31 @@ import (
 
 // 合并相邻章节（管理页 M1，与 chapter_split.go 的拆分互逆）。
 //
-// 与拆分一样不重压正文：若各章本就在同一块的连续区间（拆分留下的典型形态），
-// 合并只是把首章的 span 拉长到覆盖整段。只有跨块的合并才必须新建一个块——
-// 跨块的正文在物理上不相邻，一次 span 表达不了。新建块时旧块若因此无人引用，
+// 合并**一律新建一块**装拼接后的正文，不再走「同块连续区间直接拉长 span」的
+// 零拷贝快路径：合并要在相邻两章正文之间插一个换行（见 mergeSeparator），
+// 插入的字节让正文不等于原来的任何一个连续区间，span 直拼物理上做不到。
+// 两条路径只留一条，合并结果就不会随「拆完再合并」还是「跨块合并」而变。
+//
+// 代价是每次合并都解压重压一遍（单章几百 KB 量级，毫秒级）。旧块若因此无人引用，
 // 由 reapBlocksOf 整块回收并从 metrics 里冲减，体积不会虚增。
+
+// mergeSeparator 是合并时插在相邻两章正文之间的分隔符：**恰好一个换行**。
+//
+// 为什么必须插：合并是把两段**独立的正文**接成一章。原文各自的章尾与章首之间本来就
+// 有一处「章界」——章尾常常没有句末标点（「…远处有人拉起了手风琴」，
+// 下一章起句「夜雾沿着河堤…」）。直拼会让读者把两句连读成一句，等于合并把断句吃掉了。
+// 一个换行是最小代价的段落断开：不引入新字符（不改字、不改标点），又是所有阅读器
+// 都认的段落边界。
+//
+// 尾部不额外加：分隔符只出现在两段之间，合并结果不会因为合并本身以换行结尾。
+const mergeSeparator = "\n"
 
 // MergeChapters 把 cids 指定的相邻同卷章节合并成一章，保留**首章 id**。
 //
 // 首章保留 id 的理由：阅读进度（reading_progress）与书签都按 chapter id 指过来，
 // 保住目录里的第一章就是保住读者的位置。标题取首章原标题（不重编号——那由
-// RenumberChapters 负责），正文按章序拼接。三处计数在同一事务里按增量维护，
-// books.updated_at 一并刷新（详情页与列表都按它排序）。
+// RenumberChapters 负责），正文按章序用 mergeSeparator 拼接。
+// 三处计数在同一事务里按增量维护，books.updated_at 一并刷新（详情页与列表都按它排序）。
 func (s *Store) MergeChapters(ctx context.Context, bookID int64, cids []int64) error {
 	if bookID <= 0 {
 		return fmt.Errorf("%w: book id %d", ErrInvalidArgument, bookID)
@@ -76,9 +90,13 @@ func checkMergeable(spans []chapterSpan) error {
 	return nil
 }
 
-// applyMerge 落实合并：算新 span → 改写首章 → 删其余章 → 重排序号与计数 → 回收旧块。
+// applyMerge 落实合并：拼正文写新块 → 改写首章 → 删其余章 → 重排序号与计数 → 回收旧块。
 func applyMerge(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan) error {
-	ref, packed, raw, err := mergedSpan(ctx, tx, bookID, spans)
+	text, err := mergeChapterText(ctx, tx, spans)
+	if err != nil {
+		return err
+	}
+	ref, packed, raw, err := writeMergeBlock(ctx, tx, bookID, spans, text)
 	if err != nil {
 		return err
 	}
@@ -100,63 +118,61 @@ func applyMerge(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSp
 	return refreshBlockIdxRange(ctx, tx, ref.id)
 }
 
-// mergedSpan 计算合并后首章的 span，并返回并入 metrics 的字节增量。
-func mergedSpan(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan) (blockRef, int64, int64, error) {
-	if ref, ok := contiguousRef(spans); ok {
-		return ref, 0, 0, nil
-	}
-	text, err := concatSpanText(ctx, tx, spans)
-	if err != nil {
-		return blockRef{}, 0, 0, err
-	}
-	return writeMergeBlock(ctx, tx, bookID, spans, text)
-}
-
-// contiguousRef 判断各章是否本就在同一块的连续区间；是则返回合并后的 span。
+// mergeChapterText 按章序取出各章正文，相邻两段之间插 mergeSeparator。
 //
-// 判据是「同一块 + 前一段的 end 正好是后一段的 start」。拆章只切 span、不重压，
-// 拆完再合并回来必然命中这条，于是整体零拷贝：不用解压、不用重压、不改 metrics。
-func contiguousRef(spans []chapterSpan) (blockRef, bool) {
-	head := spans[0]
-	if head.blockID <= 0 {
-		return blockRef{}, false
-	}
-	end := head.offset + head.length
-	for _, sp := range spans[1:] {
-		if sp.blockID != head.blockID || sp.offset != end {
-			return blockRef{}, false
-		}
-		end = sp.offset + sp.length
-	}
-	return blockRef{id: head.blockID, off: head.offset, len: end - head.offset}, true
-}
-
-// concatSpanText 按章序取出各章正文并拼接。
-//
-// 空章（block_id=0 且长度 0）贡献空串而不是报错：合并时把空章并进来是合法操作，
-// 但「有长度却没有块」仍是块级损坏，必须照常报错而不是静默丢字。
-func concatSpanText(ctx context.Context, tx *sql.Tx, spans []chapterSpan) ([]byte, error) {
-	var buf []byte
+// 空章（block_id=0 且长度 0）既不贡献字节也不贡献分隔符：否则合并结果会多出
+// 空行或以换行开头（空章夹在中间时），而「插入的分隔符数量 = 有正文的段数 − 1」
+// 才是不变量的真实表述。
+func mergeChapterText(ctx context.Context, tx *sql.Tx, spans []chapterSpan) ([]byte, error) {
+	parts := make([][]byte, 0, len(spans))
+	total := 0
 	for _, sp := range spans {
-		if sp.blockID <= 0 {
-			if sp.length != 0 {
-				return nil, fmt.Errorf("%w: 第 %d 章有长度 %d 却没有正文块",
-					ErrBlockCorrupted, sp.idx+1, sp.length)
-			}
-			continue
-		}
-		raw, err := spanText(ctx, tx, sp)
+		raw, err := chapterPartText(ctx, tx, sp)
 		if err != nil {
 			return nil, err
 		}
-		buf = append(buf, raw...)
+		if len(raw) == 0 {
+			continue
+		}
+		parts = append(parts, raw)
+		total += len(raw) + len(mergeSeparator)
+	}
+	if len(parts) == 0 {
+		return nil, nil
+	}
+	buf := make([]byte, 0, total)
+	for i, p := range parts {
+		if i > 0 {
+			buf = append(buf, mergeSeparator...)
+		}
+		buf = append(buf, p...)
 	}
 	return buf, nil
+}
+
+// chapterPartText 取出一章的正文；空章返回空串而不是报错。
+//
+// 合并时把空章并进来是合法操作，但「有长度却没有块」仍是块级损坏，
+// 必须照常报错而不是静默丢字。
+func chapterPartText(ctx context.Context, tx *sql.Tx, sp chapterSpan) ([]byte, error) {
+	if sp.blockID <= 0 {
+		if sp.length != 0 {
+			return nil, fmt.Errorf("%w: 第 %d 章有长度 %d 却没有正文块",
+				ErrBlockCorrupted, sp.idx+1, sp.length)
+		}
+		return nil, nil
+	}
+	return spanText(ctx, tx, sp)
 }
 
 // writeMergeBlock 把合并后的正文压成一个新块，返回首章的新 span 与字节增量。
 //
 // 全空合并不建块（与写入侧「全空块不建块行」同一口径）：首章变成空章，block_id=0。
+//
+// 拼出来的正文可能远超 1 MB 分块目标（几章各占一块、合起来 1.3 MB）：块不设硬上限，
+// 一章独占一块即可（与 splitBlocks「单章超过目标就独占」同一口径）。压缩或写块失败
+// 直接返回错误，整个合并事务回滚——章节行、块行与 metrics 都停在合并前，
+// 不会出现「首章已被改写、正文只写了一半」的半章状态。
 func writeMergeBlock(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan,
 	text []byte) (blockRef, int64, int64, error) {
 	raw := int64(len(text))
@@ -240,8 +256,10 @@ func tailChapterIDs(spans []chapterSpan) []int64 {
 // 正是各章存量 word_count 之和），总数不变。因此只减章数、不动字数；books.updated_at
 // 仍由 adjustBookCounts 顺带刷新。
 //
-// 为什么不用 countWords 重算拼接后的正文：章界处若原文没有分隔符，重算会把两个
-// 英文词粘成一个，读者会觉得「合并吃字了」；存量口径才是读者看到的那一列。
+// 为什么不重算：插进来的 mergeSeparator 是空白，store.countWords 不把空白算作字数
+// （CJK 逐字计、空白与标点都不计，见 util.go），所以对中文正文重算也不会变；
+// 但英文词被换行切开会被算成两个词。存量口径才是读者看到的那一列，也不受分隔符
+// 影响，因此合并一律沿用各章存量之和，不跑 countWords。
 func applyMergeCounts(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan,
 	packed, raw int64) error {
 	if err := adjustBookCounts(ctx, tx, bookID, -(len(spans) - 1), 0); err != nil {
