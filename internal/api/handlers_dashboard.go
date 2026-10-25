@@ -37,6 +37,8 @@ type progressRequest struct {
 	BookID    int64   `json:"bookId"`
 	ChapterID int64   `json:"chapterId"`
 	Percent   float64 `json:"percent"`
+	// ParaIndex 是章内段落位置（0 起，缺省 0）：进入章节时据此滚回上次读到的段落。
+	ParaIndex int `json:"paraIndex"`
 }
 
 // handleSaveProgress 按 bookId upsert 进度；成功返回 204。
@@ -45,7 +47,10 @@ func (s *Server) handleSaveProgress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item := store.ReadingProgress{BookID: req.BookID, ChapterID: req.ChapterID, Percent: req.Percent}
+	item := store.ReadingProgress{
+		BookID: req.BookID, ChapterID: req.ChapterID,
+		Percent: req.Percent, ParaIndex: req.ParaIndex,
+	}
 	if err := s.st.SaveReadingProgress(r.Context(), item); err != nil {
 		s.fail(w, r, err, "书籍或章节不存在")
 		return
@@ -69,6 +74,10 @@ func decodeProgressRequest(w http.ResponseWriter, r *http.Request) (progressRequ
 	}
 	if _, ok := store.NormalizePercent(req.Percent); !ok {
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "percent 必须在 0~1 之间")
+		return req, false
+	}
+	if req.ParaIndex < 0 {
+		writeError(w, http.StatusBadRequest, codeInvalidParam, "paraIndex 不能为负")
 		return req, false
 	}
 	return req, true

@@ -32,6 +32,13 @@ type bookDetailResp struct {
 	// 0011 起的阅读体验增量：阅读状态与书签数。
 	ReadStatus    string `json:"readStatus"`
 	BookmarkCount int    `json:"bookmarkCount"`
+	// 0014 起：评分与追更角标、出版信息（P3 管理侧补全）。
+	Rating      int    `json:"rating"`
+	NewChapters int    `json:"newChapters"`
+	Publisher   string `json:"publisher"`
+	PubDate     string `json:"pubDate"`
+	ISBN        string `json:"isbn"`
+	Language    string `json:"language"`
 }
 
 // authorsResp 是 GET /api/authors 的响应（items + total）。

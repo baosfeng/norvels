@@ -69,7 +69,7 @@ type tagsResponse struct {
 }
 
 func (s *Server) handleListTags(w http.ResponseWriter, r *http.Request) {
-	items, err := s.st.ListTags(r.Context())
+	items, err := s.st.ListTagsWithCount(r.Context())
 	if err != nil {
 		s.fail(w, r, err, "标签不可用")
 		return
