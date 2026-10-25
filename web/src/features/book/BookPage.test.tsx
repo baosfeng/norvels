@@ -295,6 +295,53 @@ describe("书籍详情：连载状态与最新章节", () => {
   });
 });
 
+describe("书籍详情：阅读状态", () => {
+  beforeEach(() => {
+    bookState.data = { ...book, readStatus: "want" };
+    bookState.reload = vi.fn();
+    updateBook.mockReset();
+    deleteBook.mockReset();
+  });
+
+  it("元信息区的下拉回填当前状态，改一次只提交 readStatus 并即时回显", async () => {
+    updateBook.mockResolvedValueOnce({ ...book, readStatus: "reading" });
+    renderPage();
+
+    const select = screen.getByTestId("book-read-status") as HTMLSelectElement;
+    expect(select.value).toBe("want");
+
+    fireEvent.change(select, { target: { value: "reading" } });
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
+    expect(updateBook.mock.calls[0]).toEqual([7, { readStatus: "reading" }]);
+    expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe("reading");
+    expect(screen.getByTestId("book-notice").textContent).toContain("在读");
+  });
+
+  it("PATCH 失败时下拉退回原值并提示，不用后端错误原文", async () => {
+    updateBook.mockRejectedValueOnce(new ApiError("http", "invalid_param", 400, "invalid_param"));
+    renderPage();
+
+    const select = screen.getByTestId("book-read-status") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "done" } });
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe("want"));
+    await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("有几项内容不符合要求"));
+  });
+
+  it("有书签时元信息区显示条数，没有就不占位", () => {
+    bookState.data = { ...book, readStatus: "reading", bookmarkCount: 3 };
+    const { unmount } = renderPage();
+    expect(screen.getByTestId("book-bookmark-count").textContent).toContain("3 条");
+    unmount();
+
+    bookState.data = { ...book, readStatus: "reading", bookmarkCount: 0 };
+    renderPage();
+    expect(screen.queryByTestId("book-bookmark-count")).toBeNull();
+  });
+});
+
 describe("书籍详情：删除书籍的二次确认", () => {
   beforeEach(() => {
     bookState.data = book;

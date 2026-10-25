@@ -2,12 +2,13 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useBook, useReadingProgress } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
-import type { BookDetail, BookMetaPatch, SerialStatus, Volume } from "../../api/types";
+import type { BookDetail, BookMetaPatch, ReadStatus, SerialStatus, Volume } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { ChapterList } from "./ChapterList";
 import { DeleteBookDialog } from "./DeleteBookDialog";
 import { formatCount, formatDate } from "../../lib/format";
+import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
 import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
@@ -25,6 +26,8 @@ export function BookPage() {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState("");
+  /** 状态下拉的乐观值：PATCH 成功即时回显，失败退回后端值 */
+  const [readStatus, setReadStatus] = useState<ReadStatus | null>(null);
 
   if (loading) {
     return <LoadingPanel title="正在打开这本书" description="正在取回书名、简介与目录。" testId="book-loading" />;
@@ -54,6 +57,24 @@ export function BookPage() {
   const intro = stripTags(book.intro);
   const tags = book.tags ?? [];
   const lastChapter = lastChapterLabel(book);
+  const currentReadStatus = readStatus ?? book.readStatus ?? "";
+
+  /** 阅读状态下拉：只下发 readStatus，成功即时回显；失败回滚并提示，不遮目录。 */
+  async function changeReadStatus(next: ReadStatus) {
+    const detail = book;
+    if (!detail) return;
+    const previous = readStatus ?? detail.readStatus ?? "";
+    if (next === previous) return;
+    setReadStatus(next);
+    setNotice("");
+    try {
+      await api.updateBook(detail.id, { readStatus: next });
+      setNotice(`阅读状态已改为「${READ_STATUS_LABELS[next]}」。`);
+    } catch (error) {
+      setReadStatus(previous);
+      showToast(metaErrorText(error));
+    }
+  }
 
   function toggleVolume(index: number) {
     setOpenVolumes((prev) => {
@@ -130,6 +151,34 @@ export function BookPage() {
                 <dd>
                   {book.series}
                   {book.seriesIndex ? ` · 第 ${book.seriesIndex} 部` : ""}
+                </dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>
+                <label htmlFor="book-read-status">阅读状态</label>
+              </dt>
+              <dd>
+                <select
+                  className="select"
+                  id="book-read-status"
+                  data-testid="book-read-status"
+                  value={currentReadStatus}
+                  onChange={(event) => void changeReadStatus(event.target.value as ReadStatus)}
+                >
+                  {READ_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value || "none"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </dd>
+            </div>
+            {typeof book.bookmarkCount === "number" && book.bookmarkCount > 0 ? (
+              <div>
+                <dt>书签</dt>
+                <dd className="num" data-testid="book-bookmark-count">
+                  {formatCount(book.bookmarkCount)} 条
                 </dd>
               </div>
             ) : null}

@@ -32,10 +32,25 @@ function IconSettings() {
     </svg>
   );
 }
+function IconBookmark() {
+  return (
+    <svg viewBox="0 0 24 24" {...ICON}>
+      <path d="M7 4h10v16l-5-3.5L7 20z" />
+    </svg>
+  );
+}
+function IconSearch() {
+  return (
+    <svg viewBox="0 0 24 24" {...ICON}>
+      <circle cx="11" cy="11" r="6" />
+      <path d="M16 16l4 4" />
+    </svg>
+  );
+}
 
 /**
- * H5 底部翻章栏：与顶部 header 同属控制层，一起显隐。
- * 只做「上一章 / 目录 / 设置 / 下一章」，每个可点区域 ≥48px。
+ * H5 底部控制栏：与顶部 header 同属控制层，一起显隐。
+ * 上一章 / 目录 / 书签 / 搜索 / 设置 / 下一章，每个可点区域 ≥48px。
  */
 export function ReaderBottomBar({
   hidden,
@@ -44,9 +59,13 @@ export function ReaderBottomBar({
   onPrev,
   onNext,
   onOpenDrawer,
+  onOpenBookmarks,
+  onToggleSearch,
   onToggleSettings,
   settingsOpen,
   drawerOpen,
+  bookmarksOpen,
+  searchOpen,
 }: {
   hidden: boolean;
   prev: ChapterBrief | null;
@@ -54,9 +73,13 @@ export function ReaderBottomBar({
   onPrev: () => void;
   onNext: () => void;
   onOpenDrawer: () => void;
+  onOpenBookmarks: () => void;
+  onToggleSearch: () => void;
   onToggleSettings: () => void;
   settingsOpen: boolean;
   drawerOpen: boolean;
+  bookmarksOpen: boolean;
+  searchOpen: boolean;
 }) {
   return (
     <nav className="h5-reader-bar" data-testid="reader-bar" aria-label="阅读控制" aria-hidden={hidden}>
@@ -67,6 +90,14 @@ export function ReaderBottomBar({
       <button type="button" aria-label="章节目录" aria-expanded={drawerOpen} onClick={onOpenDrawer}>
         <IconMenu />
         <span>目录</span>
+      </button>
+      <button type="button" aria-label="打开书签" aria-expanded={bookmarksOpen} onClick={onOpenBookmarks}>
+        <IconBookmark />
+        <span>书签</span>
+      </button>
+      <button type="button" aria-label="搜索本章" aria-expanded={searchOpen} onClick={onToggleSearch}>
+        <IconSearch />
+        <span>搜索</span>
       </button>
       <button type="button" aria-label="阅读设置" aria-expanded={settingsOpen} onClick={onToggleSettings}>
         <IconSettings />

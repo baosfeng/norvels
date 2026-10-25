@@ -52,6 +52,7 @@ vi.mock("../../api/hooks", () => ({
   useBook: () => ({ data: book, loading: false, error: null, reload: vi.fn() }),
   useChapter: (bookId: number, chapterId: number) => chapterState(bookId, chapterId),
   useSaveProgress: () => vi.fn(async () => true),
+  useBookmarks: () => ({ data: { bookmarks: [] }, loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock("../../lib/theme", async () => {

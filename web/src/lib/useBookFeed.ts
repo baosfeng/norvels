@@ -9,6 +9,8 @@ export interface BookFeedQuery {
   sort: NonNullable<BookQuery["sort"]>;
   authorId?: number;
   tag?: string;
+  /** 阅读状态筛选；不传即全部（含未标记） */
+  readStatus?: NonNullable<BookQuery["readStatus"]>;
   size: number;
   mode: BookFeedMode;
 }
@@ -59,7 +61,14 @@ function asApiError(err: unknown): ApiError {
  * - infinite 模式追加，paged 模式换页替换；到底由 items.length >= total 判定。
  */
 export function useBookFeed(query: BookFeedQuery): BookFeedState {
-  const key = JSON.stringify([query.sort, query.authorId ?? null, query.tag ?? null, query.size, query.mode]);
+  const key = JSON.stringify([
+    query.sort,
+    query.authorId ?? null,
+    query.tag ?? null,
+    query.readStatus ?? null,
+    query.size,
+    query.mode,
+  ]);
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<Snapshot>(() => idle(""));
 
@@ -74,7 +83,14 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
 
     api
       .books(
-        { sort: query.sort, authorId: query.authorId, tag: query.tag, page, size: query.size },
+        {
+          sort: query.sort,
+          authorId: query.authorId,
+          tag: query.tag,
+          readStatus: query.readStatus,
+          page,
+          size: query.size,
+        },
         { signal: controller.signal },
       )
       .then((data) => {

@@ -32,6 +32,15 @@ export function useBook(id: number | null) {
   );
 }
 
+/** 本书书签（段落级，按时间倒序）；书签抽屉打开前后都用同一份，加/删后 reload 刷新。 */
+export function useBookmarks(bookId: number | null) {
+  return useResource(
+    (signal: AbortSignal) => api.bookmarks(bookId as number, { signal }),
+    [bookId],
+    { enabled: bookId !== null && Number.isFinite(bookId) },
+  );
+}
+
 export function useChapter(bookId: number | null, chapterId: number | null) {
   const enabled = bookId !== null && chapterId !== null;
   return useResource(

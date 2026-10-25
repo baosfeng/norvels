@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useBook, useChapter, useSaveProgress } from "../../api/hooks";
-import type { ChapterBrief } from "../../api/types";
+import { api } from "../../api/client";
+import { useBook, useBookmarks, useChapter, useSaveProgress } from "../../api/hooks";
+import type { Bookmark, ChapterBrief } from "../../api/types";
 import { ChevronLeftIcon } from "../../components/Icons";
 import { ErrorPanel, LoadingPanel, EmptyPanel } from "../../components/StatePanel";
 import { ChapterList } from "../book/ChapterList";
@@ -11,7 +12,12 @@ import { formatWords } from "../../lib/format";
 import { useReaderControls } from "../../lib/useReaderControls";
 import { useSwipePaging } from "../../lib/useSwipePaging";
 import { prefersReducedMotion } from "../../lib/theme";
+import { bookmarkLabel, findBookmarkAt, isValidPosition } from "../../lib/bookmark";
+import { searchParagraphs, splitParagraphs, type ReaderHit } from "../../lib/readerSearch";
+import { showToast } from "../../lib/toastStore";
+import { BookmarksDrawer } from "./BookmarksDrawer";
 import { ReaderBottomBar } from "./ReaderBottomBar";
+import { ReaderSearchPanel } from "./ReaderSearchPanel";
 
 const FONT_KEY = "norvels.reader.font";
 const LEADING_KEY = "norvels.reader.leading";
@@ -41,15 +47,29 @@ export function ReaderPage() {
   const book = useBook(Number.isFinite(bookId) ? bookId : null);
   const chapter = useChapter(Number.isFinite(bookId) ? bookId : null, Number.isFinite(chapterId) ? chapterId : null);
   const saveProgress = useSaveProgress();
+  // 书签列表随阅读器一起取：抽屉打开即可见，同段已有书签时也不重复发请求
+  const bookmarks = useBookmarks(Number.isFinite(bookId) ? bookId : null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  // 当前命中：query 与本次搜索一致时 position 才有效，换关键词自动回到第 1 处
+  const [hitState, setHitState] = useState({ query: "", position: 0 });
+  const [deletingBookmark, setDeletingBookmark] = useState<number | null>(null);
+  // 段落锚点 = 视口里最靠上的段落（书签记在这里）；没有 IntersectionObserver 时恒为第 0 段
+  const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
+  const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
   const [font, setFont] = useState(() => readNumber(FONT_KEY, 19));
   const [leading, setLeading] = useState(() => readNumber(LEADING_KEY, 1.9));
   const { theme, setTheme, themes } = useTheme();
 
   // 控制层：H5 默认收起、单击正文唤出、3 秒无操作收起；设置/目录打开时暂停收起
-  const controls = useReaderControls({ isH5, paused: settingsOpen || drawerOpen });
+  const controls = useReaderControls({
+    isH5,
+    paused: settingsOpen || drawerOpen || bookmarksOpen || searchOpen,
+  });
 
   // 全屏：只有浏览器真的支持才给按钮（iOS Safari 没有 Fullscreen API，静默降级为沉浸式阅读）
   const canFullscreen = typeof document !== "undefined" && document.fullscreenEnabled === true;
@@ -79,6 +99,23 @@ export function ReaderPage() {
   const prev = index > 0 ? chapters[index - 1] : null;
   const next = index >= 0 && index < chapters.length - 1 ? chapters[index + 1] : null;
 
+  // 正文分段：段落下标即后端 paraIndex，书签与跳转都按它对齐（空行保留占位，不挪下标）
+  const content = chapter.data?.content ?? "";
+  const paragraphs = useMemo(() => splitParagraphs(content), [content]);
+  const search = useMemo(() => searchParagraphs(paragraphs, searchQuery), [paragraphs, searchQuery]);
+  const hitCount = search.hits.length;
+  const currentHit = hitState.query === search.query && hitCount > 0 ? Math.min(hitState.position, hitCount - 1) : 0;
+  const hitsByPara = useMemo(() => {
+    const map = new Map<number, ReaderHit[]>();
+    for (const hit of search.hits) {
+      const bucket = map.get(hit.paraIndex);
+      if (bucket) bucket.push(hit);
+      else map.set(hit.paraIndex, [hit]);
+    }
+    return map;
+  }, [search]);
+  const anchorPara = anchor.chapterId === (chapter.data?.id ?? 0) ? anchor.para : 0;
+
   // 字号 / 行距持久化
   useEffect(() => {
     try {
@@ -106,9 +143,87 @@ export function ReaderPage() {
     [bookId, navigate],
   );
 
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setHitState({ query: "", position: 0 });
+  }, []);
+
+  /** 目录与书签是同级的两个抽屉，互斥打开（设置面板也一样） */
+  const openDirectory = useCallback(() => {
+    setBookmarksOpen(false);
+    setSettingsOpen(false);
+    setDrawerOpen(true);
+  }, []);
+
+  const openBookmarks = useCallback(() => {
+    setDrawerOpen(false);
+    setSettingsOpen(false);
+    setBookmarksOpen(true);
+  }, []);
+
+  function stepHit(delta: number) {
+    if (hitCount === 0) return;
+    const base = hitState.query === search.query ? Math.min(hitState.position, hitCount - 1) : 0;
+    setHitState({ query: search.query, position: (base + delta + hitCount) % hitCount });
+  }
+
+  /** 加书签：记在当前读到的段落；同段已有书签就不发请求（后端同样按位置幂等）。 */
+  async function addBookmark() {
+    if (!chapter.data) return;
+    const paraIndex = anchorPara;
+    if (!isValidPosition(chapterId, paraIndex)) {
+      showToast("这个位置记不下来，换个位置再试。");
+      return;
+    }
+    if (findBookmarkAt(bookmarks.data?.bookmarks ?? [], chapterId, paraIndex)) {
+      showToast("这个位置已经有书签了。");
+      return;
+    }
+    try {
+      await api.createBookmark(bookId, {
+        chapterId,
+        paraIndex,
+        label: bookmarkLabel(paragraphs[paraIndex] ?? ""),
+      });
+      bookmarks.reload();
+      showToast("已加入书签。");
+    } catch {
+      showToast("书签没能保存，稍后再试。");
+    }
+  }
+
+  async function removeBookmark(id: number) {
+    if (!Number.isInteger(id) || id <= 0) return;
+    setDeletingBookmark(id);
+    try {
+      await api.deleteBookmark(id);
+      bookmarks.reload();
+    } catch {
+      showToast("书签没能删除，稍后再试。");
+    } finally {
+      setDeletingBookmark(null);
+    }
+  }
+
+  function jumpToBookmark(bookmark: Bookmark) {
+    setBookmarksOpen(false);
+    setPendingJump({ chapterId: bookmark.chapterId, paraIndex: bookmark.paraIndex });
+    if (bookmark.chapterId !== chapterId) navigate(`/read/${bookId}/${bookmark.chapterId}`);
+  }
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === "Escape") {
+        setDrawerOpen(false);
+        setSettingsOpen(false);
+        setBookmarksOpen(false);
+        closeSearch();
+        return;
+      }
+      // 搜索面板打开时方向键/空格留给输入框，不翻章也不滚页
+      if (searchOpen) return;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
         goChapter(prev);
@@ -118,14 +233,46 @@ export function ReaderPage() {
       } else if (event.key === " " || event.key === "PageDown") {
         event.preventDefault();
         window.scrollBy({ top: window.innerHeight * 0.85, behavior: "smooth" });
-      } else if (event.key === "Escape") {
-        setDrawerOpen(false);
-        setSettingsOpen(false);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goChapter, prev, next]);
+  }, [goChapter, prev, next, searchOpen, closeSearch]);
+
+  // 段落锚点：视口内最靠上的段落即「当前读到的地方」（没有 IntersectionObserver 时保持第 0 段）
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined" || paragraphs.length === 0) return;
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-para]"));
+    if (nodes.length === 0) return;
+    const visible = new Set<number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const index2 = Number((entry.target as HTMLElement).dataset.para ?? "0");
+          if (entry.isIntersecting) visible.add(index2);
+          else visible.delete(index2);
+        }
+        if (visible.size > 0) setAnchor({ chapterId: chapter.data?.id ?? 0, para: Math.min(...visible) });
+      },
+      { rootMargin: "-10% 0px -60% 0px" },
+    );
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, [paragraphs, chapter.data?.id]);
+
+  // 搜索翻页：把当前命中滚到视口中间（测试环境没有 scrollIntoView 就跳过）
+  useEffect(() => {
+    if (!searchOpen || hitCount === 0) return;
+    const node = document.querySelector<HTMLElement>(`[data-hit="${currentHit}"]`);
+    if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "center" });
+  }, [searchOpen, currentHit, hitCount, chapter.data?.id]);
+
+  // 书签跳转：章载入后滚到那一行（同章跳转靠 pendingJump 换引用触发）
+  useEffect(() => {
+    if (!pendingJump || chapter.data?.id !== pendingJump.chapterId) return;
+    const node = document.getElementById(`para-${pendingJump.paraIndex}`);
+    if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
+  }, [pendingJump, chapter.data?.id]);
 
   // 章节切换淡入：用 key 让正文在换章时重新挂载，CSS 动画只播一次（不在 effect 里 setState）
   const reducedMotion = prefersReducedMotion();
@@ -167,7 +314,25 @@ export function ReaderPage() {
           </span>
         </div>
         <div className="reader-top-actions">
-          <button className="btn" type="button" onClick={() => setDrawerOpen(true)} aria-expanded={drawerOpen}>
+          <button
+            className="btn"
+            type="button"
+            onClick={openBookmarks}
+            aria-expanded={bookmarksOpen}
+            aria-label="打开书签"
+          >
+            书签
+          </button>
+          <button
+            className="btn"
+            type="button"
+            aria-expanded={searchOpen}
+            aria-label="搜索本章"
+            onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+          >
+            搜索
+          </button>
+          <button className="btn" type="button" onClick={openDirectory} aria-expanded={drawerOpen}>
             目录
           </button>
           <button className="btn" type="button" onClick={() => setSettingsOpen((v) => !v)} aria-expanded={settingsOpen}>
@@ -189,6 +354,19 @@ export function ReaderPage() {
         </div>
       </header>
 
+      <ReaderSearchPanel
+        open={searchOpen}
+        query={searchQuery}
+        hits={hitCount}
+        total={search.total}
+        truncated={search.truncated}
+        current={currentHit}
+        onQueryChange={setSearchQuery}
+        onPrev={() => stepHit(-1)}
+        onNext={() => stepHit(1)}
+        onClose={closeSearch}
+      />
+
       <div className="reader-main" ref={swipeRef} data-testid="reader-swipe-area" {...controls.surfaceProps}>
         {chapter.loading ? (
           <div className="reader-loading-layer">
@@ -202,8 +380,12 @@ export function ReaderPage() {
           <article key={articleKey} className={`reader-content reader-article${reducedMotion ? "" : " is-entering"}`}>
             <h2>{chapter.data.title}</h2>
             <div>
-              {chapter.data.content.split(/\n+/).map((para, i) =>
-                para.trim() ? <p key={i}>{para.trim()}</p> : null,
+              {paragraphs.map((para, i) =>
+                para ? (
+                  <p key={i} id={`para-${i}`} data-para={i}>
+                    {paragraphNodes(para, hitsByPara.get(i) ?? [], currentHit, searchOpen)}
+                  </p>
+                ) : null,
               )}
             </div>
             <nav className="reader-pager" aria-label="章节切换">
@@ -250,10 +432,14 @@ export function ReaderPage() {
           next={next}
           onPrev={() => goChapter(prev)}
           onNext={() => goChapter(next)}
-          onOpenDrawer={() => setDrawerOpen(true)}
+          onOpenDrawer={openDirectory}
           onToggleSettings={() => setSettingsOpen((v) => !v)}
+          onOpenBookmarks={openBookmarks}
+          onToggleSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
           settingsOpen={settingsOpen}
           drawerOpen={drawerOpen}
+          bookmarksOpen={bookmarksOpen}
+          searchOpen={searchOpen}
         />
       ) : null}
 
@@ -301,11 +487,27 @@ export function ReaderPage() {
       </div>
 
       <button
-        className={`overlay${drawerOpen ? " is-open" : ""}`}
+        className={`overlay${drawerOpen || bookmarksOpen ? " is-open" : ""}`}
         type="button"
-        aria-label="关闭目录"
-        tabIndex={drawerOpen ? 0 : -1}
-        onClick={() => setDrawerOpen(false)}
+        aria-label={bookmarksOpen ? "关闭书签" : "关闭目录"}
+        tabIndex={drawerOpen || bookmarksOpen ? 0 : -1}
+        onClick={() => {
+          setDrawerOpen(false);
+          setBookmarksOpen(false);
+        }}
+      />
+
+      <BookmarksDrawer
+        open={bookmarksOpen}
+        bookmarks={bookmarks}
+        currentChapterId={Number.isFinite(chapterId) ? chapterId : 0}
+        deletingId={deletingBookmark}
+        adding={false}
+        canAdd={Boolean(chapter.data)}
+        onClose={() => setBookmarksOpen(false)}
+        onAdd={() => void addBookmark()}
+        onJump={jumpToBookmark}
+        onDelete={(id) => void removeBookmark(id)}
       />
 
       <aside className={`drawer${drawerOpen ? " is-open" : ""}`} aria-label="章节目录" aria-hidden={!drawerOpen} data-od-id="reader-drawer">
@@ -339,6 +541,27 @@ export function ReaderPage() {
       </aside>
     </div>
   );
+}
+
+/**
+ * 段落渲染：搜索态把命中包成 <mark data-hit>（当前那一处加 is-current），
+ * 非搜索态原样返回字符串——不加包裹节点，正文文本匹配保持原样。
+ */
+function paragraphNodes(para: string, hits: ReaderHit[], currentHit: number, searching: boolean): ReactNode {
+  if (!searching || hits.length === 0) return para;
+  const nodes: ReactNode[] = [];
+  let from = 0;
+  for (const hit of hits) {
+    if (hit.start > from) nodes.push(<span key={`t${hit.index}`}>{para.slice(from, hit.start)}</span>);
+    nodes.push(
+      <mark key={`m${hit.index}`} data-hit={hit.index} className={hit.index === currentHit ? "is-current" : undefined}>
+        {para.slice(hit.start, hit.end)}
+      </mark>,
+    );
+    from = hit.end;
+  }
+  if (from < para.length) nodes.push(<span key="tail">{para.slice(from)}</span>);
+  return nodes;
 }
 
 function themeName(theme: string): string {

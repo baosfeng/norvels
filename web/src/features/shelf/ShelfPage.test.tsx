@@ -2,10 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookQuery, RequestOptions } from "../../api/client";
-import type { BookSummary, Page } from "../../api/types";
+import type { BookDetail, BookMetaPatch, BookSummary, Page } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 
 const books = vi.fn<(params: BookQuery, opts?: RequestOptions) => Promise<Page<BookSummary>>>();
+const updateBook = vi.fn<(id: number, patch: BookMetaPatch) => Promise<BookDetail>>();
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
@@ -14,6 +15,7 @@ vi.mock("../../api/client", async () => {
     api: {
       ...actual.api,
       books: (params: BookQuery, opts?: RequestOptions) => books(params, opts),
+      updateBook: (id: number, patch: BookMetaPatch) => updateBook(id, patch),
       authors: vi.fn(async () => ({ items: [], total: 0, page: 1, size: 20 })),
       tags: vi.fn(async () => ({ items: [] })),
     },
@@ -83,6 +85,7 @@ async function reachBottom() {
 describe("书架：H5 无限滚动与排序", () => {
   beforeEach(() => {
     books.mockReset();
+    updateBook.mockReset();
     ioCallbacks = [];
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -170,6 +173,87 @@ describe("书架：H5 无限滚动与排序", () => {
     expect(screen.queryByTestId("shelf-sort-trigger")).toBeNull();
     expect(screen.queryByTestId("shelf-sentinel")).toBeNull();
     expect(screen.getByRole("navigation", { name: "分页" })).toBeTruthy();
+  });
+});
+
+describe("书架：阅读状态筛选与书卡角标", () => {
+  beforeEach(() => {
+    books.mockReset();
+    updateBook.mockReset();
+    ioCallbacks = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  it("PC 工具栏选「在读」只请求在读的书", async () => {
+    books.mockResolvedValueOnce(pageOf(1, 2, 2));
+    books.mockResolvedValueOnce({ items: [bookAt(5)], total: 1, page: 1, size: 24 });
+    renderShelf("pc");
+    await waitFor(() => expect(cardCount()).toBe(2));
+
+    fireEvent.change(screen.getByTestId("filter-read-status"), { target: { value: "reading" } });
+
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
+    expect(books.mock.calls[1][0]).toMatchObject({ readStatus: "reading", page: 1 });
+    await waitFor(() => expect(cardCount()).toBe(1));
+  });
+
+  it("H5 把阅读状态收进底部弹层，选完即收起并重新取数", async () => {
+    books.mockResolvedValueOnce(pageOf(1, 30, 30));
+    books.mockResolvedValueOnce({ items: [bookAt(9)], total: 1, page: 1, size: 30 });
+    renderShelf();
+    await waitFor(() => expect(cardCount()).toBe(30));
+
+    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
+    fireEvent.click(screen.getByTestId("read-status-option-done"));
+
+    expect(screen.queryByTestId("shelf-sort-sheet")).toBeNull();
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
+    expect(books.mock.calls[1][0]).toMatchObject({ readStatus: "done", page: 1, size: 30 });
+  });
+
+  it("书卡角标点一下循环：想读 → 在读 → 已读 → 未标记，PATCH 只带 readStatus", async () => {
+    books.mockResolvedValueOnce({
+      items: [{ ...bookAt(1), readStatus: "want", bookmarkCount: 2 }],
+      total: 1,
+      page: 1,
+      size: 24,
+    });
+    updateBook.mockResolvedValue({} as BookDetail);
+    renderShelf("pc");
+    await waitFor(() => expect(cardCount()).toBe(1));
+
+    const badge = screen.getByTestId("book-status-1");
+    expect(badge.textContent).toBe("想读");
+
+    fireEvent.click(badge);
+    expect(badge.textContent).toBe("在读");
+    fireEvent.click(badge);
+    expect(badge.textContent).toBe("已读");
+    fireEvent.click(badge);
+    expect(badge.textContent).toBe("未标记");
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(3));
+    expect(updateBook.mock.calls.map((call) => call[1])).toEqual([
+      { readStatus: "reading" },
+      { readStatus: "done" },
+      { readStatus: "" },
+    ]);
+    expect(updateBook.mock.calls[0][0]).toBe(1);
+  });
+
+  it("PATCH 失败时角标退回原值", async () => {
+    books.mockResolvedValueOnce({ items: [{ ...bookAt(1), readStatus: "want" }], total: 1, page: 1, size: 24 });
+    updateBook.mockRejectedValueOnce(new Error("离线"));
+    renderShelf("pc");
+    await waitFor(() => expect(cardCount()).toBe(1));
+
+    const badge = screen.getByTestId("book-status-1");
+    fireEvent.click(badge);
+    expect(badge.textContent).toBe("在读");
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(badge.textContent).toBe("想读"));
   });
 });
 
