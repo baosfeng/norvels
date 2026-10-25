@@ -71,9 +71,10 @@ func checkChapterTitleHit(t *testing.T, ctx context.Context, st *Store) {
 	if hit.ChapterTitle != "第一章 风起" || hit.BookTitle != "梅宁风云" || hit.ChapterIdx != 0 {
 		t.Errorf("命中内容 = %+v", hit)
 	}
-	// 正文检索下线后后端不再算片段：字段保留但必须为空串。
-	if hit.Snippet != "" {
-		t.Errorf("Snippet 应为空串（正文检索已下线），实际 %q", hit.Snippet)
+	// 正文检索下线后后端不产出正文片段，但标题命中要带章内位置上下文，
+	// 否则用户只看到一个章名，不知道它在书里的位置。
+	if hit.Snippet != "第 1 章 · 共 3 章" {
+		t.Errorf("Snippet 应为章序上下文，实际 %q", hit.Snippet)
 	}
 	if hit.Score != 0 {
 		t.Errorf("Score 应为 0（没有 bm25 排序），实际 %v", hit.Score)
