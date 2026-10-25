@@ -32,12 +32,12 @@ func (s *Store) SaveBook(ctx context.Context, b *model.ParsedBook, opt SaveOptio
 	}
 	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
 
-	existingID, oldAuthorID, err := lookupExistingBook(ctx, tx, w.sourcePath, w.sha)
+	existingID, oldAuthorID, err := lookupExistingBook(ctx, tx, w, opt)
 	if err != nil {
 		return SaveResult{}, err
 	}
 	if existingID != 0 && !opt.Force {
-		return SaveResult{BookID: existingID, Skipped: true}, nil
+		return finishExistingBook(ctx, tx, existingID, b, w, opt.Update)
 	}
 
 	bookID, err := saveBookInTx(ctx, tx, b, w, usedVols, existingID, oldAuthorID)
@@ -48,6 +48,25 @@ func (s *Store) SaveBook(ctx context.Context, b *model.ParsedBook, opt SaveOptio
 		return SaveResult{}, fmt.Errorf("store: save book commit: %w", err)
 	}
 	return SaveResult{BookID: bookID, Updated: existingID != 0}, nil
+}
+
+// finishExistingBook 处理「命中既有书且不覆盖」的两种结局：追更追加或幂等跳过。
+//
+// 追更优先于幂等跳过：Update 为真且新序列是旧序列的延伸时只追加尾部章节；
+// 对不上由 appendBookInTx 返回 ErrNotAppendable（调用方整体回滚，绝不覆盖）。
+// Force 走不到这里——显式覆盖优先于追更。
+func finishExistingBook(ctx context.Context, tx *sql.Tx, bookID int64,
+	b *model.ParsedBook, w bookWrite, update bool) (SaveResult, error) {
+	if !update {
+		return SaveResult{BookID: bookID, Skipped: true}, nil
+	}
+	if err := appendBookInTx(ctx, tx, bookID, b, w); err != nil {
+		return SaveResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SaveResult{}, fmt.Errorf("store: save book commit: %w", err)
+	}
+	return SaveResult{BookID: bookID, Updated: true}, nil
 }
 
 // prepareBookWrite 校验入参并归一化展示字段，同时返回按序号排好的卷引用列表。
@@ -140,8 +159,27 @@ func chapterWordCount(c *model.ParsedChapter) int {
 	return countWords(c.Content)
 }
 
-// lookupExistingBook 按 source_path 或 file_sha256 找既有记录；未命中返回 (0, 0, nil)。
-func lookupExistingBook(ctx context.Context, tx *sql.Tx, sourcePath, sha string) (int64, int64, error) {
+// lookupExistingBook 找既有记录，返回 (书籍 id, 旧主作者 id)；未命中返回 (0, 0, nil)。
+//
+// 匹配顺序：默认用「source_path 或 file_sha256」一次查；追更模式（Update）在前两级
+// 都没命中时降级到 title+author——那是「同一本书换了路径、换了内容」的最后兜底。
+func lookupExistingBook(ctx context.Context, tx *sql.Tx, w bookWrite, opt SaveOptions) (int64, int64, error) {
+	existingID, oldAuthorID, err := lookupByPathOrSHA(ctx, tx, w.sourcePath, w.sha)
+	if err != nil || existingID != 0 || !opt.Update {
+		return existingID, oldAuthorID, err
+	}
+	found, err := findBookIDByTitleAuthorTx(ctx, tx, w.title, w.author)
+	if err != nil || found == 0 {
+		return 0, 0, err
+	}
+	if oldAuthorID, err = bookAuthorIDInTx(ctx, tx, found); err != nil {
+		return 0, 0, err
+	}
+	return found, oldAuthorID, nil
+}
+
+// lookupByPathOrSHA 是前两级匹配：源路径或文件哈希命中即视为同一本书。
+func lookupByPathOrSHA(ctx context.Context, tx *sql.Tx, sourcePath, sha string) (int64, int64, error) {
 	var existingID, oldAuthorID int64
 	err := tx.QueryRowContext(ctx,
 		"SELECT id, author_id FROM books WHERE source_path = ? OR file_sha256 = ? ORDER BY id LIMIT 1",
@@ -158,7 +196,10 @@ func lookupExistingBook(ctx context.Context, tx *sql.Tx, sourcePath, sha string)
 // saveBookInTx 在事务内完成书籍主体、卷、章节写入与作者聚合刷新，返回书籍 id。
 // existingID 为 0 表示新建，否则为覆盖更新（保留原 id）。
 func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWrite, usedVols []int, existingID, oldAuthorID int64) (int64, error) {
-	authorID, err := ensureAuthor(ctx, tx, w.author)
+	// books.author_id 是 NOT NULL 且列表/筛选都按它走，先按主作者把行写进去；
+	// 多作者关联（books_authors）在章节落库后由 saveBookAuthorsInTx 统一落，
+	// 它同时把 author_id 复核一遍，两处不会漂。
+	authorID, err := ensureAuthor(ctx, tx, bookAuthorNames(b)[0])
 	if err != nil {
 		return 0, err
 	}
@@ -182,7 +223,11 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 	if err := saveBookExtras(ctx, tx, bookID, b); err != nil {
 		return 0, err
 	}
-	if err := refreshBookAuthors(ctx, tx, authorID, oldAuthorID); err != nil {
+	primaryID, err := saveBookAuthorsInTx(ctx, tx, bookID, bookAuthorNames(b))
+	if err != nil {
+		return 0, err
+	}
+	if err := refreshBookAuthors(ctx, tx, primaryID, oldAuthorID); err != nil {
 		return 0, err
 	}
 	return bookID, nil
@@ -255,59 +300,27 @@ func insertVolumes(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Parse
 		if vi < 0 || vi >= len(b.Volumes) {
 			continue
 		}
-		v := b.Volumes[vi]
-		res, err := tx.ExecContext(ctx, "INSERT INTO volumes(book_id, idx, title) VALUES (?, ?, ?)",
-			bookID, v.Idx, strings.TrimSpace(v.Title))
+		id, err := insertVolumeRow(ctx, tx, bookID, b.Volumes[vi])
 		if err != nil {
-			return nil, fmt.Errorf("store: save volume %d: %w", v.Idx, err)
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
-			return nil, fmt.Errorf("store: save volume id: %w", err)
+			return nil, err
 		}
 		volMap[vi] = id
 	}
 	return volMap, nil
 }
 
-// insertChapters 把一章正文按块压缩写入，并顺手累加 store_metrics 需要的聚合量。
-//
-// 写入分两步：先按「章节边界 + 1 MB 目标」把正文切成块并压进 chapter_blocks，
-// 再写 chapters 行（只存块寻址与标题）。两步在同一事务内，失败一起回滚。
-//
-// 导入路径本来就要遍历所有章节，在这里累加几乎零额外成本——比事后跑
-// SUM(length(packed))（要读全部压缩块）便宜得多。累加与章节写入在同一事务内完成，
-// 二者不会漂移。
-//
-// 口径：text_bytes 统计**压缩后**的 packed 字节（整数列相加），text_bytes_raw
-// 统计原文逻辑字节。两个口径都在这里累计，方便文档说明压缩比。
-func insertChapters(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook, volMap map[int]int64) error {
-	sizes := make([]int, len(b.Chapters))
-	for i := range b.Chapters {
-		sizes[i] = len(b.Chapters[i].Content)
-	}
-
-	refs, packedBytes, rawBytes, err := writeChapterBlocks(ctx, tx, bookID, b, sizes)
+// insertVolumeRow 建一行卷并返回 id（全库唯一的卷写入语句，追更路径复用）。
+func insertVolumeRow(ctx context.Context, tx *sql.Tx, bookID int64, v model.ParsedVolume) (int64, error) {
+	res, err := tx.ExecContext(ctx, "INSERT INTO volumes(book_id, idx, title) VALUES (?, ?, ?)",
+		bookID, v.Idx, strings.TrimSpace(v.Title))
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("store: save volume %d: %w", v.Idx, err)
 	}
-	words, err := insertChapterRows(ctx, tx, bookID, b, volMap, refs)
+	id, err := res.LastInsertId()
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("store: save volume id: %w", err)
 	}
-
-	if err := bumpMetrics(ctx, tx, packedBytes, words); err != nil {
-		return err
-	}
-	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, rawBytes); err != nil {
-		return err
-	}
-	// books 侧文本量（标题/简介/路径等）随书籍主体变化，一并增量维护，
-	// 保证「增量累加」与「全量重算」在同一个口径上（有测试守着）。
-	if _, err := bumpBookTextBytes(ctx, tx, bookID); err != nil {
-		return err
-	}
-	return nil
+	return id, nil
 }
 
 // runeLen 返回字符串的字符数，与 SQLite 的 length(TEXT) 口径一致。

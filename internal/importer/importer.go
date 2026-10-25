@@ -24,6 +24,7 @@ type Options struct {
 	Dir       string // 源路径（绝对路径）：目录或单个 .txt 文件
 	Recursive bool   // 是否递归子目录
 	Force     bool   // 忽略 SHA256 幂等检查，覆盖更新
+	Update    bool   // 追更：仅追加新章节（前缀对不上由 store 报 ErrNotAppendable）
 	DryRun    bool   // 只解析不写库，用于试跑与报告
 	Workers   int    // 并发解析数，默认 min(NumCPU, 8)
 	// MinChapters 章节数低于该值的文件不上架，默认 0（全收）。

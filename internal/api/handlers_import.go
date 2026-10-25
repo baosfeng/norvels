@@ -32,6 +32,7 @@ type importRequest struct {
 	Dir       string `json:"dir"`
 	Recursive *bool  `json:"recursive"`
 	Force     bool   `json:"force"`
+	Update    bool   `json:"update"`
 	Workers   int    `json:"workers"`
 	DryRun    bool   `json:"dryRun"`
 }
@@ -150,6 +151,7 @@ func importOptions(req importRequest, dir string, jobID int64) importer.Options 
 		Dir:        dir,
 		Recursive:  recursive,
 		Force:      req.Force,
+		Update:     req.Update,
 		DryRun:     req.DryRun,
 		Workers:    req.Workers,
 		ParserOpts: parser.DefaultOptions(),

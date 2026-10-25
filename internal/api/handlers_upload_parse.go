@@ -15,11 +15,12 @@ import (
 
 // 上传落盘与逐文件校验的常量。
 const (
-	uploadDirPerm      = 0o700
-	uploadFilePerm     = 0o600
-	uploadFieldFiles   = "files"
-	uploadFieldForce   = "force"
-	maxForceFieldBytes = 16 // force 只可能是 true/false
+	uploadDirPerm     = 0o700
+	uploadFilePerm    = 0o600
+	uploadFieldFiles  = "files"
+	uploadFieldForce  = "force"
+	uploadFieldUpdate = "update"
+	maxBoolFieldBytes = 16 // force/update 只可能是 true/false
 )
 
 // 上传校验失败的哨兵值：落盘层返回，由 handler 翻译成 HTTP 状态与错误码。
@@ -53,7 +54,10 @@ func (s *Server) readParts(sess *uploadSession, w http.ResponseWriter, mr *multi
 func (s *Server) consumePart(sess *uploadSession, w http.ResponseWriter, part *multipart.Part, limits uploadLimits, seen int) (int, bool) {
 	switch part.FormName() {
 	case uploadFieldForce:
-		sess.force = readForceField(part)
+		sess.force = readBoolField(part)
+		return seen, true
+	case uploadFieldUpdate:
+		sess.update = readBoolField(part)
 		return seen, true
 	case uploadFieldFiles:
 		seen++
@@ -167,9 +171,9 @@ func createUploadDir(root string) (string, error) {
 	return os.MkdirTemp(root, "upload-")
 }
 
-// readForceField 读取文本字段 force：只认 true/1，其余（含超长）按 false。
-func readForceField(part *multipart.Part) bool {
-	b, err := io.ReadAll(io.LimitReader(part, maxForceFieldBytes))
+// readBoolField 读取布尔文本字段（force/update）：只认 true/1，其余（含超长）按 false。
+func readBoolField(part *multipart.Part) bool {
+	b, err := io.ReadAll(io.LimitReader(part, maxBoolFieldBytes))
 	if err != nil {
 		return false
 	}

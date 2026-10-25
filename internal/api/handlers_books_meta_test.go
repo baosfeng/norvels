@@ -17,6 +17,7 @@ type bookDetailResp struct {
 	ID          int64    `json:"id"`
 	Title       string   `json:"title"`
 	AuthorName  string   `json:"authorName"`
+	Authors     []string `json:"authors"`
 	Intro       string   `json:"intro"`
 	Series      string   `json:"series"`
 	SeriesIndex int      `json:"seriesIndex"`

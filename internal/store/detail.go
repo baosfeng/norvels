@@ -36,6 +36,12 @@ func (s *Store) GetBook(ctx context.Context, id int64) (*BookDetail, error) {
 		Volumes:     make([]VolumeNode, 0, 8),
 	}
 
+	authors, err := s.loadBookAuthors(ctx, id, row.summary.AuthorName)
+	if err != nil {
+		return nil, err
+	}
+	detail.Authors = authors
+
 	tags, err := s.ListBookTags(ctx, id)
 	if err != nil {
 		return nil, err
