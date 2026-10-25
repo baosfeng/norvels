@@ -2,7 +2,7 @@
 // 依赖方向：parser → model ← store ← importer/api。model 不依赖任何内部包。
 package model
 
-// ParsedBook 是 parser 对单个 txt 文件的解析结果，也是 store 的写入输入。
+// ParsedBook 是 parser 对单个文件的解析结果，也是 store 的写入输入。
 type ParsedBook struct {
 	Title      string          // 书名（已清洗）
 	Author     string          // 作者；未知时为空字符串
@@ -17,6 +17,26 @@ type ParsedBook struct {
 	Chapters   []ParsedChapter // 扁平章节列表，按阅读顺序
 	MultiBook  bool            // 该文件是否为多书合集（v1 只标记，不拆分）
 	Warnings   []string        // 解析告警，便于抽样排查
+
+	// ---- 书籍身份（EPUB 等带元数据的格式才可能填，txt 走文件名规则）----
+	Language     string      // BCP-47 语言标签，如 zh-CN
+	Publisher    string      // 出版社
+	ISBN         string      // ISBN / 书号
+	PubDate      string      // 出版日期（原样保留 ISO 或原文）
+	Series       string      // 系列 / 丛书名
+	SeriesIndex  int         // 系列内序号，0 表示未知
+	Subjects     []string    // 分类 / 标签（EPUB dc:subject）
+	Cover        *CoverImage // 封面；nil 表示没有
+	SourceFormat string      // 源文件格式：txt / epub
+}
+
+// CoverImage 是随书入库的封面。
+//
+// 这是全库唯一允许进入数据库的二进制资源：插图、字体、CSS 一律丢弃，
+// 它们不是阅读链路的必需品，却会让库体积和读放大失控。
+type CoverImage struct {
+	MIME  string // image/jpeg / image/png / image/webp / image/gif
+	Bytes []byte // 原始图片字节
 }
 
 // ParsedVolume 表示卷/部这类章节分组。

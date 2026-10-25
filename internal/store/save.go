@@ -13,43 +13,8 @@ import (
 	"norvels/internal/model"
 )
 
-// bookInsertSQL / bookUpdateSQL 是书籍主体的写入语句（列顺序与 execBookWrite 的参数顺序一致）。
-const bookInsertSQL = "INSERT INTO books(title, author_id, source_path, source_name, file_size, file_sha256, " +
-	"encoding, word_count, chapter_count, volume_count, intro, status, multi_book, imported_at, updated_at) " +
-	"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-
-const bookUpdateSQL = "UPDATE books SET title = ?, author_id = ?, source_path = ?, source_name = ?, file_size = ?, " +
-	"file_sha256 = ?, encoding = ?, word_count = ?, chapter_count = ?, volume_count = ?, intro = ?, " +
-	"status = ?, multi_book = ?, imported_at = ?, updated_at = ? WHERE id = ?"
-
 const chapterInsertSQL = "INSERT INTO chapters(book_id, volume_id, idx, title, word_count, " +
 	"block_id, block_off, block_len) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-
-// bookWrite 是一次写入所需的已归一化字段集合：由 prepareBookWrite 产出，
-// 让「校验/归一化」与「SQL 拼接」两部分各自单一职责。
-type bookWrite struct {
-	sourcePath   string
-	sha          string
-	title        string
-	sourceName   string
-	author       string
-	intro        string
-	encoding     string
-	fileSize     int64
-	wordCount    int
-	chapterCount int
-	volumeCount  int
-	multiBook    int
-	nowText      string
-}
-
-// execArgs 返回书籍写入语句的占位符参数（不含 WHERE 的 id）。
-func (w bookWrite) execArgs(authorID int64) []any {
-	return []any{
-		w.title, authorID, w.sourcePath, w.sourceName, w.fileSize, w.sha, w.encoding,
-		w.wordCount, w.chapterCount, w.volumeCount, w.intro, "parsed", w.multiBook, w.nowText, w.nowText,
-	}
-}
 
 // SaveBook 幂等写入一本书及其卷、章节。返回 BookID。
 //
@@ -116,6 +81,14 @@ func prepareBookWrite(b *model.ParsedBook) (bookWrite, []int, error) {
 		volumeCount:  len(usedVols),
 		multiBook:    boolToInt(b.MultiBook),
 		nowText:      formatTime(nowUTC()),
+		language:     strings.TrimSpace(b.Language),
+		publisher:    strings.TrimSpace(b.Publisher),
+		isbn:         strings.TrimSpace(b.ISBN),
+		pubDate:      strings.TrimSpace(b.PubDate),
+		series:       strings.TrimSpace(b.Series),
+		seriesIndex:  maxInt(b.SeriesIndex, 0),
+		sourceFormat: normalizeSourceFormat(b.SourceFormat),
+		hasCover:     boolToInt(b.Cover != nil),
 	}
 	return w, usedVols, nil
 }
@@ -206,6 +179,9 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 	if err := insertChapters(ctx, tx, bookID, b, volMap); err != nil {
 		return 0, err
 	}
+	if err := saveBookExtras(ctx, tx, bookID, b); err != nil {
+		return 0, err
+	}
 	if err := refreshBookAuthors(ctx, tx, authorID, oldAuthorID); err != nil {
 		return 0, err
 	}
@@ -259,6 +235,11 @@ func replaceBookRow(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite, 
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM volumes WHERE book_id = ?", bookID); err != nil {
 		return fmt.Errorf("store: save book clear volumes: %w", err)
+	}
+	// 旧封面必须一起清掉：has_cover 由本语句重写，book_covers 留着就成了孤儿行，
+	// 前端会按 has_cover=0 走占位、而库里仍占着 2 MB。
+	if _, err := tx.ExecContext(ctx, "DELETE FROM book_covers WHERE book_id = ?", bookID); err != nil {
+		return fmt.Errorf("store: save book clear cover: %w", err)
 	}
 	args := append(w.execArgs(authorID), bookID)
 	if _, err := tx.ExecContext(ctx, bookUpdateSQL, args...); err != nil {

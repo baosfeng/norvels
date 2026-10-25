@@ -57,6 +57,19 @@ type BookSummary struct {
 	Status       string    `json:"status"`
 	ImportedAt   time.Time `json:"importedAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
+
+	// ---- 书籍身份（0008 起）----
+	// 只有带元数据的来源（EPUB）才会填；txt 路径留空，前端按零值降级。
+	Language    string `json:"language,omitempty"`
+	Publisher   string `json:"publisher,omitempty"`
+	ISBN        string `json:"isbn,omitempty"`
+	PubDate     string `json:"pubDate,omitempty"`
+	Series      string `json:"series,omitempty"`
+	SeriesIndex int    `json:"seriesIndex,omitempty"`
+	// HasCover 表示 book_covers 里有这本的封面；前端据此决定渲染 img 还是占位。
+	HasCover bool `json:"hasCover"`
+	// Format 是来源格式：txt / epub。
+	Format string `json:"format,omitempty"`
 }
 
 // VolumeNode 是书籍详情里的一卷。
@@ -70,10 +83,12 @@ type VolumeNode struct {
 // BookDetail 用于书籍详情页（含完整目录）。
 type BookDetail struct {
 	BookSummary
-	Encoding   string       `json:"encoding"`
-	SourceName string       `json:"sourceName"`
-	FileSize   int64        `json:"fileSize"`
-	Volumes    []VolumeNode `json:"volumes"`
+	Encoding   string `json:"encoding"`
+	SourceName string `json:"sourceName"`
+	FileSize   int64  `json:"fileSize"`
+	// Tags 是这本书的分类/标签（全量），详情页与编辑表单读它。
+	Tags    []string     `json:"tags"`
+	Volumes []VolumeNode `json:"volumes"`
 }
 
 // ChapterBrief 是目录中的一章（不含正文）。

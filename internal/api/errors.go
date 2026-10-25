@@ -34,6 +34,13 @@ const (
 	codeUnauthorized     = "unauthorized"
 	// codeContentCorrupted 表示这一章的正文压缩块损坏（局部故障，非整库不可用）。
 	codeContentCorrupted = "content_corrupted"
+
+	// 上传接口的错误码（docs/specs/2026-10-25-import-formats.md §2）：
+	// 前端按 code 分支给「逐个文件的友好提示」，message 才是给用户看的人话。
+	codeUnsupportedFormat = "unsupported_format"
+	codePayloadTooLarge   = "payload_too_large"
+	codeTooManyFiles      = "too_many_files"
+	codeEncryptedEPUB     = "encrypted_epub"
 )
 
 // writeJSON 以 JSON 写响应；序列化失败时退化为 500。

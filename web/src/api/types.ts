@@ -2,7 +2,50 @@
 
 export type BookStatus = "parsed" | "pending" | "failed";
 
-export interface BookSummary {
+/** 导入时从文件带出的附加元数据；目录导入的老书这些字段缺省，前端一律按「没有」处理。 */
+export interface BookMeta {
+  language?: string;
+  publisher?: string;
+  isbn?: string;
+  pubDate?: string;
+  series?: string;
+  seriesIndex?: number;
+  /** 这本书是否存了封面：为真才去取图，否则直接用首字占位 */
+  hasCover?: boolean;
+  /** 来源格式：txt / epub */
+  format?: string;
+}
+
+/** PATCH /api/books/{id} 的请求体：任意子集；tags 是全量替换。 */
+export interface BookMetaPatch {
+  title?: string;
+  author?: string;
+  intro?: string;
+  tags?: string[];
+  series?: string;
+  seriesIndex?: number;
+}
+
+export interface UploadAccepted {
+  name: string;
+  format: string;
+}
+
+/** 逐文件拒绝原因：code 给程序分支用，message 是可直接展示的人话。 */
+export interface UploadRejected {
+  name: string;
+  code: string;
+  message: string;
+}
+
+/** POST /api/import/upload 的 202 响应：部分文件被拒也照样建任务。 */
+export interface UploadResult {
+  jobId: number;
+  accepted: UploadAccepted[];
+  rejected: UploadRejected[];
+}
+
+export interface BookSummary extends BookMeta {
   id: number;
   title: string;
   authorId: number;
@@ -42,6 +85,11 @@ export interface BookDetail extends BookSummary {
   encoding?: string;
   sourceName?: string;
   fileSize?: number;
+  /**
+   * 当前标签（全量）。后端返回就用来回填编辑表单；
+   * 未返回时表单标签留空，且不提交标签字段，避免误清空已有标签。
+   */
+  tags?: string[];
   volumes: Volume[];
 }
 

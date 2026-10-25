@@ -23,6 +23,7 @@ func registerSteps(sc *godog.ScenarioContext, w *world) {
 	registerReadingSteps(sc, w)
 	registerSearchSteps(sc, w)
 	registerImportFailureSteps(sc, w)
+	registerUploadSteps(sc, w)
 	registerCommonAssertSteps(sc, w)
 }
 

@@ -237,7 +237,13 @@ function BookCard({ book, compact }: { book: BookSummary; compact: boolean }) {
   return (
     <article className="book-card">
       <Link className="book-link" to={`/book/${book.id}`}>
-        <Cover title={book.title} showLabel={!compact} />
+        <Cover
+          title={book.title}
+          bookId={book.id}
+          updatedAt={book.updatedAt}
+          hasCover={book.hasCover}
+          showLabel={!compact}
+        />
         <div className="book-card-body">
           <h3>{book.title}</h3>
           <p className="book-author">{book.authorName || "佚名"}</p>

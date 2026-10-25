@@ -5,8 +5,12 @@
 
 ## 1. 分层
 
+文件先按扩展名进**格式容器层**：`.txt` 直接得到字节流；`.epub` 交给 `internal/ebook`
+（zip → container.xml → OPF → spine）解出纯文本章节、元数据与封面。容器层以下
+完全共用同一条管线——EPUB 的 XHTML 同样走编码兜底、噪声清洗与（必要时）切章策略。
+
 ```
-raw bytes
+raw bytes（txt）或 ebook.Book（epub 已解包）
    │
    ├─ Codec 层      编码候选解码（utf-8 / gb18030 / utf-16 / big5…）→ 选最高分
    │
@@ -119,6 +123,10 @@ func Splitters() []Splitter
 | Splitter | `numeric` | 纯数字行 / `1、标题` |
 | Splitter | `en-chapter` | `Chapter N` |
 | Splitter | `unmarked` | 兜底：无标记时按长度等分（Detect 恒为最低正分） |
+
+> `internal/ebook` 不注册进上面的策略表：它输出的是**已结构化**的 `Book`（spine 即章节），
+> 由 `importer` 转成 `model.ParsedBook`。只有「整本塞在一个 XHTML 里」的书才把全文交回
+> Splitter 切章。新增其它 EPUB 类容器（如 DOCX）时复用同一条「解包 → 结构化」路径。
 
 ## 5. 扩展方式（新增格式怎么做）
 

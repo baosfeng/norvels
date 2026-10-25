@@ -36,6 +36,15 @@ func (s *Store) GetBook(ctx context.Context, id int64) (*BookDetail, error) {
 		Volumes:     make([]VolumeNode, 0, 8),
 	}
 
+	tags, err := s.ListBookTags(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	detail.Tags = tags
+
 	volIndex, err := s.loadVolumeNodes(ctx, id, detail)
 	if err != nil {
 		return nil, err
@@ -65,17 +74,17 @@ func (s *Store) loadBookDetailRow(ctx context.Context, id int64) (bookDetailRow,
 	row := s.db.QueryRowContext(ctx,
 		"SELECT "+bookSummaryColumns+", b.encoding, b.source_name, b.file_size "+
 			"FROM books b LEFT JOIN authors a ON a.id = b.author_id WHERE b.id = ?", id)
-	err := row.Scan(&out.summary.ID, &out.summary.Title, &out.summary.AuthorID, &out.summary.AuthorName,
-		&out.summary.ChapterCount, &out.summary.WordCount, &out.summary.VolumeCount, &out.summary.Intro,
-		&out.summary.Status, &imported, &updated, &out.encoding, &out.sourceName, &out.fileSize)
+	// 摘要列 + 详情列共用一套扫描目标：列顺序由 bookSummaryColumns 单点决定。
+	dest := append(summaryScanTargets(&out.summary, &imported, &updated),
+		&out.encoding, &out.sourceName, &out.fileSize)
+	err := row.Scan(dest...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, fmt.Errorf("%w: book %d", ErrNotFound, id)
 	}
 	if err != nil {
 		return out, fmt.Errorf("store: get book: %w", err)
 	}
-	out.summary.ImportedAt, _ = parseTime(imported)
-	out.summary.UpdatedAt, _ = parseTime(updated)
+	applySummaryTimes(&out.summary, imported, updated)
 	return out, nil
 }
 

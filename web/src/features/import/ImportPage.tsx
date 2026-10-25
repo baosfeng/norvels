@@ -3,6 +3,7 @@ import { useImportJobs } from "../../api/hooks";
 import { api } from "../../api/client";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatDate } from "../../lib/format";
+import { UploadPanel } from "./UploadPanel";
 
 /**
  * 导入管理（PC 专属，H5 不渲染也不承认这个路由）。
@@ -21,8 +22,8 @@ export function ImportPage() {
   const jobs = data?.items ?? [];
   const running = jobs.find((j) => j.status === "running");
   const finished = jobs.filter((j) => j.status !== "running");
-  // 以 .txt 结尾就按单文件处理：递归选项对它没有意义，勾上也不会改变结果。
-  const isSingleFile = dir.trim().toLowerCase().endsWith(".txt");
+  // 以 txt / epub 结尾就按单文件处理：递归选项对它没有意义，勾上也不会改变结果。
+  const isSingleFile = /\.(txt|epub)$/i.test(dir.trim());
 
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,23 +53,24 @@ export function ImportPage() {
       <div className="page-head">
         <div>
           <p className="eyebrow">导入管理</p>
-          <h1>把 txt 变成书架</h1>
-          <p className="sub">填目录批量导入，填单个 txt 只导这一本；同一文件不会重复导入</p>
+          <h1>把书变成书架</h1>
+          <p className="sub">拖入或选择 txt / epub 直接导入，也可以填目录批量扫描；同一文件不会重复导入</p>
         </div>
         <span className="pill">{running ? "1 个进行中的任务" : "0 个排队任务"}</span>
       </div>
 
       <div className="import-layout">
+        <div style={{ display: "grid", gap: 16 }}>
         <form className="import-form" onSubmit={start}>
           <h2>新建导入任务</h2>
           <div className="field">
-            <label htmlFor="dir">目录或 txt 文件路径</label>
+            <label htmlFor="dir">目录或单个文件路径</label>
             <input
               className="input"
               id="dir"
               value={dir}
               onChange={(e) => setDir(e.target.value)}
-              placeholder="例如 文稿/小说，或 文稿/小说/书名.txt"
+              placeholder="例如 文稿/小说，或 文稿/小说/示例书简.epub"
             />
           </div>
           <div className="check-row">
@@ -103,6 +105,8 @@ export function ImportPage() {
           <p className="meta">同一时间只能运行一个导入任务。</p>
           {message ? <p className="meta" role="status">{message}</p> : null}
         </form>
+        <UploadPanel onSubmitted={reload} disabled={Boolean(running)} />
+        </div>
 
         <div>
           {loading ? (
@@ -175,7 +179,7 @@ export function ImportPage() {
               ) : null}
             </div>
           ) : (
-            <EmptyPanel title="当前没有进行中的任务" description="填好左边的路径（目录或单个 txt），开始一次导入。" />
+            <EmptyPanel title="当前没有进行中的任务" description="拖入文件或填好左边的路径，开始一次导入。" />
           )}
 
           <div className="import-jobs">

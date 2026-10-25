@@ -31,6 +31,14 @@ type Config struct {
 	// AuthToken 非空时启用鉴权：/api/* 与页面要求 Bearer Token 或 Cookie，
 	// /api/health 与 /login 免鉴权。空 = 开放模式（启动时由调用方打 WARN）。
 	AuthToken string
+	// UploadDir 是上传临时根目录：每个任务建一个子目录，导入结束整目录删除。
+	// 空值回落到 os.TempDir()；生产建议指向数据库同目录下的 uploads/。
+	UploadDir string
+	// MaxUploadFileBytes / MaxUploadTotalBytes / MaxUploadFiles 是上传校验上限，
+	// 0 值表示用默认值（64 MiB / 256 MiB / 20）。测试注入小值以快速触发 413/400。
+	MaxUploadFileBytes  int64
+	MaxUploadTotalBytes int64
+	MaxUploadFiles      int
 }
 
 // AuthEnabled 报告是否启用鉴权。
@@ -74,11 +82,14 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	mux.HandleFunc("GET /api/books/{id}", s.handleGetBook)
 	mux.HandleFunc("GET /api/books/{id}/chapters", s.handleListChapters)
 	mux.HandleFunc("GET /api/books/{id}/chapters/{cid}", s.handleGetChapter)
+	mux.HandleFunc("PATCH /api/books/{id}", s.handlePatchBook)
+	mux.HandleFunc("GET /api/books/{id}/cover", s.handleGetBookCover)
 	mux.HandleFunc("GET /api/authors", s.handleListAuthors)
 	mux.HandleFunc("GET /api/authors/{id}", s.handleGetAuthor)
 	mux.HandleFunc("GET /api/search", s.handleSearch)
 	mux.HandleFunc("GET /api/tags", s.handleListTags)
 	mux.HandleFunc("POST /api/import", s.handleStartImport)
+	mux.HandleFunc("POST /api/import/upload", s.handleUploadImport)
 	mux.HandleFunc("GET /api/import/jobs", s.handleListImportJobs)
 	mux.HandleFunc("GET /api/import/jobs/{id}", s.handleGetImportJob)
 	mux.HandleFunc("GET /api/version", s.handleVersion)

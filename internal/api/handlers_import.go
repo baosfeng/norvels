@@ -86,7 +86,7 @@ func decodeImportRequest(w http.ResponseWriter, r *http.Request) (importRequest,
 func validateImportSource(w http.ResponseWriter, req importRequest) (string, bool) {
 	source := strings.TrimSpace(req.Dir)
 	if source == "" {
-		writeError(w, http.StatusBadRequest, codeInvalidParam, "dir 必填（目录或 .txt 文件路径）")
+		writeError(w, http.StatusBadRequest, codeInvalidParam, "dir 必填（目录，或 .txt / .epub 文件路径）")
 		return "", false
 	}
 	info, err := os.Stat(source)
@@ -94,8 +94,8 @@ func validateImportSource(w http.ResponseWriter, req importRequest) (string, boo
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "路径不存在或不可读: "+source)
 		return "", false
 	}
-	if !info.IsDir() && !importer.IsTxtFile(info.Name()) {
-		writeError(w, http.StatusBadRequest, codeInvalidParam, "路径既不是目录也不是 .txt 文件: "+source)
+	if !info.IsDir() && !importer.SupportedExt(info.Name()) {
+		writeError(w, http.StatusBadRequest, codeInvalidParam, "路径既不是目录也不是支持的图书文件（.txt / .epub）: "+source)
 		return "", false
 	}
 	if req.Workers < 0 || req.Workers > maxImportWorkers {

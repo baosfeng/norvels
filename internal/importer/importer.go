@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
+	"norvels/internal/ebook"
 	"norvels/internal/model"
 	"norvels/internal/parser"
 	"norvels/internal/store"
@@ -55,8 +58,8 @@ type Result struct {
 	Errors   []store.ImportError
 }
 
-// ErrNoFiles 表示目录中没有可导入的 txt。
-var ErrNoFiles = errors.New("importer: no .txt files found")
+// ErrNoFiles 表示目录中没有可导入的文件（支持格式见 SupportedExt）。
+var ErrNoFiles = errors.New("importer: 没有可导入的文件（.txt / .epub）")
 
 // maxWorkers 是默认并发上限：解析是 CPU + 内存混合负载，过多并发反而拖慢。
 const maxWorkers = 8
@@ -131,7 +134,7 @@ func prepareRun(ctx context.Context, st *store.Store, opt Options) (*runState, s
 		state.failJob(ctx, err.Error())
 		return nil, "", nil, err
 	case len(files) == 0:
-		state.failJob(ctx, "no .txt files found")
+		state.failJob(ctx, "没有可导入的文件（.txt / .epub）")
 		return nil, "", nil, ErrNoFiles
 	}
 	return state, dir, files, nil
@@ -172,7 +175,7 @@ func processFile(ctx context.Context, st *store.Store, p *parser.Parser, t fileT
 		return oc
 	}
 
-	book, err := p.ParseBytes(filepath.Base(t.path), data)
+	book, err := parseFile(p, t.path, data)
 	if err != nil {
 		oc.err = fmt.Errorf("parse: %w", err)
 		return oc
@@ -190,6 +193,127 @@ func processFile(ctx context.Context, st *store.Store, p *parser.Parser, t fileT
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// parseFile 按扩展名分发解析：.txt 走 parser；.epub 走 ebook，再转换成 ParsedBook。
+func parseFile(p *parser.Parser, path string, data []byte) (*model.ParsedBook, error) {
+	if FormatOf(path) != FormatEPUB {
+		return p.ParseBytes(filepath.Base(path), data)
+	}
+	eb, err := ebook.Open(filepath.Base(path), data)
+	if err != nil {
+		return nil, err
+	}
+	return epubToParsedBook(p, eb), nil
+}
+
+// epubToParsedBook 把 ebook.Book 转成 store 认识的 ParsedBook：元数据与封面原样搬运，
+// 章节按 spine 顺序编号；「整本一页」的大书改走 txt 切章策略（spec §4）。
+func epubToParsedBook(p *parser.Parser, eb *ebook.Book) *model.ParsedBook {
+	book := &model.ParsedBook{
+		Title:        eb.Title,
+		Author:       eb.Author,
+		Intro:        eb.Intro,
+		Language:     eb.Language,
+		Publisher:    eb.Publisher,
+		ISBN:         eb.ISBN,
+		PubDate:      eb.PubDate,
+		Series:       eb.Series,
+		SeriesIndex:  eb.SeriesIndex,
+		Subjects:     eb.Subjects,
+		SourceFormat: FormatEPUB,
+		Encoding:     "utf-8",
+		Warnings:     eb.Warnings,
+	}
+	if eb.Cover != nil {
+		book.Cover = &model.CoverImage{MIME: eb.Cover.MIME, Bytes: eb.Cover.Bytes}
+	}
+	if eb.NeedsSplit() {
+		splitByParser(p, book, eb)
+	} else {
+		book.Chapters = epubChapters(eb.Chapters)
+	}
+	book.WordCount = totalWords(book.Chapters)
+	return book
+}
+
+// splitByParser 把「spine 只有一两个 XHTML」的全文交给 txt 解析器重新切章，
+// 复用 di-unit 等既有策略；切章失败时退回 spine 原章节，不让一本书因此导入失败。
+func splitByParser(p *parser.Parser, book *model.ParsedBook, eb *ebook.Book) {
+	parsed, err := p.ParseBytes(book.Title+".txt", []byte(eb.FullText()))
+	if err != nil || parsed == nil || len(parsed.Chapters) == 0 {
+		book.Chapters = epubChapters(eb.Chapters)
+		book.Warnings = append(book.Warnings, "全文切章失败，已按 spine 原章节导入")
+		return
+	}
+	book.Chapters = parsed.Chapters
+	book.Warnings = append(book.Warnings, keepSplitWarnings(parsed.Warnings)...)
+	book.Warnings = append(book.Warnings, "spine 只有一个正文文档，已按 txt 切章策略重新分章")
+}
+
+// keepSplitWarnings 过滤掉 parser 对书名/作者推断的告警：切章用的是一个临时文件名，
+// 那两条只反映临时文件名的推断失败，EPUB 元数据才是权威来源。
+func keepSplitWarnings(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, w := range in {
+		if w == "author_missing" || strings.HasPrefix(w, "未能推断书名") {
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
+}
+
+// epubChapters 把 spine 章节转成模型章节；EPUB 没有卷的概念，VolumeIdx 统一为 -1。
+func epubChapters(chapters []ebook.Chapter) []model.ParsedChapter {
+	out := make([]model.ParsedChapter, 0, len(chapters))
+	for i, c := range chapters {
+		out = append(out, model.ParsedChapter{
+			Idx:       i,
+			VolumeIdx: -1,
+			Title:     c.Title,
+			Content:   c.Content,
+			WordCount: countTextWords(c.Content),
+		})
+	}
+	return out
+}
+
+// totalWords 汇总全文字数。
+func totalWords(chapters []model.ParsedChapter) int {
+	total := 0
+	for _, c := range chapters {
+		total += c.WordCount
+	}
+	return total
+}
+
+// countTextWords 统计纯文本字数：CJK 逐字计 1，连续拉丁字母/数字计 1 个词。
+// 与 parser 的字数口径一致，保证 EPUB 与 TXT 的统计数据可比。
+func countTextWords(s string) int {
+	n, inWord := 0, false
+	for _, r := range s {
+		switch {
+		case isCJKRune(r):
+			n++
+			inWord = false
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			if !inWord {
+				n++
+				inWord = true
+			}
+		default:
+			inWord = false
+		}
+	}
+	return n
+}
+
+// isCJKRune 判断是否为需要逐字计数的表意文字（汉字/假名/谚文）。
+func isCJKRune(r rune) bool {
+	return unicode.Is(unicode.Han, r) ||
+		(r >= 0x3040 && r <= 0x30FF) ||
+		(r >= 0xAC00 && r <= 0xD7AF)
 }
 
 // fillBookSource 用磁盘上的真实信息补齐书籍的来源字段。
