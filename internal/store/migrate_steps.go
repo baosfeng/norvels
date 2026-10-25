@@ -63,6 +63,25 @@ func addBookMetadataColumnsStep(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// addBookSerialStatusStep 给 books 补 0010 的连载状态列（幂等）。
+//
+// 为什么不用迁移 SQL 里的 ALTER TABLE：SQLite 没有 ADD COLUMN IF NOT EXISTS，
+// 而「删掉版本号重跑」是排查迁移问题的常规手段，撞 duplicate column 会让整次迁移失败。
+func addBookSerialStatusStep(ctx context.Context, tx *sql.Tx) error {
+	has, err := columnExistsInTx(ctx, tx, "books", "serial_status")
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		"ALTER TABLE books ADD COLUMN serial_status TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("add column books.serial_status: %w", err)
+	}
+	return nil
+}
+
 // tableExistsInTx 在事务内判断表/视图是否存在（迁移步骤专用，不改动连接级状态）。
 func tableExistsInTx(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 	var n int

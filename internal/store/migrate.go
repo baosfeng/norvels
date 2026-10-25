@@ -322,6 +322,10 @@ var migrationStepsByVersion = map[int][]migrationStep{
 		Name: "add book metadata columns",
 		Run:  addBookMetadataColumnsStep,
 	}},
+	10: {{
+		Name: "add book serial status column",
+		Run:  addBookSerialStatusStep,
+	}},
 }
 
 // loadMigrations 读取 embed 内的迁移文件，按版本升序返回。

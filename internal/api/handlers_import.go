@@ -52,9 +52,9 @@ func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
 	}
 	opts := importOptions(req, source, job.ID)
 
-	// 导入任务随服务退出而取消（Config.Context 由 serve 的 signal ctx 注入）。
+	// 导入任务随服务退出或用户主动取消而停止（Config.Context 由 serve 的 signal ctx 注入）。
 	ctx, cancel := context.WithCancel(s.baseContext())
-	go s.runImport(ctx, cancel, job.ID, source, opts)
+	s.spawnImport(job.ID, cancel, func() { s.runImport(ctx, cancel, job.ID, source, opts) })
 
 	writeJSON(w, http.StatusAccepted, struct {
 		JobID int64 `json:"jobId"`
@@ -181,6 +181,18 @@ func (s *Server) runningImportJob(ctx context.Context) (*store.ImportJob, error)
 	return nil, nil
 }
 
+// spawnImport 先登记「任务 id → cancel」再起 goroutine，goroutine 退出时注销。
+//
+// 顺序不能反：先登记后启动，取消请求就不会撞上「库里是 running、却还没登记
+// 取消入口」的窗口（那一瞬间到达的取消会被判成不可取消）。
+func (s *Server) spawnImport(jobID int64, cancel context.CancelFunc, run func()) {
+	unregister := importer.Track(jobID, cancel)
+	go func() {
+		defer unregister()
+		run()
+	}()
+}
+
 // runImport 在 goroutine 中执行导入，并保证任务记录最终不会停留在 running。
 func (s *Server) runImport(ctx context.Context, cancel context.CancelFunc, jobID int64, dir string, opts importer.Options) {
 	defer cancel()
@@ -199,7 +211,7 @@ func (s *Server) runImport(ctx context.Context, cancel context.CancelFunc, jobID
 		_ = s.finalizeImportJob(jobID, "failed", "目录中没有 .txt 文件", res)
 	case errors.Is(err, context.Canceled):
 		s.logf("api: 导入被取消 dir=%s", dir)
-		_ = s.finalizeImportJob(jobID, "canceled", "服务退出，导入已取消", res)
+		_ = s.finalizeImportJob(jobID, "canceled", "导入已取消", res)
 	case err != nil:
 		s.logf("api: 导入失败 dir=%s: %v", dir, err)
 		_ = s.finalizeImportJob(jobID, "failed", err.Error(), res)
@@ -271,6 +283,47 @@ func (s *Server) handleListImportJobs(w http.ResponseWriter, r *http.Request) {
 		jobs = []store.ImportJob{}
 	}
 	writeJSON(w, http.StatusOK, importJobsResponse{Items: jobs})
+}
+
+// cancelAccepted 是 POST /api/import/jobs/{id}/cancel 的 202 响应体（spec §2.2）。
+type cancelAccepted struct {
+	Status string `json:"status"`
+}
+
+// handleCancelImportJob 处理 POST /api/import/jobs/{id}/cancel。
+//
+// 三种结局：
+//   - 任务在跑且取消信号已发出 → 202 {"status":"canceling"}（真正停下并写成 canceled
+//     由导入 goroutine 收尾，这里不写库）；
+//   - 任务不存在 → 404；
+//   - 任务已结束（completed / canceled / failed），或库记录是 running 但本进程没有
+//     它的取消入口（进程重启留下的僵尸）→ 409 conflict：这时候「取消」已经不可兑现，
+//     回 202 会让前端一直等一个不会到来的终态。
+func (s *Server) handleCancelImportJob(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.badRequest(w, err, codeInvalidID)
+		return
+	}
+	job, err := s.st.GetImportJob(r.Context(), id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, codeNotFound, "import job not found")
+		return
+	case err != nil:
+		s.fail(w, r, err, "import job not found")
+		return
+	case job.Status != "running":
+		writeError(w, http.StatusConflict, codeConflict,
+			fmt.Sprintf("任务已结束（状态 %s），无法取消", job.Status))
+		return
+	}
+	if !importer.Cancel(id) {
+		writeError(w, http.StatusConflict, codeConflict,
+			"任务不在本进程运行（可能已结束，或进程重启后仅剩记录），无法取消")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, cancelAccepted{Status: "canceling"})
 }
 
 func (s *Server) handleGetImportJob(w http.ResponseWriter, r *http.Request) {

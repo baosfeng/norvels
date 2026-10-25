@@ -51,6 +51,12 @@ func (s *Store) GetBook(ctx context.Context, id int64) (*BookDetail, error) {
 	}
 	detail.Tags = tags
 
+	lastIdx, lastTitle, err := s.loadLastChapter(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	detail.LastChapterIdx, detail.LastChapterTitle = lastIdx, lastTitle
+
 	volIndex, err := s.loadVolumeNodes(ctx, id, detail)
 	if err != nil {
 		return nil, err
@@ -92,6 +98,27 @@ func (s *Store) loadBookDetailRow(ctx context.Context, id int64) (bookDetailRow,
 	}
 	applySummaryTimes(&out.summary, imported, updated)
 	return out, nil
+}
+
+// loadLastChapter 取 idx 最大的那一章（详情页「最后更新 · 最新章节」用）。
+//
+// 按 idx DESC, id DESC 取一行：idx 是解析出的章节序号，同 idx 的重复章节用 id 兜底，
+// 保证结论稳定。没有章节时返回 (0, "", nil)——新导入的空书不算错误。
+func (s *Store) loadLastChapter(ctx context.Context, bookID int64) (int, string, error) {
+	var (
+		idx   int
+		title string
+	)
+	err := s.db.QueryRowContext(ctx,
+		"SELECT idx, title FROM chapters WHERE book_id = ? ORDER BY idx DESC, id DESC LIMIT 1", bookID).
+		Scan(&idx, &title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", nil
+	}
+	if err != nil {
+		return 0, "", fmt.Errorf("store: get last chapter of book %d: %w", bookID, err)
+	}
+	return idx, title, nil
 }
 
 // loadVolumeNodes 载入卷列表并追加到 detail.Volumes，返回「库内卷 id → 卷下标」映射。

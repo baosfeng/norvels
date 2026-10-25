@@ -24,6 +24,11 @@ type bookDetailResp struct {
 	HasCover    bool     `json:"hasCover"`
 	Format      string   `json:"format"`
 	Tags        []string `json:"tags"`
+	// 0010 起的详情增量字段：连载状态与最新章节。
+	Status           string `json:"status"`
+	SerialStatus     string `json:"serialStatus"`
+	LastChapterIdx   int    `json:"lastChapterIdx"`
+	LastChapterTitle string `json:"lastChapterTitle"`
 }
 
 // authorsResp 是 GET /api/authors 的响应（items + total）。
