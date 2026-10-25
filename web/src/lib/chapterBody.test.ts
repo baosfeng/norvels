@@ -11,7 +11,7 @@ const GO_ALIGNED: ReadonlyArray<readonly [string, number]> = [
   ["雨从屋檐上垂下来。\n\n守夜人把灯芯挑亮。", 16],
   ["第1章 起风了：他走了 3.5 公里，e-mail 未读（2 封）。", 19],
   ["「引号」…——破折号、省略号\u3000全角空格 ＡＢＣ １２３", 14],
-  ["\u{20000}\u{20001} 扩展B区两个字 😀 emoji 与 e\u0301 组合符号", 15],
+  ["\u{20000}\u{20001} 扩展B区两个字 😀 emoji 与 e\u0301 组合符号", 16],
   ["  \n\t第一段\r\n\n  第二段  ", 6],
 ];
 
@@ -45,9 +45,9 @@ describe("countBodyWords（与后端 store.countWords 同口径）", () => {
     expect(countBodyWords("★★★")).toBe(0);
   });
 
-  it("扩展 B 区汉字 store 记作「词」而不是逐字：连续一段算 1（parser 导入期口径的既有差异）", () => {
+  it("扩展 B 区汉字逐字计数（与 store / parser 两侧区间一致）", () => {
     expect(countBodyWords("\u{20000}")).toBe(1);
-    expect(countBodyWords("\u{20000}\u{20001}")).toBe(1);
+    expect(countBodyWords("\u{20000}\u{20001}")).toBe(2);
     expect(countBodyWords("\u{20000}你好")).toBe(3);
   });
 });

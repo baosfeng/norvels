@@ -9,15 +9,15 @@
  *   - 连续的非 CJK 词计 1：`"hello world"` → 2、`"3.5"` → 2（小数点把词断开）；
  *   - 空白 / 标点 / 符号 / 控制符不计数：`"你好，世界"` → 4。
  * 边界仍以后端为唯一真相，对齐用例（中英数标点混排）的期望值由 Go 侧同一份源码算出，
- * 见 chapterBody.test.ts。已知的**后端内部**差异（不改前端口径）：
- *   - internal/parser/words.go 的导入期字数把扩展 B 区（U+20000 起）也逐字计，
- *     store 不认这一段、连续的算 1 个词；两者只在生僻字上不同，前端跟保存路径（store）。
+ * 见 chapterBody.test.ts。扩展 B 区（U+20000 起）在 store 与 parser 两侧都逐字计，
+ * 本表的区间与 internal/store/util.go 的 cjkRanges 一一对应。
  */
 
-/** store.countWords 的 CJK 区间表：统一表意 / 扩展 A / 兼容表意 / 假名 / 谚文。 */
+/** store.countWords 的 CJK 区间表：统一表意 / 扩展 A / 扩展 B 及以后 / 兼容表意 / 假名 / 谚文。 */
 const CJK_RANGES: readonly (readonly [number, number])[] = [
   [0x4e00, 0x9fff],
   [0x3400, 0x4dbf],
+  [0x20000, 0x3ffff],
   [0xf900, 0xfaff],
   [0x3040, 0x30ff],
   [0xac00, 0xd7af],

@@ -48,6 +48,7 @@ func TestCountWords(t *testing.T) {
 		{"数字", "123 456", 2},
 		{"换行分隔的长段", "长夜书简\n青川剑砚\n", 8},
 		{"扩展 B 逐字", "\U00020000\U00020001 长", 3},
+		{"扩展 B 混排样本（前端 chapterBody.test.ts 同一条）", "\U00020000\U00020001 扩展B区两个字 😀 emoji 与 e\u0301 组合符号", 16},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
