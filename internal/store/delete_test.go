@@ -125,6 +125,9 @@ func seedDeletableBook(t *testing.T, ctx context.Context, st *Store) int64 {
 		ReadingProgress{BookID: res.BookID, ChapterID: chapterID, Percent: 0.5}); err != nil {
 		t.Fatalf("SaveReadingProgress: %v", err)
 	}
+	if _, _, err := st.AddBookmark(ctx, res.BookID, chapterID, 0, "样本书签"); err != nil {
+		t.Fatalf("AddBookmark: %v", err)
+	}
 	// 自检：造出来的样本确实每张子表都有行，否则上面的「清零」断言是空转。
 	for _, table := range bookCascadeTables {
 		if n := bookRowCount(t, ctx, st, table, res.BookID); n == 0 && table != "chapter_blocks" {

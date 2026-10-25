@@ -17,7 +17,7 @@ const unknownAuthor = "佚名"
 // 列表与详情共用同一份口径，避免两个 SELECT 漂移。
 const bookSummaryColumns = "b.id, b.title, b.author_id, COALESCE(a.name, ''), " +
 	"b.chapter_count, b.word_count, b.volume_count, b.intro, b.status, b.serial_status, " +
-	"b.imported_at, b.updated_at, " +
+	"b.read_status, b.imported_at, b.updated_at, " +
 	"b.language, b.publisher, b.isbn, b.pub_date, b.series, b.series_index, b.has_cover, b.source_format"
 
 // rowScanner 抽象 *sql.Row / *sql.Rows 的 Scan。
@@ -32,7 +32,7 @@ type rowScanner interface {
 func summaryScanTargets(bs *BookSummary, imported, updated *string) []any {
 	return []any{
 		&bs.ID, &bs.Title, &bs.AuthorID, &bs.AuthorName, &bs.ChapterCount, &bs.WordCount,
-		&bs.VolumeCount, &bs.Intro, &bs.Status, &bs.SerialStatus, imported, updated,
+		&bs.VolumeCount, &bs.Intro, &bs.Status, &bs.SerialStatus, &bs.ReadStatus, imported, updated,
 		&bs.Language, &bs.Publisher, &bs.ISBN, &bs.PubDate, &bs.Series, &bs.SeriesIndex,
 		&bs.HasCover, &bs.Format,
 	}
@@ -106,6 +106,11 @@ func bookFilter(q BookQuery) ([]string, []any) {
 		where = append(where, "EXISTS (SELECT 1 FROM book_tags bt JOIN tags t ON t.id = bt.tag_id "+
 			"WHERE bt.book_id = b.id AND t.name = ?)")
 		args = append(args, t)
+	}
+	// '' 表示不过滤（全部）：未标记不该成为一个可见筛选项，与 api 层口径一致。
+	if rs := strings.TrimSpace(q.ReadStatus); rs != "" {
+		where = append(where, "b.read_status = ?")
+		args = append(args, rs)
 	}
 	return where, args
 }
@@ -192,12 +197,15 @@ type BookMetaPatch struct {
 	Tags        *[]string
 	// SerialStatus 是连载状态（''|ongoing|completed），与解析状态 Status 无关。
 	SerialStatus *string
+	// ReadStatus 是阅读状态（''|want|reading|done），与解析状态/连载状态互不覆写。
+	ReadStatus *string
 }
 
 // IsEmpty 报告 patch 是否什么都没包含（空 patch 不写库）。
 func (p BookMetaPatch) IsEmpty() bool {
 	return p.Title == nil && p.Author == nil && p.Authors == nil && p.Intro == nil &&
-		p.Series == nil && p.SeriesIndex == nil && p.Tags == nil && p.SerialStatus == nil
+		p.Series == nil && p.SeriesIndex == nil && p.Tags == nil &&
+		p.SerialStatus == nil && p.ReadStatus == nil
 }
 
 // authorNames 返回本次补丁要落库的有序作者；nil 表示「作者这一项不改」。
@@ -282,14 +290,22 @@ func bookAuthorIDInTx(ctx context.Context, tx *sql.Tx, id int64) (int64, error) 
 	return authorID, nil
 }
 
-// applyColumnPatch 写 books 上的标量列（title/intro/series/series_index）并刷新 updated_at。
+// applyColumnPatch 写 books 上的标量列（文本列 + 状态列）并刷新 updated_at。
+//
+// 具体拼 SET 的逻辑按「文本列 / 枚举状态列」拆到两个 helper：一处新增状态列
+// 只改 statusColumnSets 的表，不会把这条函数推过复杂度阈值。
 func applyColumnPatch(ctx context.Context, tx *sql.Tx, id int64, patch BookMetaPatch) error {
 	sets := []string{"updated_at = ?"}
 	args := []any{formatTime(nowUTC())}
+	return execColumnPatch(ctx, tx, id, sets, args, patch)
+}
+
+// textColumnSets 把文本类标量列拼进 SET 片段（title/intro/series/seriesIndex）。
+func textColumnSets(sets []string, args []any, patch BookMetaPatch) ([]string, []any, error) {
 	if patch.Title != nil {
 		title := strings.TrimSpace(*patch.Title)
 		if title == "" {
-			return fmt.Errorf("%w: empty title", ErrInvalidArgument)
+			return nil, nil, fmt.Errorf("%w: empty title", ErrInvalidArgument)
 		}
 		sets, args = append(sets, "title = ?"), append(args, title)
 	}
@@ -302,12 +318,44 @@ func applyColumnPatch(ctx context.Context, tx *sql.Tx, id int64, patch BookMetaP
 	if patch.SeriesIndex != nil {
 		sets, args = append(sets, "series_index = ?"), append(args, maxInt(*patch.SeriesIndex, 0))
 	}
-	if patch.SerialStatus != nil {
-		status := strings.TrimSpace(*patch.SerialStatus)
-		if !ValidSerialStatus(status) {
-			return fmt.Errorf("%w: serial status %q", ErrInvalidArgument, status)
+	return sets, args, nil
+}
+
+// statusColumnSets 校验并拼接枚举类状态列（serial_status / read_status）。
+//
+// 表驱动而不是写两遍 if：两组状态的校验口径完全一样（去空白 → 白名单 → 非法即 400），
+// 以后再加同类状态列只往表里添一行。
+func statusColumnSets(sets []string, args []any, patch BookMetaPatch) ([]string, []any, error) {
+	cols := []struct {
+		column string
+		value  *string
+		valid  func(string) bool
+		label  string
+	}{
+		{"serial_status", patch.SerialStatus, ValidSerialStatus, "serial status"},
+		{"read_status", patch.ReadStatus, ValidReadStatus, "read status"},
+	}
+	for _, c := range cols {
+		if c.value == nil {
+			continue
 		}
-		sets, args = append(sets, "serial_status = ?"), append(args, status)
+		v := strings.TrimSpace(*c.value)
+		if !c.valid(v) {
+			return nil, nil, fmt.Errorf("%w: %s %q", ErrInvalidArgument, c.label, v)
+		}
+		sets, args = append(sets, c.column+" = ?"), append(args, v)
+	}
+	return sets, args, nil
+}
+
+// execColumnPatch 执行列更新（books 行不存在时 RowsAffected 为 0，交由调用方语义处理）。
+func execColumnPatch(ctx context.Context, tx *sql.Tx, id int64, sets []string, args []any, patch BookMetaPatch) error {
+	sets, args, err := textColumnSets(sets, args, patch)
+	if err != nil {
+		return err
+	}
+	if sets, args, err = statusColumnSets(sets, args, patch); err != nil {
+		return err
 	}
 	args = append(args, id)
 	if _, err := tx.ExecContext(ctx, "UPDATE books SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {

@@ -82,6 +82,25 @@ func addBookSerialStatusStep(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// addBookReadStatusStep 给 books 补 0011 的阅读状态列（幂等）。
+//
+// 与 0008/0010 同理：SQLite 没有 ADD COLUMN IF NOT EXISTS，版本回退重跑会撞
+// "duplicate column name"，整次迁移失败；探测放在 Go 里、跑在 0011 的事务内。
+func addBookReadStatusStep(ctx context.Context, tx *sql.Tx) error {
+	has, err := columnExistsInTx(ctx, tx, "books", "read_status")
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		"ALTER TABLE books ADD COLUMN read_status TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("add column books.read_status: %w", err)
+	}
+	return nil
+}
+
 // tableExistsInTx 在事务内判断表/视图是否存在（迁移步骤专用，不改动连接级状态）。
 func tableExistsInTx(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 	var n int
