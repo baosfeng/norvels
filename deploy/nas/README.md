@@ -20,8 +20,7 @@
 └── books/                  # 小说 txt 源目录（只读挂载，导入时才用）
 ```
 
-> 数据库放**独立数据盘**。飞牛上 `/` 只有 97G，而 `/vol1` 是 1.9T SSD。
-> 将来几万本约 100 GB，也要留够余量。
+> 数据库放**独立数据盘**（飞牛上 `/` 只有 97G，`/vol1` 是 1.9T SSD；几万本约 100 GB，留够余量）。
 
 ## 首次部署
 
@@ -52,16 +51,12 @@ sudo docker compose ps
 ### 已有数据库怎么搬上来
 
 ```bash
-# 本机（先停掉正在跑的服务，避免 WAL 未落盘）
+# 本机：先停服务避免 WAL 未落盘，再 VACUUM（否则文件里全是空洞页）
+sqlite3 data/norvels.db 'VACUUM;'
 scp data/norvels.db momo@<NAS-IP>:/vol1/norvels/data/
 
 # NAS 上修正属主
 sudo chown 65532:65532 /vol1/norvels/data/norvels.db
-```
-
-**搬库前建议先在源端做一次 VACUUM**，否则文件里全是空洞页：
-```bash
-sqlite3 data/norvels.db 'VACUUM;'
 ```
 
 ## 导入新书
@@ -98,10 +93,6 @@ sudo ./update.sh --check-updates  # 问上游有没有新版本（不升级、�
 它走的是 docker 的镜像加速器（也就是部署时唯一必须打通的那条路），不依赖
 Docker Hub API 或 registry 直连——国内这两条常常超时。镜像 17 MB，层已缓存时约 2 秒。
 
-脚本做的事：`docker pull` → 一次性容器跑 `migrate`（大库迁移可达几十分钟，
-不能在健康检查里做，否则会被判定 unhealthy 重启、迁移回滚重来）→ `up -d` →
-轮询健康状态。
-
 > **升级涉及 schema 迁移时**：迁移完成后跑一次 VACUUM 回收空间。
 > 迁移期间库会「变大」——旧数据变成空洞页，文件不会自动缩小。
 > 镜像里没有 sqlite3，可以在宿主机装一个，或用临时容器：
@@ -109,14 +100,13 @@ Docker Hub API 或 registry 直连——国内这两条常常超时。镜像 17 
 
 ## 备份
 
+`update.sh` 每次升级前自动备份到 `backup/`（保留 3 份）。需要额外归档时：
+
 ```bash
-# 停止写入后直接拷（WAL 会被 checkpoint）
-sudo docker compose stop
-sudo cp /vol1/norvels/data/norvels.db /vol1/norvels/backup/norvels-$(date +%F).db
-sudo docker compose start
+sudo docker compose stop && sudo cp /vol1/norvels/data/norvels.db /vol1/norvels/backup/manual-$(date +%F).db && sudo docker compose start
 ```
 
-不要只拷 `.db` 而漏掉 `-wal`：WAL 里可能有未合并的事务。
+> 不要只拷 `.db` 而漏掉 `-wal`：WAL 里可能有未合并的事务。
 
 ## 故障排查
 
