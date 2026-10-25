@@ -69,6 +69,9 @@ type world struct {
 	uploadAccepted []uploadFileResult
 	uploadRejected []uploadFileResult
 	coverType      string // 最近一次封面响应的 Content-Type
+
+	// 书签（P1 阅读体验）
+	lastBookmarkID int64
 }
 
 // reset 关闭上一个场景留下的资源。

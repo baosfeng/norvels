@@ -12,10 +12,11 @@ const looseVolumeTitle = "未分卷"
 
 // bookDetailRow 是 GetBook 主体行的扫描结果（在 BookSummary 之外的详情字段）。
 type bookDetailRow struct {
-	summary    BookSummary
-	encoding   string
-	sourceName string
-	fileSize   int64
+	summary       BookSummary
+	encoding      string
+	sourceName    string
+	fileSize      int64
+	bookmarkCount int
 }
 
 // GetBook 返回书籍详情（含完整目录树）。未归卷章节包装成伪卷 id=0/idx=-1。
@@ -29,11 +30,12 @@ func (s *Store) GetBook(ctx context.Context, id int64) (*BookDetail, error) {
 	}
 
 	detail := &BookDetail{
-		BookSummary: row.summary,
-		Encoding:    row.encoding,
-		SourceName:  row.sourceName,
-		FileSize:    row.fileSize,
-		Volumes:     make([]VolumeNode, 0, 8),
+		BookSummary:   row.summary,
+		Encoding:      row.encoding,
+		SourceName:    row.sourceName,
+		FileSize:      row.fileSize,
+		BookmarkCount: row.bookmarkCount,
+		Volumes:       make([]VolumeNode, 0, 8),
 	}
 
 	authors, err := s.loadBookAuthors(ctx, id, row.summary.AuthorName)
@@ -83,12 +85,14 @@ func (s *Store) loadBookDetailRow(ctx context.Context, id int64) (bookDetailRow,
 		imported string
 		updated  string
 	)
+	// 书签数用相关子查询带出来：少一次往返，也不必为「统计失败」再加一条错误分支。
 	row := s.db.QueryRowContext(ctx,
-		"SELECT "+bookSummaryColumns+", b.encoding, b.source_name, b.file_size "+
+		"SELECT "+bookSummaryColumns+", b.encoding, b.source_name, b.file_size, "+
+			"(SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id) "+
 			"FROM books b LEFT JOIN authors a ON a.id = b.author_id WHERE b.id = ?", id)
 	// 摘要列 + 详情列共用一套扫描目标：列顺序由 bookSummaryColumns 单点决定。
 	dest := append(summaryScanTargets(&out.summary, &imported, &updated),
-		&out.encoding, &out.sourceName, &out.fileSize)
+		&out.encoding, &out.sourceName, &out.fileSize, &out.bookmarkCount)
 	err := row.Scan(dest...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, fmt.Errorf("%w: book %d", ErrNotFound, id)

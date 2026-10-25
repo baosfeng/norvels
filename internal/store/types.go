@@ -16,6 +16,8 @@ type BookQuery struct {
 	Sort     string // updated|title|chapters|words|imported，默认 updated
 	Page     int    // 从 1 开始
 	Size     int    // 每页条数
+	// ReadStatus 是阅读状态筛选：''（不过滤）| want | reading | done。
+	ReadStatus string
 }
 
 // AuthorQuery 描述作者列表的过滤与排序。
@@ -57,9 +59,12 @@ type BookSummary struct {
 	Status       string `json:"status"`
 	// SerialStatus 是作品连载状态：''=未知 / ongoing / completed（0010 起）。
 	// 与 Status（解析状态，导入链路写入）是两个语义，互不覆写。
-	SerialStatus string    `json:"serialStatus"`
-	ImportedAt   time.Time `json:"importedAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	SerialStatus string `json:"serialStatus"`
+	// ReadStatus 是读者阅读状态：''=未标记 / want / reading / done（0011 起）。
+	// 与 Status、SerialStatus 互不覆写；书架筛选与书卡角标都读它。
+	ReadStatus string    `json:"readStatus"`
+	ImportedAt time.Time `json:"importedAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 
 	// ---- 书籍身份（0008 起）----
 	// 只有带元数据的来源（EPUB）才会填；txt 路径留空，前端按零值降级。
@@ -99,6 +104,8 @@ type BookDetail struct {
 	// 详情页用它渲染「最后更新 · 最新章节」，因此只在详情查询里算，不进入列表。
 	LastChapterIdx   int    `json:"lastChapterIdx"`
 	LastChapterTitle string `json:"lastChapterTitle"`
+	// BookmarkCount 是这本书的书签总数（0011 起）；列表不带，只在详情里算。
+	BookmarkCount int `json:"bookmarkCount"`
 }
 
 // ChapterBrief 是目录中的一章（不含正文）。

@@ -29,14 +29,15 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 ## 2. 书籍
 
 ### GET /api/books
-查询参数：`q`（书名/作者模糊）、`authorId`、`tag`、`sort` = `updated|title|chapters|words|imported`（默认 updated）、`page`、`size`。
+查询参数：`q`（书名/作者模糊）、`authorId`、`tag`、`readStatus` = `want|reading|done`（留空 = 全部，非法值 400）、`sort` = `updated|title|chapters|words|imported`（默认 updated）、`page`、`size`。
 
 ```json
 {
   "items": [{
     "id": 1, "title": "山居杂记", "authorId": 12, "authorName": "示例作者",
     "chapterCount": 1300, "wordCount": 2800000, "volumeCount": 7,
-    "intro": "……", "status": "parsed", "importedAt": "2026-10-24T21:30:00+08:00"
+    "intro": "……", "status": "parsed", "serialStatus": "ongoing", "readStatus": "reading",
+    "importedAt": "2026-10-24T21:30:00+08:00"
   }],
   "total": 865, "page": 1, "size": 20
 }
@@ -48,7 +49,8 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
   "id": 1, "title": "山居杂记", "authorId": 12, "authorName": "示例作者",
   "chapterCount": 1300, "wordCount": 2800000, "intro": "…", "encoding": "gb18030",
   "sourceName": "☆文笔好10%△《山居杂记（七改）》.txt", "fileSize": 5639497,
-  "status": "parsed", "serialStatus": "ongoing",
+  "status": "parsed", "serialStatus": "ongoing", "readStatus": "reading",
+  "bookmarkCount": 3,
   "lastChapterIdx": 1299, "lastChapterTitle": "第1299章 风起",
   "volumes": [
     { "id": 1, "idx": 0, "title": "第一卷", "chapters": [ { "id": 10, "idx": 1, "title": "第1章 穿越" } ] },
@@ -74,8 +76,10 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 > **0010 起详情再增三项**：`serialStatus`（`""` 未知 / `ongoing` 连载中 / `completed` 已完结）与 `lastChapterIdx`、`lastChapterTitle`（`idx` 最大的那一章，无章节时为 `0` 与 `""`）。`serialStatus` 与 `status` 是两个语义（见下方 PATCH 一节）。
 
+> **0011 起增阅读状态与书签数**（列表与详情都有 `readStatus`，详情独有 `bookmarkCount`）：迁移 `0011`，存量书 `readStatus` 为 `""`，不回填。三套状态互不覆写：`status`（解析）/ `serialStatus`（连载）/ `readStatus`（读者阅读）。
+
 ### PATCH /api/books/{id}
-body 为任意子集：`title`、`author`、`authors`（字符串数组，**全量替换**，最多 10 个）、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`、`serialStatus`。
+body 为任意子集：`title`、`author`、`authors`（字符串数组，**全量替换**，最多 10 个）、`intro`、`tags`（字符串数组，**全量替换**）、`series`、`seriesIndex`、`serialStatus`、`readStatus`。
 
 - 成功 200，返回更新后的 BookDetail（含 tags/hasCover/authors/volumes）；
 - 清空语义：`intro`/`series` 传 `""` 即清空，`seriesIndex` 传 `0` 即清空；`authors` 传空数组 → 400（至少要保留一个作者）；
@@ -83,10 +87,12 @@ body 为任意子集：`title`、`author`、`authors`（字符串数组，**全�
 - 空 body、空对象、只含未知字段、title 为空白 → 400 `invalid_param`；id 非数字 → 400 `invalid_id`；书不存在 → 404；
 - 改作者会同步重建作者聚合（新旧作者都刷新）；改 `tags` 会清理不再被引用的孤儿标签；
 - `serialStatus` 只接受 `""`（未知）/ `ongoing` / `completed`，其它值 → 400 `invalid_param`；
-  它只改连载状态，不动解析状态 `status`，覆盖重导也不会被重置。
+  它只改连载状态，不动解析状态 `status`，覆盖重导也不会被重置；
+- `readStatus` 只接受 `""`（未标记）/ `want` / `reading` / `done`，其它值 → 400 `invalid_param`；
+  与 `serialStatus` 可同批出现，两者互不覆写。
 
 ### DELETE /api/books/{id}
-单事务级联删除：`chapters` / `chapter_blocks` / `volumes` / `book_covers` / `books_authors` / `reading_progress` / `book_tags`，并重算作者聚合（作者行保留，作品数与字数归零）。
+单事务级联删除：`chapters` / `chapter_blocks` / `volumes` / `book_covers` / `books_authors` / `reading_progress` / `bookmarks` / `book_tags`，并重算作者聚合（作者行保留，作品数与字数归零）。
 
 - 成功 **204**，无响应体；
 - 书不存在 → 404 `not_found`（再删同一个 id 也是 404）；
@@ -102,6 +108,25 @@ body 为任意子集：`title`、`author`、`authors`（字符串数组，**全�
 ```json
 { "items": [{ "id": 10, "idx": 1, "title": "第1章 穿越", "volumeId": 1, "wordCount": 3210 }], "total": 1300 }
 ```
+
+### GET /api/books/{id}/bookmarks
+全书书签，按 `createdAt` 倒序（同秒按 `id` 倒序；章节被删时 `chapterTitle` 为空串）。
+```json
+{ "bookmarks": [{ "id": 1, "chapterId": 9, "chapterIdx": 4, "chapterTitle": "第4章 风起",
+  "paraIndex": 12, "label": "灯塔的光扫过海面", "createdAt": "2026-10-24T21:30:00.000Z" }] }
+```
+书不存在 → 404 `not_found`；没有书签 → 200 + 空数组。
+
+### POST /api/books/{id}/bookmarks
+body `{ "chapterId": 9, "paraIndex": 12, "label": "…" }`（`chapterId`/`paraIndex` 必填，`label` 可空，默认「章名 · 第 n 段」）。
+
+- 新建 **201**；同一 `(chapterId, paraIndex)` 已存在 → **200** 且只更新 `label`（幂等，总数仍为 1）；
+- `chapterId` 不属于该书 / `paraIndex < 0` / `label` 超 200 字 / 字段缺失或类型不符 → 400 `invalid_param`；
+  书不存在 → 404 `not_found`；
+- `paraIndex` 是正文按 `\n` 切段后的段落下标（与前端阅读器一致），比字符偏移更耐正文重排。
+
+### DELETE /api/bookmarks/{id}
+**204** 无响应体；不存在（含删两次）→ 404 `not_found`。删书时书签随 `DELETE /api/books/{id}` 级联清空。
 
 ## 3. 作者
 
@@ -271,6 +296,7 @@ body 同 GET（`rules` 为**全量替换**，传空数组即清空）。
 
 ### PUT /api/reading/progress
 body `{ "bookId": 1, "chapterId": 42, "percent": 0.36 }`，upsert，204。
+同事务内若该书 `readStatus = ""` 则置为 `reading`；`want` / `done` 不被覆盖（唯一自动转移）。
 无账号体系：单用户，进度直接挂 book/chapter（见 [ADR-0001](adr/0001-public-release.md)）。
 
 ### GET /api/health/report

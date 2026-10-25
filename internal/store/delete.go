@@ -20,6 +20,7 @@ var bookCascadeTables = []string{
 	"book_covers",
 	"books_authors",
 	"reading_progress",
+	"bookmarks",
 	"book_tags",
 }
 

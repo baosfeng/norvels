@@ -80,14 +80,31 @@ func (s *Store) SaveReadingProgress(ctx context.Context, p ReadingProgress) erro
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	return s.saveProgressTx(ctx, p, idx)
+}
+
+// saveProgressTx 在一个事务里 upsert 进度，并把「未标记」的书自动转为在读。
+func (s *Store) saveProgressTx(ctx context.Context, p ReadingProgress, idx int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: save progress begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
+
+	if _, err = tx.ExecContext(ctx,
 		"INSERT INTO reading_progress(book_id, chapter_id, chapter_idx, percent, updated_at) "+
 			"VALUES (?, ?, ?, ?, ?) "+
 			"ON CONFLICT(book_id) DO UPDATE SET chapter_id=excluded.chapter_id, "+
 			"chapter_idx=excluded.chapter_idx, percent=excluded.percent, updated_at=excluded.updated_at",
-		p.BookID, p.ChapterID, idx, p.Percent, formatTime(nowUTC()))
-	if err != nil {
+		p.BookID, p.ChapterID, idx, p.Percent, formatTime(nowUTC())); err != nil {
 		return fmt.Errorf("store: save reading progress: %w", err)
+	}
+	// 阅读状态的唯一自动转移：'' → reading，与进度同事务落地。
+	if err := markReadingOnProgressStep(ctx, tx, p.BookID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: save reading progress commit: %w", err)
 	}
 	return nil
 }

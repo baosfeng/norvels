@@ -37,13 +37,19 @@ func (s *Server) handleListBooks(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
+	readStatus := strings.TrimSpace(r.URL.Query().Get("readStatus"))
+	if readStatus != "" && !store.ValidReadStatus(readStatus) {
+		s.badRequest(w, badParam("参数 readStatus 只支持 want|reading|done（留空表示不过滤）"), codeInvalidParam)
+		return
+	}
 	q := store.BookQuery{
-		Q:        strings.TrimSpace(r.URL.Query().Get("q")),
-		AuthorID: authorID,
-		Tag:      strings.TrimSpace(r.URL.Query().Get("tag")),
-		Sort:     sort,
-		Page:     page,
-		Size:     size,
+		Q:          strings.TrimSpace(r.URL.Query().Get("q")),
+		AuthorID:   authorID,
+		Tag:        strings.TrimSpace(r.URL.Query().Get("tag")),
+		Sort:       sort,
+		Page:       page,
+		Size:       size,
+		ReadStatus: readStatus,
 	}
 	res, err := s.st.ListBooks(r.Context(), q)
 	if err != nil {
@@ -136,6 +142,8 @@ type bookPatch struct {
 	SeriesIndex *int      `json:"seriesIndex"`
 	// SerialStatus 是连载状态（''|ongoing|completed），与解析状态 status 无关。
 	SerialStatus *string `json:"serialStatus"`
+	// ReadStatus 是阅读状态（''|want|reading|done），与 status / serialStatus 互不覆写。
+	ReadStatus *string `json:"readStatus"`
 }
 
 // PATCH authors 的跨信任边界上限：条数与单名长度。
@@ -181,6 +189,20 @@ func validateSerialStatus(status *string) error {
 	return nil
 }
 
+// validateReadStatus 校验 PATCH 带来的阅读状态：” / want / reading / done，其它值 400。
+//
+// 合法取值集合由 store.ValidReadStatus 单点定义（写入侧还有一道同样的守卫），
+// api 只负责把它翻译成 400 invalid_param。
+func validateReadStatus(status *string) error {
+	if status == nil {
+		return nil
+	}
+	if !store.ValidReadStatus(strings.TrimSpace(*status)) {
+		return badParam("readStatus 只支持 ''（未标记）/ want / reading / done")
+	}
+	return nil
+}
+
 // toStorePatch 把请求体转成库层补丁（两层的字段集合故意一一对应，转换是纯搬运）。
 func (p bookPatch) toStorePatch() store.BookMetaPatch {
 	return store.BookMetaPatch{
@@ -192,6 +214,7 @@ func (p bookPatch) toStorePatch() store.BookMetaPatch {
 		SeriesIndex:  p.SeriesIndex,
 		Tags:         p.Tags,
 		SerialStatus: p.SerialStatus,
+		ReadStatus:   p.ReadStatus,
 	}
 }
 
@@ -214,10 +237,14 @@ func (s *Server) handlePatchBook(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
+	if err := validateReadStatus(body.ReadStatus); err != nil {
+		s.badRequest(w, err, codeInvalidParam)
+		return
+	}
 	patch := body.toStorePatch()
 	if patch.IsEmpty() {
 		writeError(w, http.StatusBadRequest, codeInvalidParam,
-			"请求体至少包含一个可修改字段：title/author/authors/intro/tags/series/seriesIndex/serialStatus")
+			"请求体至少包含一个可修改字段：title/author/authors/intro/tags/series/seriesIndex/serialStatus/readStatus")
 		return
 	}
 	if err := s.st.UpdateBookMeta(r.Context(), id, patch); err != nil {
