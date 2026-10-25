@@ -371,20 +371,20 @@ curl -fsS http://127.0.0.1:8080/api/health
 # 回滚：见上面 7.1 的三步（停容器 → 恢复备份 → 换旧 tag 启动）
 ```
 
-> **待补的启动期守卫**：理想的形态是二进制启动时读库版本，发现「库版本 > 本二进制支持的最高版本」
-> 直接**拒绝启动**并提示「请升级镜像，或从备份恢复」，把静默损坏变成显式失败。
-> 该守卫需要改 `internal/store/` 的启动路径，当前尚未实现——在那之前，**7.1 的流程是唯一防线**，
-> 不要省略备份步骤。
+> **启动期守卫（已落地）**：`EnsureSchemaNotNewer`（`internal/store/schema_guard.go:36`）在 `MigrateTo`（`migrate.go:95`）里、任何 DDL 之前只读比较「库记录最高版本 vs 二进制打包版本」；`serve`（`main.go:151 → openStore:102 → migrateAndLog:117`）与 `migrate`（`migrate_cmd.go:23`）共用这一处，库版本过高即**拒绝启动**（提示「请升级镜像，或从备份恢复」，退出码非 0）。
+> **仍存在的边界**：`store.Open` 在守卫之前已按 `journal_mode(WAL)` 打开库（写文件头、建 `-wal`/`-shm`），「库未动」只对 schema 与版本成立；判据只有 `schema_migrations` 最大版本，手工删记录即失效；守卫是兜底不是回滚方案——跨 schema 版本回滚 tag 仍须按 §7.1 连库恢复。
 
-**守卫落地时要补的回归用例**（可直接照着写成 `internal/store` 的单测，本文件只登记断言）：
+**回归用例**（已落地于 `internal/store/schema_guard_test.go` 与 `cmd/norvels/startup_guard_test.go`）：
 
-| 用例 | 构造 | 期望 |
+| 用例 | 构造 | 期望（实际行为） |
 |---|---|---|
-| 库版本 > 二进制版本 | 临时库执行 `INSERT INTO schema_migrations(version) VALUES(99)` | 打开返回错误；错误文案含「数据库由更新版本（v99）创建」与「当前版本（vN）」及「请升级镜像，或从备份恢复」；进程退出码非 0 |
-| 库版本 = 二进制版本 | 正常迁移到最新 | 正常启动，不打印迁移日志 |
-| 库版本 < 二进制版本 | 老库（`user_version=1`、无 `schema_migrations`） | 正常迁移到最新，且**不重跑建表**、数据条数不变 |
-| 拒绝后库不变 | 用例 1 打开失败后重新读库 | `schema_migrations` 最大版本仍为 99，`user_version` 未被改写（守卫必须**只读**，失败路径不写库） |
-| 空/损坏库 | 零字节文件或非 SQLite 文件 | 报错清晰（区分"不是数据库"与"版本过新"），不误判为老库 |
+| 库版本 > 二进制版本 | 临时库写入 `schema_migrations(version)=99` | 两条启动路径都返回 `ErrSchemaTooNew`；文案含「数据库由更新版本（v99）创建」「当前二进制只支持到 vN」「请升级镜像，或从备份恢复」 |
+| 库版本 = 二进制版本 | 已迁到最新的库再启动 | 正常启动，日志「库版本 N → 应用 0 个迁移 → 版本 N」 |
+| 库版本 < 二进制版本 | 老库（`user_version=1`、有 `books`、无 `schema_migrations`） | 放行并迁到最新，记为 0001、**不重跑建表**、老数据保留 |
+| 拒绝后库不变 | 用例 1 失败后重新读库 | 最大版本仍 99、`user_version` 未改写、没建出新表（守卫**只读**） |
+| 空/损坏库 | 零字节文件或非 SQLite 文件 | 空库按新建放行；非 SQLite 报「无法读取现有数据库的 schema 版本」，不误判为版本过新 |
+
+> 「非 SQLite 文件」一行只在驱动对纯文本不忍容时有效（`TestGuardOnCorruptFile` 容忍时直接 `t.Skip`）。
 
 ### 7.3 迁移后回收空间：`VACUUM`
 
