@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # arm64 在 amd64 runner 上靠 QEMU 模拟；buildx 负责多平台交叉构建。
       - name: 启用 QEMU
