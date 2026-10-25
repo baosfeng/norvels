@@ -14,6 +14,8 @@ import (
 //
 // 不变量（与 docs/specs/2026-10-25-book-management-m3.md 一致）：
 //   - 同书卷名唯一（去首尾空白后比较），重名返回 ErrVolumeNameTaken（api 映射 409）；
+//     由事务内查重与 0013 的表达式唯一索引 uq_volumes_book_title 共同保证——
+//     前者给出正常路径的错误，后者兜住「查重与插入之间」的并发竞态；
 //   - 卷 idx 在本书内始终是 0..n-1 连续，books.volume_count 与卷行数严格同源；
 //   - 移动 / 删除卷只改 chapters.volume_id，不动 chapter.idx（全书序号）、正文与 word_count。
 //
@@ -41,7 +43,7 @@ func (s *Store) CreateVolume(ctx context.Context, bookID int64, title string) (*
 		return createVolumeInTx(ctx, tx, bookID, clean, &out)
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.explainVolumeWriteFailure(ctx, bookID, clean, err)
 	}
 	return &out, nil
 }
@@ -62,6 +64,9 @@ func createVolumeInTx(ctx context.Context, tx *sql.Tx, bookID int64, title strin
 	res, err := tx.ExecContext(ctx,
 		"INSERT INTO volumes(book_id, idx, title) VALUES (?, ?, ?)", bookID, idx, title)
 	if err != nil {
+		if taken := volumeTitleConflict(err, title); taken != nil {
+			return taken
+		}
 		return fmt.Errorf("store: insert volume %d: %w", bookID, err)
 	}
 	id, err := res.LastInsertId()
@@ -95,6 +100,9 @@ func (s *Store) RenameVolume(ctx context.Context, bookID, volumeID int64, title 
 		}
 		if _, err := tx.ExecContext(ctx,
 			"UPDATE volumes SET title = ? WHERE id = ? AND book_id = ?", clean, volumeID, bookID); err != nil {
+			if taken := volumeTitleConflict(err, clean); taken != nil {
+				return taken
+			}
 			return fmt.Errorf("store: rename volume %d: %w", volumeID, err)
 		}
 		if err := touchBookUpdatedAt(ctx, tx, bookID); err != nil {
@@ -104,7 +112,7 @@ func (s *Store) RenameVolume(ctx context.Context, bookID, volumeID int64, title 
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.explainVolumeWriteFailure(ctx, bookID, clean, err)
 	}
 	return &out, nil
 }

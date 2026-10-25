@@ -73,13 +73,17 @@ internal/store/migrations/
 且没有 `schema_migrations` 表。首次升级时会识别这种状态，直接把版本 1 记为已应用
 （**不重跑 0001 的建表 DDL**），然后只应用其后的迁移；数据条数不变。
 
+**带数据修正的迁移**（如 0013 的卷名去重）：修正与建约束在同一个事务里、由 Go 步骤完成
+（先改数据再建索引，SQLite 没有条件 DDL）；改了哪些行由步骤打印在迁移日志里
+（`迁移 0013：同书卷名去重改名 N 条`），便于核对这台机器到底改了几条。
+
 ## 3. 数据模型（SQLite）
 
 ```
 authors(id, name UNIQUE, book_count)
 books(id, title, author_id, source_path UNIQUE, source_name, file_size, file_sha256 UNIQUE,
       encoding, word_count, chapter_count, intro, status, imported_at, updated_at)
-volumes(id, book_id, idx, title)                 -- 卷/部，可为空
+volumes(id, book_id, idx, title)                 -- 卷/部；UNIQUE(book_id, idx)，同书 TRIM(title) 唯一（0013）
 chapters(id, book_id, volume_id, idx, title, content, word_count)
 -- 检索范围：books.title / authors.name / chapters.title 的 LIKE（无正文全文索引）
 tags(id, name) / book_tags(book_id, tag_id)

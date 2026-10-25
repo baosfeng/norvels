@@ -20,6 +20,7 @@
 ## 2. 不变量
 
 1. **卷名唯一**：同书内按 `TRIM(title)` 比较（去首尾空白）；空名 400，重名 409 `volume_name_taken`。
+   查重保留在事务内，并发竞态由 0013 的表达式唯一索引 `uq_volumes_book_title(book_id, TRIM(title))` 兜底——撞索引同样返回 409（多进程同时建同名卷只有一条落库）。
 2. **卷序连续**：本书卷 `idx` 恒为 `0..n-1`；新建卷落在末尾（`idx` = 当前卷数），删除/重排后重排。
 3. **计数同源**：`books.volume_count` 每次卷结构变动后由 `COUNT(*) FROM volumes` 重算，不靠增量加减。
 4. **章节序号不动**：移动 / 删除卷只改 `chapters.volume_id`，不改 `chapter.idx`、`title`、正文与 `word_count`；删除卷后该卷章节落 `volume_id=0`。
@@ -48,6 +49,8 @@
 |---|---|
 | `internal/store/volume_write.go` | `CreateVolume` / `RenameVolume` / `DeleteVolume` / `ReorderVolumes` / `MoveChaptersToVolume` + 事务体与校验 |
 | `internal/store/errors.go` | 新增哨兵 `ErrVolumeNameTaken`（api 映 409） |
+| `internal/store/migrate_steps.go` | 0013 的 Go 步骤：老库重名卷改名去重（按 `idx,id` 保留首个）+ 建唯一索引，改名条数进迁移日志 |
+| `internal/store/volume_unique.go` | 撞唯一索引 / 并发写被打断时的错误收敛：都映射成 `ErrVolumeNameTaken` |
 | `internal/api/handlers_volumes.go` | 5 个 handler + `failVolume`（400 带原因 / 其余走统一 `fail`） |
 | `internal/api/errors.go` | 新增错误码 `volume_name_taken` 与 `fail` 中的映射 |
 | `internal/api/server.go` | 5 行路由注册（`PUT .../volumes/order` 为字面量段，优先于 `{vid}`） |
@@ -61,10 +64,11 @@
 
 新建卷 `idx` 递增且 `volume_count` 更新 / 重名 409（含首尾空白）/ 空名与超长 400 / 改名成功与自身同名允许 / 删除卷后章节落未分卷且 `idx` 重排、剩余卷连续 / `order` 缺 id、重复、多 id、非本书卷、非法 id 均 400 / 移动跨卷与移回未分卷（`idx`、字数不变）/ 卷或章节 404 / 路径 id 非法 400 / 上述失败用例逐一断言库未变。共 15 个用例（store 9 + api 6）。
 
+0013 的用例（`internal/store/migrate_0013_test.go`、`volume_unique_test.go`）：含重名卷的 v12 库迁移后卷名按 `idx,id` 保留首个、其余改「原标题 (n)」且跳过本书已占用的名字 / 迁移日志报改名条数 / 删版本记录重跑幂等且报 0 条 / `TRIM` 相等的直接插库被索引拒绝 / 两个连接池（等价两进程）并发建同名卷一成功一 409。
+
 ## 6. 未覆盖项
 
 - **前端联调**：C2 前端（`web/src`）不在本任务写区，接口按本文契约交付；`PUT order` 返回空对象，前端需重拉详情。
-- **并发**：卷名唯一靠「事务内查重 + 单写者」保证，`volumes` 上没有 `UNIQUE(book_id, title)`；多进程同时建同名卷的竞态未覆盖（本地单用户场景接受）。若要多端并发，需加表达式唯一索引（`TRIM(title)`）并写迁移。
 - **空书 0 卷**：`PUT order` 传 `{"ids":[]}` 对 0 卷书视为合法空排列（200），未单独写用例。
 - **长卷名复检**：200 字上限只按 `utf8.RuneCount` 计，未校验视觉宽度；前端若放宽输入上限需同步。
 - **性能**：删除/重排卷是 O(n) 逐行 UPDATE，卷数通常个位数，未做基准。

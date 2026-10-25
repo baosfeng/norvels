@@ -31,8 +31,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("store: create dir: %w", err)
 	}
+	// _txlock=immediate：本库的事务全部是写事务（读走 db.Query，不开事务），
+	// 显式起写事务让并发的第二个写者老实等 busy_timeout，而不是拿着旧读快照
+	// 在第一条写语句上直接吃 SQLITE_BUSY——WAL 下「快照已过期」不调用 busy
+	// handler，那会让「并发建同名卷」的失败方看到 500 而不是 409。
 	dsn := "file:" + path +
-		"?_pragma=busy_timeout(10000)" +
+		"?_txlock=immediate" +
+		"&_pragma=busy_timeout(10000)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
 		"&_pragma=foreign_keys(ON)" +

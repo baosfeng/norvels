@@ -302,37 +302,6 @@ func runMigrationSteps(ctx context.Context, tx *sql.Tx, m migration) error {
 	return nil
 }
 
-// migrationStepsByVersion 登记带 Go 步骤的迁移（按版本号索引）。
-//
-// 步骤闭包只捕获版本号，状态全部走事务内的探测（表/列是否存在），因此对
-// 「空库」「老库」「已部分迁移的库」都走同一条代码路径，不需要额外分支。
-var migrationStepsByVersion = map[int][]migrationStep{
-	6: {{
-		Name: "drop chapter segmented columns",
-		Run:  dropSegColumnsStep,
-	}},
-	7: {{
-		Name: "pack chapter content into blocks",
-		Run:  rebuildChaptersForBlocks,
-	}},
-	8: {{
-		Name: "add book metadata columns",
-		Run:  addBookMetadataColumnsStep,
-	}},
-	10: {{
-		Name: "add book serial status column",
-		Run:  addBookSerialStatusStep,
-	}},
-	11: {{
-		Name: "add book read status column",
-		Run:  addBookReadStatusStep,
-	}},
-	12: {{
-		Name: "add book_tags source column",
-		Run:  addBookTagsSourceStep,
-	}},
-}
-
 // loadMigrations 读取 embed 内的迁移文件，按版本升序返回。
 //
 // 命名约束 NNNN_name.sql；版本号重复、文件名不合规、目录为空都直接报错，
