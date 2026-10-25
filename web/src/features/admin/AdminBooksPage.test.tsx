@@ -129,6 +129,15 @@ describe("书籍管理列表", () => {
     expect(seenParams.last?.serialStatus).toBe("ongoing");
   });
 
+  it("筛选条旁能打开标签管理弹窗，列表里的标签就在里面", () => {
+    renderPage();
+    expect(screen.queryByTestId("tag-manage-dialog")).toBeNull();
+    fireEvent.click(screen.getByTestId("admin-tag-manage"));
+    expect(screen.getByTestId("tag-manage-dialog").textContent).toContain("武侠");
+    fireEvent.click(screen.getByTestId("tag-manage-close"));
+    expect(screen.queryByTestId("tag-manage-dialog")).toBeNull();
+  });
+
   it("空库给出去导入的出口", () => {
     booksState.data = { items: [], total: 0, page: 1, size: 20 } as typeof booksState.data;
     renderPage();
