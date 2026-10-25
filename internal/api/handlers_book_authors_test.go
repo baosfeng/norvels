@@ -36,8 +36,8 @@ func TestPatchBookAuthors(t *testing.T) {
 	if got.AuthorName != "作者甲" {
 		t.Fatalf("GET 详情 authorName = %q，期望 authors[0]", got.AuthorName)
 	}
-	// 聚合口径不变：这本书只计到主作者名下，其余作者作品数为 0。
-	requireAuthorAggregate(t, env, "作者甲")
+	// 聚合口径：主作者与副作者都记这本书（详情页能看到的作者，作者页也得查得到）。
+	requireAuthorAggregate(t, env, "作者甲", "作者乙", "作者丙")
 }
 
 // requireAuthors 断言 authors 列表逐项相等（顺序即语义）。
@@ -53,16 +53,21 @@ func requireAuthors(t *testing.T, got []string, want ...string) {
 	}
 }
 
-// requireAuthorAggregate 断言 /api/authors 的聚合口径：只有主作者记 1 本，其余 0。
-func requireAuthorAggregate(t *testing.T, env *testEnv, primary string) {
+// requireAuthorAggregate 断言 /api/authors 的聚合口径：名单里的作者各记 1 本。
+func requireAuthorAggregate(t *testing.T, env *testEnv, names ...string) {
 	t.Helper()
 	authors := decodeBody[authorsResp](t, env.get("/api/authors?size=50"))
 	counts := make(map[string]int, len(authors.Items))
 	for _, a := range authors.Items {
 		counts[a.Name] = a.BookCount
 	}
-	if counts[primary] != 1 || counts["作者乙"] != 0 || counts["原示例作者"] != 0 {
-		t.Fatalf("作者聚合 = %v，期望 %s 1 / 其余 0", counts, primary)
+	for _, name := range names {
+		if counts[name] != 1 {
+			t.Fatalf("%s 的 bookCount = %d，期望 1（按作者计，不按主作者计）", name, counts[name])
+		}
+	}
+	if counts["原示例作者"] != 0 {
+		t.Fatalf("原示例作者 bookCount = %d，期望 0（已被替换）", counts["原示例作者"])
 	}
 }
 

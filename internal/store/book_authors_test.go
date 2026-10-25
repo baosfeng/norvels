@@ -186,22 +186,26 @@ func TestFindByTitleAuthor(t *testing.T) {
 	}
 }
 
-// TestAuthorAggregatesIncludeCoAuthors 副作者（books_authors 里非首位）也要进
-// 作者页、作者筛选与作品列表：否则详情页看得到「作者甲」，作者页却查不到他的书。
-func TestAuthorAggregatesIncludeCoAuthors(t *testing.T) {
-	ctx := context.Background()
-	st := newTestStore(t)
-
-	solo := sampleBook("独立作品", "作者甲", "/path/to/agg-a.txt", strings.Repeat("a", 64))
-	if _, err := st.SaveBook(ctx, solo, SaveOptions{}); err != nil {
-		t.Fatalf("SaveBook solo: %v", err)
+// seedCoAuthorBooks 造「独立作品（作者甲）+ 合著作品（作者乙主、作者甲副）」两本书，
+// 返回按作者名索引的列表（聚合口径的公共前置）。
+func seedCoAuthorBooks(t *testing.T, ctx context.Context, st *Store) map[string]AuthorSummary {
+	t.Helper()
+	specs := []struct {
+		title, primary, path, sha string
+		authors                   []string
+	}{
+		{"独立作品", "作者甲", "/path/to/agg-a.txt", strings.Repeat("a", 64), nil},
+		{"合著作品", "作者乙", "/path/to/agg-b.txt", strings.Repeat("b", 64), []string{"作者乙", "作者甲"}},
 	}
-	co := sampleBook("合著作品", "作者乙", "/path/to/agg-b.txt", strings.Repeat("b", 64))
-	co.Authors = []string{"作者乙", "作者甲"}
-	if _, err := st.SaveBook(ctx, co, SaveOptions{}); err != nil {
-		t.Fatalf("SaveBook co: %v", err)
+	for _, spec := range specs {
+		b := sampleBook(spec.title, spec.primary, spec.path, spec.sha)
+		if spec.authors != nil {
+			b.Authors = spec.authors
+		}
+		if _, err := st.SaveBook(ctx, b, SaveOptions{}); err != nil {
+			t.Fatalf("SaveBook %s: %v", spec.title, err)
+		}
 	}
-
 	page, err := st.ListAuthors(ctx, AuthorQuery{Sort: "books"})
 	if err != nil {
 		t.Fatalf("ListAuthors: %v", err)
@@ -210,12 +214,29 @@ func TestAuthorAggregatesIncludeCoAuthors(t *testing.T) {
 	for _, a := range page.Items {
 		byName[a.Name] = a
 	}
+	return byName
+}
+
+// TestAuthorAggregatesIncludeCoAuthors 副作者（books_authors 里非首位）也要计数：
+// 否则详情页看得到「作者甲」，作者页却少一本。
+func TestAuthorAggregatesIncludeCoAuthors(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	byName := seedCoAuthorBooks(t, ctx, st)
+
 	if byName["作者甲"].BookCount != 2 {
 		t.Fatalf("作者甲 book_count = %d，期望 2（独立 + 合著）", byName["作者甲"].BookCount)
 	}
 	if byName["作者乙"].BookCount != 1 {
 		t.Fatalf("作者乙 book_count = %d，期望 1", byName["作者乙"].BookCount)
 	}
+}
+
+// TestAuthorWorksIncludeCoAuthors 作者详情与按作者筛选同样认副作者。
+func TestAuthorWorksIncludeCoAuthors(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	byName := seedCoAuthorBooks(t, ctx, st)
 
 	detail, err := st.GetAuthor(ctx, byName["作者甲"].ID)
 	if err != nil {
