@@ -58,6 +58,9 @@ TOTAL=""
 TOOL=""
 
 if command -v golangci-lint >/dev/null 2>&1; then
+  # 先清 lint 缓存再测量：缓存按绝对路径存取，并行 worktree 或上一轮被删目录里的旧条目
+  # 会混进本次结果，报出源码并不存在的「幻影超标」（实测 Store.readMetrics = 11，路径指向已删 worktree）。
+  golangci-lint cache clean >/dev/null 2>&1 || true
   OUT=$(golangci-lint run --enable-only gocyclo --max-issues-per-linter 0 --max-same-issues 0 ./... 2>&1)
   RC=$?
   VMAP=$(printf '%s\n' "$OUT" | grep -E 'cyclomatic complexity [0-9]+ of func' || true)
