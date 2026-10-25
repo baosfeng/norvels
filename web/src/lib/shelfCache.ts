@@ -15,10 +15,10 @@ export interface ShelfCache {
   authorId: number | null;
   tag: string | null;
   readStatus: Exclude<ReadStatus, ""> | null;
-  /** 评分筛选（1–5）；null = 全部 */
-  rating: number | null;
-  /** 书单筛选；null = 全部 */
-  collection: number | null;
+  /** 评分筛选（1–5）；null / 缺省 = 全部（老缓存的记录里没有这一项） */
+  rating?: number | null;
+  /** 书单筛选；null / 缺省 = 全部 */
+  collection?: number | null;
   size: number;
   mode: "paged" | "infinite";
   items: BookSummary[];

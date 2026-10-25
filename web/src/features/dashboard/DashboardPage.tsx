@@ -5,12 +5,14 @@ import {
   useImportTrend,
   useReadingProgress,
   useReadingProgressAll,
+  useReadingStats,
   useStats,
   useTopAuthors,
 } from "../../api/hooks";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount, formatDate } from "../../lib/format";
+import { ReadingHeatmapCard } from "./ReadingHeatmap";
 import {
   ChapterBucketsChart,
   ChapterLengthChart,
@@ -36,6 +38,8 @@ export function DashboardPage() {
   const health = useHealthReport();
   const trend = useImportTrend(TREND_DAYS);
   const topAuthors = useTopAuthors(10);
+  /** 近 90 天阅读时长：今日 / 本周 / 累计 / 连续天数 + 日历热力图 */
+  const reading = useReadingStats(90);
 
   const loading = stats.loading && !stats.data;
   const error = stats.error;
@@ -143,6 +147,7 @@ export function DashboardPage() {
             </section>
 
             <div className="chart-grid" data-testid="dashboard:charts" data-od-id="dashboard:charts">
+              <ReadingHeatmapCard stats={reading.data} {...chartState(reading)} />
               <ImportTrendChart points={trend.data ?? []} {...chartState(trend)} />
               <TopAuthorsChart
                 authors={(topAuthors.data?.items ?? []).map((a) => ({ name: a.name, wordCount: a.wordCount }))}
