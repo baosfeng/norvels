@@ -421,11 +421,6 @@ body.h5-sheet-open {
 }
 
 /* ── 章节字数：目录行右侧 + 阅读器进度行（窄屏保留，压小字号） ── */
-.chapter-win .cv-row .t {
-  flex: 1;
-  min-width: 0;
-}
-.cv-row .word,
 .reader-progress-row .word {
   flex: none;
   font-family: var(--font-mono);
@@ -438,7 +433,9 @@ body.h5-sheet-open {
   font-size: var(--text-xs);
 }
 @media (max-width: 768px) {
-  .cv-row .word {
+  .cv-row .cv-word {
+    flex-basis: 52px;
+    width: 52px;
     font-size: 9.5px;
     color: var(--meta, var(--muted));
   }

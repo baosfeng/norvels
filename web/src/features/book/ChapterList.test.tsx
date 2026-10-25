@@ -42,3 +42,65 @@ describe("目录：每章显示字数", () => {
     expect(screen.getByText("第一章 开端")).toBeTruthy();
   });
 });
+const LONG_TITLE =
+  "第一章 长夜将尽时他站在巷口看着第九次告别与最后一盏灯下那封没读完的信以及窗台上渐渐凉透的茶和第二天清晨仍未寄出的回信";
+
+describe("目录：长标题 + 4 位字数的两列排版", () => {
+  function renderList(layout?: "detail" | "drawer") {
+    return render(
+      <MemoryRouter>
+        <ChapterList
+          bookId={7}
+          chapters={[
+            { id: 10, idx: 0, title: LONG_TITLE, volumeId: 1, wordCount: 5065 },
+            { id: 11, idx: 1, title: "第二章 短标题", volumeId: 1, wordCount: 5818 },
+          ]}
+          ariaLabel="章节目录"
+          layout={layout}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  it("标题 60 字、字数 5,065：行是标题区 + 固定宽度字数区，字数不换行", () => {
+    renderList();
+
+    const rows = screen.getAllByTestId("chapter-word").map((node) => node.parentElement as HTMLElement);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.className).toContain("cv-row");
+      // 详情目录单行省略，行高恒定 44px（与 H5 触屏 44px 底子对齐，虚拟滚动步进才不叠行）
+      expect(row.style.height).toBe("44px");
+      const title = row.querySelector(".cv-title") as HTMLElement;
+      const word = row.querySelector(".cv-word") as HTMLElement;
+      expect(title.textContent).toBeTruthy();
+      expect(word.textContent?.trim()).toMatch(/^\d{1,3}(,\d{3})* 字$/);
+    }
+    expect(screen.getAllByTestId("chapter-word").map((n) => n.textContent?.trim())).toEqual([
+      "5,065 字",
+      "5,818 字",
+    ]);
+  });
+
+  it("抽屉里最多两行，行高抬到 44px，仍不把字数挤到第二行", () => {
+    renderList("drawer");
+
+    const row = screen.getAllByTestId("chapter-word")[0].parentElement as HTMLElement;
+    expect(row.className).toContain("is-drawer");
+    expect(row.style.height).toBe("44px");
+  });
+
+  it("样式契约：标题 1fr + min-width:0 省略，字数固定宽度、右对齐、tabular-nums、间距 12px", async () => {
+    const fs = (await import("node:fs" as string)) as { readFileSync: (file: string, encoding: string) => string };
+    const css = fs.readFileSync("src/styles/prototype.css", "utf8");
+
+    expect(css).toContain(".cv-row{display:flex;align-items:center;gap:12px");
+    expect(css).toContain(".cv-row .cv-title{flex:1 1 auto;min-width:0");
+    expect(css).toContain("text-overflow:ellipsis;white-space:nowrap");
+    expect(css).toContain(".cv-row .cv-word{flex:0 0 60px;width:60px;text-align:right;white-space:nowrap");
+    expect(css).toContain("font-variant-numeric:tabular-nums");
+    expect(css).toContain(".cv-row.is-drawer .cv-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2");
+    // 旧原型选择器（DOM 里已不存在）不残留
+    expect(css).not.toContain(".chapter-win");
+  });
+});
