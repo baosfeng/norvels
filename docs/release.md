@@ -161,7 +161,7 @@ docker run --rm bsfeng/norvels:0.1.0 version
 # 期望输出形如：norvels 0.1.0 (commit <sha>, built 2026-...)
 ```
 
-再核一遍 Docker Hub 页面的 tag 列表：`0.1.0`、`0.1`、`0`、`latest`、`sha-xxxxxxx` 应同时存在。
+再核一遍 Docker Hub 页面的 tag 列表：应当只有 `0.3.0` 与 `latest` 两个（不生成 `0.3` / `0` / `sha-*` / `edge`）。
 
 ## 6. 用户升级指引
 
@@ -192,7 +192,7 @@ curl -fsS localhost:8080/api/health              # 期望 {"db":"ok",...}
 - [ ] 本地跑一次 `scripts/privacy-scan.sh --all`，零命中
 - [ ] 打第一个 tag：`git tag -a v0.1.0 -m "norvels v0.1.0" && git push origin v0.1.0`
 - [ ] `release.yml` 跑完后 `docker buildx imagetools inspect bsfeng/norvels:0.1.0` 看到 amd64 + arm64
-- [ ] Docker Hub 页面上 `latest` / `0.1.0` / `0.1` / `0` / `sha-` 标签齐全
+- [ ] Docker Hub 页面上 `latest` 与 `X.Y.Z` 两个标签齐全（当前 `0.3.0`）
 
 ## 8. Dependabot
 
