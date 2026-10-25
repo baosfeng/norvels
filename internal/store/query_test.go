@@ -2,11 +2,8 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
-
-	"norvels/internal/model"
 )
 
 func TestListBooksFilterAndPaging(t *testing.T) {
@@ -88,76 +85,4 @@ func seedTaggedBook(t *testing.T, ctx context.Context, st *Store) int64 {
 		t.Fatalf("insert book_tag: %v", err)
 	}
 	return bookID
-}
-
-func TestSearchTotalCapped(t *testing.T) {
-	ctx := context.Background()
-	st := newTestStore(t)
-	saveBigBook(t, ctx, st, 1200)
-
-	t.Run("首页截断并提示", func(t *testing.T) { checkCappedFirstPage(t, ctx, st) })
-	t.Run("截断不影响深分页", func(t *testing.T) { checkDeepPaging(t, ctx, st) })
-	t.Run("少量命中不截断", func(t *testing.T) { checkRareHitNoCap(t, ctx, st) })
-}
-
-// checkCappedFirstPage 高频词 total 截断到 searchTotalCap 并写 Notice。
-func checkCappedFirstPage(t *testing.T, ctx context.Context, st *Store) {
-	t.Helper()
-	r := mustSearch(t, ctx, st, SearchQuery{Q: "临川市", Page: 1, Size: 20})
-	if r.Chapters.Total != searchTotalCap {
-		t.Errorf("total = %d, want %d", r.Chapters.Total, searchTotalCap)
-	}
-	if r.Notice != searchTotalCapNotice {
-		t.Errorf("notice = %q, want %q", r.Notice, searchTotalCapNotice)
-	}
-	if len(r.Chapters.Items) != 20 {
-		t.Errorf("第一页条数 = %d, want 20", len(r.Chapters.Items))
-	}
-}
-
-// checkDeepPaging 截断不影响分页数据：第 30 页仍能取满。
-func checkDeepPaging(t *testing.T, ctx context.Context, st *Store) {
-	t.Helper()
-	deep := mustSearch(t, ctx, st, SearchQuery{Q: "临川市", Page: 30, Size: 20})
-	if len(deep.Chapters.Items) != 20 {
-		t.Errorf("第 30 页条数 = %d, want 20", len(deep.Chapters.Items))
-	}
-}
-
-// checkRareHitNoCap 少量命中：不截断、无提示。
-func checkRareHitNoCap(t *testing.T, ctx context.Context, st *Store) {
-	t.Helper()
-	few := mustSearch(t, ctx, st, SearchQuery{Q: "暗号"})
-	if few.Chapters.Total != 1 || few.Notice != "" {
-		t.Errorf("稀有词 total=%d notice=%q", few.Chapters.Total, few.Notice)
-	}
-}
-
-// saveBigBook 写入一本含 n 章的书，每章都含「临川市」，第 1 章额外含「暗号」。
-func saveBigBook(t *testing.T, ctx context.Context, st *Store, n int) {
-	t.Helper()
-	book := &model.ParsedBook{
-		Title:      "大书",
-		Author:     "作者",
-		SourcePath: "/books/big.txt",
-		SourceName: "big.txt",
-		SHA256:     strings.Repeat("7", 64),
-		WordCount:  n * 20,
-	}
-	for i := 0; i < n; i++ {
-		content := fmt.Sprintf("这是第%d章的正文，临川市的故事还在继续。", i+1)
-		if i == 0 {
-			content += " 这里藏着一个独一无二的暗号。"
-		}
-		book.Chapters = append(book.Chapters, model.ParsedChapter{
-			Idx:       i,
-			VolumeIdx: -1,
-			Title:     fmt.Sprintf("第%d章", i+1),
-			Content:   content,
-			WordCount: 20,
-		})
-	}
-	if _, err := st.SaveBook(ctx, book, SaveOptions{}); err != nil {
-		t.Fatalf("SaveBook: %v", err)
-	}
 }

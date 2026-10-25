@@ -1,4 +1,4 @@
-// Package store 是 SQLite 持久化层：连接管理、迁移、读写查询、FTS5 索引维护。
+// Package store 是 SQLite 持久化层：连接管理、迁移、读写查询。
 package store
 
 import (
@@ -33,7 +33,7 @@ type ChapterQuery struct {
 	Limit  int
 }
 
-// SearchQuery 描述全文/书名检索。
+// SearchQuery 描述书名/作者/章节标题检索（不检索正文）。
 type SearchQuery struct {
 	Q      string // 关键词，非空
 	Type   string // chapter|book|all，默认 all
@@ -112,7 +112,11 @@ type AuthorDetail struct {
 	Books []BookSummary `json:"books"`
 }
 
-// ChapterHit 是一条全文检索命中。
+// ChapterHit 是一条**章节标题**检索命中。
+//
+// Snippet 字段保留但恒为空字符串：正文检索已下线，后端不再生成命中片段。
+// 保留字段是为了让前端与后端解耦（前端按「无片段」渲染即可），
+// 也避免后续加入摘要能力时再改一次 JSON 契约。
 type ChapterHit struct {
 	BookID       int64   `json:"bookId"`
 	BookTitle    string  `json:"bookTitle"`
@@ -131,7 +135,7 @@ type Page[T any] struct {
 	Size  int `json:"size"`
 }
 
-// SearchResult 汇总书名与章节两类命中。
+// SearchResult 汇总书名/作者与章节标题两类命中（不含正文检索）。
 type SearchResult struct {
 	Q        string            `json:"q"`
 	Books    Page[BookSummary] `json:"books"`
@@ -143,8 +147,8 @@ type SearchResult struct {
 // Stats 是库级统计。
 //
 // TextBytes / IndexBytes / OtherBytes 是「库体积构成」的**估算值**（精确拆解需要
-// 逐页解析 btree，代价太高）：正文类数据量按各表 TEXT/BLOB 列字节数汇总，
-// 索引类按 FTS 影子表字节数汇总，其余 = 文件总大小 − 前两者。
+// 逐页解析 btree，代价太高）：正文类按 chapters 的标题与正文字节数汇总，
+// 索引类 = 文件总大小 − 正文 − books 侧文本，其余 = 文件总大小 − 前两者。
 // 三者之和等于 DBBytes，可直接用于堆叠条。
 type Stats struct {
 	Books        int        `json:"books"`
@@ -154,9 +158,12 @@ type Stats struct {
 	DBBytes      int64      `json:"dbBytes"`
 	LastImportAt *time.Time `json:"lastImportAt"`
 	// 体积构成（字节）。
-	TextBytes  int64 `json:"textBytes"`
-	IndexBytes int64 `json:"indexBytes"`
-	OtherBytes int64 `json:"otherBytes"`
+	TextBytes int64 `json:"textBytes"` // 压缩后的正文字节（用户真实占用）
+	// TextBytesRaw 是压缩前的原文逻辑字节，用于展示压缩比。
+	// 增量字段：前端不消费也不影响既有渲染；TextBytes/TextBytesRaw 之比即压缩率。
+	TextBytesRaw int64 `json:"textBytesRaw"`
+	IndexBytes   int64 `json:"indexBytes"`
+	OtherBytes   int64 `json:"otherBytes"`
 	// CompositionEstimated 为 true 表示上面三项来自抽样外推而非全表精确统计。
 	// 增量字段：前端未适配时忽略即可，不影响既有渲染。
 	CompositionEstimated bool `json:"compositionEstimated"`

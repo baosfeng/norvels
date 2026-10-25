@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -31,6 +32,8 @@ const (
 	codeMethodNotAllowed = "method_not_allowed"
 	codeQueryTooShort    = "query_too_short"
 	codeUnauthorized     = "unauthorized"
+	// codeContentCorrupted 表示这一章的正文压缩块损坏（局部故障，非整库不可用）。
+	codeContentCorrupted = "content_corrupted"
 )
 
 // writeJSON 以 JSON 写响应；序列化失败时退化为 500。
@@ -57,7 +60,7 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 }
 
 // fail 把 store 层错误映射为 HTTP 响应：
-// 未找到 → 404，入参非法 → 400，并发冲突 → 409，其余 → 500。
+// 未找到 → 404，入参非法 → 400，并发冲突 → 409，正文块损坏 → 503，其余 → 500。
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error, notFoundMsg string) {
 	switch {
 	case errors.Is(err, store.ErrNotFound) || errors.Is(err, sql.ErrNoRows):
@@ -66,10 +69,32 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error, notFoun
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "请求参数非法")
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, codeConflict, "存在进行中的任务或并发冲突")
+	case errors.Is(err, store.ErrBlockCorrupted):
+		s.failBlockCorrupted(w, r, err)
 	default:
 		s.logf("api: %s %s 内部错误: %v", r.Method, r.URL.Path, err)
 		writeError(w, http.StatusInternalServerError, codeInternal, "内部错误")
 	}
+}
+
+// failBlockCorrupted 处理「正文压缩块损坏」。
+//
+// 关键点：这是**局部故障**，不能让前端以为整个库坏了。
+//   - HTTP 503 + 独立错误码 content_corrupted，前端可据此只在当前章显示
+//     「本章读取失败」，其余 UI 照常；
+//   - 消息里带上定位信息（哪一章、哪一块），但不暴露库内路径；
+//   - 详情只进服务端日志，响应体保持精简。
+func (s *Server) failBlockCorrupted(w http.ResponseWriter, r *http.Request, err error) {
+	var be *store.BlockError
+	if errors.As(err, &be) {
+		s.logf("api: %s %s 正文块损坏: %s", r.Method, r.URL.Path, be.Error())
+		writeError(w, http.StatusServiceUnavailable, codeContentCorrupted,
+			fmt.Sprintf("本章正文所在的压缩块损坏（book_id=%d block_seq=%d），请联系管理员从备份恢复",
+				be.BookID, be.Seq))
+		return
+	}
+	s.logf("api: %s %s 正文块损坏: %v", r.Method, r.URL.Path, err)
+	writeError(w, http.StatusServiceUnavailable, codeContentCorrupted, "本章正文读取失败")
 }
 
 // isNotFound 识别「未找到」：store.ErrNotFound / sql.ErrNoRows / 常见文案兜底。

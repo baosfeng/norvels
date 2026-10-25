@@ -59,8 +59,16 @@ func checkImportJobCompleted(t *testing.T, ctx context.Context, st *store.Store,
 	}
 }
 
-// checkImportedBooksSearchable 校验入库书籍的元信息与全链路检索。
+// checkImportedBooksSearchable 校验入库书籍的元信息与检索范围。
 func checkImportedBooksSearchable(t *testing.T, ctx context.Context, st *store.Store) {
+	t.Helper()
+	assertImportedBookMeta(t, ctx, st)
+	assertChapterTitleSearchable(t, ctx, st)
+	assertBodyNotSearchable(t, ctx, st)
+}
+
+// assertImportedBookMeta 校验两本书的元信息都被补齐。
+func assertImportedBookMeta(t *testing.T, ctx context.Context, st *store.Store) {
 	t.Helper()
 	books, err := st.ListBooks(ctx, store.BookQuery{Page: 1, Size: 10})
 	if err != nil || books.Total != 2 {
@@ -71,14 +79,30 @@ func checkImportedBooksSearchable(t *testing.T, ctx context.Context, st *store.S
 			t.Errorf("book = %+v", b)
 		}
 	}
+}
 
-	// 真实正文经 parser → Segment → FTS 全链路可检索。
-	r, err := st.Search(ctx, store.SearchQuery{Q: "梅宁市"})
-	if err != nil || r.Chapters.Total < 2 {
-		t.Fatalf("search 梅宁市 = %+v, err=%v", r.Chapters, err)
+// assertChapterTitleSearchable 导入后按章节标题可检索。
+// 合成书稿的章节标题固定为「第一章 风起」等，不依赖 parser 的书名推断。
+func assertChapterTitleSearchable(t *testing.T, ctx context.Context, st *store.Store) {
+	t.Helper()
+	r, err := st.Search(ctx, store.SearchQuery{Q: "第一章"})
+	if err != nil || r.Chapters.Total < 1 {
+		t.Fatalf("search 第一章 = %+v, err=%v", r.Chapters, err)
 	}
-	if !strings.Contains(r.Chapters.Items[0].Snippet, "<b>梅宁市</b>") {
-		t.Errorf("snippet = %q", r.Chapters.Items[0].Snippet)
+	if r.Chapters.Items[0].Snippet != "" {
+		t.Errorf("Snippet 应为空串（正文检索已下线），实际 %q", r.Chapters.Items[0].Snippet)
+	}
+}
+
+// assertBodyNotSearchable 校验正文里的词不再命中：确认检索没退回正文扫表。
+func assertBodyNotSearchable(t *testing.T, ctx context.Context, st *store.Store) {
+	t.Helper()
+	inBody, err := st.Search(ctx, store.SearchQuery{Q: "梅宁市"})
+	if err != nil {
+		t.Fatalf("search 梅宁市: %v", err)
+	}
+	if inBody.Chapters.Total != 0 || inBody.Books.Total != 0 {
+		t.Errorf("正文关键词不应命中：chapters=%d books=%d", inBody.Chapters.Total, inBody.Books.Total)
 	}
 }
 

@@ -8,22 +8,27 @@ import (
 	"time"
 )
 
-// metrics_version 的当前口径版本；口径变化时 +1，启动时旧库会自动重算。
-const metricsVersion = 1
+// metricsVersion 是当前口径版本；口径变化时 +1，启动时旧库会自动重算。
+//
+//	v1：text_bytes = chapters 的 TITLE+CONTENT 字符数（含字级分词镜像列）
+//	v2：text_bytes = chapter_blocks.packed 压缩字节之和；原文逻辑字节另记 text_bytes_raw
+const metricsVersion = 2
 
 // store_metrics 的键位。全部是整数值，读接口只查表，毫秒级。
 const (
-	metricTextBytes       = "text_bytes"        // 正文：chapters 正文与字级镜像列（导入时增量累加）
+	metricTextBytes       = "text_bytes"        // 正文：压缩后 packed 字节之和（导入时增量累加）
+	metricTextBytesRaw    = "text_bytes_raw"    // 正文：压缩前的原文逻辑字节（供文档说明压缩比）
 	metricBookTextBytes   = "book_text_bytes"   // 正文：books 文本列（全量重算时算一次）
 	metricChapterWordSum  = "chapter_word_sum"  // 全库章节字数总和
-	metricIndexBytes      = "index_bytes"       // FTS 索引字节（= 库文件大小 − 正文字节，近似）
+	metricIndexBytes      = "index_bytes"       // 索引类字节（= 库文件大小 − 正文字节，近似）
 	metricMetricsVersion  = "metrics_version"   // 计算口径版本
 	metricRefreshedAtUnix = "refreshed_at_unix" // 上次全量重算时间（Unix 秒）
 )
 
 // metricsSnapshot 是从 store_metrics 读出的缓存值。
 type metricsSnapshot struct {
-	TextBytes      int64
+	TextBytes      int64 // 压缩后 packed 字节 + books 侧文本
+	TextBytesRaw   int64 // 压缩前的原文逻辑字节（books 侧同样计入）
 	ChapterWordSum int64
 	IndexBytes     int64
 	RefreshedAt    time.Time
@@ -37,14 +42,20 @@ const chapterWordSumSQL = "SELECT COALESCE(SUM(word_count), 0) FROM chapters"
 const bookTextBytesSQL = "SELECT COALESCE(SUM(length(title) + length(intro) + length(source_path) + " +
 	"length(source_name) + length(encoding) + length(status)), 0) FROM books"
 
-// chapterTextBytesSQL 是 chapters 侧文本字节（慢查询，只允许在导入与全量重算里调用）。
-const chapterTextBytesSQL = "SELECT COALESCE(SUM(length(title) + length(content) + " +
-	"length(title_seg) + length(content_seg)), 0) FROM chapters"
+// chapterTextBytesSQL 是 chapters 侧**压缩后**的正文字节（只允许在导入与全量重算里调用）。
+//
+// 走 SUM(length(packed)) 是扫 BLOB 列，比扫 TEXT 原文快得多（压缩后只有原文的 1/3），
+// 但仍只适合全量重算，不能放在请求路径上。
+const chapterTextBytesSQL = "SELECT COALESCE(SUM(length(packed)), 0) FROM chapter_blocks"
 
-// textBytesForBookSQL 求单本书的文本字节与字数（用于覆盖写入前先减旧值）。
-const textBytesForBookSQL = "SELECT COALESCE(SUM(length(title) + length(content) + " +
-	"length(title_seg) + length(content_seg)), 0), COALESCE(SUM(word_count), 0) " +
-	"FROM chapters WHERE book_id = ?"
+// chapterRawBytesSQL 是 chapters 侧**压缩前**的原文逻辑字节。
+const chapterRawBytesSQL = "SELECT COALESCE(SUM(raw_bytes), 0) FROM chapter_blocks"
+
+// textBytesForBookSQL 求单本书的压缩后字节、原文逻辑字节与字数（覆盖写入前先减旧值）。
+const textBytesForBookSQL = "SELECT " +
+	"COALESCE((SELECT SUM(length(packed)) FROM chapter_blocks WHERE book_id = ?), 0), " +
+	"COALESCE((SELECT SUM(raw_bytes) FROM chapter_blocks WHERE book_id = ?), 0), " +
+	"COALESCE((SELECT SUM(word_count) FROM chapters WHERE book_id = ?), 0)"
 
 // readMetrics 读出当前缓存；值缺失或口径落后时 Stale=true。
 func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
@@ -71,7 +82,11 @@ func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
 	snap := metricsSnapshot{
 		// TextBytes 对调用方是「正文总量」，含 books 侧的少量文本；两者分开存储是为了让
 		// 导入时的增量累加（只碰 chapters）与全量重算（都算）落在同一个口径上。
+		//
+		// v2 起口径是**压缩后**的 packed 字节；TextBytesRaw 是原文逻辑字节，
+		// 供文档与前端说明「压缩比」，不参与体积构成的计算。
 		TextBytes:      m[metricTextBytes] + m[metricBookTextBytes],
+		TextBytesRaw:   m[metricTextBytesRaw] + m[metricBookTextBytes],
 		ChapterWordSum: m[metricChapterWordSum],
 		IndexBytes:     m[metricIndexBytes],
 	}
@@ -154,16 +169,25 @@ func setMetric(ctx context.Context, tx *sql.Tx, key string, value int64) error {
 	return nil
 }
 
-// bookTextStats 求单本书当前的（文本字节, 字数），供覆盖写入前先减旧值。
-func bookTextStats(ctx context.Context, tx *sql.Tx, bookID int64) (textBytes, words int64, err error) {
-	err = tx.QueryRowContext(ctx, textBytesForBookSQL, bookID).Scan(&textBytes, &words)
-	return textBytes, words, err
+// bookStats 是单本书的正文口径快照，供覆盖写入前先减旧值。
+type bookStats struct {
+	packedBytes int64 // 压缩后 packed 字节之和
+	rawBytes    int64 // 原文逻辑字节之和
+	words       int64 // 章节字数之和
+}
+
+// bookTextStats 求单本书当前的正文口径快照（覆盖写入前要先从 metrics 里减掉）。
+func bookTextStats(ctx context.Context, tx *sql.Tx, bookID int64) (bookStats, error) {
+	var st bookStats
+	err := tx.QueryRowContext(ctx, textBytesForBookSQL, bookID, bookID, bookID).
+		Scan(&st.packedBytes, &st.rawBytes, &st.words)
+	return st, err
 }
 
 // refreshMetrics 全表精确重算并写库（慢，运维与后台补算用）。
 //
 // 计算口径：
-//   - text_bytes = books 文本列 + chapters 正文与字级镜像列（唯一必须扫文本列的项）
+//   - text_bytes = chapters 标题与正文（唯一必须扫文本列的项）
 //   - chapter_word_sum = SUM(chapters.word_count)（整数列，本身就快，顺手缓存）
 //   - index_bytes = 库文件大小 − text_bytes（近似：其余页填充/表头/空闲页也算进索引侧）
 func (s *Store) refreshMetrics(ctx context.Context) error {
@@ -174,6 +198,10 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 	chapterText, err := s.scalarInt64(ctx, chapterTextBytesSQL)
 	if err != nil {
 		return fmt.Errorf("store: metrics chapter text: %w", err)
+	}
+	chapterRaw, err := s.scalarInt64(ctx, chapterRawBytesSQL)
+	if err != nil {
+		return fmt.Errorf("store: metrics chapter raw bytes: %w", err)
 	}
 	wordSum, err := s.scalarInt64(ctx, chapterWordSumSQL)
 	if err != nil {
@@ -200,6 +228,7 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 		value int64
 	}{
 		{metricTextBytes, textBytes},
+		{metricTextBytesRaw, chapterRaw},
 		{metricBookTextBytes, bookText},
 		{metricChapterWordSum, wordSum},
 		{metricIndexBytes, indexBytes},

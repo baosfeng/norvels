@@ -8,7 +8,7 @@ import (
 	"norvels/internal/model"
 )
 
-// searchFixture 建库并写入两本书：b1 含「临川市」，b2 含「秋蝉」与一段 script 标签。
+// searchFixture 建库并写入两本书：b1 的书名/作者/章节标题可被检索，b2 带一段 script 标签。
 func searchFixture(t *testing.T) (*Store, context.Context) {
 	t.Helper()
 	ctx := context.Background()
@@ -30,81 +30,101 @@ func searchFixture(t *testing.T) (*Store, context.Context) {
 
 func TestSearch(t *testing.T) {
 	st, ctx := searchFixture(t)
-	t.Run("多字关键词命中并高亮", func(t *testing.T) { checkMultiRuneSearch(t, ctx, st) })
-	t.Run("两字关键词与 snippet 转义", func(t *testing.T) { checkTwoRuneSearch(t, ctx, st) })
+	t.Run("书名命中", func(t *testing.T) { checkBookTitleHit(t, ctx, st) })
+	t.Run("作者命中", func(t *testing.T) { checkAuthorHit(t, ctx, st) })
+	t.Run("章节标题命中", func(t *testing.T) { checkChapterTitleHit(t, ctx, st) })
 	t.Run("单字关键词返回提示", func(t *testing.T) { checkSingleRuneSearch(t, ctx, st) })
 	t.Run("type=book 只查书名", func(t *testing.T) { checkBookTypeSearch(t, ctx, st) })
 	t.Run("限定单本书", func(t *testing.T) { checkScopedSearch(t, ctx, st) })
+	t.Run("正文不再参与检索", func(t *testing.T) { checkContentNotSearchable(t, ctx, st) })
 }
 
-// checkMultiRuneSearch 3 字关键词命中、片段高亮、分页字段正确。
-func checkMultiRuneSearch(t *testing.T, ctx context.Context, st *Store) {
+// checkBookTitleHit 书名命中：books 侧返回该本，章节侧不因书名而命中。
+func checkBookTitleHit(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	r := mustSearch(t, ctx, st, SearchQuery{Q: "临川市"})
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "梅宁风云"})
+	if r.Books.Total != 1 || r.Books.Items[0].Title != "梅宁风云" {
+		t.Fatalf("书名命中 = %+v", r.Books)
+	}
+	if r.Books.Page != 1 || r.Books.Size != 20 {
+		t.Errorf("search page = %d/%d", r.Books.Page, r.Books.Size)
+	}
+}
+
+// checkAuthorHit 作者命中：按作者名同样返回该本书。
+func checkAuthorHit(t *testing.T, ctx context.Context, st *Store) {
+	t.Helper()
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "月关"})
+	if r.Books.Total != 1 || r.Books.Items[0].Title != "风雪归人" {
+		t.Fatalf("作者命中 = %+v", r.Books)
+	}
+}
+
+// checkChapterTitleHit 章节标题命中：返回书籍标题与章节序号，Snippet 恒为空。
+func checkChapterTitleHit(t *testing.T, ctx context.Context, st *Store) {
+	t.Helper()
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "第一章"})
 	if r.Chapters.Total != 1 || len(r.Chapters.Items) != 1 {
-		t.Fatalf("3字命中 = %+v", r.Chapters)
+		t.Fatalf("章节标题命中 = %+v", r.Chapters)
 	}
-	if !strings.Contains(r.Chapters.Items[0].Snippet, "<b>临川市</b>") {
-		t.Errorf("snippet 无高亮: %q", r.Chapters.Items[0].Snippet)
+	hit := r.Chapters.Items[0]
+	if hit.ChapterTitle != "第一章 风起" || hit.BookTitle != "梅宁风云" || hit.ChapterIdx != 0 {
+		t.Errorf("命中内容 = %+v", hit)
 	}
-	if r.Chapters.Items[0].BookTitle != "梅宁风云" {
-		t.Errorf("bookTitle = %q", r.Chapters.Items[0].BookTitle)
+	// 正文检索下线后后端不再算片段：字段保留但必须为空串。
+	if hit.Snippet != "" {
+		t.Errorf("Snippet 应为空串（正文检索已下线），实际 %q", hit.Snippet)
 	}
-	if r.Chapters.Page != 1 || r.Chapters.Size != 20 {
-		t.Errorf("search page = %d/%d", r.Chapters.Page, r.Chapters.Size)
-	}
-}
-
-// checkTwoRuneSearch 2 字关键词命中，且 snippet 里除 <b> 外不得有未转义标签。
-func checkTwoRuneSearch(t *testing.T, ctx context.Context, st *Store) {
-	t.Helper()
-	r2 := mustSearch(t, ctx, st, SearchQuery{Q: "秋蝉"})
-	if r2.Chapters.Total != 1 {
-		t.Fatalf("2字命中 = %+v", r2.Chapters)
-	}
-	if !strings.Contains(r2.Chapters.Items[0].Snippet, "<b>秋蝉</b>") {
-		t.Errorf("2字 snippet = %q", r2.Chapters.Items[0].Snippet)
-	}
-	snip := r2.Chapters.Items[0].Snippet
-	if strings.Contains(snip, "<script>") {
-		t.Errorf("snippet 未转义: %q", snip)
-	}
-	if !strings.Contains(snip, "&lt;script&gt;") {
-		t.Logf("snippet（窗口可能未覆盖 script）: %q", snip)
+	if hit.Score != 0 {
+		t.Errorf("Score 应为 0（没有 bm25 排序），实际 %v", hit.Score)
 	}
 }
 
 // checkSingleRuneSearch 1 字关键词：空结果 + 提示，不做全表 LIKE。
 func checkSingleRuneSearch(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	r3 := mustSearch(t, ctx, st, SearchQuery{Q: "梅"})
-	if r3.Chapters.Total != 0 || r3.Books.Total != 0 || r3.Notice == "" {
-		t.Errorf("1字查询应返回空结果+提示: %+v", r3)
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "梅"})
+	if r.Chapters.Total != 0 || r.Books.Total != 0 || r.Notice == "" {
+		t.Errorf("1字查询应返回空结果+提示: %+v", r)
 	}
 }
 
 // checkBookTypeSearch type=book 只查书名（LIKE），不返回章节命中。
 func checkBookTypeSearch(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	r4 := mustSearch(t, ctx, st, SearchQuery{Q: "梅宁风云", Type: "book"})
-	if r4.Books.Total != 1 || r4.Books.Items[0].Title != "梅宁风云" {
-		t.Errorf("book 检索 = %+v", r4.Books)
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "梅宁风云", Type: "book"})
+	if r.Books.Total != 1 || r.Books.Items[0].Title != "梅宁风云" {
+		t.Errorf("book 检索 = %+v", r.Books)
 	}
-	if len(r4.Chapters.Items) != 0 {
-		t.Errorf("type=book 不应返回章节: %+v", r4.Chapters)
+	if len(r.Chapters.Items) != 0 {
+		t.Errorf("type=book 不应返回章节: %+v", r.Chapters)
 	}
 }
 
 // checkScopedSearch BookID 非 0 时只在单本书内检索。
 func checkScopedSearch(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	id2, err := st.ListBooks(ctx, BookQuery{Q: "风雪归人", Page: 1, Size: 1})
-	if err != nil || len(id2.Items) != 1 {
-		t.Fatalf("find b2: %+v, err=%v", id2, err)
+	found, err := st.ListBooks(ctx, BookQuery{Q: "风雪归人", Page: 1, Size: 1})
+	if err != nil || len(found.Items) != 1 {
+		t.Fatalf("find b2: %+v, err=%v", found, err)
 	}
-	r5 := mustSearch(t, ctx, st, SearchQuery{Q: "梅宁", BookID: id2.Items[0].ID})
-	if r5.Chapters.Total != 1 || r5.Chapters.Items[0].BookID != id2.Items[0].ID {
-		t.Errorf("book 内检索 = %+v", r5.Chapters)
+	// b1 的章节标题不含「唯一」，b2 的章节标题「唯一的章」含它。
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "唯一", BookID: found.Items[0].ID})
+	if r.Chapters.Total != 1 || r.Chapters.Items[0].BookID != found.Items[0].ID {
+		t.Errorf("book 内检索 = %+v", r.Chapters)
+	}
+}
+
+// checkContentNotSearchable 正文里的词不再被检索到（检索范围只到章节标题）。
+func checkContentNotSearchable(t *testing.T, ctx context.Context, st *Store) {
+	t.Helper()
+	// 「秋蝉」只出现在 b2 的正文里，不在任何书名/作者/章节标题中。
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "秋蝉"})
+	if r.Chapters.Total != 0 || r.Books.Total != 0 {
+		t.Errorf("正文关键词不应命中: chapters=%+v books=%+v", r.Chapters, r.Books)
+	}
+	if r.Notice != "" {
+		t.Errorf("正常关键词不应带提示，实际 %q", r.Notice)
 	}
 }
 

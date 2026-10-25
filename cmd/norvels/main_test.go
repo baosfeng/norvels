@@ -99,10 +99,24 @@ func TestLevelWriterCountsBytesWithoutOutput(t *testing.T) {
 
 func TestUsageDocumentsAllSubcommands(t *testing.T) {
 	// usage 是用户唯一能看到的自述文档，子命令漏写就等于没有入口说明。
-	for _, sub := range []string{"serve", "import", "stats", "reindex", "migrate", "version"} {
+	for _, sub := range []string{"serve", "import", "stats", "check-content", "migrate", "version"} {
 		if !strings.Contains(usage, sub) {
 			t.Fatalf("usage 缺少子命令 %q 的说明", sub)
 		}
+	}
+}
+
+// TestUsageExplainsRemovedReindex 正文检索下线后 reindex 不再存在，
+// usage 要说明「为什么没有它」，否则老用户会以为是自己敲错了命令。
+func TestUsageExplainsRemovedReindex(t *testing.T) {
+	if strings.Contains(usage, "norvels reindex") {
+		t.Fatalf("usage 仍在宣传 reindex 子命令")
+	}
+	if !strings.Contains(usage, "reindex") {
+		t.Fatalf("usage 未说明 reindex 已移除（用户会以为自己敲错命令）")
+	}
+	if !strings.Contains(usage, "0006") {
+		t.Errorf("usage 未说明老库升级会自动清理索引")
 	}
 }
 

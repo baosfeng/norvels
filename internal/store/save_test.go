@@ -219,7 +219,7 @@ func checkSkipWithoutForce(t *testing.T, ctx context.Context, st *Store, changed
 	}
 }
 
-// checkForceOverwrite Force 覆盖：id 不变、章节替换、FTS 无残留。
+// checkForceOverwrite Force 覆盖：id 不变、章节替换、旧章节无残留。
 func checkForceOverwrite(t *testing.T, ctx context.Context, st *Store, changed *model.ParsedBook, bookID int64) {
 	t.Helper()
 	forced, err := st.SaveBook(ctx, changed, SaveOptions{Force: true})
@@ -232,7 +232,7 @@ func checkForceOverwrite(t *testing.T, ctx context.Context, st *Store, changed *
 	assertForceOverwrite(t, ctx, st, bookID)
 }
 
-// assertForceOverwrite 校验 Force 覆盖后的详情、FTS 行数与旧文本不可检索。
+// assertForceOverwrite 校验 Force 覆盖后的详情、章节行数与旧章节内容不可见。
 func assertForceOverwrite(t *testing.T, ctx context.Context, st *Store, bookID int64) {
 	t.Helper()
 	detail, err := st.GetBook(ctx, bookID)
@@ -240,22 +240,50 @@ func assertForceOverwrite(t *testing.T, ctx context.Context, st *Store, bookID i
 		t.Fatalf("after force = %+v, err=%v", detail.BookSummary, err)
 	}
 
-	var ftsRows int
-	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM chapters_fts").Scan(&ftsRows); err != nil {
-		t.Fatalf("count fts: %v", err)
+	var rows int
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM chapters WHERE book_id = ?", bookID).Scan(&rows); err != nil {
+		t.Fatalf("count chapters: %v", err)
 	}
-	if ftsRows != 4 {
-		t.Errorf("chapters_fts rows = %d, want 4（覆盖后无残留）", ftsRows)
+	if rows != 4 {
+		t.Errorf("chapters rows = %d, want 4（覆盖后旧章节应被清掉）", rows)
 	}
 
-	// 旧正文关键词不应再命中。
-	old, err := st.Search(ctx, SearchQuery{Q: "午后的秋日"})
+	// 旧正文内容不应再留在库里：逐章解压比对，确认没有任何一章还是旧原文。
+	stale := countChaptersMatching(t, ctx, st, bookID, "华夏国临川市，午后的秋日，微风拂过城楼。")
+	if stale != 0 {
+		t.Errorf("旧章节正文残留 %d 行", stale)
+	}
+	// 压缩块也必须是覆盖后的：旧块的 packed 不应留下。
+	var blocks int
+	if err := st.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM chapter_blocks WHERE book_id = ?", bookID).Scan(&blocks); err != nil {
+		t.Fatalf("count blocks: %v", err)
+	}
+	if blocks == 0 {
+		t.Errorf("覆盖后应有压缩块，实际 0 块")
+	}
+}
+
+// countChaptersMatching 统计一本书里正文等于 want 的章节数。
+//
+// 正文在压缩块里，SQL 查不了，必须逐章解压比对；测试数据量很小，代价可忽略。
+func countChaptersMatching(t *testing.T, ctx context.Context, st *Store, bookID int64, want string) int {
+	t.Helper()
+	page, err := st.ListChapters(ctx, ChapterQuery{BookID: bookID, Limit: 500})
 	if err != nil {
-		t.Fatalf("search old: %v", err)
+		t.Fatalf("ListChapters: %v", err)
 	}
-	if old.Chapters.Total != 0 {
-		t.Errorf("旧章节文本仍可搜到：%+v", old.Chapters.Items)
+	n := 0
+	for _, item := range page.Items {
+		ch, err := st.GetChapter(ctx, bookID, item.ID)
+		if err != nil {
+			t.Fatalf("GetChapter(%d): %v", item.ID, err)
+		}
+		if ch.Content == want {
+			n++
+		}
 	}
+	return n
 }
 
 // checkSHA256Dedup 同 SHA、不同路径也算命中（幂等跳过）。

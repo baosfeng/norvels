@@ -80,7 +80,7 @@ type parseOutcome struct {
 // Run 执行导入。cb 可为 nil。
 //
 // 执行模型：解析在 workers 个 goroutine 中并发（CPU 密集），写库与进度回调
-// 在调用 goroutine 中串行（SQLite 单写者 + 触发器同步 FTS，串行反而更快更稳）。
+// 在调用 goroutine 中串行（SQLite 单写者，串行反而更快更稳）。
 // progress 的回调因此天然满足「单 goroutine 串行」约束。
 //
 // 编排分四步，各自独立：准备（路径/任务）→ 扫描候选 → 并发解析 + 串行入库 → 落任务终态。

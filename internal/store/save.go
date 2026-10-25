@@ -22,8 +22,8 @@ const bookUpdateSQL = "UPDATE books SET title = ?, author_id = ?, source_path = 
 	"file_sha256 = ?, encoding = ?, word_count = ?, chapter_count = ?, volume_count = ?, intro = ?, " +
 	"status = ?, multi_book = ?, imported_at = ?, updated_at = ? WHERE id = ?"
 
-const chapterInsertSQL = "INSERT INTO chapters(book_id, volume_id, idx, title, title_seg, content, content_seg, word_count) " +
-	"VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+const chapterInsertSQL = "INSERT INTO chapters(book_id, volume_id, idx, title, word_count, " +
+	"block_id, block_off, block_len) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 
 // bookWrite 是一次写入所需的已归一化字段集合：由 prepareBookWrite 产出，
 // 让「校验/归一化」与「SQL 拼接」两部分各自单一职责。
@@ -51,10 +51,10 @@ func (w bookWrite) execArgs(authorID int64) []any {
 	}
 }
 
-// SaveBook 幂等写入一本书及其卷、章节，并同步维护 FTS 索引。返回 BookID。
+// SaveBook 幂等写入一本书及其卷、章节。返回 BookID。
 //
 // 幂等语义：source_path 或 file_sha256 命中既有记录时返回 Skipped；
-// opt.Force 为 true 时保留原 id 覆盖更新（先删旧卷/章节，触发器同步清理 FTS）。
+// opt.Force 为 true 时保留原 id 覆盖更新（先删旧卷/章节再重写）。
 func (s *Store) SaveBook(ctx context.Context, b *model.ParsedBook, opt SaveOptions) (SaveResult, error) {
 	w, usedVols, err := prepareBookWrite(b)
 	if err != nil {
@@ -192,18 +192,7 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 
 	bookID := existingID
 	if bookID != 0 {
-		// 覆盖写入会先删旧章节，旧值必须先从 metrics 里减掉，否则会重复计数。
-		oldText, oldWords, err := bookTextStats(ctx, tx, bookID)
-		if err != nil {
-			return 0, fmt.Errorf("store: save book old metrics: %w", err)
-		}
-		if err := bumpMetrics(ctx, tx, -oldText, -oldWords); err != nil {
-			return 0, err
-		}
-		if err := subtractBookTextBytes(ctx, tx, bookID); err != nil {
-			return 0, err
-		}
-		if err := replaceBookRow(ctx, tx, bookID, w, authorID); err != nil {
+		if err := replaceBookInTx(ctx, tx, bookID, w, authorID); err != nil {
 			return 0, err
 		}
 	} else if bookID, err = insertBookRow(ctx, tx, w, authorID); err != nil {
@@ -223,6 +212,27 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 	return bookID, nil
 }
 
+// replaceBookInTx 覆盖既有书籍：先把旧口径从 metrics 里扣掉，再读旧行仍可访问的字段。
+//
+// 扣减顺序不能反：metrics 的旧值来自「此刻仍在库里」的块与章节，
+// 一旦 replaceBookRow 删掉它们，这些数就再也算不出来了。
+func replaceBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite, authorID int64) error {
+	old, err := bookTextStats(ctx, tx, bookID)
+	if err != nil {
+		return fmt.Errorf("store: save book old metrics: %w", err)
+	}
+	if err := bumpMetrics(ctx, tx, -old.packedBytes, -old.words); err != nil {
+		return err
+	}
+	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, -old.rawBytes); err != nil {
+		return err
+	}
+	if err := subtractBookTextBytes(ctx, tx, bookID); err != nil {
+		return err
+	}
+	return replaceBookRow(ctx, tx, bookID, w, authorID)
+}
+
 // insertBookRow 插入书籍主体并返回新 id。
 func insertBookRow(ctx context.Context, tx *sql.Tx, w bookWrite, authorID int64) (int64, error) {
 	res, err := tx.ExecContext(ctx, bookInsertSQL, w.execArgs(authorID)...)
@@ -236,10 +246,16 @@ func insertBookRow(ctx context.Context, tx *sql.Tx, w bookWrite, authorID int64)
 	return id, nil
 }
 
-// replaceBookRow 覆盖既有书籍：先清旧章节（触发器同步删 FTS 行）再清旧卷，最后更新主体。
+// replaceBookRow 覆盖既有书籍：先清旧章节与压缩块，再清旧卷，最后更新主体。
+//
+// 块必须先于章节删除（或者说两者都必须删干净）：chapter_blocks 上有
+// UNIQUE(book_id, seq) 约束，若不删旧块，重写同一本书时会直接撞约束失败。
 func replaceBookRow(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite, authorID int64) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM chapters WHERE book_id = ?", bookID); err != nil {
 		return fmt.Errorf("store: save book clear chapters: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM chapter_blocks WHERE book_id = ?", bookID); err != nil {
+		return fmt.Errorf("store: save book clear blocks: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM volumes WHERE book_id = ?", bookID); err != nil {
 		return fmt.Errorf("store: save book clear volumes: %w", err)
@@ -273,74 +289,44 @@ func insertVolumes(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Parse
 	return volMap, nil
 }
 
-// insertChapters 用一条预处理语句批量写入章节（含 FTS 镜像列 title_seg/content_seg），
-// 并顺手累加 store_metrics 需要的聚合量。
+// insertChapters 把一章正文按块压缩写入，并顺手累加 store_metrics 需要的聚合量。
+//
+// 写入分两步：先按「章节边界 + 1 MB 目标」把正文切成块并压进 chapter_blocks，
+// 再写 chapters 行（只存块寻址与标题）。两步在同一事务内，失败一起回滚。
 //
 // 导入路径本来就要遍历所有章节，在这里累加几乎零额外成本——比事后跑
-// SUM(length(content)) 全表扫（42 万行实测 54 s）便宜三个数量级。
-// 累加与章节写入在同一事务内完成，二者不会漂移。
+// SUM(length(packed))（要读全部压缩块）便宜得多。累加与章节写入在同一事务内完成，
+// 二者不会漂移。
 //
-// 口径必须与 SQL 的 length() 一致：SQLite 的 length(TEXT) 返回**字符数**，
-// 因此这里用 utf8.RuneCountInString 而不是 len()（后者是字节数）。
+// 口径：text_bytes 统计**压缩后**的 packed 字节（整数列相加），text_bytes_raw
+// 统计原文逻辑字节。两个口径都在这里累计，方便文档说明压缩比。
 func insertChapters(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook, volMap map[int]int64) error {
-	stmt, err := tx.PrepareContext(ctx, chapterInsertSQL)
-	if err != nil {
-		return fmt.Errorf("store: save chapter prepare: %w", err)
-	}
-	defer stmt.Close() //nolint:errcheck // 只读句柄
-
-	var textRunes, words int64
+	sizes := make([]int, len(b.Chapters))
 	for i := range b.Chapters {
-		c := &b.Chapters[i]
-		titleSeg := Segment(c.Title)
-		contentSeg := Segment(c.Content)
-		wc := chapterWordCount(c)
-		if _, err := stmt.ExecContext(ctx, bookID, volumeIDFor(c, volMap), c.Idx, c.Title,
-			titleSeg, c.Content, contentSeg, wc); err != nil {
-			return fmt.Errorf("store: save chapter idx=%d: %w", c.Idx, err)
-		}
-		textRunes += runeLen(c.Title) + runeLen(c.Content) + runeLen(titleSeg) + runeLen(contentSeg)
-		words += int64(wc)
+		sizes[i] = len(b.Chapters[i].Content)
 	}
-	if err := bumpMetrics(ctx, tx, textRunes, words); err != nil {
+
+	refs, packedBytes, rawBytes, err := writeChapterBlocks(ctx, tx, bookID, b, sizes)
+	if err != nil {
+		return err
+	}
+	words, err := insertChapterRows(ctx, tx, bookID, b, volMap, refs)
+	if err != nil {
+		return err
+	}
+
+	if err := bumpMetrics(ctx, tx, packedBytes, words); err != nil {
+		return err
+	}
+	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, rawBytes); err != nil {
 		return err
 	}
 	// books 侧文本量（标题/简介/路径等）随书籍主体变化，一并增量维护，
 	// 保证「增量累加」与「全量重算」在同一个口径上（有测试守着）。
-	bookText, err := bumpBookTextBytes(ctx, tx, bookID)
-	if err != nil {
+	if _, err := bumpBookTextBytes(ctx, tx, bookID); err != nil {
 		return err
 	}
-	_ = bookText
 	return nil
-}
-
-// bumpBookTextBytes 重算单本书的文本字节并把差值并入 book_text_bytes。
-//
-// books 表只有千级行，按 book_id 取一行是主键查询，代价可忽略；
-// 用「重算差值」而不是「猜增量」，因此覆盖写入/标题变更都不会漏。
-func bumpBookTextBytes(ctx context.Context, tx *sql.Tx, bookID int64) (int64, error) {
-	var current int64
-	if err := tx.QueryRowContext(ctx,
-		"SELECT COALESCE(length(title) + length(intro) + length(source_path) + length(source_name) + "+
-			"length(encoding) + length(status), 0) FROM books WHERE id = ?", bookID).Scan(&current); err != nil {
-		return 0, fmt.Errorf("store: book text bytes: %w", err)
-	}
-	if err := bumpMetricKey(ctx, tx, metricBookTextBytes, current); err != nil {
-		return 0, err
-	}
-	return current, nil
-}
-
-// subtractBookTextBytes 在删除/覆盖前把这本书的文本字节从 book_text_bytes 里减掉。
-func subtractBookTextBytes(ctx context.Context, tx *sql.Tx, bookID int64) error {
-	var current int64
-	if err := tx.QueryRowContext(ctx,
-		"SELECT COALESCE(length(title) + length(intro) + length(source_path) + length(source_name) + "+
-			"length(encoding) + length(status), 0) FROM books WHERE id = ?", bookID).Scan(&current); err != nil {
-		return fmt.Errorf("store: book text bytes: %w", err)
-	}
-	return bumpMetricKey(ctx, tx, metricBookTextBytes, -current)
 }
 
 // runeLen 返回字符串的字符数，与 SQLite 的 length(TEXT) 口径一致。

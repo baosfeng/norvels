@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"time"
 )
@@ -20,6 +19,12 @@ func cmdStats(args []string) error {
 		return err
 	}
 	defer st.Close()
+	// 先做一次全量重算：stats 只读预计算缓存，缓存缺失时（例如刚迁移完、
+	// 或口径版本刚变更）会显示全 0。CLI 是运维入口、不在请求路径上，
+	// 重算代价可接受，而显示错误的体积构成比慢一点严重得多。
+	if err := st.RefreshMetrics(ctx); err != nil {
+		return err
+	}
 	s, err := st.Stats(ctx)
 	if err != nil {
 		return err
@@ -32,25 +37,6 @@ func cmdStats(args []string) error {
 	if s.LastImportAt != nil {
 		fmt.Fprintf(w, "最近导入: %s\n", s.LastImportAt.Format(time.RFC3339))
 	}
-	return nil
-}
-
-func cmdReindex(args []string) error {
-	cfg := mustConfig()
-	fs := flag.NewFlagSet("reindex", flag.ExitOnError)
-	dbPath := fs.String("db", cfg.DB, "数据库路径")
-	fs.Parse(args)
-	ctx := context.Background()
-	st, err := openStore(ctx, *dbPath)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	start := time.Now()
-	if err := st.Reindex(ctx); err != nil {
-		return err
-	}
-	log.Printf("索引重建完成，用时 %s", time.Since(start).Round(time.Second))
 	return nil
 }
 

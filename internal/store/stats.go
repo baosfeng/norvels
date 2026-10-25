@@ -32,6 +32,7 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	// 估算失败不影响主统计（前端仍能画「未知」退化）。
 	if comp, cerr := s.Composition(ctx); cerr == nil {
 		fillComposition(&st, comp.TextBytes, comp.IndexBytes)
+		st.TextBytesRaw = comp.TextBytesRaw
 		st.CompositionEstimated = comp.Estimated
 	}
 	return st, nil

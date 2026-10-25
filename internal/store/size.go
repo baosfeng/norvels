@@ -7,15 +7,15 @@ import (
 
 // 体积构成的读路径口径（必须在毫秒级完成）：
 //
-//   - 正文类（textBytes）= books 的文本列 + chapters 的正文与字级分词镜像列。
-//     分词镜像列 content_seg/title_seg 物理上存在 chapters 表里，会计入「正文」侧，
-//     这是刻意的：用户看到的「正文占多少」应当包含为检索而做的副本。
-//   - 索引类（indexBytes）= FTS5 影子表字节数（按「库文件大小 − 正文」近似，见 refreshMetrics）。
-//   - 其他（otherBytes）= 库文件总大小 − 正文 − 索引，含 btree 页填充、表头、空闲页等。
+//   - 正文类（textBytes）= chapter_blocks.packed 的**压缩后**字节（books 侧文本列另记
+//     book_text_bytes）。这是用户真正占用的磁盘量，也是「正文占多少」应当显示的数值。
+//   - 索引类（indexBytes）= 库文件大小 − 正文 − books 文本，近似容纳 btree 索引、
+//     页填充与空闲页。正文检索下线后不再有 FTS 影子表，这一项只剩 btree 与碎片。
+//   - 其他（otherBytes）= 库文件总大小 − 正文 − 索引，含表头、空闲页等。
 //
-// 精确口径要扫 4.2 GB 正文 + 4.2 GB 镜像列，实测 99 s（chapters）+ 20.9 s（FTS 影子表），
-// 放在 /api/stats 请求路径上不可接受。因此这些值由导入时顺手累加进 store_metrics，
-// 读接口只查表；缓存缺失或口径落后时接口照常返回，但把 Estimated 标为 true。
+// 精确口径要扫全部压缩块（全量库 1.6 GB），放在 /api/stats 请求路径上不可接受。
+// 因此这些值由导入时顺手累加进 store_metrics，读接口只查表；
+// 缓存缺失或口径落后时接口照常返回，但把 Estimated 标为 true。
 const (
 	// compositionSampleSize 已废弃：改为预计算，保留常量仅为兼容旧引用。
 	compositionSampleSize = "1000"
@@ -23,26 +23,19 @@ const (
 	bookTextSQL = "SELECT COALESCE(SUM(length(title) + length(intro) + length(source_path) + " +
 		"length(source_name) + length(encoding) + length(status)), 0) FROM books"
 	// chapterTextSampleSQL 已废弃：预计算口径下不再抽样。
-	chapterTextSampleSQL = "SELECT COALESCE(SUM(length(title) + length(content) + length(title_seg) + " +
-		"length(content_seg)), 0) FROM chapters WHERE id = -1"
+	chapterTextSampleSQL = "SELECT COALESCE(SUM(length(packed)), 0) FROM chapter_blocks WHERE id = -1"
 	// chapterCountSQL 只数行数，走 btree 扫描（实测 0.02 s）。
 	chapterCountSQL = "SELECT COUNT(*) FROM chapters"
-	// ftsDataBytesSQL 是 FTS 内容块总量（慢查询，只在全量重算里用）。
-	ftsDataBytesSQL = "SELECT COALESCE(SUM(length(block)), 0) FROM chapters_fts_data"
-	// smallIndexBytesSQL 汇总 FTS 的其余影子表（都很小，实测合计 0.15 s）。
-	smallIndexBytesSQL = "SELECT " +
-		"(SELECT COALESCE(SUM(length(segid)), 0) FROM chapters_fts_idx) + " +
-		"(SELECT COALESCE(SUM(length(sz)), 0) FROM chapters_fts_docsize) + " +
-		"(SELECT COALESCE(SUM(length(k) + length(v)), 0) FROM chapters_fts_config)"
 )
 
 // Composition 是一次体积构成的结果。
 //
 // Estimated 表示数值来自预计算缓存而非当场全表统计（缓存尚未算好时为 true）。
 type Composition struct {
-	TextBytes  int64
-	IndexBytes int64
-	Estimated  bool
+	TextBytes    int64 // 压缩后的正文字节
+	TextBytesRaw int64 // 压缩前的原文逻辑字节
+	IndexBytes   int64
+	Estimated    bool
 }
 
 // Composition 返回体积构成，只查预计算表（毫秒级）。
@@ -52,9 +45,10 @@ func (s *Store) Composition(ctx context.Context) (Composition, error) {
 		return Composition{}, err
 	}
 	return Composition{
-		TextBytes:  snap.TextBytes,
-		IndexBytes: snap.IndexBytes,
-		Estimated:  snap.Stale,
+		TextBytes:    snap.TextBytes,
+		TextBytesRaw: snap.TextBytesRaw,
+		IndexBytes:   snap.IndexBytes,
+		Estimated:    snap.Stale,
 	}, nil
 }
 

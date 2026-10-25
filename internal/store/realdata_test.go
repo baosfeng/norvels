@@ -91,17 +91,18 @@ func probeAuthors(t *testing.T, ctx context.Context, st *Store) {
 		authors.Total, authors.Items[0].Name, authors.Items[0].BookCount, authors.Items[0].WordCount)
 }
 
-// probeSearchLatency 对若干关键词各取 3 次，报告最好/平均/最差耗时。
+// probeSearchLatency 对若干关键词各取 3 次，报告书名/作者/章节标题三类命中的耗时。
 func probeSearchLatency(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	for _, kw := range []string{"梅宁", "他的", "第一章", "风起"} {
-		hits, best, avg, worst := measureSearch(t, ctx, st, kw)
-		t.Logf("Search(%q)：命中=%d 最好=%v 平均=%v 最差=%v", kw, hits, best, avg, worst)
+	for _, kw := range []string{"长夜", "青川", "第一章", "风起"} {
+		books, chapters, best, avg, worst := measureSearch(t, ctx, st, kw)
+		t.Logf("Search(%q)：书名/作者命中=%d 章节标题命中=%d 最好=%v 平均=%v 最差=%v",
+			kw, books, chapters, best, avg, worst)
 	}
 }
 
-// measureSearch 对同一关键词跑 3 次，返回命中数与最好/平均/最差耗时。
-func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (hits int, best, avg, worst time.Duration) {
+// measureSearch 对同一关键词跑 3 次，返回两类命中数与最好/平均/最差耗时。
+func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (books, chapters int, best, avg, worst time.Duration) {
 	t.Helper()
 	var total time.Duration
 	for i := 0; i < 3; i++ {
@@ -111,7 +112,7 @@ func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (hit
 		if err != nil {
 			t.Fatalf("Search(%q): %v", kw, err)
 		}
-		hits = res.Chapters.Total
+		books, chapters = res.Books.Total, res.Chapters.Total
 		if i == 0 || d < best {
 			best = d
 		}
@@ -119,22 +120,6 @@ func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (hit
 			worst = d
 		}
 		total += d
-		if i == 0 {
-			logFirstHit(t, res)
-		}
 	}
-	return hits, best, total / 3, worst
-}
-
-// logFirstHit 打印首条命中的书籍/章节与截断后的摘要。
-func logFirstHit(t *testing.T, res *SearchResult) {
-	t.Helper()
-	if len(res.Chapters.Items) == 0 {
-		return
-	}
-	snip := []rune(res.Chapters.Items[0].Snippet)
-	if len(snip) > 60 {
-		snip = snip[:60]
-	}
-	t.Logf("  样例：%q / %q … %q", res.Chapters.Items[0].BookTitle, res.Chapters.Items[0].ChapterTitle, string(snip))
+	return books, chapters, best, total / 3, worst
 }

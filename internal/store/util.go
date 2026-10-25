@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 )
 
 // timeLayout 是库内时间字段统一使用的 UTC 文本格式，与 schema.sql 的 strftime 默认值一致。
@@ -52,7 +51,7 @@ func escapeLike(s string) string {
 	return s
 }
 
-// cjkRanges 是需要逐字分词的字符区间（含端点）：
+// cjkRanges 是「按字计数」的字符区间（含端点）：
 // 0x4E00-0x9FFF CJK 统一表意文字、0x3400-0x4DBF 扩展 A、0xF900-0xFAFF 兼容表意文字、
 // 0x3040-0x30FF 日文假名、0xAC00-0xD7AF 谚文。
 var cjkRanges = [...][2]rune{
@@ -63,7 +62,7 @@ var cjkRanges = [...][2]rune{
 	{0xAC00, 0xD7AF},
 }
 
-// isCJK 判断是否是需要逐字分词的 CJK 字符（汉字、假名、谚文）。
+// isCJK 判断是否是需要逐字计数的 CJK 字符（汉字、假名、谚文）。
 // 区间集中放在 cjkRanges，新增区系只改表不动判定逻辑。
 func isCJK(r rune) bool {
 	for _, rg := range cjkRanges {
@@ -72,49 +71,6 @@ func isCJK(r rune) bool {
 		}
 	}
 	return false
-}
-
-// Segment 把文本转换为 FTS5 unicode61 可用的「字级分词」串：
-// CJK 字符逐字输出并在其后追加一个空格，其余字符原样输出（不额外加空格）。
-//
-// 例：Segment("华夏国，午后") == "华 夏 国 ，午 后 "
-//
-// 该函数同时供写入（镜像列）与查询（构造 phrase）使用，必须保持确定性。
-func Segment(s string) string {
-	if s == "" {
-		return ""
-	}
-	n := len(s)
-	for _, r := range s {
-		if isCJK(r) {
-			n++
-		}
-	}
-	buf := make([]byte, 0, n)
-	for _, r := range s {
-		buf = utf8.AppendRune(buf, r)
-		if isCJK(r) {
-			buf = append(buf, ' ')
-		}
-	}
-	return string(buf)
-}
-
-// Unsegment 把 Segment 生成的串还原为原文：删除每个 CJK 字符后紧跟的那个空格。
-// 用于把 FTS snippet() 的结果转回可读文本。
-func Unsegment(s string) string {
-	if s == "" {
-		return ""
-	}
-	runes := []rune(s)
-	buf := make([]byte, 0, len(s))
-	for i := 0; i < len(runes); i++ {
-		buf = utf8.AppendRune(buf, runes[i])
-		if isCJK(runes[i]) && i+1 < len(runes) && runes[i+1] == ' ' {
-			i++
-		}
-	}
-	return string(buf)
 }
 
 // countWords 兜底字数统计：CJK 字符逐字计 1，连续非 CJK 词计 1。
@@ -136,31 +92,4 @@ func countWords(s string) int {
 		}
 	}
 	return n
-}
-
-// htmlEscaper 转义文本节点中的 & < >，用于 snippet 输出。
-var htmlEscaper = strings.NewReplacer(
-	"&", "&amp;",
-	"<", "&lt;",
-	">", "&gt;",
-)
-
-func escapeHTML(s string) string { return htmlEscaper.Replace(s) }
-
-// markOpen / markClose 是 snippet() 的高亮占位符（U+0001 / U+0002），
-// 转义为 HTML 后再替换成 <b>，从而保证其余内容全部被转义。
-var (
-	markOpen  = string(rune(1))
-	markClose = string(rune(2))
-)
-
-// renderSnippet 把 snippet() 返回的片段（占位符高亮）转义为只含 <b> 的安全 HTML。
-func renderSnippet(seg string) string {
-	if seg == "" {
-		return ""
-	}
-	out := escapeHTML(Unsegment(seg))
-	out = strings.ReplaceAll(out, markOpen, "<b>")
-	out = strings.ReplaceAll(out, markClose, "</b>")
-	return out
 }

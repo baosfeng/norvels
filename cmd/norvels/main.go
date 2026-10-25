@@ -1,4 +1,4 @@
-// norvels 单二进制入口：serve / import / stats / reindex / migrate / version
+// norvels 单二进制入口：serve / import / stats / migrate / version
 package main
 
 import (
@@ -32,9 +32,18 @@ const usage = `norvels — 本地中文小说库
   norvels serve   [--addr :8080] [--db ./data/norvels.db] [--log-level info]
   norvels import  --dir <txt 目录> [--db ...] [--recursive] [--force] [--dry-run] [--workers N]
   norvels stats   [--db ...]
-  norvels reindex [--db ...]
+  norvels check-content [--db ...] [--all | --sample N]
   norvels migrate [--db ...] [--dry-run] [--to N]
   norvels version
+
+说明：v0.2 起检索范围是书名 / 作者 / 章节标题，正文不建索引，因此
+      不再需要 reindex 子命令（原「重建 FTS 索引」已随正文检索一并移除）。
+      老库升级时 0006 迁移会自动删掉分词镜像列与 FTS 索引，无需手工重建。
+
+check-content 校验章节正文可读（迁移后自查用）：
+  --all        全量校验所有章节（慢，迁移后建议跑一次）
+  --sample N   随机抽 N 章（默认 50）
+  两个参数互斥；正常时输出 OK，有坏块时列出全部损坏块并以非零码退出。
 
 优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:
   NORVELS_ADDR         serve 监听地址（默认 :8080）
@@ -61,8 +70,8 @@ func main() {
 		err = cmdImport(args[1:])
 	case "stats":
 		err = cmdStats(args[1:])
-	case "reindex":
-		err = cmdReindex(args[1:])
+	case "check-content":
+		err = cmdCheckContent(args[1:])
 	case "migrate":
 		err = cmdMigrate(args[1:])
 	case "version", "-v", "--version":

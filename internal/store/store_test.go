@@ -46,29 +46,6 @@ func sampleBook(title, author, path, sha string) *model.ParsedBook {
 	}
 }
 
-func TestSegmentRoundTrip(t *testing.T) {
-	cases := []struct {
-		in   string
-		want string
-	}{
-		{"华夏国，午后", "华 夏 国 ，午 后 "},
-		{"abc 123", "abc 123"},
-		{"临川市", "临 川 市 "},
-		{"", ""},
-		{"a梅b", "a梅 b"},
-		{"，。！", "，。！"},
-	}
-	for _, c := range cases {
-		got := Segment(c.in)
-		if got != c.want {
-			t.Errorf("Segment(%q) = %q, want %q", c.in, got, c.want)
-		}
-		if back := Unsegment(got); back != c.in {
-			t.Errorf("Unsegment(Segment(%q)) = %q", c.in, back)
-		}
-	}
-}
-
 func TestSaveBookUnknownAuthor(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
@@ -90,37 +67,38 @@ func TestSaveBookUnknownAuthor(t *testing.T) {
 	}
 }
 
-func TestReindexAndTriggerCleanup(t *testing.T) {
+// TestSchemaHasNoSegOrFTS 锁死「正文检索已下线」的结构口径。
+//
+// 0006 之后 chapters 上不应再有分词镜像列，库里也不应再有 chapters_fts：
+// 这两坨数据是为正文检索服务的，一旦被后续改动带回，库会重新膨胀数 GB。
+func TestSchemaHasNoSegOrFTS(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 
-	b := sampleBook("索引测试", "作者", "/books/idx.txt", strings.Repeat("f", 64))
-	saved, err := st.SaveBook(ctx, b, SaveOptions{})
-	if err != nil {
-		t.Fatalf("save: %v", err)
+	for _, col := range []string{"title_seg", "content_seg"} {
+		if columnExists(t, ctx, st, "chapters", col) {
+			t.Errorf("chapters 仍有分词镜像列 %q", col)
+		}
 	}
-	if err := st.Reindex(ctx); err != nil {
-		t.Fatalf("Reindex: %v", err)
+	for _, name := range []string{"chapters_fts", "chapters_fts_data", "chapters_fts_idx",
+		"chapters_fts_docsize", "chapters_fts_config"} {
+		exists, err := st.tableExists(ctx, name)
+		if err != nil {
+			t.Fatalf("tableExists(%q): %v", name, err)
+		}
+		if exists {
+			t.Errorf("库内仍存在 %q（正文检索已下线）", name)
+		}
 	}
-	r, err := st.Search(ctx, SearchQuery{Q: "临川市"})
-	if err != nil || r.Chapters.Total != 1 {
-		t.Fatalf("after reindex = %+v, err=%v", r.Chapters, err)
-	}
-
-	// 直接删书：级联删章节，触发器同步清理 FTS。
-	if _, err := st.DB().ExecContext(ctx, "DELETE FROM books WHERE id = ?", saved.BookID); err != nil {
-		t.Fatalf("delete book: %v", err)
-	}
-	var ftsRows int
-	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM chapters_fts").Scan(&ftsRows); err != nil {
-		t.Fatalf("count fts: %v", err)
-	}
-	if ftsRows != 0 {
-		t.Errorf("级联删除后 FTS 残留 %d 行", ftsRows)
-	}
-	r2, err := st.Search(ctx, SearchQuery{Q: "临川市"})
-	if err != nil || r2.Chapters.Total != 0 {
-		t.Errorf("删除后仍能搜到: %+v, err=%v", r2.Chapters, err)
+	for _, trg := range []string{"chapters_ai", "chapters_ad", "chapters_au"} {
+		var n int
+		if err := st.DB().QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name = ?", trg).Scan(&n); err != nil {
+			t.Fatalf("查触发器 %q: %v", trg, err)
+		}
+		if n != 0 {
+			t.Errorf("仍存在触发器 %q", trg)
+		}
 	}
 }
 

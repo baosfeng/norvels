@@ -11,7 +11,7 @@ import (
 	"norvels/internal/model"
 )
 
-// BenchmarkSaveBook 用合成中文正文测「解析后写入 + FTS 触发器同步」的吞吐，
+// BenchmarkSaveBook 用合成中文正文测「解析后写入」的吞吐，
 // 用于外推全量 4.1GB 的导入耗时（不含 parser 解码/切分，那部分由 importer 实测覆盖）。
 func BenchmarkSaveBook(b *testing.B) {
 	ctx := context.Background()

@@ -32,6 +32,20 @@ type migration struct {
 	Version int    // 文件名里的版本号（0001 → 1）
 	Name    string // 完整文件名，例如 0001_init.sql
 	SQL     string // 迁移 SQL 全文
+	// Steps 是 SQL 之后要在同一事务内执行的 Go 步骤（可空）。
+	//
+	// 为什么需要它：SQLite 没有条件 DDL。像「表存在时才去删列」这种语句，
+	// 在 chapters 表还不存在的畸形老库升级路径上会直接失败（0004 注释里记过同一个坑）。
+	// 把这些步骤放进**同一个迁移事务**，既保证它们能先探测再执行，
+	// 又守住「一条迁移一个事务、失败整体回滚」——不会出现 SQL 已提交、
+	// 版本号已前进、而结构没改完的半迁移库。
+	Steps []migrationStep
+}
+
+// migrationStep 是迁移 SQL 之后、同一事务内的一个 Go 步骤。
+type migrationStep struct {
+	Name string // 日志与报错里的人类可读名
+	Run  func(ctx context.Context, tx *sql.Tx) error
 }
 
 // Label 是给日志与 CLI 用的人类可读描述。
@@ -257,7 +271,7 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 			_ = tx.Rollback()
 		}
 	}()
-	if err := execMigrationSQL(ctx, tx, m); err != nil {
+	if err := runMigrationSteps(ctx, tx, m); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -267,13 +281,21 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 	return nil
 }
 
-// execMigrationSQL 在事务内执行迁移 SQL 并写入版本记录。
-func execMigrationSQL(ctx context.Context, tx *sql.Tx, m migration) error {
+// runMigrationSteps 在同一个事务内依次执行：迁移 SQL → Go 步骤 → 写版本记录。
+//
+// 任一步失败都返回错误，由 applyMigration 整体回滚：版本记录与已执行的结构变更
+// 一起消失，库停在迁移前状态。
+func runMigrationSteps(ctx context.Context, tx *sql.Tx, m migration) error {
 	if strings.TrimSpace(m.SQL) == "" {
 		return fmt.Errorf("store: migration %s is empty", m.Name)
 	}
 	if _, err := tx.ExecContext(ctx, m.SQL); err != nil {
 		return fmt.Errorf("store: migration %s failed: %w", m.Name, err)
+	}
+	for _, step := range m.Steps {
+		if err := step.Run(ctx, tx); err != nil {
+			return fmt.Errorf("store: migration %s step %q failed: %w", m.Name, step.Name, err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		"INSERT INTO "+migrationTable+"(version, applied_at) VALUES (?, ?)",
@@ -281,6 +303,21 @@ func execMigrationSQL(ctx context.Context, tx *sql.Tx, m migration) error {
 		return fmt.Errorf("store: record migration %d: %w", m.Version, err)
 	}
 	return nil
+}
+
+// migrationStepsByVersion 登记带 Go 步骤的迁移（按版本号索引）。
+//
+// 步骤闭包只捕获版本号，状态全部走事务内的探测（表/列是否存在），因此对
+// 「空库」「老库」「已部分迁移的库」都走同一条代码路径，不需要额外分支。
+var migrationStepsByVersion = map[int][]migrationStep{
+	6: {{
+		Name: "drop chapter segmented columns",
+		Run:  dropSegColumnsStep,
+	}},
+	7: {{
+		Name: "pack chapter content into blocks",
+		Run:  rebuildChaptersForBlocks,
+	}},
 }
 
 // loadMigrations 读取 embed 内的迁移文件，按版本升序返回。
@@ -310,7 +347,12 @@ func loadMigrations() ([]migration, error) {
 		if err != nil {
 			return nil, fmt.Errorf("store: read migration %s: %w", e.Name(), err)
 		}
-		out = append(out, migration{Version: version, Name: e.Name(), SQL: string(data)})
+		out = append(out, migration{
+			Version: version,
+			Name:    e.Name(),
+			SQL:     string(data),
+			Steps:   migrationStepsByVersion[version],
+		})
 	}
 	if len(out) == 0 {
 		return nil, errors.New("store: no migrations embedded")
