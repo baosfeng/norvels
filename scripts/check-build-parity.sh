@@ -65,7 +65,22 @@ else
   fail "web/pnpm-lock.yaml 缺失：容器构建会退化为非 frozen 安装（不可复现）"
 fi
 
-# 4) .dockerignore 不能把构建必需的文件排除掉
+# 4) Dockerfile 必须在 pnpm install 之前复制 pnpm-workspace.yaml
+#    它承载 allowBuilds（放行 esbuild 等构建脚本）。缺了它 pnpm 以
+#    [ERR_PNPM_IGNORED_BUILDS] 失败——本地有该文件，干净容器里才会暴露。
+if [[ -f "$ws" ]]; then
+  install_line=$(grep -n 'pnpm install' deploy/Dockerfile | head -1 | cut -d: -f1)
+  ws_copy_line=$(grep -n 'pnpm-workspace.yaml' deploy/Dockerfile | head -1 | cut -d: -f1)
+  if [[ -z "$ws_copy_line" ]]; then
+    fail "Dockerfile 没有复制 web/pnpm-workspace.yaml（allowBuilds 会失效，容器构建报 ERR_PNPM_IGNORED_BUILDS）"
+  elif [[ -n "$install_line" && "$ws_copy_line" -gt "$install_line" ]]; then
+    fail "Dockerfile 里 pnpm-workspace.yaml 的复制在 pnpm install 之后（第 $ws_copy_line 行 vs 第 $install_line 行），allowBuilds 不生效"
+  else
+    ok "Dockerfile 在 install 前复制了 pnpm-workspace.yaml（第 $ws_copy_line 行）"
+  fi
+fi
+
+# 5) .dockerignore 不能把构建必需的文件排除掉
 if [[ -f .dockerignore ]]; then
   for need in "web/package.json" "web/pnpm-workspace.yaml" "web/src"; do
     base=$(basename "$need")

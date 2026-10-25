@@ -35,9 +35,15 @@ RUN npm install -g pnpm@${PNPM_VERSION}
 
 # 先只复制依赖清单（lock 文件可能尚未生成）：bind mount 读取 context，
 # 避免 "COPY web/pnpm-lock.yaml*" 在文件不存在时直接失败。
+#
+# 注意：pnpm-workspace.yaml 必须在 install 之前复制。它承载 allowBuilds
+# （放行 esbuild 等依赖的构建脚本）。缺了它 pnpm 会以
+# [ERR_PNPM_IGNORED_BUILDS] 失败退出——本地有该文件所以复现不出来，
+# 只在干净容器里暴露（已由 scripts/check-build-parity.sh 纳入门禁）。
 COPY web/package.json ./
 RUN --mount=type=bind,source=web,target=/tmp/web-src \
     if [ -f /tmp/web-src/pnpm-lock.yaml ]; then cp /tmp/web-src/pnpm-lock.yaml ./; fi \
+ && if [ -f /tmp/web-src/pnpm-workspace.yaml ]; then cp /tmp/web-src/pnpm-workspace.yaml ./; fi \
  && if [ -f pnpm-lock.yaml ]; then \
       echo "==> pnpm install --frozen-lockfile"; pnpm install --frozen-lockfile; \
     else \
