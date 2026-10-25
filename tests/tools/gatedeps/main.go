@@ -63,24 +63,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	internal := map[string][]string{}
-	var order []string
-	for _, p := range pkgs {
-		if !strings.HasPrefix(p.ImportPath, modulePrefix) {
-			continue
-		}
-		var deps []string
-		for _, imp := range p.Imports {
-			if strings.HasPrefix(imp, modulePrefix) {
-				deps = append(deps, imp)
-			}
-		}
-		sort.Strings(deps)
-		internal[p.ImportPath] = deps
-		order = append(order, p.ImportPath)
-	}
-	sort.Strings(order)
-
+	order, internal := buildGraph(pkgs)
 	violations := checkDirection(order, internal)
 	cycles := findCycles(order, internal)
 
@@ -91,27 +74,58 @@ func main() {
 	} else {
 		printTable(order, internal)
 	}
+	report(cycles)
+	reportViolations(violations)
 
-	if len(cycles) > 0 {
-		fmt.Printf("\n❌ 循环依赖 %d 处\n", len(cycles))
-		for _, c := range cycles {
-			fmt.Printf("  - %s\n", strings.Join(c, " → "))
-		}
-	} else {
-		fmt.Println("\n✅ 循环依赖：无（go list 图 DFS 未发现环；Go 编译器本身也会拒绝 import 环）")
-	}
-
-	if len(violations) > 0 {
-		fmt.Printf("❌ 依赖方向违规 %d 处\n", len(violations))
-		for _, v := range violations {
-			fmt.Printf("  - %s\n", v)
-		}
-		os.Exit(1)
-	}
-	if len(cycles) > 0 {
+	if len(violations) > 0 || len(cycles) > 0 {
 		os.Exit(1)
 	}
 	fmt.Println("✅ 依赖方向：全部符合分层约定")
+}
+
+// buildGraph 把 go list 结果收敛成「包 → 模块内依赖」的有序图。
+func buildGraph(pkgs []pkgJSON) ([]string, map[string][]string) {
+	internal := map[string][]string{}
+	var order []string
+	for _, p := range pkgs {
+		if !strings.HasPrefix(p.ImportPath, modulePrefix) {
+			continue
+		}
+		deps := make([]string, 0, len(p.Imports))
+		for _, imp := range p.Imports {
+			if strings.HasPrefix(imp, modulePrefix) {
+				deps = append(deps, imp)
+			}
+		}
+		sort.Strings(deps)
+		internal[p.ImportPath] = deps
+		order = append(order, p.ImportPath)
+	}
+	sort.Strings(order)
+	return order, internal
+}
+
+// report 打印循环依赖结论。
+func report(cycles [][]string) {
+	if len(cycles) == 0 {
+		fmt.Println("\n✅ 循环依赖：无（go list 图 DFS 未发现环；Go 编译器本身也会拒绝 import 环）")
+		return
+	}
+	fmt.Printf("\n❌ 循环依赖 %d 处\n", len(cycles))
+	for _, c := range cycles {
+		fmt.Printf("  - %s\n", strings.Join(c, " → "))
+	}
+}
+
+// reportViolations 打印依赖方向违规明细。
+func reportViolations(violations []string) {
+	if len(violations) == 0 {
+		return
+	}
+	fmt.Printf("❌ 依赖方向违规 %d 处\n", len(violations))
+	for _, v := range violations {
+		fmt.Printf("  - %s\n", v)
+	}
 }
 
 func listPackages() ([]pkgJSON, error) {

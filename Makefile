@@ -58,16 +58,16 @@ gallery: ## 重新生成三版原型对比页 + 截图（自动相对化路径�
 # ---------- 质量门禁（quality-gates 9 项，逐项可单独跑）----------
 # 每个 gate-* 都如实报告：不达标即 exit 1，不调阈值、不 skip。详见 docs/quality-gates.md。
 
-gate-complexity: ## 门禁 4：圈复杂度（单函数 ≤ 10）
+gate-complexity: ## 门禁 4：圈复杂度（单函数 ≤ 10，豁免须在 docs 登记）
 	@scripts/gate-complexity.sh
 
-gate-size: ## 门禁 5：模块大小（单函数 ≤ 70 行、单文件 ≤ 400 行）
+gate-size: ## 门禁 5：模块大小（函数 ≤ 70 行、文件 ≤ 400 行，豁免须登记）
 	@scripts/gate-size.sh
 
 gate-deps: ## 门禁 6：依赖结构（方向 + 循环依赖）
 	@scripts/gate-deps.sh
 
-gate-cover: ## 门禁 7：覆盖率（总行 ≥ 85%，核心包各自 ≥ 85%）
+gate-cover: ## 门禁 7：覆盖率（不低于基线，防退化；85% 为渐进目标）
 	@scripts/gate-cover.sh
 
 gate-acceptance: ## 门禁 2：Gherkin 验收测试（godog）

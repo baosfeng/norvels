@@ -17,11 +17,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -38,55 +40,98 @@ func skipDir(path string, name string) bool {
 }
 
 func main() {
-	mode := flag.String("mode", "size", "统计模式：size（函数/文件行数）或 cyclo（圈复杂度）")
-	root := flag.String("root", ".", "源码根目录")
-	flag.Parse()
+	if err := run(os.Stdout, os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "gostats: %v\n", err)
+		os.Exit(exitCode(err))
+	}
+}
 
+// errParse 表示「有文件解析失败」（退出码 1），其余错误按用法错误处理（退出码 2）。
+type parseError struct{ count int }
+
+func (e *parseError) Error() string {
+	return fmt.Sprintf("%d 个文件解析失败", e.count)
+}
+
+// exitCode 把错误映射为退出码：解析失败 = 1，其余（用法/IO）= 2。
+func exitCode(err error) int {
+	var pe *parseError
+	if errors.As(err, &pe) {
+		return 1
+	}
+	return 2
+}
+
+// run 是 main 的可测试主体（便于单测覆盖参数与输出）。
+func run(out io.Writer, args []string) error {
+	flags := flag.NewFlagSet("gostats", flag.ContinueOnError)
+	mode := flags.String("mode", "size", "统计模式：size（函数/文件行数）或 cyclo（圈复杂度）")
+	root := flags.String("root", ".", "源码根目录")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
 	if *mode != "size" && *mode != "cyclo" {
-		fmt.Fprintf(os.Stderr, "gostats: 未知 mode %q（可用 size|cyclo）\n", *mode)
-		os.Exit(2)
+		return fmt.Errorf("未知 mode %q（可用 size|cyclo）", *mode)
 	}
 
-	files, err := collectFiles(*root, flag.Args())
+	files, err := collectFiles(*root, flags.Args())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gostats: 收集文件失败: %v\n", err)
-		os.Exit(2)
+		return fmt.Errorf("收集文件失败: %w", err)
 	}
-
-	fset := token.NewFileSet()
-	out := os.Stdout
-	parseFail := 0
+	w := &walker{out: out, mode: *mode, fset: token.NewFileSet()}
 	for _, path := range files {
-		af, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if perr != nil {
-			// 解析失败不静默吞掉：报错前缀让调用方脚本能识别并失败。
-			fmt.Fprintf(os.Stderr, "gostats: 解析失败 %s: %v\n", path, perr)
-			parseFail++
-			continue
-		}
-		if *mode == "size" {
-			total := fset.Position(af.End()).Line
-			fmt.Fprintf(out, "FILE\t%d\t%s\n", total, path)
-		}
-		for _, fn := range af.Decls {
-			decl, ok := fn.(*ast.FuncDecl)
-			if !ok {
-				continue
-			}
-			name := funcName(decl)
-			start := fset.Position(decl.Pos()).Line
-			if *mode == "size" {
-				lines := fset.Position(decl.End()).Line - start + 1
-				fmt.Fprintf(out, "FUNC\t%d\t%s:%d\t%s\n", lines, path, start, name)
-				continue
-			}
-			fmt.Fprintf(out, "CYCLO\t%d\t%s:%d\t%s\n", cyclomatic(decl), path, start, name)
+		w.walk(path)
+	}
+	if w.failed > 0 {
+		return &parseError{count: w.failed}
+	}
+	return nil
+}
+
+// walker 逐文件输出统计结果，并把解析失败计数留在 failed 里。
+type walker struct {
+	out    io.Writer
+	mode   string
+	fset   *token.FileSet
+	failed int
+}
+
+// walk 解析并输出单个文件的统计记录。
+func (w *walker) walk(path string) {
+	af, err := parser.ParseFile(w.fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "解析失败 %s: %v\n", path, err)
+		w.failed++
+		return
+	}
+	if w.mode == "size" {
+		fmt.Fprintf(w.out, "FILE\t%d\t%s\n", w.fset.Position(af.End()).Line, path)
+	}
+	for _, decl := range funcDecls(af) {
+		w.emit(decl, path)
+	}
+}
+
+// emit 输出一个函数的 size 或 cyclo 记录。
+func (w *walker) emit(decl *ast.FuncDecl, path string) {
+	start := w.fset.Position(decl.Pos()).Line
+	name := funcName(decl)
+	if w.mode == "size" {
+		fmt.Fprintf(w.out, "FUNC\t%d\t%s:%d\t%s\n", w.fset.Position(decl.End()).Line-start+1, path, start, name)
+		return
+	}
+	fmt.Fprintf(w.out, "CYCLO\t%d\t%s:%d\t%s\n", cyclomatic(decl), path, start, name)
+}
+
+// funcDecls 取出文件里的全部函数声明。
+func funcDecls(af *ast.File) []*ast.FuncDecl {
+	out := make([]*ast.FuncDecl, 0, len(af.Decls))
+	for _, d := range af.Decls {
+		if fn, ok := d.(*ast.FuncDecl); ok {
+			out = append(out, fn)
 		}
 	}
-	if parseFail > 0 {
-		fmt.Fprintf(os.Stderr, "gostats: %d 个文件解析失败\n", parseFail)
-		os.Exit(1)
-	}
+	return out
 }
 
 // funcName 返回 "接收者.函数名"（自由函数只返回函数名）。
@@ -122,40 +167,33 @@ func recvTypeName(expr ast.Expr) string {
 // cyclomatic 计算 McCabe 圈复杂度，口径与 gocyclo 一致：
 // 基础 1，每个 if / for / range / case / comm 子句 / && / || 各 +1。
 func cyclomatic(decl *ast.FuncDecl) int {
+	if decl.Body == nil {
+		return 1
+	}
 	c := 1
-	inspect := func(n ast.Node) {
-		if decl.Body == nil {
-			return
+	ast.Inspect(decl.Body, func(n ast.Node) bool {
+		if countsAsBranch(n) {
+			c++
 		}
-		ast.Inspect(decl.Body, func(n ast.Node) bool {
-			switch n.(type) {
-			case *ast.IfStmt:
-				c++
-			case *ast.ForStmt, *ast.RangeStmt:
-				c++
-			case *ast.CaseClause:
-				cc := n.(*ast.CaseClause)
-				if cc.List != nil { // default 分支不计
-					c++
-				}
-			case *ast.CommClause:
-				cm := n.(*ast.CommClause)
-				if cm.Comm != nil {
-					c++
-				}
-			case *ast.BinaryExpr:
-				be := n.(*ast.BinaryExpr)
-				if be.Op == token.LAND || be.Op == token.LOR {
-					c++
-				}
-			}
-			return true
-		})
-	}
-	if decl.Body != nil {
-		inspect(decl.Body)
-	}
+		return true
+	})
 	return c
+}
+
+// countsAsBranch 判断一个节点是否贡献 1 点圈复杂度。
+// 口径与 gocyclo 一致：if / for / range / 非 default 的 case / 带通信的 comm / && / ||。
+func countsAsBranch(n ast.Node) bool {
+	switch e := n.(type) {
+	case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
+		return true
+	case *ast.CaseClause:
+		return e.List != nil // default 分支不计
+	case *ast.CommClause:
+		return e.Comm != nil
+	case *ast.BinaryExpr:
+		return e.Op == token.LAND || e.Op == token.LOR
+	}
+	return false
 }
 
 // collectFiles 返回待统计的 .go 文件列表（显式传入文件时不做目录遍历）。
