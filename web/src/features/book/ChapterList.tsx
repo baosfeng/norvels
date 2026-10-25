@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ChapterBrief } from "../../api/types";
+import { formatWords } from "../../lib/format";
 
 /** 固定行高与 CSS 里 .cv-row 的 height:36px 对齐，虚拟滚动才能算准。 */
 const ROW_HEIGHT = 36;
@@ -63,6 +64,9 @@ export function ChapterList({
               onClick={onNavigate}
             >
               <span className="t">{chapter.title}</span>
+              <span className="word num" data-testid="chapter-word">
+                {formatWords(chapter.wordCount)}
+              </span>
             </Link>
           );
         })}

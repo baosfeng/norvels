@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useBook, useReadingProgress } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
-import type { BookDetail, BookMetaPatch, Volume } from "../../api/types";
+import type { BookDetail, BookMetaPatch, SerialStatus, Volume } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { ChapterList } from "./ChapterList";
+import { DeleteBookDialog } from "./DeleteBookDialog";
 import { formatCount, formatDate } from "../../lib/format";
+import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
 
@@ -17,9 +19,11 @@ export function BookPage() {
   const isH5 = useIsH5();
   const { data: book, loading, error, reload } = useBook(Number.isFinite(id) ? id : null);
   const progress = useReadingProgress();
+  const navigate = useNavigate();
   const [openVolumes, setOpenVolumes] = useState<Set<number>>(new Set());
   const [introOpen, setIntroOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState("");
 
   if (loading) {
@@ -49,6 +53,7 @@ export function BookPage() {
   const target = resume ?? (first ? { chapterId: first.id, chapterTitle: first.title } : null);
   const intro = stripTags(book.intro);
   const tags = book.tags ?? [];
+  const lastChapter = lastChapterLabel(book);
 
   function toggleVolume(index: number) {
     setOpenVolumes((prev) => {
@@ -99,6 +104,16 @@ export function BookPage() {
             >
               {editing ? "收起编辑" : "编辑信息"}
             </button>
+            <button
+              className="btn btn-ghost btn-danger"
+              type="button"
+              onClick={() => {
+                setDeleting(true);
+                setNotice("");
+              }}
+            >
+              删除这本书
+            </button>
           </div>
           <dl className="facts">
             <div>
@@ -131,7 +146,13 @@ export function BookPage() {
           <h1>{book.title}</h1>
           <p className="byline" data-testid="book-byline">
             <Link to="/authors">{authorsOf(book).join("、") || "佚名"}</Link> ·{" "}
-            <span className="meta">{book.status === "parsed" ? "已入库" : "处理中"}</span>
+            <span className="meta">{book.status === "parsed" ? "已入库" : "处理中"}</span> ·{" "}
+            <span className="meta" data-testid="book-serial">
+              {serialLabel(book.serialStatus)}
+            </span>
+          </p>
+          <p className="meta" data-testid="book-last-chapter">
+            最后更新 · {formatDate(book.updatedAt)} · 最新章节 · {lastChapter}
           </p>
 
           {tags.length > 0 ? (
@@ -245,6 +266,19 @@ export function BookPage() {
           )}
         </div>
       </div>
+
+      {deleting ? (
+        <DeleteBookDialog
+          bookId={book.id}
+          title={book.title}
+          onClose={() => setDeleting(false)}
+          onDeleted={() => {
+            setDeleting(false);
+            showToast(`已删除《${book.title}》`);
+            navigate("/shelf");
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -253,6 +287,24 @@ function volumeLabel(volume: Volume): string {
   if (volume.idx < 0) return "未分卷";
   return volume.title || `第 ${volume.idx + 1} 卷`;
 }
+
+/** 连载状态的人话；后端未升级（undefined）按未知处理。 */
+function serialLabel(status: SerialStatus | undefined): string {
+  if (status === "ongoing") return "连载中";
+  if (status === "completed") return "已完结";
+  return "状态未知";
+}
+
+/** 最后一章：优先用后端给的 lastChapterTitle/lastChapterIdx，缺省时退回「暂无章节」。 */
+function lastChapterLabel(book: BookDetail): string {
+  const title = (book.lastChapterTitle ?? "").trim();
+  const idx = book.lastChapterIdx;
+  if (title && typeof idx === "number" && idx >= 0) return `第 ${idx + 1} 章 · ${title}`;
+  if (title) return title;
+  if (typeof idx === "number" && idx >= 0) return `第 ${idx + 1} 章`;
+  return "暂无章节";
+}
+
 interface MetaDraft {
   title: string;
   authors: string;
@@ -260,6 +312,7 @@ interface MetaDraft {
   tags: string;
   series: string;
   seriesIndex: string;
+  serialStatus: SerialStatus;
 }
 
 /** 作者列表：新契约带 authors；老数据只有主作者时按它兜底，两者都没有就是空。 */
@@ -278,6 +331,7 @@ function draftOf(book: BookDetail): MetaDraft {
     tags: (book.tags ?? []).join("，"),
     series: book.series ?? "",
     seriesIndex: book.seriesIndex ? String(book.seriesIndex) : "",
+    serialStatus: book.serialStatus ?? "",
   };
 }
 
@@ -328,6 +382,7 @@ function buildPatch(draft: MetaDraft, origin: MetaDraft): BookMetaPatch {
   if (seriesIndex !== parseSeriesIndex(origin.seriesIndex)) patch.seriesIndex = seriesIndex;
   const tags = parseTags(draft.tags);
   if (tags.join("\u0000") !== parseTags(origin.tags).join("\u0000")) patch.tags = tags;
+  if (draft.serialStatus !== origin.serialStatus) patch.serialStatus = draft.serialStatus;
   return patch;
 }
 
@@ -431,6 +486,19 @@ function BookEditForm({
           placeholder="例如 武侠, 连载（逗号或回车分隔，重复自动去掉）"
           onChange={(e) => update("tags", e.target.value)}
         />
+      </div>
+      <div className="field">
+        <label htmlFor="meta-serial-status">连载状态</label>
+        <select
+          className="input"
+          id="meta-serial-status"
+          value={draft.serialStatus}
+          onChange={(e) => update("serialStatus", e.target.value)}
+        >
+          <option value="">未知</option>
+          <option value="ongoing">连载中</option>
+          <option value="completed">已完结</option>
+        </select>
       </div>
       <div className="field">
         <label htmlFor="meta-series">系列</label>

@@ -2,6 +2,12 @@
 
 export type BookStatus = "parsed" | "pending" | "failed";
 
+/**
+ * 连载状态（P0）：与解析状态 `status` 是两回事，后者说的是入库处理进度。
+ * `""` = 未知（存量书回填值，不猜）。
+ */
+export type SerialStatus = "" | "ongoing" | "completed";
+
 /** 导入时从文件带出的附加元数据；目录导入的老书这些字段缺省，前端一律按「没有」处理。 */
 export interface BookMeta {
   language?: string;
@@ -30,6 +36,8 @@ export interface BookMetaPatch {
   series?: string;
   /** 系列序号；传 0 即清空。 */
   seriesIndex?: number;
+  /** 连载状态；`""` 即未知。其它取值后端 400 `invalid_param`。 */
+  serialStatus?: SerialStatus;
 }
 
 export interface UploadAccepted {
@@ -90,6 +98,12 @@ export interface Volume {
 export interface BookDetail extends BookSummary {
   /** 有序作者列表；存量书按主作者兜底，所以通常至少一项。authorName 仍是主作者。 */
   authors: string[];
+  /** 连载状态；后端未升级时缺省，前端一律按 `""`（未知）处理。 */
+  serialStatus?: SerialStatus;
+  /** 最后一章（idx 最大的章节）的标题；书还没有章节时缺省 */
+  lastChapterTitle?: string;
+  /** 最后一章的章序（从 0 起）；书还没有章节时缺省 */
+  lastChapterIdx?: number;
   encoding?: string;
   sourceName?: string;
   fileSize?: number;
@@ -233,4 +247,16 @@ export interface TagSummary {
   id: number;
   name: string;
   bookCount: number;
+}
+
+/** 自定义章节识别规则（全局）：导入时按顺序尝试，命中即作为章节边界。 */
+export interface ChapterRule {
+  name: string;
+  /** 正则源码（不带 /…/ 与 flag），后端按行匹配 */
+  pattern: string;
+}
+
+/** GET /api/settings/chapter-rules 的响应；PUT 是全量替换。 */
+export interface ChapterRules {
+  rules: ChapterRule[];
 }

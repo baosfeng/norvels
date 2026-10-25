@@ -85,6 +85,11 @@ export function useTags(options: { enabled?: boolean } = {}) {
   return useResource((signal: AbortSignal) => api.tags({ signal }), [], options);
 }
 
+/** 自定义章节识别规则（全局，最多 20 条）。 */
+export function useChapterRules() {
+  return useResource((signal: AbortSignal) => api.getChapterRules({ signal }), []);
+}
+
 /** 进度写入：失败不打断阅读，返回是否落库成功，供 UI 决定是否展示离线提示。 */
 export function useSaveProgress() {
   return useCallback(async (body: { bookId: number; chapterId: number; percent: number }, options?: RequestOptions) => {

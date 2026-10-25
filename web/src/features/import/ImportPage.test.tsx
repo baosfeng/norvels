@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ImportJob, UploadResult } from "../../api/types";
+import type { ChapterRule, ImportJob, UploadResult } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 import { TierRoute } from "../../layouts/TierRoute";
 
@@ -12,14 +12,27 @@ const jobState = {
   reload: vi.fn(),
 };
 
+const rulesState = {
+  data: { rules: [] as ChapterRule[] },
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
 const uploadImport = vi.fn<(files: File[], opts?: { force?: boolean; update?: boolean }) => Promise<UploadResult>>();
 const startImport = vi.fn(async () => ({ jobId: 1 }));
+const cancelImport = vi.fn<(id: number) => Promise<{ status: string }>>();
+const importJob = vi.fn<(id: number) => Promise<ImportJob>>();
+const putChapterRules = vi.fn<(rules: ChapterRule[]) => Promise<void>>();
 
-vi.mock("../../api/hooks", () => ({ useImportJobs: () => jobState }));
+vi.mock("../../api/hooks", () => ({
+  useImportJobs: () => jobState,
+  useChapterRules: () => rulesState,
+}));
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return { ...actual, api: { uploadImport, startImport } };
+  return { ...actual, api: { uploadImport, startImport, cancelImport, importJob, putChapterRules } };
 });
 
 const { ImportPage } = await import("./ImportPage");
@@ -213,5 +226,162 @@ describe("导入页：文件上传与逐文件友好报错", () => {
 
     expect(screen.queryByTestId("view:import")).toBeNull();
     expect(screen.queryByTestId("upload-panel")).toBeNull();
+  });
+});
+
+/** 运行中的任务：取消按钮只在它身上出现。 */
+const runningJob: ImportJob = {
+  id: 42,
+  sourceDir: "/path/to/txt",
+  status: "running",
+  total: 10,
+  imported: 3,
+  skipped: 1,
+  failed: 0,
+  startedAt: "2026-10-25T02:00:00.000Z",
+  finishedAt: null,
+  message: "",
+};
+
+describe("导入页：取消进行中的任务", () => {
+  beforeEach(() => {
+    jobState.data = { items: [runningJob] };
+    jobState.loading = false;
+    jobState.error = null;
+    jobState.reload.mockReset();
+    rulesState.data = { rules: [] };
+    rulesState.loading = false;
+    rulesState.error = null;
+    cancelImport.mockReset();
+    importJob.mockReset();
+  });
+
+  it("运行中任务给出取消入口，点击调取消接口并轮询到 canceled 后给出提示", async () => {
+    cancelImport.mockResolvedValueOnce({ status: "canceling" });
+    importJob.mockResolvedValueOnce({ ...runningJob, status: "canceled", imported: 3 });
+    render(<ImportPage />);
+
+    fireEvent.click(screen.getByTestId("import-cancel"));
+
+    await waitFor(() => expect(cancelImport).toHaveBeenCalledWith(42));
+    // 轮询拿到 canceled 才停：提示里带上是哪一单、保留了多少本
+    await waitFor(() => expect(screen.getByTestId("import-cancel-note").textContent).toContain("已取消"));
+    expect(importJob).toHaveBeenCalledWith(42);
+    expect(screen.getByTestId("import-cancel-note").textContent).toContain("3 本书");
+  });
+
+  it("取消失败把冲突翻成人话，不把后端错误甩给用户", async () => {
+    cancelImport.mockRejectedValueOnce(new ApiError("http", "conflict", 409, "conflict"));
+    render(<ImportPage />);
+
+    fireEvent.click(screen.getByTestId("import-cancel"));
+
+    await waitFor(() => expect(screen.getByTestId("import-cancel-note").textContent).toContain("已经结束"));
+  });
+
+  it("没有运行中的任务时不给取消入口", () => {
+    jobState.data = { items: [] };
+    render(<ImportPage />);
+
+    expect(screen.queryByTestId("import-cancel")).toBeNull();
+    expect(screen.getByTestId("state:empty")).toBeTruthy();
+  });
+});
+
+describe("导入页：章节识别规则", () => {
+  beforeEach(() => {
+    jobState.data = { items: [] };
+    jobState.loading = false;
+    jobState.error = null;
+    jobState.reload.mockReset();
+    rulesState.data = { rules: [{ name: "分节符", pattern: "^=== 第\\d+ 节 ===$" }] };
+    rulesState.loading = false;
+    rulesState.error = null;
+    rulesState.reload.mockReset();
+    putChapterRules.mockReset();
+  });
+
+  it("回填已有规则，编辑后按全量 PUT 提交并说明生效时机", async () => {
+    putChapterRules.mockResolvedValueOnce(undefined);
+    render(<ImportPage />);
+
+    const name = screen.getByLabelText("规则 1 · 名称") as HTMLInputElement;
+    expect(name.value).toBe("分节符");
+    fireEvent.change(name, { target: { value: "分节" } });
+    fireEvent.click(screen.getByTestId("rules-save"));
+
+    await waitFor(() => expect(putChapterRules).toHaveBeenCalledTimes(1));
+    expect(putChapterRules.mock.calls[0][0]).toEqual([{ name: "分节", pattern: "^=== 第\\d+ 节 ===$" }]);
+    await waitFor(() => expect(screen.getByTestId("rules-saved").textContent).toContain("下次导入生效"));
+  });
+
+  it("新增与删除都是本地编辑，点保存才一次性提交全量", async () => {
+    putChapterRules.mockResolvedValueOnce(undefined);
+    render(<ImportPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "新增一条规则" }));
+    const names = screen.getAllByLabelText(/规则 \d+ · 名称/);
+    expect(names).toHaveLength(2);
+    fireEvent.change(names[1], { target: { value: "卷首" } });
+    fireEvent.change(screen.getAllByLabelText("正则")[1], { target: { value: "^卷[一二三]" } });
+    expect(putChapterRules).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("rules-save"));
+
+    await waitFor(() => expect(putChapterRules).toHaveBeenCalledTimes(1));
+    expect(putChapterRules.mock.calls[0][0]).toEqual([
+      { name: "分节符", pattern: "^=== 第\\d+ 节 ===$" },
+      { name: "卷首", pattern: "^卷[一二三]" },
+    ]);
+  });
+
+  it("非法正则在本地就拦下：不发请求，并说清是哪一条", () => {
+    render(<ImportPage />);
+
+    fireEvent.change(screen.getByLabelText("正则"), { target: { value: "([ " } });
+    fireEvent.click(screen.getByTestId("rules-save"));
+
+    expect(screen.getByTestId("rules-error-text").textContent).toContain("第 1 条规则的正则写得不对");
+    expect(putChapterRules).not.toHaveBeenCalled();
+  });
+
+  it("试切预览按命中行数报章数，不碰后端", () => {
+    rulesState.data = { rules: [{ name: "分节符", pattern: "^第\\d+章" }] };
+    render(<ImportPage />);
+
+    fireEvent.change(screen.getByLabelText("试切预览 · 粘一段正文"), {
+      target: { value: "第1章 开端\n正文\n第2章 承接\n第3章 结尾" },
+    });
+    fireEvent.click(screen.getByTestId("rules-preview-run"));
+
+    expect(screen.getByTestId("rules-preview").textContent).toContain("3 章");
+    expect(putChapterRules).not.toHaveBeenCalled();
+  });
+
+  it("一条规则都没命中时如实说明会退回内置切章", () => {
+    render(<ImportPage />);
+
+    fireEvent.change(screen.getByLabelText("试切预览 · 粘一段正文"), { target: { value: "一整段没有分节符的正文" } });
+    fireEvent.click(screen.getByTestId("rules-preview-run"));
+
+    expect(screen.getByTestId("rules-preview").textContent).toContain("退回内置切章");
+  });
+
+  it("规则区的加载 / 错误 / 空态各有可读状态", () => {
+    rulesState.loading = true;
+    const first = render(<ImportPage />);
+    expect(screen.getByTestId("rules-loading")).toBeTruthy();
+    first.unmount();
+
+    rulesState.loading = false;
+    rulesState.error = new ApiError("http", "boom", 500);
+    const second = render(<ImportPage />);
+    expect(screen.getByTestId("rules-error")).toBeTruthy();
+    second.unmount();
+
+    rulesState.error = null;
+    rulesState.data = { rules: [] };
+    render(<ImportPage />);
+    expect(screen.getByTestId("rules-empty")).toBeTruthy();
   });
 });

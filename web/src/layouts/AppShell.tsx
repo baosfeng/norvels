@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { ShelfModeContext, type ShelfMode } from "./shelfMode";
+import { ToastHost } from "../lib/toast";
 
 /**
  * PC 外壳：常驻侧栏 + 粘性顶栏。
@@ -56,6 +57,7 @@ export function AppShell() {
             <Outlet />
           </main>
         </div>
+        <ToastHost />
       </div>
     </ShelfModeContext.Provider>
   );

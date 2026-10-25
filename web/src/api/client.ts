@@ -6,6 +6,8 @@ import type {
   BookSummary,
   ChapterBrief,
   ChapterDetail,
+  ChapterRule,
+  ChapterRules,
   HealthReport,
   ImportJob,
   ImportTrendPoint,
@@ -206,9 +208,19 @@ export const api = {
       signal: opts.signal,
     });
   },
-  /** 改书名/作者/简介/标签/系列：任意子集，返回更新后的详情。 */
+  /** 改书名/作者/简介/标签/系列/连载状态：任意子集，返回更新后的详情。 */
   updateBook: (id: number, patch: BookMetaPatch, opts?: RequestOptions) =>
     request<BookDetail>(`/books/${id}`, { ...opts, method: "PATCH", body: patch }),
+  /** 删书：204，级联删章节/封面/进度；书不存在 404。 */
+  deleteBook: (id: number, opts?: RequestOptions) =>
+    request<void>(`/books/${id}`, { ...opts, method: "DELETE" }),
+  /** 取消运行中的导入任务：202 `{"status":"canceling"}`；任务不存在 404，已结束 409。 */
+  cancelImport: (id: number, opts?: RequestOptions) =>
+    request<{ status: string }>(`/import/jobs/${id}/cancel`, { ...opts, method: "POST" }),
+  getChapterRules: (opts?: RequestOptions) => request<ChapterRules>("/settings/chapter-rules", opts),
+  /** 全量替换规则；正则非法后端 400 `invalid_pattern`，条数/长度超限也是 400。 */
+  putChapterRules: (rules: ChapterRule[], opts?: RequestOptions) =>
+    request<void>("/settings/chapter-rules", { ...opts, method: "PUT", body: { rules } }),
   // limit 默认 5、上限 50（后端 intQuery 约束），传错值会 400
   readingProgress: (opts?: RequestOptions, limit?: number) =>
     request<{ items: ReadingProgress[] }>(`/reading/progress${query({ limit })}`, opts),

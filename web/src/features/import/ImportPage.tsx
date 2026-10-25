@@ -1,8 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useImportJobs } from "../../api/hooks";
-import { api } from "../../api/client";
+import { ApiError, api } from "../../api/client";
+import type { ImportJob } from "../../api/types";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatDate } from "../../lib/format";
+import { ChapterRulesPanel } from "./ChapterRulesPanel";
 import { UploadPanel } from "./UploadPanel";
 
 /**
@@ -19,12 +21,59 @@ export function ImportPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [showErrors, setShowErrors] = useState(false);
+  // 正在取消的任务 id（按钮变为「正在取消…」），以及取消结果的人话提示
+  const [canceling, setCanceling] = useState<number | null>(null);
+  const [canceledNote, setCanceledNote] = useState("");
+  // 取消发出后要轮询的任务 id：等到 canceled 才停，不等列表刷新碰运气
+  const [watchId, setWatchId] = useState<number | null>(null);
 
   const jobs = data?.items ?? [];
   const running = jobs.find((j) => j.status === "running");
   const finished = jobs.filter((j) => j.status !== "running");
   // 以 txt / epub / zip 结尾就按单文件处理：递归选项对它没有意义，勾上也不会改变结果。
   const isSingleFile = /\.(txt|epub|zip)$/i.test(dir.trim());
+
+  // 取消后的轮询：每 2 秒问一次任务状态，见到 canceled / 已结束就停并刷新列表
+  useEffect(() => {
+    if (watchId === null) return;
+    let active = true;
+    const tick = async () => {
+      try {
+        const job = await api.importJob(watchId);
+        if (!active) return;
+        if (job.status === "canceled") {
+          setCanceling(null);
+          setCanceledNote(`任务 #${watchId} 已取消，已导入的 ${job.imported} 本书保留在书架。`);
+          setWatchId(null);
+          reload();
+        } else if (job.status === "completed" || job.status === "failed") {
+          setCanceling(null);
+          setWatchId(null);
+          reload();
+        }
+      } catch {
+        /* 单次轮询失败不中断：下一轮再试，卸载时整体清掉 */
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 2000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [watchId, reload]);
+
+  async function cancelJob(job: ImportJob) {
+    setCanceling(job.id);
+    setCanceledNote("");
+    try {
+      await api.cancelImport(job.id);
+      setWatchId(job.id);
+    } catch (err) {
+      setCanceling(null);
+      setCanceledNote(cancelErrorText(err));
+    }
+  }
 
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,6 +160,7 @@ export function ImportPage() {
           {message ? <p className="meta" role="status">{message}</p> : null}
         </form>
         <UploadPanel onSubmitted={reload} disabled={Boolean(running)} />
+        <ChapterRulesPanel />
         </div>
 
         <div>
@@ -126,6 +176,20 @@ export function ImportPage() {
                 <span className="meta" style={{ marginLeft: "auto" }}>
                   开始于 {formatDate(running.startedAt)}
                 </span>
+                {canceling === running.id ? (
+                  <span className="meta" data-testid="import-cancel-pending">
+                    正在取消…
+                  </span>
+                ) : (
+                  <button
+                    className="btn btn-ghost btn-danger"
+                    type="button"
+                    onClick={() => void cancelJob(running)}
+                    data-testid="import-cancel"
+                  >
+                    取消任务
+                  </button>
+                )}
               </div>
               <div className="progress">
                 <span style={{ width: `${progressOf(running.imported + running.skipped + running.failed, running.total)}%` }} />
@@ -187,6 +251,12 @@ export function ImportPage() {
             <EmptyPanel title="当前没有进行中的任务" description="拖入文件或填好左边的路径，开始一次导入。" />
           )}
 
+          {canceledNote ? (
+            <p className="meta" role="status" data-testid="import-cancel-note">
+              {canceledNote}
+            </p>
+          ) : null}
+
           <div className="import-jobs">
             <div className="head">
               <h2>任务历史</h2>
@@ -238,6 +308,16 @@ export function ImportPage() {
 function progressOf(done: number, total: number): number {
   if (!total || total <= 0) return 0;
   return Math.min(100, Math.round((done / total) * 100));
+}
+
+/** 取消失败的文案：任务消失 / 已结束 / 其它，都说成人话。 */
+function cancelErrorText(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404) return "这个任务已经不在了，刷新页面试试。";
+    if (error.status === 409) return "任务已经结束了，不用再取消。";
+    if (error.kind === "timeout") return "取消请求超时了，稍后再试。";
+  }
+  return "取消没能生效，稍后再试。";
 }
 
 function statusLabel(status: string, failed: number): string {

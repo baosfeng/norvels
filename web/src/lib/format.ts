@@ -8,6 +8,15 @@ export function formatCount(n: number): string {
   return `${(n / 100_000_000).toFixed(1)} 亿`.replace(".0 ", " ");
 }
 
+/**
+ * 单章字数 → 「1,234 字」。目录里每章都要显示，所以不用 Intl（构造器有开销），
+ * 直接给整数加千分位；四舍五入到整数。
+ */
+export function formatWords(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0 字";
+  return `${String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} 字`;
+}
+
 /** 字节转 MB/GB，用于库体积展示。 */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "—";

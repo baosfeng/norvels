@@ -7,6 +7,7 @@ import { ErrorPanel, LoadingPanel, EmptyPanel } from "../../components/StatePane
 import { ChapterList } from "../book/ChapterList";
 import { useTheme, type Theme } from "../../lib/theme";
 import { useIsH5 } from "../../lib/tier";
+import { formatWords } from "../../lib/format";
 import { useReaderControls } from "../../lib/useReaderControls";
 import { useSwipePaging } from "../../lib/useSwipePaging";
 import { prefersReducedMotion } from "../../lib/theme";
@@ -138,6 +139,8 @@ export function ReaderPage() {
   const swipeRef = useSwipePaging(swipeHandlers);
 
   const bookTitle = book.data?.title ?? chapter.data?.bookTitle ?? "";
+  // 当前章字数：正文响应里就有，不需要额外请求
+  const chapterWords = chapter.data ? formatWords(chapter.data.wordCount) : "";
 
   return (
     <div
@@ -157,9 +160,9 @@ export function ReaderPage() {
         </Link>
         <div className="reader-top-title">
           <strong>{bookTitle || "正在打开"}</strong>
-          <span>
+          <span data-testid="reader-top-progress">
             {chapters.length > 0 && index >= 0
-              ? `第 ${index + 1} / ${chapters.length} 章`
+              ? `第 ${index + 1} / ${chapters.length} 章${chapterWords ? ` · ${chapterWords}` : ""}`
               : "正在读取目录"}
           </span>
         </div>
@@ -218,6 +221,10 @@ export function ReaderPage() {
               <div className="reader-progress-row">
                 <span>
                   第 <strong className="num">{index + 1}</strong> / {chapters.length} 章
+                  <span className="word" data-testid="reader-word">
+                    {" "}
+                    · {formatWords(chapter.data.wordCount)}
+                  </span>
                 </span>
                 <span>
                   全书进度 <strong className="num">{Math.round(percent * 100)}</strong>%

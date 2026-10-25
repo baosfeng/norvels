@@ -182,6 +182,20 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     expect(headerHidden()).toBe("true");
   });
 
+  it("控制层并排显示当前章与字数，翻章后一起更新", () => {
+    renderReader();
+
+    act(() => tap());
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章 · 2,000 字");
+
+    act(() => {
+      fireEvent.click(screen.getByLabelText("下一章"));
+    });
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 / 3 章 · 2,100 字");
+    // 正文底部的进度行同样带字数，口径一致
+    expect(screen.getByTestId("reader-word").textContent).toContain("2,100 字");
+  });
+
   it("浏览器没有全屏 API 时不渲染全屏按钮", () => {
     renderReader();
 
