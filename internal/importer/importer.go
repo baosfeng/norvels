@@ -31,8 +31,9 @@ type Options struct {
 	MinChapters int
 	// ParserOpts 透传给 parser。
 	ParserOpts parser.Options
-	// ChapterRules 是调用方传入的自定义切章规则（api 从 settings 读出后注入），
-	// 按顺序优先于内置切章策略；importer 自己不读 settings，不依赖 store 的新表。
+	// ChapterRules 是调用方传入的自定义切章规则，按顺序优先于内置切章策略、命中即作为
+	// 章节边界。api 的两个导入入口都在请求线程里读 settings 再注入（loadChapterRules）；为空
+	// 表示只用内置策略——importer 自己不读 settings，也不依赖 store 的设置表。
 	ChapterRules []parser.Rule
 	// JobID 由外部先 CreateImportJob 再传入（api 的 POST /api/import 走这条路径）。
 	// >0 时复用该任务（要求 status=running），0 表示由 Run 内部创建。

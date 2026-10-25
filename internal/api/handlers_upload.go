@@ -106,7 +106,8 @@ func (s *Server) handleUploadImport(w http.ResponseWriter, r *http.Request) {
 		s.discardUpload(sess.dir)
 		return
 	}
-	opts := uploadOptions(sess, job.ID)
+	// 与目录导入同一条规则来源：请求线程里读一次 settings 再注入。
+	opts := uploadOptions(sess, job.ID, s.loadChapterRules(r.Context()))
 	ctx, cancel := context.WithCancel(s.baseContext())
 	s.spawnImport(job.ID, cancel, func() { s.runUploadImport(ctx, cancel, job.ID, sess, opts) })
 	writeJSON(w, http.StatusAccepted, uploadResponse{JobID: job.ID, Accepted: sess.accepted, Rejected: sess.rejected})
@@ -114,13 +115,15 @@ func (s *Server) handleUploadImport(w http.ResponseWriter, r *http.Request) {
 
 // uploadOptions 把会话状态翻译成 importer.Options：force/update 都是用户在上传表单里
 // 显式勾选的开关，缺省一律 false（追更不能默认打开，否则一次误操作就会改库）。
-func uploadOptions(sess *uploadSession, jobID int64) importer.Options {
+// rules 与目录导入同源（loadChapterRules），上传路径同样吃自定义切章规则。
+func uploadOptions(sess *uploadSession, jobID int64, rules []parser.Rule) importer.Options {
 	return importer.Options{
-		Dir:        sess.dir,
-		Force:      sess.force,
-		Update:     sess.update,
-		ParserOpts: parser.DefaultOptions(),
-		JobID:      jobID,
+		Dir:          sess.dir,
+		Force:        sess.force,
+		Update:       sess.update,
+		ParserOpts:   parser.DefaultOptions(),
+		ChapterRules: rules,
+		JobID:        jobID,
 	}
 }
 

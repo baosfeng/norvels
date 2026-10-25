@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
+	"norvels/internal/parser"
 	"norvels/internal/store"
 )
 
@@ -16,6 +18,34 @@ const (
 	maxChapterRuleRunes     = 200
 	maxChapterRuleNameRunes = 60
 )
+
+// loadChapterRules 读取全局章节规则并编译成 parser.Rule，供导入链路注入。
+//
+// 这是规则唯一的作用点：目录导入与上传导入的 Options.ChapterRules 都由它填。
+// 单条编译失败只跳过并记日志、不中断导入：settings 里的规则是 PUT 校验过的，
+// 但库可能被手改过，一条坏规则不该让整次导入失败（退化成「这条不生效」）。
+//
+// 没有任何规则时返回 nil——nil 与「不启用自定义规则」等价，避免空切片改变既有行为。
+func (s *Server) loadChapterRules(ctx context.Context) []parser.Rule {
+	stored, err := s.st.ListChapterRules(ctx)
+	if err != nil {
+		s.logf("api: 读取章节规则失败，本次导入只用内置策略: %v", err)
+		return nil
+	}
+	rules := make([]parser.Rule, 0, len(stored))
+	for _, rule := range stored {
+		pattern, cerr := regexp.Compile(rule.Pattern)
+		if cerr != nil {
+			s.logf("api: 跳过非法章节规则 name=%q pattern=%q: %v", rule.Name, rule.Pattern, cerr)
+			continue
+		}
+		rules = append(rules, parser.Rule{Name: rule.Name, Pattern: pattern})
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	return rules
+}
 
 // chapterRulesBody 是 GET 响应与 PUT 请求体（结构相同，全量替换）。
 type chapterRulesBody struct {

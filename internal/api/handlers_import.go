@@ -50,7 +50,8 @@ func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	opts := importOptions(req, source, job.ID)
+	// 自定义章节规则在请求线程里读一次并注入：导入 goroutine 不再回头查 settings。
+	opts := importOptions(req, source, job.ID, s.loadChapterRules(r.Context()))
 
 	// 导入任务随服务退出或用户主动取消而停止（Config.Context 由 serve 的 signal ctx 注入）。
 	ctx, cancel := context.WithCancel(s.baseContext())
@@ -141,21 +142,25 @@ func (s *Server) acquireImportJob(w http.ResponseWriter, r *http.Request, dir st
 }
 
 // importOptions 把请求体翻译成 importer.Options（recursive 缺省为 true）。
+//
+// rules 由调用方从 settings 读出并编译后传入（见 loadChapterRules）：导入链路不读
+// settings，规则是显式参数——省掉这条参数就是「规则能存能读但导入不生效」。
 // dir 既可以是目录也可以是单个 .txt 文件；recursive 对文件无意义，会被扫描器忽略。
-func importOptions(req importRequest, dir string, jobID int64) importer.Options {
+func importOptions(req importRequest, dir string, jobID int64, rules []parser.Rule) importer.Options {
 	recursive := true
 	if req.Recursive != nil {
 		recursive = *req.Recursive
 	}
 	return importer.Options{
-		Dir:        dir,
-		Recursive:  recursive,
-		Force:      req.Force,
-		Update:     req.Update,
-		DryRun:     req.DryRun,
-		Workers:    req.Workers,
-		ParserOpts: parser.DefaultOptions(),
-		JobID:      jobID,
+		Dir:          dir,
+		Recursive:    recursive,
+		Force:        req.Force,
+		Update:       req.Update,
+		DryRun:       req.DryRun,
+		Workers:      req.Workers,
+		ParserOpts:   parser.DefaultOptions(),
+		ChapterRules: rules,
+		JobID:        jobID,
 	}
 }
 

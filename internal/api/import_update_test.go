@@ -9,12 +9,12 @@ import (
 
 // TestImportOptionsCarriesUpdate POST /api/import 的 update 布尔要原样进 importer.Options。
 func TestImportOptionsCarriesUpdate(t *testing.T) {
-	on := importOptions(importRequest{Dir: "/path/to/books", Update: true}, "/path/to/books", 9)
+	on := importOptions(importRequest{Dir: "/path/to/books", Update: true}, "/path/to/books", 9, nil)
 	if !on.Update || on.JobID != 9 || on.Dir != "/path/to/books" {
 		t.Fatalf("importer.Options = %+v，期望 Update=true 透传", on)
 	}
 	// 默认必须是 false：追更是显式开关，缺省打开会让一次误操作就改库。
-	off := importOptions(importRequest{Dir: "/path/to/books"}, "/path/to/books", 9)
+	off := importOptions(importRequest{Dir: "/path/to/books"}, "/path/to/books", 9, nil)
 	if off.Update {
 		t.Fatalf("未传 update 时 Options.Update = true，期望 false")
 	}
@@ -55,7 +55,7 @@ func TestUploadParsesUpdateField(t *testing.T) {
 	if !sess.update || !sess.force {
 		t.Fatalf("force/update = %v/%v，期望都为 true", sess.force, sess.update)
 	}
-	opts := uploadOptions(sess, 12)
+	opts := uploadOptions(sess, 12, nil)
 	if !opts.Update || !opts.Force || opts.JobID != 12 || opts.Dir != sess.dir {
 		t.Fatalf("importer.Options = %+v，期望 Update/Force/JobID/Dir 全部透传", opts)
 	}
@@ -64,7 +64,7 @@ func TestUploadParsesUpdateField(t *testing.T) {
 // TestUploadUpdateDefaultsOff 表单没给 update 时必须是 false。
 func TestUploadUpdateDefaultsOff(t *testing.T) {
 	sess := parseBoolFields(t)
-	if sess.update || uploadOptions(sess, 1).Update {
+	if sess.update || uploadOptions(sess, 1, nil).Update {
 		t.Fatal("未传 update 时 update 必须为 false（追更不能默认打开）")
 	}
 }
