@@ -12,7 +12,7 @@ func TestMigrate0011AddsReadStatusAndBookmarks(t *testing.T) {
 	st := newTestStore(t)
 	requireReadStatusSchema(t, ctx, st)
 
-	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version = 11"); err != nil {
+	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version >= 11"); err != nil {
 		t.Fatalf("回退版本: %v", err)
 	}
 	if _, err := st.MigrateTo(ctx, LatestVersion()); err != nil {

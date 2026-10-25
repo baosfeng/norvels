@@ -25,7 +25,7 @@ func TestMigrate0008AddsBookMetadata(t *testing.T) {
 		t.Fatalf("book_covers 表缺失: exists=%v err=%v", exists, err)
 	}
 
-	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version = 8"); err != nil {
+	if _, err := st.DB().ExecContext(ctx, "DELETE FROM schema_migrations WHERE version >= 8"); err != nil {
 		t.Fatalf("回退版本: %v", err)
 	}
 	if _, err := st.MigrateTo(ctx, LatestVersion()); err != nil {

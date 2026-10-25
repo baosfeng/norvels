@@ -126,6 +126,42 @@ func addBookTagsSourceStep(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// addP3ColumnsStep 给 books / reading_progress 补 0014 的列（幂等）。
+//
+// 与 0008/0010/0011 同理：SQLite 没有 ADD COLUMN IF NOT EXISTS，版本回退重跑会撞
+// "duplicate column name"。旧库升级路径上 reading_progress 可能还不存在（0003 之前
+// 的畸形库），表都没有就没什么可加的，直接跳过。
+func addP3ColumnsStep(ctx context.Context, tx *sql.Tx) error {
+	cols := []struct{ table, name, ddl string }{
+		{"books", "rating", "rating INTEGER NOT NULL DEFAULT 0"},
+		{"books", "new_chapters", "new_chapters INTEGER NOT NULL DEFAULT 0"},
+		{"books", "last_chapter_at", "last_chapter_at TEXT NOT NULL DEFAULT ''"},
+		{"reading_progress", "para_index", "para_index INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, c := range cols {
+		if err := addColumnIfMissing(ctx, tx, c.table, c.name, c.ddl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addColumnIfMissing 探测表/列后再 ALTER：表不存在（老库升级路径）或列已在都跳过。
+func addColumnIfMissing(ctx context.Context, tx *sql.Tx, table, column, ddl string) error {
+	exists, err := tableExistsInTx(ctx, tx, table)
+	if err != nil || !exists {
+		return err
+	}
+	has, err := columnExistsInTx(ctx, tx, table, column)
+	if err != nil || has {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN "+ddl); err != nil {
+		return fmt.Errorf("add column %s.%s: %w", table, column, err)
+	}
+	return nil
+}
+
 // tableExistsInTx 在事务内判断表/视图是否存在（迁移步骤专用，不改动连接级状态）。
 func tableExistsInTx(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 	var n int
@@ -183,6 +219,10 @@ var migrationStepsByVersion = map[int][]migrationStep{
 	13: {{
 		Name: "dedupe volume titles and add unique index",
 		Run:  dedupeVolumeTitlesStep,
+	}},
+	14: {{
+		Name: "add p3 rating and progress columns",
+		Run:  addP3ColumnsStep,
 	}},
 }
 

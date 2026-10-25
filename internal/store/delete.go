@@ -12,6 +12,8 @@ import (
 // 这些表在 schema 上已声明 ON DELETE CASCADE（open.go 打开 foreign_keys(ON)），
 // 这里仍逐条显式删除。理由：删除不可逆，级联语义藏在 schema 里，后续改表的人
 // 未必记得还有这条删除路径；显式清单让「删一本书到底动了哪些表」可被审查。
+// reading_sessions / collection_books（0014）根本没有 books 外键，只有这张清单会清
+// 它们——漏一行就是永远删不掉的孤儿数据。
 // chapters 排第一：章节行参与压缩块寻址与检索索引维护，先清干净再动别的。
 var bookCascadeTables = []string{
 	"chapters",
@@ -22,6 +24,8 @@ var bookCascadeTables = []string{
 	"reading_progress",
 	"bookmarks",
 	"book_tags",
+	"reading_sessions",
+	"collection_books",
 }
 
 // DeleteBook 单事务删除一本书及其全部从属数据，并刷新作者聚合列。
