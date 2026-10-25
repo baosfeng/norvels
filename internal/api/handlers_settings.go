@@ -39,6 +39,9 @@ func (s *Server) handleGetChapterRules(w http.ResponseWriter, r *http.Request) {
 
 // handlePutChapterRules 处理 PUT /api/settings/chapter-rules：全量替换。
 //
+// 成功返回 204 空 body（与 PUT /api/reading/progress 一致）：这次写入没有用户需要的
+// 回执，前端按「无内容」处理即可；回 200 + JSON 反而会让空 body 被判成无法识别。
+//
 // 三道校验都在这里做完再落库（正则能编译、条数 ≤20、单条正则 ≤200 字）：
 // 跨信任边界的校验只做一次，store 只负责序列化。
 func (s *Server) handlePutChapterRules(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +58,7 @@ func (s *Server) handlePutChapterRules(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, "")
 		return
 	}
-	writeJSON(w, http.StatusOK, chapterRulesBody{Rules: rules})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // normalizeChapterRules 校验并归一化整批规则。

@@ -38,8 +38,12 @@ func TestChapterRulesPutAndGet(t *testing.T) {
 		{Name: "分节符", Pattern: "^=== 第\\d+ 节 ===$"},
 		{Name: "", Pattern: "^第[一二三四五六七八九十]+卷"},
 	}
-	if rr := e.putJSON(chapterRulesPath, map[string]any{"rules": rules}); rr.Code != http.StatusOK {
-		t.Fatalf("PUT 状态码 = %d，body=%s", rr.Code, rr.Body.String())
+	rr := e.putJSON(chapterRulesPath, map[string]any{"rules": rules})
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("PUT 状态码 = %d，期望 204，body=%s", rr.Code, rr.Body.String())
+	}
+	if rr.Body.Len() != 0 {
+		t.Errorf("204 不该有响应体，实际 %q", rr.Body.String())
 	}
 	got := decodeBody[chapterRulesBody](t, e.get(chapterRulesPath))
 	if len(got.Rules) != 2 {
@@ -54,8 +58,8 @@ func TestChapterRulesPutAndGet(t *testing.T) {
 	}
 
 	// 全量替换：空列表即清空。
-	if rr := e.putJSON(chapterRulesPath, map[string]any{"rules": []store.ChapterRule{}}); rr.Code != http.StatusOK {
-		t.Fatalf("清空 PUT 状态码 = %d", rr.Code)
+	if rr := e.putJSON(chapterRulesPath, map[string]any{"rules": []store.ChapterRule{}}); rr.Code != http.StatusNoContent {
+		t.Fatalf("清空 PUT 状态码 = %d，期望 204", rr.Code)
 	}
 	if got := decodeBody[chapterRulesBody](t, e.get(chapterRulesPath)); len(got.Rules) != 0 {
 		t.Errorf("清空后仍有规则: %+v", got.Rules)
@@ -89,7 +93,7 @@ func TestChapterRulesLimits(t *testing.T) {
 
 	// 正好 200 字是可接受的边界值。
 	atLimit := []store.ChapterRule{{Name: "边界", Pattern: "^" + strings.Repeat("a", 197) + "$"}}
-	if rr := e.putJSON(chapterRulesPath, map[string]any{"rules": atLimit}); rr.Code != http.StatusOK {
-		t.Fatalf("200 字边界状态码 = %d，body=%s", rr.Code, rr.Body.String())
+	if rr := e.putJSON(chapterRulesPath, map[string]any{"rules": atLimit}); rr.Code != http.StatusNoContent {
+		t.Fatalf("200 字边界状态码 = %d，期望 204，body=%s", rr.Code, rr.Body.String())
 	}
 }
