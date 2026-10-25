@@ -16,7 +16,9 @@ type ReadingProgress struct {
 	ChapterIdx   int     `json:"chapterIdx"`
 	ChapterTitle string  `json:"chapterTitle"`
 	Percent      float64 `json:"percent"`
-	UpdatedAt    string  `json:"updatedAt"`
+	// ParaIndex 是章内段落位置（0 起），用于回到上次读到的段落。
+	ParaIndex int    `json:"paraIndex"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // ListReadingProgress 返回最近在读的前 limit 条（按 updated_at 倒序）。
@@ -32,7 +34,7 @@ func (s *Store) ListReadingProgress(ctx context.Context, limit int) ([]ReadingPr
 	}
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT p.book_id, COALESCE(b.title, ''), p.chapter_id, p.chapter_idx, "+
-			"COALESCE(c.title, ''), p.percent, p.updated_at "+
+			"COALESCE(c.title, ''), p.percent, p.para_index, p.updated_at "+
 			"FROM reading_progress p "+
 			"LEFT JOIN books b ON b.id = p.book_id "+
 			"LEFT JOIN chapters c ON c.id = p.chapter_id "+
@@ -46,7 +48,7 @@ func (s *Store) ListReadingProgress(ctx context.Context, limit int) ([]ReadingPr
 	for rows.Next() {
 		var it ReadingProgress
 		if err := rows.Scan(&it.BookID, &it.BookTitle, &it.ChapterID, &it.ChapterIdx,
-			&it.ChapterTitle, &it.Percent, &it.UpdatedAt); err != nil {
+			&it.ChapterTitle, &it.Percent, &it.ParaIndex, &it.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("store: scan reading progress: %w", err)
 		}
 		items = append(items, it)
@@ -73,6 +75,9 @@ func (s *Store) SaveReadingProgress(ctx context.Context, p ReadingProgress) erro
 	if p.Percent < 0 || p.Percent > maxPercent {
 		return fmt.Errorf("%w: percent %v 必须在 0~1 之间", ErrInvalidArgument, p.Percent)
 	}
+	if p.ParaIndex < 0 {
+		return fmt.Errorf("%w: paraIndex %d 必须不小于 0", ErrInvalidArgument, p.ParaIndex)
+	}
 	if err := s.assertChapterOfBook(ctx, p.BookID, p.ChapterID); err != nil {
 		return err
 	}
@@ -92,11 +97,12 @@ func (s *Store) saveProgressTx(ctx context.Context, p ReadingProgress, idx int) 
 	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
 
 	if _, err = tx.ExecContext(ctx,
-		"INSERT INTO reading_progress(book_id, chapter_id, chapter_idx, percent, updated_at) "+
-			"VALUES (?, ?, ?, ?, ?) "+
+		"INSERT INTO reading_progress(book_id, chapter_id, chapter_idx, percent, para_index, updated_at) "+
+			"VALUES (?, ?, ?, ?, ?, ?) "+
 			"ON CONFLICT(book_id) DO UPDATE SET chapter_id=excluded.chapter_id, "+
-			"chapter_idx=excluded.chapter_idx, percent=excluded.percent, updated_at=excluded.updated_at",
-		p.BookID, p.ChapterID, idx, p.Percent, formatTime(nowUTC())); err != nil {
+			"chapter_idx=excluded.chapter_idx, percent=excluded.percent, "+
+			"para_index=excluded.para_index, updated_at=excluded.updated_at",
+		p.BookID, p.ChapterID, idx, p.Percent, p.ParaIndex, formatTime(nowUTC())); err != nil {
 		return fmt.Errorf("store: save reading progress: %w", err)
 	}
 	// 阅读状态的唯一自动转移：'' → reading，与进度同事务落地。
