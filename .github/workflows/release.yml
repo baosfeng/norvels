@@ -43,7 +43,7 @@ jobs:
 
       # arm64 在 amd64 runner 上靠 QEMU 模拟；buildx 负责多平台交叉构建。
       - name: 启用 QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: 启用 Buildx
         uses: docker/setup-buildx-action@v3
 
