@@ -16,7 +16,7 @@
 
 | 组件 | 路径 | 职责 | 对外契约 |
 |---|---|---|---|
-| **parser** | `internal/parser` | 纯函数：字节流 → `*parser.Book`。编码探测（UTF-8/BOM/GB18030/UTF-16/Big5）、清洗广告行、书名/作者抽取（文件名 + 正文元信息块）、章节切分（第X章/节/回/卷/部、数字行、Chapter N、序章/楔子/番外；无标记短篇兜底）、合集拆分、字数统计 | `parser.ParseFile(path) (*Book, error)`、`parser.ParseBytes(name, b) (*Book, error)` |
+| **parser** | `internal/parser` | 纯函数：字节流 → `*parser.Book`。编码探测（UTF-8/BOM/GB18030/UTF-16/Big5/Shift-JIS/Big5-HKSCS）、清洗广告行、书名/作者抽取（文件名 + 正文元信息块）、章节切分（第X章/节/回/卷/部、数字行、Chapter N、序章/楔子/番外；无标记短篇兜底）、合集拆分、字数统计 | `parser.ParseFile(path) (*Book, error)`、`parser.ParseBytes(name, b) (*Book, error)` |
 | **store** | `internal/store` | SQLite 打开/PRAGMA/**版本化迁移**、所有写读查询、事务批次 | `store.Open(dsn)`、`Migrate()` / `MigrateTo(target)`、`*store.Store` 上的方法（见 `internal/store/types.go`） |
 | **importer** | `internal/importer` | 目录扫描（递归）、并发 worker、去重（文件 SHA-256 + 书名作者指纹）、导入任务记录、失败清单、断点续跑、进度回调 | `importer.Run(ctx, store, importer.Options)` |
 | **api** | `internal/api` | REST API、中间件（日志/gzip/CORS/panic 恢复）、分页、搜索、静态前端 `http.Handler` | `api.New(store, embedFS, opts) http.Handler` |
