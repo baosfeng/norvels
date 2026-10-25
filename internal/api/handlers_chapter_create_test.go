@@ -66,6 +66,9 @@ func TestCreateChapterValidation(t *testing.T) {
 	requireError(t, sendBooks(t, e, http.MethodPost, target,
 		fmt.Sprintf(`{"title":"标题","content":"正文","afterChapterId":%d}`, foreign)),
 		http.StatusBadRequest, codeInvalidParam)
+	longTitle := strings.Repeat("题", 250) // store 侧标题上限 200 字 → 参数错误 400
+	requireError(t, sendBooks(t, e, http.MethodPost, target,
+		fmt.Sprintf(`{"title":%q,"content":"正文"}`, longTitle)), http.StatusBadRequest, codeInvalidParam)
 	requireError(t, sendBooks(t, e, http.MethodPost, "/api/books/999999/chapters",
 		`{"title":"标题","content":"正文"}`), http.StatusNotFound, codeNotFound)
 }
