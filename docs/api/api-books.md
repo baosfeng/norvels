@@ -3,7 +3,7 @@
 ## 书籍
 
 ### GET /api/books
-查询参数：`q`（书名/作者模糊）、`authorId`、`tag`、`readStatus`=`want|reading|done`、`serialStatus`=`ongoing|completed|none`（`none` 筛「未知」）、`sort`=`updated|title|chapters|words|imported`（默认 updated）、`page`、`size`。留空 = 不过滤，非法值 400。
+查询参数：`q`（书名/作者模糊）、`authorId`、`tag`、`series`、`rating`=1–5（0 = 未评，不可筛）、`collection`（书单 id）、`readStatus`=`want|reading|done`、`serialStatus`=`ongoing|completed|none`（`none` 筛「未知」）、`sort`=`updated|title|chapters|words|imported|rating`（默认 updated）、`page`、`size`。留空 = 不过滤，非法值 400。
 
 ```json
 { "items": [{ "id": 1, "title": "山居杂记", "authorId": 12, "authorName": "示例作者",
@@ -32,11 +32,11 @@
 > `prevId`/`nextId` 为 0 表示到头；章节按 `(book_id, idx, id)` 排序。
 
 ### PATCH /api/books/{id}
-body 为任意子集：`title`、`author`、`authors`（**全量替换**，最多 10 个；空数组 = 清空作者）、`intro`、`tags`（**全量替换**）、`series`、`seriesIndex`、`serialStatus`、`readStatus`。
+body 为任意子集：`title`、`author`、`authors`（**全量替换**，最多 10 个；空数组 = 清空作者）、`intro`、`tags`（**全量替换**）、`series`、`seriesIndex`、`serialStatus`、`readStatus`、`rating`(0–5)、`publisher`、`pubDate`(YYYY-MM-DD)、`isbn`、`language`。
 
-- 成功 200，返回更新后的 BookDetail；`authors` 与 `author` 同时给出时 `authors` 优先；清空语义：`intro`/`series` 传 `""`，`seriesIndex` 传 `0`，`authors`/`tags` 传空数组；
+- 成功 200，返回更新后的 BookDetail；`authors` 与 `author` 同时给出时 `authors` 优先；清空语义：`intro`/`series`/`publisher`/`pubDate`/`isbn`/`language` 传 `""`，`seriesIndex`/`rating` 传 `0`，`authors`/`tags` 传空数组；
 - 空 body / 空对象 / 只含未知字段 / title 空白 → 400 `invalid_param`；id 非数字 → 400 `invalid_id`；书不存在 → 404；
-- `serialStatus` 只接受 `""|ongoing|completed`、`readStatus` 只接受 `""|want|reading|done`，其它值 400（两者与解析状态 `status` 互不覆写）；改作者会重算新旧作者的聚合列，改 `tags` 会清理孤儿标签。
+- `serialStatus` 只接受 `""|ongoing|completed`、`readStatus` 只接受 `""|want|reading|done`，其它值 400（两者与解析状态 `status` 互不覆写）；`rating` 越界或 `pubDate` 非 YYYY-MM-DD → 400；改作者会重算新旧作者的聚合列，改 `tags` 会清理孤儿标签。
 
 ### DELETE /api/books/{id}
 单事务级联删除 `chapters`/`chapter_blocks`/`volumes`/`book_covers`/`books_authors`/`reading_progress`/`bookmarks`/`book_tags`，并重算作者聚合（作者行保留）。成功 **204**；书不存在或已删 → 404 `not_found`；立即从书架/搜索/作者页消失，同一 `source_path` 可重新导入。

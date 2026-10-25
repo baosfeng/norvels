@@ -19,11 +19,11 @@
 ### GET /api/reading/progress
 最近在读（按更新时间倒序，默认 5 条）。
 ```json
-{ "items": [{ "bookId": 1, "bookTitle": "…", "chapterId": 42, "chapterIdx": 42, "chapterTitle": "第42章 …", "percent": 0.36, "updatedAt": "…" }] }
+{ "items": [{ "bookId": 1, "bookTitle": "…", "chapterId": 42, "chapterIdx": 42, "chapterTitle": "第42章 …", "percent": 0.36, "paraIndex": 12, "updatedAt": "…" }] }
 ```
 
 ### PUT /api/reading/progress
-body `{ "bookId": 1, "chapterId": 42, "percent": 0.36 }`，upsert，204。
+body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`paraIndex` 缺省 0），upsert，204。
 同事务内若该书 `readStatus = ""` 则置为 `reading`；`want` / `done` 不被覆盖（唯一自动转移）。
 无账号体系：单用户，进度直接挂 book/chapter（见 [ADR-0001](../adr/0001-public-release.md)）。
 
@@ -67,7 +67,7 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36 }`，upsert，204。
 - 阅读进度存 `reading_progress(book_id PK, chapter_id, chapter_idx, percent, updated_at)`，
   `book_id` 外键 `ON DELETE CASCADE`（删书自动清进度），按 `updated_at` 倒序取最近在读；
 - `PUT /api/reading/progress` 校验顺序：JSON 形状 → `bookId`/`chapterId` 为正 → `percent ∈ [0,1]`
-  → 章节存在且属于该书。分别返回 400 / 400 / 400 / 404，不做静默截断；
+  → `paraIndex ≥ 0` → 章节存在且属于该书。分别返回 400 / 400 / 400 / 400 / 404，不做静默截断；
 - `GET /api/health/report` 的每项统计**独立查询**：单项失败该字段为 `null` 并追加进 `warnings`，
   整体仍 200；分桶边界写死在 `internal/store/health.go`：
   - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+

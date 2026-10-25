@@ -175,18 +175,38 @@ docker run --rm --entrypoint /norvels \
 | GET | `/api/health` | 健康检查（`status`、`db`、`version`、`uptimeSeconds`） |
 | GET | `/api/stats` | 库级统计（书籍/章节/作者/字数/库大小） |
 | GET | `/api/version` | 版本信息 |
-| GET | `/api/books` | 书籍列表（`q`、`authorId`、`tag`、`sort`、分页） |
+| GET | `/api/books` | 书籍列表（`q`、`authorId`、`tag`、`series`、`rating`、`collection`、`sort`、分页） |
 | GET | `/api/books/{id}` | 书籍详情 + 卷/章目录 |
+| GET | `/api/books/random` | 随机一本（可按作者/标签/书单缩范围；无书 404） |
+| PATCH | `/api/books/{id}` | 改元信息（含评分与出版信息，支持清空） |
+| POST | `/api/books/batch` | 批量改元信息（≤200 本；`updated`/`failed`） |
+| DELETE | `/api/books/{id}` | 删书（单事务级联） |
 | GET | `/api/books/{id}/chapters` | 轻量章节列表（目录虚拟滚动） |
 | GET | `/api/books/{id}/chapters/{cid}` | 章节正文（含 prevId/nextId） |
+| POST | `/api/books/{id}/chapters` | 新建章节（`title`+`content`，可 `afterChapterId`） |
+| POST | `/api/books/{id}/ack-new-chapters` | 追更角标清零 |
 | GET | `/api/books/{id}/cover` | 封面图片（无封面 404） |
-| PATCH | `/api/books/{id}` | 改书名/多作者/简介/标签/系列（支持清空） |
-| POST | `/api/import/upload` | 浏览器上传 txt/epub/zip（multipart，逐文件 accepted/rejected） |
+| GET | `/api/series` | 系列聚合列表（书数/字数/最近更新） |
+| GET | `/api/series/{name}` | 系列详情（URL 编码系列名） |
+| GET | `/api/tags` | 标签列表（含 `bookCount`） |
+| POST | `/api/tags` | 新建标签（同名返回已有 200） |
+| PATCH | `/api/tags/{id}` | 标签改名（重名 409） |
+| DELETE | `/api/tags/{id}` | 删标签（全库解绑） |
+| GET | `/api/collections` | 书单列表 |
+| POST | `/api/collections` | 新建书单（重名 409） |
+| PATCH | `/api/collections/{id}` | 书单改名 |
+| DELETE | `/api/collections/{id}` | 删书单（不动书） |
+| PUT | `/api/collections/{id}/books` | 全量替换书单书目（`[]` 清空） |
+| GET | `/api/reading/progress` | 最近在读 |
+| PUT | `/api/reading/progress` | 保存阅读进度（含章内 `paraIndex`） |
+| POST | `/api/reading/sessions` | 上报阅读时长（1–86400 秒） |
+| GET | `/api/reading/history` | 阅读历史（按书聚合、分页） |
+| GET | `/api/stats/reading` | 阅读统计与热力图（`days`/`tz`） |
 | GET | `/api/authors` | 作者列表（`q`、分页） |
 | GET | `/api/authors/{id}` | 作者详情 + 作品 |
 | GET | `/api/search` | 书名 / 作者 / 章节标题检索（`q`、`type=chapter|book|all`） |
-| GET | `/api/tags` | 标签列表 |
 | POST | `/api/import` | 触发导入（202 + jobId；并发导入返回 409） |
+| POST | `/api/import/upload` | 浏览器上传 txt/epub/zip（multipart，逐文件 accepted/rejected） |
 | GET | `/api/import/jobs` | 导入任务列表 |
 | GET | `/api/import/jobs/{id}` | 任务详情 + 失败明细 |
 

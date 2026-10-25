@@ -29,6 +29,7 @@ func registerSteps(sc *godog.ScenarioContext, w *world) {
 	registerP1BSteps(sc, w)
 	registerChapterStructureSteps(sc, w)
 	registerVolumeSteps(sc, w)
+	registerP3Steps(sc, w)
 	registerCommonAssertSteps(sc, w)
 }
 
