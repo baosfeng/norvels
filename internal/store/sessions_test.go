@@ -71,7 +71,7 @@ func TestReadingStatsTotals(t *testing.T) {
 		}
 	}
 
-	stats, err := st.ReadingStats(ctx, 3)
+	stats, err := st.ReadingStats(ctx, 3, 0)
 	requireOK(t, "ReadingStats", err)
 	requireEqual(t, "累计秒数", stats.TotalSeconds, 100)
 	requireEqual(t, "今日秒数", stats.TodaySeconds, 60)
@@ -89,16 +89,16 @@ func TestReadingStatsCalendarWindows(t *testing.T) {
 	today := dateUTC(nowUTC())
 	seedSession(t, ctx, st, bookID, chapterID, 60, sessionTime(today, 0))
 
-	wide, err := st.ReadingStats(ctx, 5)
+	wide, err := st.ReadingStats(ctx, 5, 0)
 	requireOK(t, "ReadingStats(5)", err)
 	requireEqual(t, "5 天窗口行数", len(wide.Days), 5)
 	requireEqual(t, "5 天窗口首日补 0", wide.Days[0].Seconds, 0)
 
-	def, err := st.ReadingStats(ctx, 0)
+	def, err := st.ReadingStats(ctx, 0, 0)
 	requireOK(t, "ReadingStats(0)", err)
 	requireEqual(t, "默认窗口行数", len(def.Days), defaultStatsDays)
 
-	clamped, err := st.ReadingStats(ctx, 999)
+	clamped, err := st.ReadingStats(ctx, 999, 0)
 	requireOK(t, "ReadingStats(999)", err)
 	requireEqual(t, "超上限窗口行数", len(clamped.Days), maxStatsDays)
 }
@@ -111,7 +111,7 @@ func TestReadingStatsStreakResets(t *testing.T) {
 	seedSession(t, ctx, st, bookID, chapterID, 30, sessionTime(today, -1))
 	seedSession(t, ctx, st, bookID, chapterID, 30, sessionTime(today, -2))
 
-	stats, err := st.ReadingStats(ctx, 7)
+	stats, err := st.ReadingStats(ctx, 7, 0)
 	requireOK(t, "ReadingStats", err)
 	requireEqual(t, "今天无会话时 streak", stats.Streak, 0)
 	requireEqual(t, "今天无会话时 today", stats.TodaySeconds, 0)
@@ -211,4 +211,29 @@ func mondayUTC(today time.Time) time.Time {
 		monday = monday.AddDate(0, 0, -1)
 	}
 	return monday
+}
+
+func TestReadingStatsTZOffset(t *testing.T) {
+	ctx := context.Background()
+	st, bookID, chapterID := seedStatsBook(t, ctx)
+	localToday := dateUTC(dayInOffset(nowUTC(), 480))
+	// 东八区「今天 00:30」= UTC 前一天 16:30：跨零点的会话必须算进本地今天。
+	utcStarted := localToday.AddDate(0, 0, -1).Add(16*time.Hour + 30*time.Minute)
+	seedSession(t, ctx, st, bookID, chapterID, 60, formatTime(utcStarted))
+
+	stats, err := st.ReadingStats(ctx, 7, 480)
+	requireOK(t, "ReadingStats(tz=480)", err)
+	requireEqual(t, "东八区今日秒数", stats.TodaySeconds, 60)
+	requireEqual(t, "东八区连续天数", stats.Streak, 1)
+
+	utcStats, err := st.ReadingStats(ctx, 7, 0)
+	requireOK(t, "ReadingStats(tz=0)", err)
+	wantUTC := 0
+	if dateUTC(utcStarted).Equal(dateUTC(nowUTC())) {
+		wantUTC = 60
+	}
+	requireEqual(t, "UTC 今日秒数", utcStats.TodaySeconds, wantUTC)
+
+	_, err = st.ReadingStats(ctx, 7, 900)
+	requireErr(t, "tz 越界", err, ErrInvalidArgument)
 }

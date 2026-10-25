@@ -99,18 +99,22 @@ func sessionStart(raw string) (string, error) {
 //
 // Streak 的口径：从今天往前，连续的「有会话的天」；今天没有会话就是 0
 // （正在读的书还没上报，不该假装连续到昨天）。
-func (s *Store) ReadingStats(ctx context.Context, days int) (ReadingStats, error) {
+func (s *Store) ReadingStats(ctx context.Context, days, tzOffsetMinutes int) (ReadingStats, error) {
 	days = normalizeStatsDays(days)
-	today := dateUTC(nowUTC())
-	total, todaySeconds, weekSeconds, err := s.readingTotals(ctx, today)
+	if err := validateTZOffset(tzOffsetMinutes); err != nil {
+		return ReadingStats{}, err
+	}
+	// 「今天」按调用方时区取：库内时间与容器时区都是 UTC，跟着部署机走会错日。
+	today := dateUTC(dayInOffset(nowUTC(), tzOffsetMinutes))
+	total, todaySeconds, weekSeconds, err := s.readingTotals(ctx, today, tzOffsetMinutes)
 	if err != nil {
 		return ReadingStats{}, err
 	}
-	byDay, err := s.dailySeconds(ctx, dateUTC(today.AddDate(0, 0, -(days-1))))
+	byDay, err := s.dailySeconds(ctx, dateUTC(today.AddDate(0, 0, -(days-1))), tzOffsetMinutes)
 	if err != nil {
 		return ReadingStats{}, err
 	}
-	streak, err := s.readingStreak(ctx, today)
+	streak, err := s.readingStreak(ctx, today, tzOffsetMinutes)
 	if err != nil {
 		return ReadingStats{}, err
 	}
@@ -141,14 +145,15 @@ const (
 )
 
 // readingTotals 一次查询取回累计 / 今日 / 本周（本周从周一起算，UTC）。
-func (s *Store) readingTotals(ctx context.Context, today time.Time) (int, int, int, error) {
+func (s *Store) readingTotals(ctx context.Context, today time.Time, tzOffsetMinutes int) (int, int, int, error) {
 	var total, todaySeconds, weekSeconds int
+	mod := tzModifier(tzOffsetMinutes)
 	err := s.db.QueryRowContext(ctx,
 		"SELECT COALESCE(SUM(seconds), 0), "+
-			"COALESCE(SUM(CASE WHEN date(started_at) = ? THEN seconds END), 0), "+
-			"COALESCE(SUM(CASE WHEN date(started_at) >= ? THEN seconds END), 0) "+
+			"COALESCE(SUM(CASE WHEN date(started_at, ?) = ? THEN seconds END), 0), "+
+			"COALESCE(SUM(CASE WHEN date(started_at, ?) >= ? THEN seconds END), 0) "+
 			"FROM reading_sessions",
-		dateUTCString(today), dateUTCString(weekStartOf(today))).
+		mod, dateUTCString(today), mod, dateUTCString(weekStartOf(today))).
 		Scan(&total, &todaySeconds, &weekSeconds)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("store: reading totals: %w", err)
@@ -157,10 +162,11 @@ func (s *Store) readingTotals(ctx context.Context, today time.Time) (int, int, i
 }
 
 // dailySeconds 读回 [from, 今天] 的按日秒数；没有会话的日子不出现在 map 里。
-func (s *Store) dailySeconds(ctx context.Context, from time.Time) (map[string]int, error) {
+func (s *Store) dailySeconds(ctx context.Context, from time.Time, tzOffsetMinutes int) (map[string]int, error) {
+	mod := tzModifier(tzOffsetMinutes)
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT date(started_at), SUM(seconds) FROM reading_sessions "+
-			"WHERE date(started_at) >= ? GROUP BY date(started_at)", dateUTCString(from))
+		"SELECT date(started_at, ?), SUM(seconds) FROM reading_sessions "+
+			"WHERE date(started_at, ?) >= ? GROUP BY 1", mod, mod, dateUTCString(from))
 	if err != nil {
 		return nil, fmt.Errorf("store: daily seconds: %w", err)
 	}
@@ -187,9 +193,9 @@ func (s *Store) dailySeconds(ctx context.Context, from time.Time) (map[string]in
 //
 // 单独一次查询而不是复用窗口内的 map：窗口只有 90 天，而连续天数可能更长
 // （每天只读 1 分钟也会累积）；口径仍然是「按 UTC 日期去重」。
-func (s *Store) readingStreak(ctx context.Context, today time.Time) (int, error) {
+func (s *Store) readingStreak(ctx context.Context, today time.Time, tzOffsetMinutes int) (int, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT date(started_at) FROM reading_sessions GROUP BY date(started_at) ORDER BY 1 DESC")
+		"SELECT date(started_at, ?) FROM reading_sessions GROUP BY 1 ORDER BY 1 DESC", tzModifier(tzOffsetMinutes))
 	if err != nil {
 		return 0, fmt.Errorf("store: reading streak: %w", err)
 	}
