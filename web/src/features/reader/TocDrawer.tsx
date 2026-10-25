@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChapterBrief } from "../../api/types";
+import { useFocusTrap } from "../../lib/focusTrap";
 import { filterChapters } from "../../lib/tocRows";
 import { ChapterList } from "../book/ChapterList";
 import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
@@ -33,6 +34,9 @@ export function TocDrawer({
   const [query, setQuery] = useState("");
   // 换 key 即重挂列表：打开抽屉、点「跳到当前章」都要把当前章重新滚进视口
   const [jumpKey, setJumpKey] = useState(0);
+  // 抽屉是覆盖层：打开时把焦点收进抽屉、Tab 在里面循环、关闭后还给「目录」按钮
+  const rootRef = useRef<HTMLElement | null>(null);
+  useFocusTrap(open, rootRef, onClose);
 
   // 每次打开都清空搜索并重新定位：长目录不该从第 1 章开始翻
   useEffect(() => {
@@ -51,7 +55,13 @@ export function TocDrawer({
   }
 
   return (
-    <aside className={`drawer${open ? " is-open" : ""}`} aria-label="章节目录" aria-hidden={!open} data-od-id="reader-drawer">
+    <aside
+      ref={rootRef}
+      className={`drawer${open ? " is-open" : ""}`}
+      aria-label="章节目录"
+      aria-hidden={!open}
+      data-od-id="reader-drawer"
+    >
       <div className="drawer-head">
         <strong>目录</strong>
         <span className="meta">

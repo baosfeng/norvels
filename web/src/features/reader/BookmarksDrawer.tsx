@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import type { Bookmark } from "../../api/types";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
+import { useFocusTrap } from "../../lib/focusTrap";
 import { bookmarkTitle } from "../../lib/bookmark";
 import type { ResourceState } from "../../lib/useResource";
 
@@ -31,8 +33,11 @@ export function BookmarksDrawer({
   onDelete: (id: number) => void;
 }) {
   const list = bookmarks.data?.bookmarks ?? [];
+  const rootRef = useRef<HTMLElement | null>(null);
+  useFocusTrap(open, rootRef, onClose);
   return (
     <aside
+      ref={rootRef}
       className={`drawer${open ? " is-open" : ""}`}
       aria-label="书签"
       aria-hidden={!open}
