@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"norvels/internal/store"
 )
@@ -182,4 +183,48 @@ func TestReadingStatsBounds(t *testing.T) {
 	requireError(t, e.get("/api/stats/reading?days=366"), http.StatusBadRequest, codeInvalidParam)
 	requireError(t, e.get("/api/stats/reading?tz=900"), http.StatusBadRequest, codeInvalidParam)
 	requireError(t, e.get("/api/stats/reading?tz=abc"), http.StatusBadRequest, codeInvalidParam)
+}
+
+// TestReadingStatsTZCrossMidnight 证明 tz 真的参与聚合：
+// UTC 前一天 16:30 的会话在东八区（+480 分钟）属于「当天 00:30」。
+func TestReadingStatsTZCrossMidnight(t *testing.T) {
+	e := newEnv(t)
+	bookID := e.seedBook("跨零点之书", "时效作者")
+	chapterID := firstChapterID(t, e, bookID)
+	// 取「东八区的今天」00:30 对应的 UTC 时刻（= 前一天 16:30 UTC）：
+	// 同一个会话在 UTC 口径下属于前一天、在东八区口径下属于今天。
+	localNow := time.Now().UTC().Add(8 * time.Hour)
+	localMidnight := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, time.UTC)
+	started := localMidnight.Add(30*time.Minute - 8*time.Hour)
+	requireStatus(t, sendReading(t, e, http.MethodPost, "/api/reading/sessions",
+		fmt.Sprintf(`{"bookId":%d,"chapterId":%d,"seconds":120,"startedAt":%q}`,
+			bookID, chapterID, started.Format(time.RFC3339))), http.StatusNoContent)
+
+	local := decodeBody[store.ReadingStats](t, e.get("/api/stats/reading?days=7&tz=480"))
+	if local.TodaySeconds != 120 || local.Streak != 1 {
+		t.Fatalf("东八区统计 = %+v，期望今日 120、连续 1 天", local)
+	}
+	last := local.Days[len(local.Days)-1]
+	if last.Date != localNow.Format("2006-01-02") || last.Seconds != 120 {
+		t.Fatalf("东八区热力图末尾 = %+v，期望落在本地今天且 120 秒", last)
+	}
+
+	utc := decodeBody[store.ReadingStats](t, e.get("/api/stats/reading?days=7"))
+	sessionDate := started.Format("2006-01-02")
+	if sessionDate == last.Date {
+		t.Fatalf("构造失败：会话 UTC 日期 %s 与本地今天相同", sessionDate)
+	}
+	if got := daySecondsOf(utc.Days, sessionDate); got != 120 {
+		t.Fatalf("UTC 统计里 %s = %d，期望 120（同一会话按 UTC 日期归档）", sessionDate, got)
+	}
+}
+
+// daySecondsOf 取热力图里某一天的秒数；没有该日返回 0。
+func daySecondsOf(days []store.DaySeconds, date string) int {
+	for _, d := range days {
+		if d.Date == date {
+			return d.Seconds
+		}
+	}
+	return 0
 }

@@ -122,10 +122,9 @@ func (s *Server) handleReadingStats(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
-	// TODO(p3-tz): store.ReadingStats 目前只有 (ctx, days) 两参、按 UTC 聚合。
-	// tz 已在边界上校验，待 store 扩成带入参版本后透传（否则非 UTC 部署的「今日」会偏）。
-	_ = tz
-	stats, err := s.st.ReadingStats(r.Context(), days)
+	// tz 是调用方的分钟偏移（东八区 480，默认 0）：store 按它聚合「今日 / 连续天数 / 热力图」，
+	// 否则容器跑在 UTC 时，晚上 8 点后的阅读会被算到「昨天」。
+	stats, err := s.st.ReadingStats(r.Context(), days, tz)
 	if err != nil {
 		s.fail(w, r, err, "阅读统计不可用")
 		return
