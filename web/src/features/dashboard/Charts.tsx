@@ -216,12 +216,16 @@ export function StorageChart({ stats, ...state }: { stats: Stats | null } & Char
           ))}
         </div>
         <div className="stack-legend">
-          {model.data.parts.map((part) => (
-            <span className="legend-row" key={part.key}>
-              <span className="legend-dot" style={{ background: part.color }} />
-              {part.label} {part.display}
-            </span>
-          ))}
+          {/* 0 字节的段不出图例：真实库里 otherBytes 恒为 0（三段口径下没有剩余空间），
+              固定显示一行「其他 0.0 MB」只会让人以为漏统计了 */}
+          {model.data.parts
+            .filter((part) => part.bytes > 0)
+            .map((part) => (
+              <span className="legend-row" key={part.key}>
+                <span className="legend-dot" style={{ background: part.color }} />
+                {part.label} {part.display}
+              </span>
+            ))}
         </div>
       </div>
     </ChartFrame>
