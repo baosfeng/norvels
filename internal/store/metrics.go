@@ -78,10 +78,27 @@ func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
 	if ts := m[metricRefreshedAtUnix]; ts > 0 {
 		snap.RefreshedAt = time.Unix(ts, 0).UTC()
 	}
-	// 缓存视为有效需同时满足：口径版本一致、正文值已算过。
-	// 空库（0 章）也合法，此时以「版本号存在」作为已算过的判据。
-	snap.Stale = m[metricMetricsVersion] != metricsVersion
+	// 缓存有效的判据：口径版本一致 + 聚合值确实算过。
+	//
+	// 「算过」不能只看 metrics_version 存在：迁移重建表时会写入 metrics_version，
+	// 但此时 text_bytes 还是 0。若只比值版本号，重建后的库会被永远判为「有效」，
+	// 后台重算再也不会触发（真实踩过）。因此额外要求 text_bytes 落过值，
+	// 或者库本来就没有章节（空库的 0 是合法结果）。
+	_, hasText := m[metricTextBytes]
+	_, hasWordSum := m[metricChapterWordSum]
+	computed := hasText && hasWordSum
+	if snap.TextBytes == 0 && snap.ChapterWordSum == 0 {
+		// 空库场景：章节数为 0 时 0 就是正确答案，视为已算过。
+		computed = computed && s.chapterCountIsZero(ctx)
+	}
+	snap.Stale = m[metricMetricsVersion] != metricsVersion || !computed
 	return snap, nil
+}
+
+// chapterCountIsZero 判断库里是否确实没有章节（用于区分「空库」与「尚未计算」）。
+func (s *Store) chapterCountIsZero(ctx context.Context) bool {
+	n, err := s.scalarInt64(ctx, chapterCountSQL)
+	return err == nil && n == 0
 }
 
 // bumpMetrics 在给定事务内把累加量加到缓存上（可为负，用于覆盖/删除旧值）。
