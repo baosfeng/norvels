@@ -126,7 +126,10 @@ describe("书架：H5 无限滚动与排序", () => {
 
     fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
     expect(within(screen.getByTestId("shelf-sort-sheet")).getByRole("dialog")).toBeTruthy();
+    // 弹层打开时锁住页面滚动，选完即解锁
+    expect(document.body.classList.contains("h5-sheet-open")).toBe(true);
     fireEvent.click(screen.getByTestId("sort-option-title"));
+    expect(document.body.classList.contains("h5-sheet-open")).toBe(false);
 
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
     expect(books.mock.calls[1][0]).toMatchObject({ sort: "title", page: 1, size: 30 });
