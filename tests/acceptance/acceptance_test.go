@@ -86,6 +86,10 @@ type world struct {
 	otherBookID    int64 // 「结构无关的短书」的 id（只用于 404 场景）
 	otherChapterID int64 // 短书的首章 id（不属于本书）
 	wordBase       int   // 记下的字数（拆分/合并前）
+
+	// P3 管理侧补全：最近一次批量改评分的 updated/failed 条数
+	p3BatchUpdated int
+	p3BatchFailed  int
 }
 
 // reset 关闭上一个场景留下的资源。
