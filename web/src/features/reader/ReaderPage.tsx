@@ -20,6 +20,7 @@ import { ReaderBottomBar } from "./ReaderBottomBar";
 import { ReaderSearchPanel } from "./ReaderSearchPanel";
 import { ReaderSettingsPanel } from "./ReaderSettingsPanel";
 import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
+import { ReaderHelpPanel } from "./ReaderHelpPanel";
 import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 import { tradToSimp } from "../../lib/trad2simp";
 import { createAutoScroll, isAtBottom } from "../../lib/autoScroll";
@@ -47,6 +48,7 @@ export function ReaderPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   // 当前命中：query 与本次搜索一致时 position 才有效，换关键词自动回到第 1 处
   const [hitState, setHitState] = useState({ query: "", position: 0 });
@@ -67,7 +69,7 @@ export function ReaderPage() {
   // 控制层：H5 默认收起、单击正文唤出、3 秒无操作收起；设置/目录打开时暂停收起
   const controls = useReaderControls({
     isH5,
-    paused: settingsOpen || drawerOpen || bookmarksOpen || searchOpen,
+    paused: settingsOpen || drawerOpen || bookmarksOpen || searchOpen || helpOpen,
   });
 
   // 全屏：只有浏览器真的支持才给按钮（iOS Safari 没有 Fullscreen API，静默降级为沉浸式阅读）
@@ -237,6 +239,11 @@ export function ReaderPage() {
     if (bookmark.chapterId !== chapterId) navigate(`/read/${bookId}/${bookmark.chapterId}`);
   }
 
+  /** 一屏 = 0.85 个视口高：翻页时保留上一屏的尾巴，读者不会跟丢行。 */
+  const scrollByScreen = useCallback((direction: 1 | -1) => {
+    window.scrollBy({ top: window.innerHeight * 0.85 * direction, behavior: "smooth" });
+  }, []);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -244,9 +251,21 @@ export function ReaderPage() {
         setDrawerOpen(false);
         setSettingsOpen(false);
         setBookmarksOpen(false);
+        setHelpOpen(false);
         closeSearch();
         return;
       }
+      // 输入框里打字不接管（否则「?」这类字符打不进搜索框）
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      // 「?」= Shift+/ ：打开 / 关闭快捷键帮助
+      if (event.key === "?" || (event.key === "/" && event.shiftKey)) {
+        event.preventDefault();
+        setHelpOpen((open) => !open);
+        return;
+      }
+      // 帮助面板打开时只留 Esc：别在读者看说明时把正文翻走
+      if (helpOpen) return;
       // 搜索面板打开时方向键/空格留给输入框，不翻章也不滚页
       if (searchOpen) return;
       if (event.key === "ArrowLeft") {
@@ -257,12 +276,15 @@ export function ReaderPage() {
         goChapter(next);
       } else if (event.key === " " || event.key === "PageDown") {
         event.preventDefault();
-        window.scrollBy({ top: window.innerHeight * 0.85, behavior: "smooth" });
+        scrollByScreen(event.shiftKey ? -1 : 1);
+      } else if (event.key === "PageUp") {
+        event.preventDefault();
+        scrollByScreen(-1);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goChapter, prev, next, searchOpen, closeSearch]);
+  }, [goChapter, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen]);
 
   // 段落锚点：视口内最靠上的段落即「当前读到的地方」（没有 IntersectionObserver 时保持第 0 段）
   useEffect(() => {
@@ -300,7 +322,7 @@ export function ReaderPage() {
   }, [pendingJump, chapter.data?.id]);
 
   // 自动滚动：开关开着、没被手动暂停、没有面板打开、窗口在前台时才真的滚
-  const overlayOpen = settingsOpen || drawerOpen || bookmarksOpen || searchOpen;
+  const overlayOpen = settingsOpen || drawerOpen || bookmarksOpen || searchOpen || helpOpen;
   const autoRunning = settings.autoScroll && !autoPaused && !overlayOpen && windowActive;
   // 到底时的动作走 ref：滚动引擎只该在速度 / 运行状态变化时重建，不该因为换了一章就重来
   const autoBottomRef = useRef<() => void>(() => {});
@@ -394,6 +416,15 @@ export function ReaderPage() {
           <button className="btn" type="button" onClick={openDirectory} aria-expanded={drawerOpen}>
             目录
           </button>
+          <button
+            className="btn"
+            type="button"
+            aria-label="快捷键帮助"
+            aria-expanded={helpOpen}
+            onClick={() => setHelpOpen((open) => !open)}
+          >
+            ?
+          </button>
           <button className="btn" type="button" onClick={() => setSettingsOpen((v) => !v)} aria-expanded={settingsOpen}>
             设置
           </button>
@@ -412,6 +443,8 @@ export function ReaderPage() {
           ) : null}
         </div>
       </header>
+
+      <ReaderHelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <ReaderSearchPanel
         open={searchOpen}
@@ -475,9 +508,6 @@ export function ReaderPage() {
                 <span style={{ width: `${Math.round(percent * 100)}%` }} />
               </div>
             </div>
-            <p className="reader-hint">
-              {isH5 ? "左右滑动或点上下章切换 · 进度保存在你的书库里" : "← / → 切换章节 · 空格 / PageDown 翻页 · 进度保存在你的书库里"}
-            </p>
           </article>
         ) : (
           <EmptyPanel title="还没有正文" description="这一章的内容还没入库，稍后再来看看。" testId="reader-empty" />
