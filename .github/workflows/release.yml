@@ -83,7 +83,7 @@ jobs:
             org.opencontainers.image.url=https://hub.docker.com/r/bsfeng/norvels
 
       - name: 构建并推送（amd64 + arm64）
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           # 构建上下文必须是仓库根目录：Dockerfile 要读 web/ 与 go.mod。
           context: .
