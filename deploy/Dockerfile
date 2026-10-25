@@ -14,7 +14,10 @@
 
 # 全局参数：必须在第一个 FROM 之前声明，才能在 FROM 中引用。
 ARG GO_VERSION=1.26
-ARG PNPM_VERSION=9
+# pnpm 版本必须与 web/pnpm-workspace.yaml 的特性匹配：
+# 该文件用了 allowBuilds（pnpm 10+ 才有），pnpm 9 会直接报
+# "packages field missing or empty"。本地与 CI 都用 11，这里保持一致。
+ARG PNPM_VERSION=11
 
 # 交叉编译约定（重要）：
 #   构建 stage 一律声明 --platform=$BUILDPLATFORM，只在「跑在构建机上」的处理器架构执行；

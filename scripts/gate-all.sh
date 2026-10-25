@@ -112,11 +112,12 @@ printf '基线 commit：%s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo 
 
 run_gate "1" "单元测试（gofmt + go vet + go test）" gate_unit
 run_gate "2" "Gherkin 验收测试（godog）" gate_acceptance
-run_gate "4" "圈复杂度（单函数 ≤ 10）" scripts/gate-complexity.sh
-run_gate "5" "模块大小（函数 ≤ 70 行、文件 ≤ 400 行）" scripts/gate-size.sh
+run_gate "4" "圈复杂度（单函数 ≤ 10，豁免须登记）" scripts/gate-complexity.sh
+run_gate "5" "模块大小（函数 ≤ 70 行、文件 ≤ 400 行，豁免须登记）" scripts/gate-size.sh
 run_gate "6" "依赖结构（方向 + 循环依赖）" scripts/gate-deps.sh
-run_gate "7" "覆盖率（总行 ≥ 85%，核心包各自 ≥ 85%）" scripts/gate-cover.sh
+run_gate "7" "覆盖率（不低于基线；85% 为渐进目标）" scripts/gate-cover.sh
 run_gate "9" "隐私扫描（工作区全部文件）" scripts/privacy-scan.sh --all
+run_gate "10" "构建一致性（容器工具版本 vs web/ 要求）" scripts/check-build-parity.sh
 
 summary
 exit $?
