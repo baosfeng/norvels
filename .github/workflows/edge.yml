@@ -1,11 +1,14 @@
-# Edge：main 分支每次通过 CI 后推 bsfeng/norvels:edge（给想尝鲜的人）。
+# 镜像构建验证：main 每次通过 CI 后，按发版同款参数把多架构镜像构建一遍，**不推送**。
 #
-# 触发链是硬依赖：ci job 复用 ci.yml（workflow_call），docker job 用 needs 依赖 ci。
-# CI 红 → 不推 edge。在仓库 Actions 页面可停用本 workflow 来关闭尝鲜通道，不影响发版。
+# 存在的理由：release/edge 里的 docker/*、checkout、distroless digest 等升级，
+# PR 的 CI 根本跑不到（它们只在打 tag 或推 main 时才执行）。这里在 main 上真构建一次，
+# 能在发版前拦住"Dockerfile 编不过 / 基础镜像 digest 失效"这类问题。
 #
-# 只用一个 secret：DOCKER_HUB_TOKEN（仓库 → Settings → Secrets and variables → Actions）。
-# 用户名 bsfeng 写死，它本来公开。
-name: Edge
+# 不产生任何 tag：Docker Hub 上只允许"完整版本号 + latest"形态，
+# x.y / x / sha-* / edge 这类滚动标签已清理并停止生成。
+#
+# 不需要任何 secret（push: false）。
+name: 镜像构建验证
 
 on:
   push:
@@ -30,7 +33,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   docker:
-    name: 推送 edge 镜像
+    name: 构建镜像（不推送）
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -42,12 +45,6 @@ jobs:
       - name: 启用 Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: 登录 Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: bsfeng
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
       - name: 计算构建时间戳
         id: buildinfo
         run: echo "builtat=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
@@ -57,9 +54,6 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=edge
-            type=sha,prefix=sha-,format=short
           labels: |
             org.opencontainers.image.title=norvels
             org.opencontainers.image.version=edge
@@ -71,8 +65,8 @@ jobs:
           context: .
           file: deploy/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          # 只验证能构建，不推送：本 workflow 不产生任何镜像 tag。
+          push: false
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=edge

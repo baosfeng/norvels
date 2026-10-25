@@ -60,8 +60,12 @@ jobs:
         run: echo "builtat=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       # tag 规则（逐条对应 docs/release.md 的语义表）：
-      #   v1.2.3 -> 1.2.3 / 1.2 / 1 / latest / sha-<短sha>
-      #   v1.2.3-rc1（含 "-" 视为预发布）-> 1.2.3-rc1 / 1.2 / 1 / sha-<短sha>，不动 latest
+      #   v1.2.3      -> 1.2.3 / latest
+      #   v1.2.3-rc1（含 "-" 视为预发布）-> 1.2.3-rc1，不动 latest
+      #
+      # 只发"完整版本号 + latest"两种形态：x.y / x / sha-* 这类滚动标签
+      # 会无限累积、语义含糊（0 在 0.x 阶段尤其误导），已在 Docker Hub 清理，
+      # 这里不再生成。要追溯某个提交，用 git 历史与镜像 label（org.opencontainers.image.revision）。
       - name: 生成镜像元数据
         id: meta
         uses: docker/metadata-action@v6
@@ -73,10 +77,7 @@ jobs:
             latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-            type=sha,prefix=sha-,format=short
           labels: |
             org.opencontainers.image.title=norvels
             org.opencontainers.image.description=本地中文小说库：导入、阅读、全文搜索

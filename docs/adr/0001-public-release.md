@@ -11,7 +11,7 @@
 | Docker Hub | `bsfeng/norvels`（**注意 Docker Hub 用户名是 bsfeng，与 GitHub 的 baosfeng 不同**） |
 | 分发渠道 | Docker Hub 单一公开镜像，多架构 amd64 + arm64 |
 | 部署模型 | 单容器 + 一个 `/data` 卷；前端 embed 进二进制，不分开发布 |
-| 版本号 | 语义化版本；git tag → 镜像 tag；`main` 分支 → `edge` |
+| 版本号 | 语义化版本；git tag → 镜像 tag（只出 `X.Y.Z` 与 `latest`）；`main` 分支只做构建验证、不推送 |
 | 数据库 | 单 SQLite 文件，随卷持久化；升级时原地迁移 |
 
 ## 2. 升级能力（本次要补的地基）
@@ -53,8 +53,9 @@
 ## 5. CI/CD
 
 - `ci.yml`：PR 与 main 上跑 gofmt / vet / go test / gate（复杂度、大小、依赖、覆盖率）/ 隐私扫描
-- `release.yml`：推 `v*` tag → buildx 多架构 → Docker Hub；打 `latest` + 精确版本 + `vX.Y` + `vX`
-- `edge`：main 分支每次通过 CI 后推 `edge` tag（可关闭）
+- `release.yml`：推 `v*` tag → buildx 多架构 → Docker Hub；只打 `latest` + 精确版本（`X.Y.Z`）
+- `edge.yml`：main 每次通过 CI 后按同款参数构建一遍，**不推送**，用于验证发布链路
+- 滚动 tag（`X.Y` / `X` / `sha-*` / `edge`）不生成：会无限累积且语义含糊；溯源用镜像 label `org.opencontainers.image.revision`
 - 所需仓库 secret：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`
 - 不在 CI 里跑需要真实语料的测试（`TestSampleRealCorpus` 靠环境变量，默认 skip）
 

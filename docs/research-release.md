@@ -5,6 +5,11 @@
 ## 1. Tag 策略
 
 **推荐组合**：`1.4.2`（SemVer 锚点）+ `1.4` / `1`（移动 tag）+ `latest`（仅 stable）+ `sha-abc1234`（每次 push）+ `edge`（main 尝鲜）。这正是 docker/metadata-action 的默认行为（优先级 semver 900 > edge 700 > ref 600 > sha 100，`latest=auto` 在 tag/semver 事件下自动生成），用官方 action 即得，无需手写。<https://github.com/docker/metadata-action>
+
+> **最终采纳（v0.2.0 之后）**：本项目的实际取值比上面更窄——**只出 `X.Y.Z` + `latest`**，
+> 不生成 `X.Y` / `X` / `sha-*` / `edge`。原因是单人维护的镜像没有多通道需求，
+> 而滚动 tag 会无限累积、`0` 在 0.x 阶段尤其容易被误读。溯源改用镜像 label
+> `org.opencontainers.image.revision`。详见 [release.md §2](release.md#2-镜像-tag-语义)。
 **v0 阶段不要发 `0` tag**：官方明确「Docker tag `0` should not be generated」，因 0.y.z 允许任意破坏性变更；v1 后再开 `{{major}}`。同上（Major version zero 节）
 
 **坑**

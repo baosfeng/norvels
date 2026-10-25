@@ -17,27 +17,35 @@ workflow 里**不放任何凭据**：唯一用到的 secret 是 `DOCKER_HUB_TOKE
 
 ## 2. 镜像 tag 语义
 
+镜像只出两种 tag 形态：**完整版本号**和 `latest`。
+
 | tag 形式 | 示例 | 何时更新 | 用途 |
 |---|---|---|---|
-| `latest` | `latest` | 推送**非预发布** tag 时 | 跟随最新正式版；生产环境跟它最省心 |
-| `X.Y.Z` | `0.1.0` | 推送 `v0.1.0` 时 | 精确版本，**生产环境推荐锁这个** |
-| `X.Y` | `0.1` | 推送 `v0.1.x` 任一补丁时 | 跟随补丁更新，不跨次版本 |
-| `X` | `0` | 推送 `v0.x.y` 任一版本时 | 跟随主版本 |
-| `sha-<短sha>` | `sha-1a2b3c4` | 每次发布 | 从镜像反查源码提交，排障用 |
-| `edge` | `edge` | `main` 每次通过 CI | 尝鲜通道，功能最新但可能不稳 |
+| `latest` | `latest` | 推送**非预发布** tag 时 | 跟随最新正式版 |
+| `X.Y.Z` | `0.2.0` | 推送 `v0.2.0` 时 | 精确版本，**生产环境推荐锁这个** |
 
-预发布 tag（名称含 `-`，如 `v0.2.0-rc1`）**不更新** `latest`，但会更新 `X.Y` 与 `X`。
+预发布 tag（名称含 `-`，如 `v0.3.0-rc1`）只出 `0.3.0-rc1`，**不更新** `latest`。
+
+**不再生成** `X.Y`、`X`、`sha-<短sha>`、`edge` 这类滚动标签。理由：
+
+- `X`（如 `0`）在 0.x 阶段语义含糊，容易被误读成"稳定主线"；
+- `X.Y` 与 `X` 每次发版都多占一个 tag，且与本项目"钉完整版本"的升级模式重复；
+- `sha-*` 每次构建都新增一个，长期无限累积；
+- `edge` 是滚动通道，但正式版已有 `latest`，尝鲜需求不足以抵消 tag 噪音。
+
+要追溯某个镜像对应的源码提交，看镜像自带 label（由 metadata-action 写入）：
+
+```bash
+docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' bsfeng/norvels:0.2.0
+```
 
 对应的 `docker/metadata-action` 配置（`.github/workflows/release.yml`）：
 
 | 配置行 | 生成的 tag |
 |---|---|
 | `flavor: latest=false` | 关掉 semver 自带的 latest，改由下一条显式控制 |
-| `type=semver,pattern={{version}}` | `0.1.0` |
-| `type=semver,pattern={{major}}.{{minor}}` | `0.1` |
-| `type=semver,pattern={{major}}` | `0` |
+| `type=semver,pattern={{version}}` | `0.2.0` |
 | `type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}` | `latest`（仅非预发布） |
-| `type=sha,prefix=sha-,format=short` | `sha-1a2b3c4` |
 
 ## 3. 流水线总览
 
@@ -47,10 +55,10 @@ workflow 里**不放任何凭据**：唯一用到的 secret 是 `DOCKER_HUB_TOKE
 | | | `test` | `go test ./... -count=1`（含 Gherkin 验收） |
 | | | `gates` | `scripts/gate-all.sh`：复杂度 ≤10 / 函数 ≤70 行 / 文件 ≤400 行 / 依赖方向 / 覆盖率 ≥85% |
 | | | `privacy` | `scripts/privacy-scan.sh --all`：本机路径、内网地址、真实书目、密钥 |
-| `release.yml` | push tag `v*` | `ci` → `docker` | 多架构镜像推 Docker Hub，带 `latest`/`X.Y.Z`/`X.Y`/`X`/`sha-` 标签 |
-| `edge.yml` | push → main（及手动） | `ci` → `docker` | 多架构镜像推 `edge` + `sha-` |
+| `release.yml` | push tag `v*` | `ci` → `docker` | 多架构镜像推 Docker Hub，只带 `latest` / `X.Y.Z` |
+| `edge.yml` | push → main（及手动） | `ci` → `docker` | 多架构镜像**构建验证，不推送**（不产生任何 tag） |
 
-**发布不可绕过测试**：`release.yml` / `edge.yml` 的 `docker` job 用 `needs: ci` 依赖复用的 `ci.yml`；CI 任一 job 红 → 不出镜像。
+**发布不可绕过测试**：`release.yml` / `edge.yml` 的 `docker` job 用 `needs: ci` 依赖复用的 `ci.yml`；CI 任一 job 红 → 不出镜像。`edge.yml` 虽然不推送，但用与发版同款的构建参数在 main 上真跑一遍，用来拦住"Dockerfile 编不过 / 基础镜像 digest 失效"这类只有发布链路才会暴露的问题。
 
 覆盖率不达标时 `gates` 如实失败——脚本里没有 `|| true`，也不存在降级阈值。
 
