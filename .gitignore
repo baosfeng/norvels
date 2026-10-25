@@ -25,6 +25,8 @@ internal/webui/dist/*
 
 # 原型截图由工具本地生成，重生成一次即可（避免把早期含真实数据的旧图带进历史）
 .open-design/shots/
+# 验收截图同样只留本地：可能含语料画面，重生成一次即可
+.shots/
 # Open Design 官方模版种子（第三方资产，按需 odops template-use 重新拉取）
 .open-design/seed/
 

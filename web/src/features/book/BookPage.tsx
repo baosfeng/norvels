@@ -94,6 +94,7 @@ export function BookPage() {
 
   /** 读到最后一章 = 追更读完了：清角标（失败只影响角标数字，不打断阅读）。 */
   function openChapter(chapter: ChapterBrief) {
+    if (!book) return;
     void ackNewChaptersIfLast(book, chapter, reload);
   }
 
