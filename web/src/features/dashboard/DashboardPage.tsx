@@ -154,7 +154,9 @@ export function DashboardPage() {
                 progress={progressAll.data?.items ?? []}
                 totalBooks={stats.data?.books ?? 0}
                 limitReached={(progressAll.data?.items.length ?? 0) >= PROGRESS_LIMIT}
-                {...chartState(progressAll)}
+                // 后端已给聚合值时以它为准（不依赖 50 条上限），否则回退到估算
+                buckets={health.data?.readingBuckets ?? null}
+                {...chartState(progressAll || health)}
               />
               <StorageChart stats={stats.data} {...chartState(stats, statsStale)} />
               <ChapterLengthChart buckets={health.data?.chapterLengthBuckets ?? []} {...chartState(health, healthStale)} />

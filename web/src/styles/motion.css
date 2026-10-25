@@ -1,0 +1,84 @@
+/* ══ 微动效：三处，克制 ══
+ *
+ * 1. 目录抽屉滑入 240ms cubic-bezier(0.32, 0.72, 0, 1)
+ * 2. 主题切换：背景/文字色 180ms
+ * 3. 章节切换：正文淡入 160ms
+ *
+ * 全部在 prefers-reduced-motion: reduce 下禁用（见文件末尾）。
+ */
+
+:root {
+  --motion-drawer: 240ms;
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-theme: 180ms;
+  --motion-chapter: 160ms;
+}
+
+/* ── 1 目录抽屉滑入 ── */
+.drawer {
+  transition:
+    transform var(--motion-drawer) var(--ease-drawer),
+    visibility 0s linear var(--motion-drawer);
+}
+.drawer.is-open {
+  transition:
+    transform var(--motion-drawer) var(--ease-drawer),
+    visibility 0s linear 0s;
+}
+.overlay {
+  transition: opacity var(--motion-drawer) var(--ease-drawer);
+}
+
+/* H5 的导航抽屉同理（复用侧栏的位移，统一曲线与时长） */
+@media (max-width: 1024px) {
+  .sidebar {
+    transition: transform var(--motion-drawer) var(--ease-drawer);
+  }
+}
+
+/* ── 2 主题切换：只过渡颜色类属性，不动布局 ── */
+html.theme-shifting,
+html.theme-shifting body,
+html.theme-shifting .sidebar,
+html.theme-shifting .topbar,
+html.theme-shifting .drawer,
+html.theme-shifting .settings-panel,
+html.theme-shifting .reader-shell,
+html.theme-shifting .reader-top,
+html.theme-shifting .chart-card,
+html.theme-shifting .dash-block,
+html.theme-shifting .book-card,
+html.theme-shifting .stat-card,
+html.theme-shifting .state-panel {
+  transition:
+    background-color var(--motion-theme) var(--ease-standard),
+    border-color var(--motion-theme) var(--ease-standard),
+    color var(--motion-theme) var(--ease-standard);
+}
+
+/* ── 3 章节切换：正文淡入 ── */
+.reader-article.is-entering {
+  animation: chapterFade var(--motion-chapter) var(--ease-standard) both;
+}
+@keyframes chapterFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 无障碍：系统设置了减少动效时全部关掉 ── */
+@media (prefers-reduced-motion: reduce) {
+  .drawer,
+  .drawer.is-open,
+  .overlay,
+  .sidebar,
+  html.theme-shifting,
+  html.theme-shifting *,
+  .reader-article.is-entering {
+    transition: none !important;
+    animation: none !important;
+  }
+}

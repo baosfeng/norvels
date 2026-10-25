@@ -129,8 +129,20 @@ export interface HealthReport {
   chapterBuckets: Bucket[];
   chapterLengthBuckets: Bucket[];
   warnings: string[];
+  /**
+   * 阅读进度三态（按书聚合，后端直接算好）。
+   * 契约见 leader 2026-10-25 通知；后端未上线时该字段为 undefined，前端回退到
+   * 「/reading/progress 最近 50 条 + 总书数」的估算，并标注口径。
+   */
+  readingBuckets?: ReadingBuckets;
   /** 同上：统计表刷新期间为 true */
   stale?: boolean;
+}
+
+export interface ReadingBuckets {
+  unread: number;
+  reading: number;
+  finished: number;
 }
 
 export interface ReadingProgress {

@@ -137,6 +137,29 @@ describe("4 阅读进度分布", () => {
     expect(Math.round(total)).toBe(Math.round(CIRCUMFERENCE));
   });
 
+  it("后端给了聚合值就以它为准，不用再猜「其余的书」", () => {
+    const model = buildReadingDist(progress([{ bookId: 1, percent: 0.2 }]), 1000, true, {
+      unread: 900,
+      reading: 60,
+      finished: 40,
+    });
+    expect(model.data.finished).toBe(40);
+    expect(model.data.reading).toBe(60);
+    expect(model.data.unread).toBe(900);
+    expect(model.data.partial).toBe(false);
+    expect(model.note).toContain("翻过 100 本");
+  });
+
+  it("后端聚合值为全 0 时回退到按记录估算", () => {
+    const model = buildReadingDist(progress([{ bookId: 1, percent: 0.5 }]), 10, false, {
+      unread: 0,
+      reading: 0,
+      finished: 0,
+    });
+    expect(model.data.reading).toBe(1);
+    expect(model.data.unread).toBe(9);
+  });
+
   it("记录数达到上限时标注为不完整", () => {
     const model = buildReadingDist(progress([{ bookId: 1, percent: 0.2 }]), 100, true);
     expect(model.data.partial).toBe(true);

@@ -114,6 +114,36 @@ leader 指定顺序（不可改）：
   体积图不谎报「正文占 0%」，改说「全库约 311 MB，体积构成正在统计」。
 - 驾驶舱三个统计接口超时放宽到 20s（`STATS_TIMEOUT_MS`），列表类接口保持 10s。
 
+## 第三段（2026-10-25 10:10–10:20）
+
+### 1 阅读进度聚合端点（前端已接好，等后端上线）
+- `HealthReport.readingBuckets?: { unread, reading, finished }`（类型见 `api/types.ts`）。
+- `buildReadingDist(progress, totalBooks, limitReached, buckets?)`：**有 `buckets` 就以它为准**（精确、`partial=false`）；
+  没有才回退到「最近 50 条 + 总书数」的估算并标注口径。
+- 后端返回全 0 时也回退估算，不会把「还没统计」误显示成全未读。
+- 当前 `/api/health/report` 实测 `readingBuckets: null`，前端走估算分支，验证通过。
+
+### 2 微动效（`styles/motion.css` + `lib/theme.ts` + `features/reader/ReaderPage.tsx`）
+| 动效 | 实测值 |
+|---|---|
+| 目录抽屉滑入 | `transform 0.24s cubic-bezier(0.32, 0.72, 0, 1)` |
+| 主题切换 | 挂 `html.theme-shifting` → 背景/文字/边框 `0.18s` → 200ms 后摘掉 |
+| 章节切换淡入 | `chapterFade 0.16s`（换章时正文重新挂载播一次） |
+
+三处都在 `@media (prefers-reduced-motion: reduce)` 下关闭（产物里实测到两段规则块：原型移植的旧规则 + motion.css 的新规则）。
+
+### 3 库体积构成：**后端有 bug，不是「还没跑完」**
+`./bin/norvels serve` 启动日志：
+```
+WARN 后台重算库级聚合值失败: store: set metric text_bytes: SQL logic error: table store_metrics has no column named key
+```
+根因：代码（`internal/store/metrics.go`）用 `(key, value, updated_at)` 结构，但 `/tmp/web-dev.db` 里的
+`store_metrics` 是老结构 `(id, text_bytes, index_bytes, chapters_at, computed_at)`——两版迁移定义不一致。
+迁移 `0004` 用的是 `CREATE TABLE IF NOT EXISTS`，老表已存在所以新结构没建上，写入必然失败。
+
+**这不是前端能修的**（要改 `internal/store/`，超出写区），已列入回报。
+前端降级正确：六图照常出、0 报错、2 个「数据更新中」徽章，体积图说「体积构成正在统计」。
+
 ## 未做 / 已知限制
 1. 阅读进度分布按「最近 50 条记录 + 总书数」聚合：记录超过 50 本时，未读数只能算「其余的书」，结论里已标注。
    要精确需要后端给聚合接口（当前只有列表接口，limit 上限 50）。

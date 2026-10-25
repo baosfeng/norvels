@@ -8,6 +8,7 @@ import { ChapterList } from "../book/ChapterList";
 import { useTheme, type Theme } from "../../lib/theme";
 import { useIsH5 } from "../../lib/tier";
 import { useSwipePaging } from "../../lib/useSwipePaging";
+import { prefersReducedMotion } from "../../lib/theme";
 
 const FONT_KEY = "norvels.reader.font";
 const LEADING_KEY = "norvels.reader.leading";
@@ -100,6 +101,10 @@ export function ReaderPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [goChapter, prev, next]);
 
+  // 章节切换淡入：用 key 让正文在换章时重新挂载，CSS 动画只播一次（不在 effect 里 setState）
+  const reducedMotion = prefersReducedMotion();
+  const articleKey = reducedMotion ? "static" : `chapter-${chapterId}`;
+
   // H5 左右滑动翻页：只在窄屏启用（PC 上鼠标拖拽不是翻页手势）
   const swipeHandlers = useMemo(
     () => ({ enabled: isH5, onPrev: () => goChapter(prev), onNext: () => goChapter(next) }),
@@ -143,7 +148,7 @@ export function ReaderPage() {
         {chapter.error ? (
           <ErrorPanel error={chapter.error} title="正文没能打开" onRetry={chapter.reload} testId="reader-error" />
         ) : chapter.data ? (
-          <article className="reader-content reader-article">
+          <article key={articleKey} className={`reader-content reader-article${reducedMotion ? "" : " is-entering"}`}>
             <h2>{chapter.data.title}</h2>
             <div>
               {chapter.data.content.split(/\n+/).map((para, i) =>

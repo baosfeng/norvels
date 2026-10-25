@@ -135,9 +135,16 @@ export function ReadingDistChart({
   progress,
   totalBooks,
   limitReached,
+  buckets,
   ...state
-}: { progress: ReadingProgress[]; totalBooks: number; limitReached: boolean } & ChartState) {
-  const model = buildReadingDist(progress, totalBooks, limitReached);
+}: {
+  progress: ReadingProgress[];
+  totalBooks: number;
+  limitReached: boolean;
+  /** 后端聚合的三态；有则以它为准（精确），没有才回退到按最近记录估算 */
+  buckets?: { unread: number; reading: number; finished: number } | null;
+} & ChartState) {
+  const model = buildReadingDist(progress, totalBooks, limitReached, buckets);
   const note = model.data.partial ? `${model.note}（按最近 50 条记录聚合）` : model.note;
   return (
     <ChartFrame id="reading" title="阅读进度分布" note={note} isEmpty={model.empty} {...state}>

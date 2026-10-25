@@ -139,7 +139,30 @@ export function buildReadingDist(
   progress: ReadingProgress[],
   totalBooks: number,
   limitReached = false,
+  /** 后端聚合结果：有就以它为准，没有再回退到按最近记录估算 */
+  buckets?: { unread: number; reading: number; finished: number } | null,
 ): ChartModel<ReadingDistribution & { segments: DonutSegment[]; partial: boolean }> {
+  if (buckets) {
+    const finished = Math.max(0, buckets.finished);
+    const reading = Math.max(0, buckets.reading);
+    const unread = Math.max(0, buckets.unread);
+    const total = finished + reading + unread;
+    if (total > 0) {
+      const readPct = Math.round(((finished + reading) / total) * 100);
+      return {
+        empty: false,
+        note: `翻过 ${finished + reading} 本，占全库 ${readPct}%${unread > 0 ? `；${unread} 本还没开始` : ""}`,
+        data: {
+          finished,
+          reading,
+          unread,
+          trackable: finished + reading,
+          segments: buildDonutSegments({ finished, reading, unread }),
+          partial: false,
+        },
+      };
+    }
+  }
   const byBook = new Map<number, ReadingProgress>();
   for (const p of progress) {
     const prev = byBook.get(p.bookId);

@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
 import { useResource } from "./useResource";
-import { useTheme, applyTheme } from "./theme";
+import { useTheme, applyTheme, THEME_SHIFT_MS } from "./theme";
 import { useTierMedia } from "./tier";
 import { stripTags } from "./text";
 
@@ -92,6 +92,30 @@ describe("useTheme", () => {
     applyTheme("day", el);
     expect(el.style.colorScheme).toBe("light");
     applyTheme("day", null);
+  });
+});
+
+describe("主题切换过渡", () => {
+  beforeEach(() => {
+    document.documentElement.className = "";
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("切换主题时给 html 挂 theme-shifting，之后自动摘掉", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.setTheme("night"));
+    expect(document.documentElement.classList.contains("theme-shifting")).toBe(true);
+    act(() => {
+      vi.advanceTimersByTime(THEME_SHIFT_MS + 30);
+    });
+    expect(document.documentElement.classList.contains("theme-shifting")).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("初始渲染不加过渡 class（首屏不闪）", () => {
+    renderHook(() => useTheme());
+    expect(document.documentElement.classList.contains("theme-shifting")).toBe(false);
   });
 });
 
