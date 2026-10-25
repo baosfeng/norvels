@@ -52,6 +52,15 @@ body {
   font-size: 11px;
   white-space: nowrap;
 }
+/* 面包屑里的「书架」是按钮（走 history 回退），视觉与链接一致 */
+.crumbs .crumb-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 .filter-hints {
   margin: 10px 0 2px;
   padding: 8px 12px;
@@ -94,6 +103,7 @@ body {
     min-height: 44px;
   }
   .crumbs a,
+.crumbs .crumb-link,
   .byline a,
   .hit-meta a,
   .h5-section-head a.meta,
@@ -269,8 +279,8 @@ body.h5-sheet-open {
     bottom: 0;
     z-index: 46;
     display: grid;
-    /* 6 格：上一章 / 目录 / 书签 / 搜索 / 设置 / 下一章 */
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    /* 7 格：上一章 / 目录 / 书签 / 搜索 / 设置 / 书架 / 下一章 */
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 2px;
     padding: 6px calc(6px + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 6px)
       calc(6px + env(safe-area-inset-left));

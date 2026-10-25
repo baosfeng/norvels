@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type BookQuery } from "../api/client";
 import type { BookSummary } from "../api/types";
+import { mergeBooks } from "./shelfCache";
 
 /** 书架取数模式：paged 按页替换（PC 分页），infinite 逐页追加（H5 无限滚动）。 */
 export type BookFeedMode = "paged" | "infinite";
@@ -13,6 +14,19 @@ export interface BookFeedQuery {
   readStatus?: NonNullable<BookQuery["readStatus"]>;
   size: number;
   mode: BookFeedMode;
+  /**
+   * 从 sessionStorage 恢复的列表（返回书架时用）：先按缓存渲染，不阻塞；
+   * refresh 为真才在后台拉第 1 页并与缓存合并（按 id 去重、保留已加载数量）。
+   */
+  restore?: BookFeedRestore;
+}
+
+export interface BookFeedRestore {
+  items: BookSummary[];
+  total: number;
+  /** 缓存覆盖到的页码（含） */
+  page: number;
+  refresh: boolean;
 }
 
 export interface BookFeedState {
@@ -70,7 +84,24 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
     query.mode,
   ]);
   const [nonce, setNonce] = useState(0);
-  const [state, setState] = useState<Snapshot>(() => idle(""));
+  const [state, setState] = useState<Snapshot>(() => {
+    const restore = query.restore;
+    // 缓存先渲染：pending 为 null 表示「这次不阻塞取数」；要刷新时 pending=1 走后台合并
+    if (restore && restore.items.length > 0) {
+      return {
+        key,
+        items: restore.items,
+        total: restore.total,
+        page: restore.page,
+        pending: restore.refresh ? 1 : null,
+        loading: false,
+        loadingMore: false,
+        error: null,
+        errorMore: null,
+      };
+    }
+    return idle(key);
+  });
 
   // 查询变了：立刻回到第 1 页的加载态（下一次 effect 发请求）
   if (state.key !== key) setState(idle(key));
@@ -101,11 +132,16 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
           // 只有无限滚动在换页时追加；PC 分页是替换
           const append = query.mode === "infinite" && page > 1;
           const base = append ? prev.items : [];
+          // 后台刷新第 1 页时与已有（缓存/已加载）列表合并：按 id 去重，保留已加载数量
+          const merging = page === 1 && prev.items.length > 0;
+          const merged = merging
+            ? mergeBooks(data.items, prev.items, Math.min(data.total, Math.max(prev.items.length, data.items.length)))
+            : [...base, ...data.items];
           return {
             ...prev,
-            items: [...base, ...data.items],
+            items: merged,
             total: data.total,
-            page,
+            page: merging ? prev.page : page,
             pending: null,
             loading: false,
             loadingMore: false,

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
@@ -66,13 +66,25 @@ vi.mock("../../lib/theme", async () => {
 
 const { ReaderPage } = await import("./ReaderPage");
 
-function renderReader(tier: "h5" | "pc" = "h5") {
+/** 书架探针：把收到的 location.state 打出来，验证「书架」出口带了 restore 标记。 */
+function ShelfProbe() {
+  const location = useLocation();
+  const state = location.state as { restore?: boolean } | null;
+  return <p>书架页 {state?.restore ? "restore" : "none"}</p>;
+}
+
+function renderReader(
+  tier: "h5" | "pc" = "h5",
+  entries: string[] = ["/read/7/10"],
+  initialIndex?: number,
+) {
   return render(
     <TierProvider value={tier}>
-      <MemoryRouter initialEntries={["/read/7/10"]}>
+      <MemoryRouter initialEntries={entries} initialIndex={initialIndex}>
         <Routes>
           <Route path="/read/:bookId/:chapterId" element={<ReaderPage />} />
           <Route path="/book/:bookId" element={<p>书籍详情</p>} />
+          <Route path="/shelf" element={<ShelfProbe />} />
         </Routes>
       </MemoryRouter>
     </TierProvider>,
@@ -221,6 +233,42 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     expect(headerHidden()).toBe("false");
     expect(screen.queryByTestId("reader-bar")).toBeNull();
     expect(screen.getByTestId("view:reader").className).toContain("is-controls");
+  });
+});
+
+describe("阅读器：书架出口与返回语义", () => {
+  beforeEach(() => {
+    chapterState.mockClear();
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("控制层「书架」出口直达 /shelf 并带 restore 标记", () => {
+    renderReader("pc");
+
+    fireEvent.click(screen.getByLabelText("返回书架"));
+
+    expect(screen.getByText("书架页 restore")).toBeTruthy();
+  });
+
+  it("返回优先走浏览器历史：从书架进来的阅读器退回书架原位置", () => {
+    renderReader("pc", ["/shelf", "/read/7/10"], 1);
+
+    fireEvent.click(screen.getByLabelText("返回目录"));
+
+    // 回退到历史里的 /shelf（不是 push 一条新的），因此不该带 restore 标记
+    expect(screen.getByText("书架页 none")).toBeTruthy();
+  });
+
+  it("没有历史时返回回落到 /shelf 并带 restore", () => {
+    renderReader("pc", ["/read/7/10"]);
+
+    fireEvent.click(screen.getByLabelText("返回目录"));
+
+    expect(screen.getByText("书架页 restore")).toBeTruthy();
   });
 });
 

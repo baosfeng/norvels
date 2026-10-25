@@ -109,7 +109,8 @@ h3{font-size:var(--text-base);font-weight:600}
 .book-card{display:flex;gap:14px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);min-width:0}
 .book-card .cover{width:84px;flex:none}
 .book-card-body{min-width:0;display:flex;flex-direction:column;gap:4px}
-.book-card h3{font-family:var(--font-display);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
+.book-card h3{font-family:var(--font-display);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25;overflow-wrap:anywhere}
+.book-author{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .book-author{font-size:var(--text-xs);color:var(--muted)}
 .book-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:var(--text-xs);color:var(--muted)}
 .book-meta span{white-space:nowrap}
@@ -344,6 +345,10 @@ h3{font-size:var(--text-base);font-weight:600}
   .book-card .cover{width:64px}
   .chapter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+@media (max-width: 520px){
+  /* 手机竖屏单列：双列时卡片书名区只有约 100px，长书名被截成半句 */
+  .book-grid{grid-template-columns:1fr}
+}
 @media (max-width: 390px){
   .book-grid{grid-template-columns:1fr}
   .topbar .view-toggle{display:none}
@@ -354,7 +359,7 @@ h3{font-size:var(--text-base);font-weight:600}
 
 /* ── 骨架修订：状态切换器右下浮动、抽屉右滑、元信息单行、阅读进度 ── */
 .side-stats strong,.side-stats span,.subbar-stats span,.book-meta span,.stat-row strong,.stat-row span{white-space:nowrap}
-.page-head .sub{white-space:nowrap}
+.page-head .sub{white-space:normal;overflow-wrap:anywhere}
 .book-meta{flex-wrap:wrap;white-space:normal;overflow:visible;gap:6px}
 .book-meta span+span::before{content:"·";margin-right:6px;color:var(--muted)}
 .drawer{right:0;left:auto;border-left:1px solid var(--r-border)}
@@ -572,11 +577,15 @@ h3{font-size:var(--text-base);font-weight:600}
 h1,h2,h3,h4,label,dt{
   white-space:normal;
 }
-.dir-head h2,.page-head h1,.book-main h1,.search-col h2,
+.search-col h2,
 .jobs-head h2,.run-top h2,.panel h2,.reader-title strong,.reader-title span{
   flex:0 0 auto;white-space:nowrap;word-break:keep-all;
 }
-.dir-head{flex-wrap:nowrap}
+/* 书名/页标题不强制单行：长书名必须能换行，否则窄屏横向溢出（侦察实测 430px 下 934px） */
+.page-head h1,.book-main h1,.dir-head h2{white-space:normal;word-break:break-word;overflow-wrap:anywhere}
+/* 详情页书名默认最多 3 行，超出省略，不再撑破横向 */
+.book-main h1{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.dir-head{flex-wrap:wrap}
 .dir-head .meta{flex:1 1 auto;min-width:0;text-align:right}
 
 /* ── v2 动效：三处克制（抽屉滑入 / 主题过渡 / 章节淡入） ── */
@@ -631,15 +640,12 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
     font-size: 10.5px;
   }
 }
-/* 书架书卡角标：独立按钮压在封面角落，点一下循环切换阅读状态 */
+/* 书架书卡角标：放在底部元信息行右侧（静态），点一下循环切换阅读状态 */
 .book-card {
   position: relative;
 }
 .book-status {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   min-height: 26px;
@@ -671,8 +677,7 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
 }
 @media (max-width: 768px) {
   .book-status {
-    top: 6px;
-    right: 6px;
+    margin-left: auto;
     min-height: 44px;
     padding: 0 12px;
     font-size: 12px;
@@ -934,4 +939,24 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
   .dry-run .counters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+/* ══ H5 触摸细节：书架 / 目录 / 书签条目长按不选中文字，也不弹系统菜单 ══ */
+.book-card,
+.book-link,
+.cv-row,
+.chapter-item,
+.drawer-list a,
+.bookmark-row,
+.bookmark-jump,
+.h5-row,
+.h5-reader-bar button {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* 返回书架时把最近打开的那本高亮 1.5 秒（滚动定位在 ShelfPage 里做） */
+.book-card.is-recent {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

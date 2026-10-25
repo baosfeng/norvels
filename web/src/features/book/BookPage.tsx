@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useBook, useReadingProgress } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
 import type { BookDetail, BookMetaPatch, ReadStatus, SerialStatus, Volume } from "../../api/types";
@@ -21,6 +21,7 @@ export function BookPage() {
   const { data: book, loading, error, reload } = useBook(Number.isFinite(id) ? id : null);
   const progress = useReadingProgress();
   const navigate = useNavigate();
+  const location = useLocation();
   const [openVolumes, setOpenVolumes] = useState<Set<number>>(new Set());
   const [introOpen, setIntroOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -59,6 +60,15 @@ export function BookPage() {
   const lastChapter = lastChapterLabel(book);
   const currentReadStatus = readStatus ?? book.readStatus ?? "";
 
+  /**
+   * 回书架优先走浏览器历史（保留书架的滚动位置与已加载列表），
+   * 直接打开详情页（无历史）时才落到 /shelf 并让书架按缓存恢复位置。
+   */
+  function backToShelf() {
+    if (location.key !== "default") navigate(-1);
+    else navigate("/shelf", { state: { restore: true } });
+  }
+
   /** 阅读状态下拉：只下发 readStatus，成功即时回显；失败回滚并提示，不遮目录。 */
   async function changeReadStatus(next: ReadStatus) {
     const detail = book;
@@ -90,7 +100,9 @@ export function BookPage() {
   return (
     <section data-testid="view:book" data-od-id="book-detail">
       <nav className="crumbs" aria-label="面包屑">
-        <Link to="/shelf">书架</Link>
+        <button className="crumb-link" type="button" onClick={backToShelf}>
+          书架
+        </button>
         <span aria-hidden="true">/</span>
         <span className="meta">书籍详情</span>
       </nav>
