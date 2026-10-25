@@ -3,7 +3,6 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { ShelfModeContext, type ShelfMode } from "./shelfMode";
-import { ToastHost } from "../lib/toast";
 
 /**
  * PC 外壳：常驻侧栏 + 粘性顶栏。
@@ -57,7 +56,8 @@ export function AppShell() {
             <Outlet />
           </main>
         </div>
-        <ToastHost />
+        {/* ToastHost 不在这里挂：它挂在 App 根（路由之外），否则 /read 这类 AppShell 之外的
+            路由永远没有 toast，而两处都挂会同一状态渲染两份。 */}
       </div>
     </ShelfModeContext.Provider>
   );

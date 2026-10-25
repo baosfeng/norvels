@@ -46,6 +46,16 @@ export interface BookMetaPatch {
   serialStatus?: SerialStatus;
   /** 阅读状态；`""` 即未标记。其它取值后端 400 `invalid_param`。 */
   readStatus?: ReadStatus;
+  /** 出版社；传 "" 即清空。 */
+  publisher?: string;
+  /** 出版日期 YYYY-MM-DD；传 "" 即清空，格式不对后端 400 invalid_param。 */
+  pubDate?: string;
+  /** ISBN；传 "" 即清空。 */
+  isbn?: string;
+  /** 语言；传 "" 即清空。 */
+  language?: string;
+  /** 评分 0–5：0 = 未评（不参与 rating 筛选与 sort=rating），越界后端 400 invalid_param。 */
+  rating?: number;
 }
 
 export interface UploadAccepted {
@@ -83,6 +93,12 @@ export interface BookSummary extends BookMeta {
   serialStatus?: SerialStatus;
   /** 本书书签总数；缺省时按「还不知道」处理，不展示。 */
   bookmarkCount?: number;
+  /** 评分 0–5；缺省按 0（未评）处理，与后端「0 = 未评」同一口径。 */
+  rating?: number;
+  /** 追更新增章数；缺省按 0。只有追更链路累加，读完最后一章由 ack 清零。 */
+  newChapters?: number;
+  /** 最后一章入库时间（UTC ISO-8601）；缺省按 `""`（还没有章节）处理。 */
+  lastChapterAt?: string;
   importedAt: string;
   updatedAt: string;
 }
@@ -348,6 +364,8 @@ export interface ReadingProgress {
   chapterIdx: number;
   chapterTitle: string;
   percent: number;
+  /** 章内段落下标（与书签 paraIndex 同一口径）；缺省按 0。 */
+  paraIndex?: number;
   updatedAt: string;
 }
 
@@ -372,4 +390,91 @@ export interface ChapterRule {
 /** GET /api/settings/chapter-rules 的响应；PUT 是全量替换。 */
 export interface ChapterRules {
   rules: ChapterRule[];
+}
+
+// --- P3 契约（docs/specs/2026-10-25-p3-contract.md） ---
+
+/**
+ * 轻量书目：GET /api/books/random 与 GET /api/series/{name} 的 books 元素。
+ * 后端按列表项同一套字段投影，前端直接复用书架卡片渲染，不再单独裁剪。
+ */
+export type BookBrief = BookSummary;
+
+/** POST /api/books/batch：单事务逐本应用同一 patch；单本失败只进 failed，不整体回滚。 */
+export interface BookBatchResult {
+  updated: number[];
+  failed: { id: number; message: string }[];
+}
+
+/** 自定义书单（扁平收藏夹，一本书可属多个书单）。 */
+export interface Collection {
+  id: number;
+  name: string;
+  bookCount: number;
+}
+
+/** 系列聚合项：只统计 series 非空的书，排序按最近更新时间倒序。 */
+export interface SeriesSummary {
+  name: string;
+  bookCount: number;
+  wordCount: number;
+  /** 该系列内最近一章的入库时间；系列内没有章节时为空串 */
+  lastUpdatedAt: string;
+  /** 取封面用的书 id；0 表示没有可用封面 */
+  coverBookId: number;
+}
+
+/** GET /api/series 的响应：items 之外只保证 total。 */
+export interface SeriesPage {
+  items: SeriesSummary[];
+  total: number;
+}
+
+/** GET /api/series/{name}：系列不存在（或没有书）时后端 404。 */
+export interface SeriesDetail {
+  name: string;
+  books: BookBrief[];
+}
+
+/** GET /api/stats/reading 的单日聚合：近 N 天每天一项，没有阅读的日期 seconds 为 0。 */
+export interface DaySeconds {
+  /** YYYY-MM-DD（本地库时区口径由后端统一） */
+  date: string;
+  seconds: number;
+}
+
+export interface ReadingStats {
+  totalSeconds: number;
+  todaySeconds: number;
+  weekSeconds: number;
+  /** 从今天往前连续有阅读记录的天数；今天没有记录即为 0。 */
+  streak: number;
+  days: DaySeconds[];
+}
+
+/** GET /api/reading/history 的一行：按书聚合（最后章节 / 最后时间 / 累计时长 / 阅读天数）。 */
+export interface ReadingHistoryRow {
+  bookId: number;
+  bookTitle: string;
+  chapterId: number;
+  chapterTitle: string;
+  lastReadAt: string;
+  totalSeconds: number;
+  days: number;
+}
+
+/** GET /api/reading/history 的响应：只保证 items/total，页码由请求方自己记。 */
+export interface ReadingHistoryResult {
+  items: ReadingHistoryRow[];
+  total: number;
+}
+
+/** POST /api/reading/sessions 的请求体：页面可见时累计，≥60s 且切章/隐藏/卸载才提交一次。 */
+export interface ReadingSessionInput {
+  bookId: number;
+  chapterId: number;
+  /** 1–86400，越界后端 400 */
+  seconds: number;
+  /** 缺省由后端取当前时间 */
+  startedAt?: string;
 }

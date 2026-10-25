@@ -10,6 +10,9 @@ import { AuthorsPage } from "./features/authors/AuthorsPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
 import { AdminBooksPage } from "./features/admin/AdminBooksPage";
 import { AdminBookPage } from "./features/admin/AdminBookPage";
+import { SeriesPage } from "./features/series/SeriesPage";
+import { SeriesDetailPage } from "./features/series/SeriesDetailPage";
+import { HistoryPage } from "./features/history/HistoryPage";
 import { TierRoute } from "./layouts/TierRoute";
 import { LandingRedirect, NotFoundPage, TierHomeRedirect } from "./layouts/Redirects";
 
@@ -72,6 +75,31 @@ export const routeTable: RouteObject[] = [
         element: (
           <TierRoute>
             <DashboardPage />
+          </TierRoute>
+        ),
+      },
+      // 发现域（P3）：系列聚合与阅读历史都是 PC 视野，H5 下由 TierRoute 直接不渲染
+      {
+        path: "series",
+        element: (
+          <TierRoute>
+            <SeriesPage />
+          </TierRoute>
+        ),
+      },
+      {
+        path: "series/:name",
+        element: (
+          <TierRoute>
+            <SeriesDetailPage />
+          </TierRoute>
+        ),
+      },
+      {
+        path: "history",
+        element: (
+          <TierRoute>
+            <HistoryPage />
           </TierRoute>
         ),
       },

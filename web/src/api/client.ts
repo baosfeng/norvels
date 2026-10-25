@@ -1,6 +1,8 @@
 import type {
   AuthorDetail,
   AuthorSummary,
+  BookBatchResult,
+  BookBrief,
   BookDetail,
   Bookmark,
   BookMetaPatch,
@@ -9,6 +11,7 @@ import type {
   ChapterDetail,
   ChapterRule,
   ChapterRules,
+  Collection,
   DryRunReport,
   HealthReport,
   ImportJob,
@@ -20,8 +23,13 @@ import type {
   RenumberBody,
   RenumberResult,
   SerialStatus,
+  ReadingHistoryResult,
   ReadingProgress,
+  ReadingSessionInput,
+  ReadingStats,
   SearchResult,
+  SeriesDetail,
+  SeriesPage,
   SplitResult,
   Stats,
   TagRule,
@@ -174,13 +182,20 @@ export interface BookQuery {
   q?: string;
   authorId?: number;
   tag?: string;
-  sort?: "updated" | "title" | "chapters" | "words" | "imported";
+  /** sort=rating 只排已评的书（0 星 = 未评，不参与）；同分按更新时间兜底 */
+  sort?: "updated" | "title" | "chapters" | "words" | "imported" | "rating";
   page?: number;
   size?: number;
   /** 阅读状态筛选：want / reading / done；不传即全部（含未标记）。空串不落进 URL。 */
   readStatus?: Exclude<ReadStatus, "">;
   /** 连载状态筛选：ongoing / completed / none（未知）；不传即全部。 */
   serialStatus?: Exclude<SerialStatus, ""> | "none";
+  /** 系列名筛选（精确匹配）；空串不落进 URL。 */
+  series?: string;
+  /** 评分筛选 1–5；0 = 未评，不能用来筛「未评」（不传才是全部）。 */
+  rating?: number;
+  /** 书单 id 筛选。 */
+  collection?: number;
 }
 
 /** 契约文档（docs/specs/2026-10-25-p1-reading.md §2.3）里的名字；与 BookQuery 是同一份参数。 */
@@ -387,6 +402,94 @@ export const api = {
   // limit 默认 5、上限 50（后端 intQuery 约束），传错值会 400
   readingProgress: (opts?: RequestOptions, limit?: number) =>
     request<{ items: ReadingProgress[] }>(`/reading/progress${query({ limit })}`, opts),
-  saveProgress: (body: { bookId: number; chapterId: number; percent: number }, opts?: RequestOptions) =>
-    request<void>("/reading/progress", { ...opts, method: "PUT", body }),
+  saveProgress: (
+    body: { bookId: number; chapterId: number; percent: number; paraIndex?: number },
+    opts?: RequestOptions,
+  ) => request<void>("/reading/progress", { ...opts, method: "PUT", body }),
+
+  // --- P3 契约（docs/specs/2026-10-25-p3-contract.md） ---
+  // 上面 saveProgress 就是 PUT /api/reading/progress 的唯一出口（契约 ✎ 只是加了 paraIndex，
+  // 所以扩在这里而不是另开一份实现，避免同一端点两份真相）；下面只列 ★ 新增端点。
+
+  /**
+   * 随机一本：可选按作者 / 标签 / 书单缩范围。库里没有符合条件的书时 404
+   * （ApiError.status = 404，前端按「没有符合条件的书」展示，不是错误态）。
+   */
+  randomBook: (params: { authorId?: number; tag?: string; collection?: number } = {}, opts?: RequestOptions) =>
+    request<BookBrief>(`/books/random${query({ ...params })}`, opts),
+
+  /**
+   * 批量改元信息：一次请求最多 200 本，单事务逐本应用同一 patch。
+   * 单本失败只进 failed（带可展示 message），不整体回滚——失败项按 id 单独重试。
+   */
+  batchUpdateBooks: (body: { ids: number[]; patch: BookMetaPatch }, opts?: RequestOptions) =>
+    request<BookBatchResult>("/books/batch", { ...opts, method: "POST", body }),
+
+  /** 系列聚合列表：q 匹配系列名；排序固定按最近更新倒序（无 sort 参数）。 */
+  seriesList: (params: { q?: string; page?: number; size?: number } = {}, opts?: RequestOptions) =>
+    request<SeriesPage>(`/series${query({ ...params })}`, opts),
+
+  /** 系列详情：名字必须 URL 编码（系列名可能带空格与斜杠之外的任意字符）；系列无书 404。 */
+  seriesDetail: (name: string, opts?: RequestOptions) =>
+    request<SeriesDetail>(`/series/${encodeURIComponent(name)}`, opts),
+
+  /**
+   * 新建章节：省略 afterChapterId 即追加到末尾，给了就插在那章之后。
+   * 空正文或正文超 1 MiB 后端 400 invalid_param；返回新章核心字段，目录结构靠 reload 详情取。
+   */
+  createChapter: (
+    bookId: number,
+    body: { title: string; content: string; afterChapterId?: number },
+    opts?: RequestOptions,
+  ) => request<ChapterBrief>(`/books/${bookId}/chapters`, { ...opts, method: "POST", body }),
+
+  /** 新建标签：同名时后端 200 回已有项（不报冲突），所以调用方无需先查。 */
+  createTag: (name: string, opts?: RequestOptions) =>
+    request<TagSummary>("/tags", { ...opts, method: "POST", body: { name } }),
+
+  /** 改标签名：重名 409 conflict，标签不存在 404。 */
+  renameTag: (id: number, name: string, opts?: RequestOptions) =>
+    request<TagSummary>(`/tags/${id}`, { ...opts, method: "PATCH", body: { name } }),
+
+  /** 删标签：204，全库解绑（不再挂在任何书上）。 */
+  deleteTag: (id: number, opts?: RequestOptions) =>
+    request<void>(`/tags/${id}`, { ...opts, method: "DELETE" }),
+
+  /** 书单列表（扁平收藏夹，含每个书单的书数）。 */
+  collections: (opts?: RequestOptions) => request<{ items: Collection[] }>("/collections", opts),
+
+  /** 新建书单：重名 409 conflict；返回带 id 的新书单（bookCount 恒为 0）。 */
+  createCollection: (name: string, opts?: RequestOptions) =>
+    request<Collection>("/collections", { ...opts, method: "POST", body: { name } }),
+
+  /** 改书单名：只回状态码，改名后靠列表 reload 取新值（不回传就不存在两份真相）。 */
+  renameCollection: (id: number, name: string, opts?: RequestOptions) =>
+    request<void>(`/collections/${id}`, { ...opts, method: "PATCH", body: { name } }),
+
+  /** 删书单：204（只删收藏夹关系，不动书）。 */
+  deleteCollection: (id: number, opts?: RequestOptions) =>
+    request<void>(`/collections/${id}`, { ...opts, method: "DELETE" }),
+
+  /** 全量替换书单成员：bookIds 即最终成员，空数组 = 清空。 */
+  replaceCollectionBooks: (id: number, bookIds: number[], opts?: RequestOptions) =>
+    request<void>(`/collections/${id}/books`, { ...opts, method: "PUT", body: { bookIds } }),
+
+  /** 读完最后一章后清零追更角标：204。 */
+  ackNewChapters: (bookId: number, opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/ack-new-chapters`, { ...opts, method: "POST" }),
+
+  /**
+   * 上报一次阅读时长：seconds 1–86400，越界 400；startedAt 缺省由后端取当前时间。
+   * 节流在 lib/readingTimer（页面可见时累计、≥60s 且切章/隐藏/卸载才提交），这里只管发。
+   */
+  addReadingSession: (body: ReadingSessionInput, opts?: RequestOptions) =>
+    request<void>("/reading/sessions", { ...opts, method: "POST", body }),
+
+  /** 阅读历史：按书聚合（最后章节 / 最后时间 / 累计时长 / 阅读天数），最近阅读在前。 */
+  readingHistory: (params: { page?: number; size?: number } = {}, opts?: RequestOptions) =>
+    request<ReadingHistoryResult>(`/reading/history${query({ ...params })}`, opts),
+
+  /** 阅读时长统计：days 1–365（默认 90）；与其它统计接口一样放宽超时（查聚合表）。 */
+  readingStats: (days?: number, opts?: RequestOptions) =>
+    request<ReadingStats>(`/stats/reading${query({ days })}`, { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
 };
