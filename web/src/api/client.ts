@@ -28,6 +28,7 @@ import type {
   TagRules,
   TagSummary,
   UploadResult,
+  Volume,
 } from "./types";
 
 /** 错误分类：调用方按 kind 决定文案与重试策略，不解析 message 字符串。 */
@@ -150,7 +151,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   try {
-    return (await response.json()) as T;
+    const text = await response.text();
+    // 200 + 空响应体是写操作的常见形态（卷重排只回状态码）：当成功，不按解析失败处理
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   } catch {
     throw new ApiError("parse", "返回内容无法识别");
   }
@@ -315,6 +319,41 @@ export const api = {
   /** 按序号重命名：200 返回改了几章。scope=book 改全书，scope=volume 只改这一卷。 */
   renumberChapters: (bookId: number, body: RenumberBody, opts?: RequestOptions) =>
     request<RenumberResult>(`/books/${bookId}/chapters/renumber`, { ...opts, method: "POST", body }),
+  /**
+   * 新建空卷：201 返回新卷（chapters 恒为空数组）。卷名去首尾空白后同书唯一，
+   * 重名 409 volume_name_taken（message「这本书已经有同名卷了」），空名 400 invalid_argument。
+   */
+  createVolume: (bookId: number, title: string, opts?: RequestOptions) =>
+    request<{ volume: Volume }>(`/books/${bookId}/volumes`, { ...opts, method: "POST", body: { title } }),
+  /** 改卷名：200 返回改后的卷；重名 409 volume_name_taken，卷不属于本书 404 not_found。 */
+  renameVolume: (bookId: number, volumeId: number, title: string, opts?: RequestOptions) =>
+    request<{ volume: Volume }>(`/books/${bookId}/volumes/${volumeId}`, {
+      ...opts,
+      method: "PATCH",
+      body: { title },
+    }),
+  /**
+   * 删卷：204。卷内章节的 volume_id 置 0（回到「未分卷」），剩余卷 idx 连续重排，
+   * books.volume_count 重算；章节 idx / 正文 / 字数都不动。
+   */
+  deleteVolume: (bookId: number, volumeId: number, opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/volumes/${volumeId}`, { ...opts, method: "DELETE" }),
+  /**
+   * 卷重排：ids 必须恰好是本书全部卷 id 的一个排列，否则 400 invalid_argument。
+   * 成功后卷 idx 按新序 0..n-1；章节 idx 不变（全书章号不随卷序变）。
+   */
+  reorderVolumes: (bookId: number, ids: number[], opts?: RequestOptions) =>
+    request<void>(`/books/${bookId}/volumes/order`, { ...opts, method: "PUT", body: { ids } }),
+  /**
+   * 章跨卷移动：volumeId=0 表示移到「未分卷」；返回实际移动的章数。
+   * 只改 chapters.volume_id，章节 idx / 正文 / 字数都不动；章不属于本书 404 not_found。
+   */
+  moveChapters: (bookId: number, chapterIds: number[], volumeId: number, opts?: RequestOptions) =>
+    request<{ moved: number }>(`/books/${bookId}/chapters/move`, {
+      ...opts,
+      method: "POST",
+      body: { chapterIds, volumeId },
+    }),
   /**
    * 上传封面：multipart 单文件（字段名 cover），单张 ≤2 MiB，JPEG/PNG/WebP/GIF。
    * 成功 204，之后要 reload 详情：封面地址的版本参数取自 books.updatedAt。

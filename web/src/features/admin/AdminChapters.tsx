@@ -4,6 +4,7 @@ import type { BookDetail, ChapterBrief, Volume } from "../../api/types";
 import { CHAPTER_PAGE, mergeVerdict, rowsOf } from "../../lib/chapterBatch";
 import { formatCount, formatWords } from "../../lib/format";
 import { showToast } from "../../lib/toastStore";
+import { isLooseVolume, realVolumes } from "../../lib/volumeOps";
 import { ChapterBatchBar } from "./ChapterBatchBar";
 import { ChapterBodyDrawer } from "./ChapterBodyDrawer";
 import { ChapterBatchDeleteDialog } from "./ChapterBatchDeleteDialog";
@@ -11,6 +12,8 @@ import { ChapterMergeDialog } from "./ChapterMergeDialog";
 import { ChapterRenumberDialog } from "./ChapterRenumberDialog";
 import { ChapterTable } from "./ChapterTable";
 import { SplitChapterDialog } from "./SplitChapterDialog";
+import { VolumeManageDialog } from "./VolumeManageDialog";
+import { VolumeMoveDialog } from "./VolumeMoveDialog";
 
 /**
  * 管理页的章节区：行内改标题 / 拆分 / 删除，加三处结构操作——勾选批量删除、
@@ -53,7 +56,13 @@ export function AdminChapters({
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [merging, setMerging] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  /** 卷管理弹窗（新建 / 重命名 / 上移下移 / 删除） */
+  const [managingVolumes, setManagingVolumes] = useState(false);
+  /** 「移动到卷」弹窗（勾选的章跨卷移动） */
+  const [movingToVolume, setMovingToVolume] = useState(false);
 
+  const real = useMemo(() => realVolumes(volumes), [volumes]);
+  const loose = useMemo(() => volumes.find(isLooseVolume) ?? null, [volumes]);
   const total = volumes.reduce((sum, volume) => sum + volume.chapters.length, 0);
   const filtered = query.trim().toLowerCase();
 
@@ -136,7 +145,8 @@ export function AdminChapters({
       <div className="card-head">
         <h2>章节</h2>
         <span className="meta" data-testid="admin-chapters-meta">
-          {formatCount(total)} 章 · {volumes.length} 卷
+          {formatCount(total)} 章 · {real.length} 卷
+          {loose ? ` · 未分卷 ${formatCount(loose.chapters.length)} 章` : ""}
         </span>
       </div>
 
@@ -165,12 +175,21 @@ export function AdminChapters({
         >
           按序号重命名…
         </button>
+        <button
+          className="btn btn-sm"
+          type="button"
+          data-testid="admin-volume-manage-open"
+          onClick={() => setManagingVolumes(true)}
+        >
+          卷管理…
+        </button>
       </div>
 
       <ChapterBatchBar
         count={pickedList.length}
         mergeReason={verdict.reason}
         onMerge={() => setMerging(true)}
+        onMove={() => setMovingToVolume(true)}
         onDelete={() => setBatchDeleting(true)}
         onClear={() => setPicked(new Set())}
       />
@@ -179,7 +198,6 @@ export function AdminChapters({
         volumes={volumes}
         rowsByVolume={rowsByVolume}
         picked={picked}
-        shown={shown}
         editing={editing}
         titleDraft={titleDraft}
         savingId={savingId}
@@ -207,7 +225,8 @@ export function AdminChapters({
       />
 
       <p className="meta">
-        勾选后可批量删除；同卷相邻的章可以合并；也可以按序号重命名。改动都即时生效，不进下面的「保存」。
+        勾选后可批量删除、合并、移动到其他卷；同卷相邻的章可以合并；也可以按序号重命名。改动都即时生效，不进下面的「保存」。
+        卷的新建 / 重命名 / 排序 / 删除在「卷管理」里。
       </p>
 
       {deleting ? (
@@ -286,6 +305,29 @@ export function AdminChapters({
             setRenaming(false);
             setPicked(new Set());
             onChanged(`已按序号重命名 ${formatCount(renamed)} 章。`);
+          }}
+        />
+      ) : null}
+
+      {managingVolumes ? (
+        <VolumeManageDialog
+          bookId={book.id}
+          volumes={volumes}
+          onSaved={onChanged}
+          onClose={() => setManagingVolumes(false)}
+        />
+      ) : null}
+
+      {movingToVolume ? (
+        <VolumeMoveDialog
+          bookId={book.id}
+          volumes={volumes}
+          chapters={pickedList}
+          onClose={() => setMovingToVolume(false)}
+          onMoved={({ moved, volumeTitle }) => {
+            setMovingToVolume(false);
+            setPicked(new Set());
+            onChanged(`已移动 ${formatCount(moved)} 章到「${volumeTitle}」。`);
           }}
         />
       ) : null}

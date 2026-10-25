@@ -29,6 +29,11 @@ describe("request 错误分类", () => {
     await expect(request<void>("/reading/progress", { method: "PUT", body: {} })).resolves.toBeUndefined();
   });
 
+  it("200 但响应体为空也当成功（卷重排只回状态码）", async () => {
+    mockFetch(async () => new Response("", { status: 200 }));
+    await expect(request<void>("/books/7/volumes/order", { method: "PUT", body: { ids: [2, 1] } })).resolves.toBeUndefined();
+  });
+
   it("超时归类为 timeout 而不是 network", async () => {
     mockFetch(
       (_url, init) =>

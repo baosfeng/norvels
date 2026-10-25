@@ -1,6 +1,7 @@
 import type { ChapterBrief, Volume } from "../../api/types";
 import { volumeLabel } from "../../lib/chapterBatch";
 import { formatCount } from "../../lib/format";
+import { volumeMetaText } from "../../lib/volumeOps";
 
 /** 章节表上的一行要触发的动作；表格本身不碰 state，全部由 AdminChapters 提供。 */
 export interface ChapterRowActions {
@@ -26,7 +27,6 @@ export function ChapterTable({
   volumes,
   rowsByVolume,
   picked,
-  shown,
   editing,
   titleDraft,
   savingId,
@@ -37,7 +37,7 @@ export function ChapterTable({
   volumes: Volume[];
   rowsByVolume: (volume: Volume) => ChapterBrief[];
   picked: Set<number>;
-  shown: Record<number, number>;
+  /** 每卷已渲染到第几章只在 AdminChapters 里算（rowsByVolume 用），表格只渲染收到的行 */
   editing: number | null;
   titleDraft: string;
   savingId: number | null;
@@ -96,7 +96,9 @@ export function ChapterTable({
                       onChange={(event) => actions.onPickRows(rows, event.target.checked)}
                     />
                     <span className="vol-title">{volumeLabel(volume)}</span>
-                    <span className="meta num">{formatCount(volume.chapters.length)} 章</span>
+                    <span className="meta num" data-testid={`admin-volume-meta-${volume.idx}`}>
+                      {volumeMetaText(volume)}
+                    </span>
                   </span>
                 </td>
               </tr>
@@ -177,15 +179,15 @@ export function ChapterTable({
                   </td>
                 </tr>
               ))}
-              {!filtered && (shown[volume.idx] ?? 0) < volume.chapters.length ? (
+              {/* 用实际渲染行数判断，不再读 shown：删卷后新出现的分组（如未分卷 idx=-1）
+                  不在 AdminChapters 挂载时初始化的 shown 表里，按 0 判断会误报「载入更多」 */}
+              {!filtered && rows.length < volume.chapters.length ? (
                 <tr className="more-row">
                   <td colSpan={5}>
                     <button className="btn btn-sm" type="button" onClick={() => actions.onLoadMore(volume)}>
                       载入更多
                     </button>
-                    <span className="meta">
-                      本卷还有 {formatCount(volume.chapters.length - (shown[volume.idx] ?? 0))} 章
-                    </span>
+                    <span className="meta">本卷还有 {formatCount(volume.chapters.length - rows.length)} 章</span>
                   </td>
                 </tr>
               ) : null}

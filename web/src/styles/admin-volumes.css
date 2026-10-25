@@ -1,0 +1,99 @@
+/* 卷管理 / 移动到卷（原型 .open-design/09-admin.html 的「卷管理」「移动到卷」弹窗）。
+   单独成文件：admin.css 与 admin-chapters.css 都已接近 400 行上限，按区块拆开更好找。 */
+
+.confirm-dialog.volume-dialog {
+  width: min(560px, 100%);
+}
+
+/* ── 卷管理：一行一卷（名称 · 章数与区间 · 操作）── */
+.vol-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 44vh;
+  overflow: auto;
+}
+.vol-manage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.vol-manage-row .vol-manage-name {
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vol-manage-row .meta {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.vol-manage-row .input {
+  grid-column: 1 / -1;
+}
+.vol-manage-acts {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.vol-manage-acts .btn {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+/* ── 新建卷 ── */
+.vol-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vol-new .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ── 移动到卷：单选列表 ── */
+.vol-move-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow: auto;
+}
+.vol-move-opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.vol-move-opt:hover {
+  border-color: var(--fg);
+}
+.vol-move-opt:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--surface-warm);
+}
+.vol-move-opt .meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 弹窗内的失败提示：贴在操作旁边，比页面顶部横幅好找 */
+.volume-error {
+  color: var(--danger-text);
+}

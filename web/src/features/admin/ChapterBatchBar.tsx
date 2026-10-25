@@ -1,11 +1,13 @@
 /**
  * 章节批量条：有勾选才渲染。合并按钮的可用性由 mergeVerdict 决定，
  * 不可用时把原因写在按钮左边——用户不用点了才知道为什么不行。
+ * 「移动到卷…」只看勾选数（跨卷选择正是它的用途），不禁用。
  */
 export function ChapterBatchBar({
   count,
   mergeReason,
   onMerge,
+  onMove,
   onDelete,
   onClear,
 }: {
@@ -13,6 +15,7 @@ export function ChapterBatchBar({
   /** 空串 = 可以合并；非空 = 禁用原因 */
   mergeReason: string;
   onMerge: () => void;
+  onMove: () => void;
   onDelete: () => void;
   onClear: () => void;
 }) {
@@ -39,6 +42,9 @@ export function ChapterBatchBar({
           onClick={onMerge}
         >
           合并
+        </button>
+        <button className="btn btn-sm" type="button" data-testid="admin-ch-move" onClick={onMove}>
+          移动到卷…
         </button>
         <button className="btn btn-sm btn-danger" type="button" data-testid="admin-ch-batch-delete" onClick={onDelete}>
           删除所选
