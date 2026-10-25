@@ -211,7 +211,10 @@ body.h5-sheet-open {
 /* 阅读器 H5：顶部 header 与底部翻章栏是一个整体控制层，覆盖在正文之上、默认收起 */
 @media (max-width: 768px) {
   .reader-shell {
-    /* 收起态正文占满视口：外壳定高，滚动交给正文区，不再有常驻 sticky 占位 */
+    /* 收起态正文占满视口：外壳定高，滚动交给正文区，不再有常驻 sticky 占位。
+       position:relative 让绝对定位的控制层相对外壳定位并被 overflow 裁掉，
+       否则控制层会以视口为包含块、滑出屏幕后把文档撑高。 */
+    position: relative;
     padding: 0;
     height: 100vh;
     height: 100dvh;
