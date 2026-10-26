@@ -128,6 +128,8 @@ export function ChapterList({
                   className={`cv-row${layout === "drawer" ? " is-drawer" : ""}${current ? " is-current" : ""}`}
                   style={{ height: rowHeight }}
                   aria-current={current ? "true" : undefined}
+                  data-od-id="C-15"
+                  data-testid={`chapter-row-${chapter.id}`}
                   onClick={() => onNavigate?.(chapter)}
                 >
                   <span className="cv-title">{chapter.title}</span>

@@ -9,6 +9,7 @@ export const MAX_RATING = 5;
 /**
  * 0–5 星控件（纯展示 + 回调）：用按钮而不是可拖拽元素，键盘 Tab 与 Enter 天然可用。
  * 点当前星级 = 取消评分（回到 0），与「再点一次取消收藏」的习惯一致。
+ * 悬停只做预览（契约 C-08 hover）：目标星及左侧临时点亮，不改 aria 与真值。
  */
 export function RatingStars({
   value,
@@ -22,22 +23,36 @@ export function RatingStars({
   testId?: string;
 }) {
   const current = clampRating(value);
+  const [preview, setPreview] = useState<number | null>(null);
+  const lit = preview ?? current;
+
   return (
-    <div className="chips" role="group" aria-label="评分" data-testid={testId}>
-      {Array.from({ length: MAX_RATING }, (_, i) => i + 1).map((star) => (
-        <button
-          key={star}
-          type="button"
-          className={`chip${star <= current ? " is-active" : ""}`}
-          aria-label={`${star} 星`}
-          aria-pressed={star === current}
-          disabled={disabled}
-          data-testid={`${testId}-star-${star}`}
-          onClick={() => onRate(star === current ? 0 : star)}
-        >
-          {star <= current ? "★" : "☆"}
-        </button>
-      ))}
+    <div
+      className="chips"
+      role="group"
+      aria-label="评分"
+      data-testid={testId}
+      onMouseLeave={() => setPreview(null)}
+    >
+      {Array.from({ length: MAX_RATING }, (_, i) => i + 1).map((star) => {
+        const filled = star <= lit;
+        const previewing = preview !== null && star <= preview && star > current;
+        return (
+          <button
+            key={star}
+            type="button"
+            className={`chip${star <= current ? " is-active" : ""}${previewing ? " is-preview" : ""}`}
+            aria-label={`${star} 星`}
+            aria-pressed={star === current}
+            disabled={disabled}
+            data-testid={`${testId}-star-${star}`}
+            onMouseEnter={() => setPreview(disabled ? null : star)}
+            onClick={() => onRate(star === current ? 0 : star)}
+          >
+            {filled ? "★" : "☆"}
+          </button>
+        );
+      })}
       <span className="meta" data-testid={`${testId}-label`}>
         {current > 0 ? `${current} 星` : "未评分"}
       </span>
@@ -70,7 +85,7 @@ export function BookRating({ book, onChanged }: { book: BookDetail; onChanged?: 
   }
 
   return (
-    <div className="rating-row" data-testid="book-rating">
+    <div className="rating-row" data-testid="book-rating" data-od-id="C-08">
       <RatingStars value={rating} onRate={(next) => void rate(next)} disabled={saving} testId="book-rating" />
     </div>
   );

@@ -7,6 +7,7 @@ import { ReaderPage } from "./features/reader/ReaderPage";
 import { SearchPage } from "./features/search/SearchPage";
 import { ImportPage } from "./features/import/ImportPage";
 import { AuthorsPage } from "./features/authors/AuthorsPage";
+import { AuthorWorksPage } from "./features/authors/AuthorWorksPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
 import { AdminBooksPage } from "./features/admin/AdminBooksPage";
 import { AdminBookPage } from "./features/admin/AdminBookPage";
@@ -50,6 +51,15 @@ export const routeTable: RouteObject[] = [
         element: (
           <TierRoute>
             <AuthorsPage />
+          </TierRoute>
+        ),
+      },
+      // 某位作者的作品页（交互契约 C-22 的落点）：作者页在 PC 才渲染，这里同样由 TierRoute 把关
+      {
+        path: "authors/:authorId",
+        element: (
+          <TierRoute>
+            <AuthorWorksPage />
           </TierRoute>
         ),
       },
