@@ -1,1 +1,150 @@
-/* 运营域交互实现样式（契约落地，2026-10-27 夜）。只由 ops 分支写。 */
+/* 运营域交互实现样式（契约落地，2026-10-27 夜）。只由 ops 分支写。
+   全局已有 :focus-visible 外框与 .btn:hover（prototype.css / globals.css），这里只补
+   运营域控件缺的那部分：hover 只做增强、focus 用 --focus-ring、按下 100ms 内可见、
+   禁用有常驻原因（.inline-note）。 */
+
+/* ── 输入类：hover 描边加深、focus 陶土描边 + 4px 焦点环、非法值标红 ───────── */
+.ix-ops .input,
+.ix-ops .select,
+.upload-dropzone,
+.rule-row .input {
+  transition: border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+.ix-ops .input:hover:enabled,
+.ix-ops .select:hover:enabled,
+.rule-row .input:hover:enabled {
+  border-color: var(--muted);
+}
+.ix-ops .input:focus-visible,
+.ix-ops .select:focus-visible,
+.ix-ops .input:focus,
+.ix-ops .select:focus,
+.rule-row .input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+.ix-ops .input.is-invalid {
+  border-color: var(--danger);
+  color: var(--danger-text);
+}
+.ix-ops .input.is-mono,
+.rule-row .input.is-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+/* 单行输入不换行：超长路径在框内横向滚动，不把版面撑破（C-01 边界） */
+.ix-ops .input {
+  text-overflow: ellipsis;
+}
+
+/* ── 按钮类：hover 提亮一档；禁用时不变色、指针说明不可点 ────────────────── */
+.ix-ops .btn:hover:enabled {
+  background: var(--border-soft);
+}
+.ix-ops .btn-primary:hover:enabled {
+  background: var(--accent-hover);
+}
+.ix-ops .btn:disabled,
+.ix-ops .input:disabled,
+.ix-ops .select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* 禁用的输入框仍可聚焦（读屏能读到原因），所以不加 pointer-events: none */
+
+/* ── 勾选框：选中填陶土色，hover 描边加深（禁用态不参与） ───────────────── */
+.ix-ops input[type="checkbox"] {
+  accent-color: var(--accent);
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.ix-ops input[type="checkbox"]:hover:enabled {
+  border-color: var(--muted);
+}
+
+/* ── 上传区：虚线框，拖拽悬停转陶土色 + 暖白底 ──────────────────────────── */
+.upload-dropzone {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  padding: 22px 16px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+}
+.upload-dropzone:hover {
+  background: var(--border-soft);
+}
+.upload-dropzone.is-dragging {
+  border-color: var(--accent);
+  background: var(--surface-warm);
+}
+.upload-dropzone:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+.upload-dropzone.is-disabled,
+.upload-dropzone.is-disabled:hover {
+  background: transparent;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ── 折叠条与明细列表：展开/收起 240ms 淡入，超 20 条在列表内滚动 ────────── */
+.warn-fold .failure-toggle {
+  width: 100%;
+}
+.warn-list {
+  margin: 0;
+  padding: 8px 0 0 18px;
+  display: grid;
+  gap: 4px;
+  font-size: var(--text-sm);
+  animation: ix-ops-fade-in var(--motion-base) var(--ease-standard);
+}
+.warn-list.is-scroll,
+.import-errors.is-scroll {
+  max-height: 320px;
+  overflow: auto;
+}
+.import-errors {
+  animation: ix-ops-fade-in var(--motion-base) var(--ease-standard);
+}
+.ix-ops .inline-note.is-fade {
+  animation: ix-ops-fade-in var(--motion-base) var(--ease-standard);
+}
+.dry-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+/* 弹层淡入（契约里所有「弹层 240ms 内淡入」共用） */
+.ix-ops .confirm-dialog,
+.confirm-dialog {
+  animation: ix-ops-fade-in var(--motion-base) var(--ease-standard);
+}
+@keyframes ix-ops-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ix-ops *,
+  .upload-dropzone,
+  .warn-list,
+  .import-errors {
+    transition: none;
+    animation: none;
+  }
+}

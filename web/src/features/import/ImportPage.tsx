@@ -1,17 +1,23 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useImportJobs } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
 import type { DryRunReport, ImportJob } from "../../api/types";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
-import { formatDate } from "../../lib/format";
 import { ChapterRulesPanel } from "./ChapterRulesPanel";
 import { DryRunReportPanel } from "./DryRunReport";
 import { FailedFilesPanel } from "./FailedFilesPanel";
+import { ImportHistory } from "./ImportHistory";
+import { ImportProgressCard } from "./ImportProgressCard";
+import { ImportSuccessPanel } from "./ImportSuccessPanel";
 import { TagRulesPanel } from "./TagRulesPanel";
 import { UploadPanel } from "./UploadPanel";
+import { useTimedNote } from "./useTimedNote";
 
-/** 运行中任务的轮询间隔：后端没有推送通道，进度条与计数靠这一次拉取更新。 */
+/** 运行中任务的轮询间隔：进度与计数靠这一次拉取更新。 */
 const POLL_MS = 2000;
+/** 同时处理文件数的合法区间（契约 C-05）。 */
+const WORKERS_MIN = 1;
+const WORKERS_MAX = 8;
 
 /** 终态（不再变化）：见到它就停轮询，并刷新一次任务列表。 */
 function isTerminal(status: ImportJob["status"]): boolean {
@@ -20,7 +26,7 @@ function isTerminal(status: ImportJob["status"]): boolean {
 
 /**
  * 导入管理（PC 专属，H5 不渲染也不承认这个路由）。
- * 表单 / 进度 / 失败明细 / 任务历史四块，当前任务由进度卡独占、历史只列已结束任务。
+ * 左栏是三个入口（路径 / 上传 / 两套规则），右栏是可预检结果、进度、失败清单与历史。
  */
 export function ImportPage() {
   const { data, loading, error, reload } = useImportJobs();
@@ -28,35 +34,313 @@ export function ImportPage() {
   const [recursive, setRecursive] = useState(true);
   const [force, setForce] = useState(false);
   const [update, setUpdate] = useState(false);
-  const [workers, setWorkers] = useState(4);
+  const [workers, setWorkers] = useState("4");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [showErrors, setShowErrors] = useState(false);
-  // 正在取消的任务 id（按钮变为「正在取消…」），以及取消结果的人话提示
+  const started = useTimedNote();
   const [canceling, setCanceling] = useState<number | null>(null);
   const [canceledNote, setCanceledNote] = useState("");
-  /** 轮询拿到的最新任务快照（同一个 id 才认）：列表里的那份只在进页面时取一次 */
   const [live, setLive] = useState<ImportJob | null>(null);
-  // 只预检：报告是同步返回的只读结果，不建任务
   const [dryBusy, setDryBusy] = useState(false);
   const [dryReport, setDryReport] = useState<DryRunReport | null>(null);
   const [dryError, setDryError] = useState<ApiError | null>(null);
+  const [dryNote, setDryNote] = useState("");
   const [dryDir, setDryDir] = useState("");
+  const [dryElapsed, setDryElapsed] = useState(0);
+  const dryAbort = useRef<AbortController | null>(null);
+  const dryButton = useRef<HTMLButtonElement>(null);
 
   const jobs = data?.items ?? [];
   const running = jobs.find((j) => j.status === "running");
   const runningId = running?.id ?? null;
-  // 进度卡读这份：轮询快照与列表里的 running 是同一个任务才采信快照，
-  // 否则列表已经换了任务、还显示上一单的进度
+  // 进度卡只采信同一个任务的轮询快照，否则列表换单后还显示上一单的数字
   const current = running && live?.id === running.id ? live : running;
   const finished = jobs.filter((j) => j.status !== "running");
-  // 失败清单看最新任务：正在跑的优先，否则最近一条历史
   const activeJob = running ?? jobs[0] ?? null;
-  // 以 txt / epub / zip 结尾就按单文件处理：递归选项对它没有意义，勾上也不会改变结果。
+  // 以 txt / epub / zip 结尾就按单文件处理：递归选项对它没有意义
   const isSingleFile = /\.(txt|epub|zip)$/i.test(dir.trim());
+  const workersNum = Number(workers);
+  const workersInvalid = workers.trim() !== "" && (!Number.isFinite(workersNum) || workersNum < WORKERS_MIN || workersNum > WORKERS_MAX);
 
-  // 运行中任务的进度轮询：进页面先拉一次，之后每 2 秒一次，见到终态就停并刷新列表。
-  // 启动条件 = 列表里存在 running 任务；停止条件 = 终态 / 任务从列表消失（runningId 变 null）/ 卸载。
+  usePolling(runningId, setLive, setCanceling, setCanceledNote, reload);
+
+  // 预检的已跑秒数：取消时照实显示，不假装瞬间完成（契约 C-21）
+  useEffect(() => {
+    if (!dryBusy) return;
+    setDryElapsed(0);
+    const timer = window.setInterval(() => setDryElapsed((n) => n + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [dryBusy]);
+
+  const workersOf = () => {
+    if (workers.trim() === "") return 1;
+    const n = Math.round(workersNum);
+    return Math.min(WORKERS_MAX, Math.max(WORKERS_MIN, n));
+  };
+
+  async function start() {
+    if (busy) return;
+    const target = dir.trim();
+    if (!target) {
+      started.show("先填一个目录或 txt 文件路径。");
+      return;
+    }
+    setBusy(true);
+    started.clear();
+    try {
+      await api.startImport({ dir: target, recursive, force, update, workers: workersOf() });
+      started.show("任务已开始，进度会在下方的进度卡里更新。");
+      reload();
+    } catch (err) {
+      started.show(
+        err instanceof Error && "status" in err && (err as { status?: number }).status === 409
+          ? "已经有一个导入任务在跑了，等它结束再开新的。"
+          : "任务没能开始，检查一下路径是否存在。",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 只预检：不建任务、不占名额；60 秒上限由这一次请求自己的超时兜住。 */
+  async function runDryRun() {
+    const target = dir.trim();
+    if (!target) {
+      setDryNote("先填一个目录或 txt 文件路径，再预检。");
+      return;
+    }
+    const controller = new AbortController();
+    dryAbort.current = controller;
+    setDryBusy(true);
+    setDryNote("");
+    setDryError(null);
+    setDryReport(null);
+    setDryDir(target);
+    try {
+      const report = await api.dryRunImport(
+        { dir: target, recursive, force, update, workers: workersOf() },
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      setDryReport(report);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      setDryError(err instanceof ApiError ? err : new ApiError("network", err instanceof Error ? err.message : "预检失败"));
+    } finally {
+      if (!controller.signal.aborted) setDryBusy(false);
+      dryAbort.current = null;
+    }
+  }
+
+  /** 取消这次预检：报告收起、回到未预检状态，焦点回「只预检」。 */
+  function cancelDryRun() {
+    dryAbort.current?.abort();
+    dryAbort.current = null;
+    setDryBusy(false);
+    setDryError(null);
+    setDryReport(null);
+    setDryDir("");
+    setDryNote("");
+    dryButton.current?.focus();
+  }
+
+  async function cancelJob(job: ImportJob) {
+    setCanceling(job.id);
+    setCanceledNote("");
+    try {
+      await api.cancelImport(job.id);
+    } catch (err) {
+      setCanceling(null);
+      setCanceledNote(cancelErrorText(err));
+    }
+  }
+
+  return (
+    <section className="ix-ops" data-testid="view:import">
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">导入管理</p>
+          <h1>把书变成书架</h1>
+          <p className="sub">拖入或选择 txt / epub / zip 直接导入，也可以填目录批量扫描；同一文件不会重复导入</p>
+        </div>
+        <span className="pill">{running ? "1 个进行中的任务" : "0 个排队任务"}</span>
+      </div>
+
+      <div className="import-layout">
+        <div style={{ display: "grid", gap: 16 }}>
+          <form
+            className="import-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void start();
+            }}
+          >
+            <h2>新建导入任务</h2>
+            <div className="field">
+              <label htmlFor="dir">目录或单个文件路径</label>
+              <input
+                className="input"
+                id="dir"
+                value={dir}
+                placeholder="例如 文稿/小说，或 文稿/小说/示例书简.epub"
+                data-od-id="C-01"
+                onChange={(e) => setDir(e.target.value)}
+              />
+              {dir.trim() === "" ? <p className="inline-note">先填一个目录或 txt 文件路径。</p> : null}
+              {isSingleFile ? (
+                <p className="inline-note">填到 .txt / .epub / .zip 就按单文件处理。</p>
+              ) : null}
+            </div>
+            <div className="check-row">
+              <input
+                id="rec"
+                type="checkbox"
+                checked={recursive && !isSingleFile}
+                disabled={isSingleFile}
+                data-od-id="C-02"
+                onChange={(e) => setRecursive(e.target.checked)}
+              />
+              <label htmlFor="rec">递归扫描子目录{isSingleFile ? "（单个文件用不上）" : ""}</label>
+            </div>
+            <div className="check-row">
+              <input
+                id="force"
+                type="checkbox"
+                checked={force}
+                data-od-id="C-03"
+                onChange={(e) => {
+                  setForce(e.target.checked);
+                  if (e.target.checked) setUpdate(false);
+                }}
+              />
+              <label htmlFor="force">重新导入已入库的文件</label>
+            </div>
+            {force ? <p className="inline-note">重新导入会覆盖已有章节。</p> : null}
+            <div className="check-row">
+              <input
+                id="update"
+                type="checkbox"
+                checked={update}
+                data-od-id="C-04"
+                onChange={(e) => {
+                  setUpdate(e.target.checked);
+                  if (e.target.checked) setForce(false);
+                }}
+              />
+              <label htmlFor="update">追更：同一本书只追加新章节（保留阅读进度）</label>
+            </div>
+            {update ? <p className="inline-note is-fade">只追加新章节，已有章节与阅读进度保留；章节对不上时整本拒绝，不覆盖。</p> : null}
+            <div className="field">
+              <label htmlFor="workers">同时处理的文件数</label>
+              <input
+                className={`input${workersInvalid ? " is-invalid" : ""}`}
+                id="workers"
+                type="number"
+                min={WORKERS_MIN}
+                max={WORKERS_MAX}
+                value={workers}
+                data-od-id="C-05"
+                onChange={(e) => setWorkers(e.target.value)}
+              />
+              {workersInvalid ? (
+                <p className="inline-note" data-testid="import-workers-hint">
+                  同时处理 1–8 个，超出按 8 算
+                </p>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-primary" type="submit" disabled={busy} data-od-id="C-06">
+                {busy ? "正在开始…" : "开始导入"}
+              </button>
+              <button
+                className="btn"
+                type="button"
+                ref={dryButton}
+                data-testid="import-dry-run"
+                disabled={busy || dryBusy}
+                data-od-id="C-07"
+                onClick={() => void runDryRun()}
+              >
+                {dryBusy ? "正在预检…" : "只预检"}
+              </button>
+            </div>
+            <p className="meta">同一时间只能运行一个导入任务；只预检不建任务、不占名额，随时可点。</p>
+            {started.note ? (
+              <p className="meta" role="status">
+                {started.note}
+              </p>
+            ) : null}
+            {dryNote ? (
+              <p className="meta" role="status" data-testid="dry-run-note">
+                {dryNote}
+              </p>
+            ) : null}
+          </form>
+          <UploadPanel onSubmitted={reload} disabled={Boolean(running)} />
+          <ChapterRulesPanel />
+          <TagRulesPanel />
+        </div>
+
+        <div>
+          {dryBusy ? (
+            <>
+              <LoadingPanel
+                title="正在预检"
+                description="扫描目录并试解析文件，最多 60 秒；不写库、不建任务。"
+                testId="dry-run-loading"
+              />
+              <div className="dry-run-actions">
+                <span className="meta">已跑 {dryElapsed} 秒</span>
+                <button className="btn btn-ghost" type="button" data-testid="dry-run-cancel" data-od-id="C-21" onClick={cancelDryRun}>
+                  取消这次预检
+                </button>
+              </div>
+            </>
+          ) : null}
+          {dryError ? (
+            <ErrorPanel error={dryError} title="预检没能完成" onRetry={() => void runDryRun()} testId="dry-run-error" />
+          ) : null}
+          {dryError && isDryTimeout(dryError) ? (
+            <p className="inline-note" data-testid="dry-run-timeout">
+              预检超过 60 秒会中断，可缩小目录范围重试
+            </p>
+          ) : null}
+          {dryReport ? <DryRunReportPanel report={dryReport} dir={dryDir} /> : null}
+
+          {loading ? (
+            <LoadingPanel title="正在读取任务" description="正在取回最近的导入记录。" />
+          ) : error ? (
+            <ErrorPanel error={error} title="任务列表没能加载" onRetry={reload} />
+          ) : current ? (
+            <ImportProgressCard job={current} canceling={canceling === current.id} onCancel={(job) => void cancelJob(job)} />
+          ) : (
+            <EmptyPanel title="当前没有进行中的任务" description="拖入文件或填好左边的路径，开始一次导入。" />
+          )}
+
+          {canceledNote ? (
+            <p className="meta" role="status" data-testid="import-cancel-note">
+              {canceledNote}
+            </p>
+          ) : null}
+
+          {activeJob && !running && isTerminal(activeJob.status) ? <ImportSuccessPanel job={activeJob} /> : null}
+
+          {activeJob ? <FailedFilesPanel key={activeJob.id} job={activeJob} onRetried={() => reload()} /> : null}
+
+          <ImportHistory jobs={finished} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** 运行中任务的进度轮询：进页面先拉一次，之后每 2 秒一次，见到终态就停并刷新列表。 */
+function usePolling(
+  runningId: number | null,
+  setLive: (job: ImportJob | null) => void,
+  setCanceling: (id: number | null) => void,
+  setCanceledNote: (text: string) => void,
+  reload: () => void,
+) {
   useEffect(() => {
     if (runningId === null) return;
     let active = true;
@@ -92,312 +376,12 @@ export function ImportPage() {
       active = false;
       stop();
     };
-  }, [runningId, reload]);
-
-  async function cancelJob(job: ImportJob) {
-    setCanceling(job.id);
-    setCanceledNote("");
-    try {
-      // 结果由进度轮询发现（见到 canceled 才给提示），不等列表刷新碰运气
-      await api.cancelImport(job.id);
-    } catch (err) {
-      setCanceling(null);
-      setCanceledNote(cancelErrorText(err));
-    }
-  }
-
-  async function start(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!dir.trim()) {
-      setMessage("先填一个目录或 txt 文件路径。");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    try {
-      await api.startImport({ dir: dir.trim(), recursive, force, update, workers });
-      setMessage("任务已开始，进度会在下方的进度卡里更新。");
-      reload();
-    } catch (err) {
-      setMessage(
-        err instanceof Error && "status" in err && (err as { status?: number }).status === 409
-          ? "已经有一个导入任务在跑了，等它结束再开新的。"
-          : "任务没能开始，检查一下路径是否存在。",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** 只预检（dry-run）：不建任务、不占锁；服务端最长 60 秒，超时回 503。 */
-  async function runDryRun() {
-    const target = dir.trim();
-    if (!target) {
-      setMessage("先填一个目录或 txt 文件路径，再预检。");
-      return;
-    }
-    setDryBusy(true);
-    setDryError(null);
-    setDryReport(null);
-    setDryDir(target);
-    try {
-      setDryReport(await api.dryRunImport({ dir: target, recursive, force, update, workers }));
-    } catch (err) {
-      setDryError(err instanceof ApiError ? err : new ApiError("network", err instanceof Error ? err.message : "预检失败"));
-    } finally {
-      setDryBusy(false);
-    }
-  }
-
-  return (
-    <section data-testid="view:import" data-od-id="import">
-      <div className="page-head">
-        <div>
-          <p className="eyebrow">导入管理</p>
-          <h1>把书变成书架</h1>
-          <p className="sub">拖入或选择 txt / epub / zip 直接导入，也可以填目录批量扫描；同一文件不会重复导入</p>
-        </div>
-        <span className="pill">{running ? "1 个进行中的任务" : "0 个排队任务"}</span>
-      </div>
-
-      <div className="import-layout">
-        <div style={{ display: "grid", gap: 16 }}>
-        <form className="import-form" onSubmit={start}>
-          <h2>新建导入任务</h2>
-          <div className="field">
-            <label htmlFor="dir">目录或单个文件路径</label>
-            <input
-              className="input"
-              id="dir"
-              value={dir}
-              onChange={(e) => setDir(e.target.value)}
-              placeholder="例如 文稿/小说，或 文稿/小说/示例书简.epub"
-            />
-          </div>
-          <div className="check-row">
-            <input
-              id="rec"
-              type="checkbox"
-              checked={recursive && !isSingleFile}
-              disabled={isSingleFile}
-              onChange={(e) => setRecursive(e.target.checked)}
-            />
-            <label htmlFor="rec">递归扫描子目录{isSingleFile ? "（单个文件用不上）" : ""}</label>
-          </div>
-          <div className="check-row">
-            <input id="force" type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
-            <label htmlFor="force">重新导入已入库的文件</label>
-          </div>
-          <div className="check-row">
-            <input id="update" type="checkbox" checked={update} onChange={(e) => setUpdate(e.target.checked)} />
-            <label htmlFor="update">追更：同一本书只追加新章节（保留阅读进度）</label>
-          </div>
-          <div className="field">
-            <label htmlFor="workers">同时处理的文件数</label>
-            <input
-              className="input"
-              id="workers"
-              type="number"
-              min={1}
-              max={8}
-              value={workers}
-              onChange={(e) => setWorkers(Number(e.target.value) || 1)}
-            />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-primary" type="submit" disabled={busy}>
-              {busy ? "正在开始…" : "开始导入"}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              data-testid="import-dry-run"
-              disabled={busy || dryBusy}
-              onClick={() => void runDryRun()}
-            >
-              {dryBusy ? "正在预检…" : "只预检"}
-            </button>
-          </div>
-          <p className="meta">同一时间只能运行一个导入任务；只预检不建任务、不占锁，随时可点。</p>
-          {message ? <p className="meta" role="status">{message}</p> : null}
-        </form>
-        <UploadPanel onSubmitted={reload} disabled={Boolean(running)} />
-        <ChapterRulesPanel />
-        <TagRulesPanel />
-        </div>
-
-        <div>
-          {dryBusy ? (
-            <LoadingPanel
-              title="正在预检"
-              description="扫描目录并试解析文件，最多 60 秒；不写库、不建任务。"
-              testId="dry-run-loading"
-            />
-          ) : null}
-          {dryError ? (
-            <ErrorPanel error={dryError} title="预检没能完成" onRetry={() => void runDryRun()} testId="dry-run-error" />
-          ) : null}
-          {dryReport ? <DryRunReportPanel report={dryReport} dir={dryDir} /> : null}
-
-          {loading ? (
-            <LoadingPanel title="正在读取任务" description="正在取回最近的导入记录。" />
-          ) : error ? (
-            <ErrorPanel error={error} title="任务列表没能加载" onRetry={reload} />
-          ) : current ? (
-            <div className="import-progress" data-testid="import-run">
-              <div className="top">
-                <span className="pill is-live">处理中</span>
-                <h2>任务 #{current.id}</h2>
-                <span className="meta" style={{ marginLeft: "auto" }}>
-                  开始于 {formatDate(current.startedAt)}
-                </span>
-                {canceling === current.id ? (
-                  <span className="meta" data-testid="import-cancel-pending">
-                    正在取消…
-                  </span>
-                ) : (
-                  <button
-                    className="btn btn-ghost btn-danger"
-                    type="button"
-                    onClick={() => void cancelJob(current)}
-                    data-testid="import-cancel"
-                  >
-                    取消任务
-                  </button>
-                )}
-              </div>
-              <div className="progress">
-                <span
-                  data-testid="import-progress-bar"
-                  style={{ width: `${progressOf(current.imported + current.skipped + current.failed, current.total)}%` }}
-                />
-              </div>
-              <div className="counters">
-                <div>
-                  <strong className="num" data-testid="import-progress-done">
-                    {current.imported + current.skipped + current.failed}
-                  </strong>
-                  <span>/ {current.total} 文件</span>
-                </div>
-                <div>
-                  <strong className="num">{current.imported}</strong>
-                  <span>已导入</span>
-                </div>
-                <div>
-                  <strong className="num">{current.skipped}</strong>
-                  <span>已跳过</span>
-                </div>
-                <div>
-                  <strong className="num">{current.failed}</strong>
-                  <span>失败</span>
-                </div>
-              </div>
-              <p className="meta" style={{ wordBreak: "break-all" }}>
-                {current.message || `正在处理：${current.sourceDir}`}
-              </p>
-              {current.failed > 0 ? (
-                <button
-                  className="failure-toggle"
-                  type="button"
-                  aria-expanded={showErrors}
-                  onClick={() => setShowErrors((v) => !v)}
-                >
-                  <span>{current.failed} 个文件未能导入</span>
-                  <span>{showErrors ? "收起" : "查看"}</span>
-                </button>
-              ) : null}
-              {showErrors && current.failed > 0 ? (
-                <div className="import-errors">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>文件</th>
-                        <th>原因</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(current.errors ?? []).map((e) => (
-                        <tr key={e.filePath}>
-                          <td>{e.filePath}</td>
-                          <td>{e.reason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <EmptyPanel title="当前没有进行中的任务" description="拖入文件或填好左边的路径，开始一次导入。" />
-          )}
-
-          {canceledNote ? (
-            <p className="meta" role="status" data-testid="import-cancel-note">
-              {canceledNote}
-            </p>
-          ) : null}
-
-          {activeJob ? (
-            <FailedFilesPanel key={activeJob.id} job={activeJob} onRetried={() => reload()} />
-          ) : null}
-
-          <div className="import-jobs">
-            <div className="head">
-              <h2>任务历史</h2>
-              <span className="meta">已结束的任务 · 当前任务见上方进度卡</span>
-            </div>
-            {finished.length === 0 ? (
-              <p className="meta" style={{ padding: 16 }}>
-                还没有结束的任务。
-              </p>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>任务</th>
-                    <th>来源</th>
-                    <th className="num">导入</th>
-                    <th className="num">跳过</th>
-                    <th className="num">失败</th>
-                    <th>状态</th>
-                    <th>开始</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {finished.map((job) => (
-                    <tr key={job.id}>
-                      <td>#{job.id}</td>
-                      <td>{job.sourceDir}</td>
-                      <td className="num">{job.imported}</td>
-                      <td className="num">{job.skipped}</td>
-                      <td className="num">{job.failed}</td>
-                      <td>
-                        <span
-                          className={`pill${
-                            job.status === "failed" || job.status === "completed_with_errors" || job.failed > 0
-                              ? " is-warn"
-                              : ""
-                          }`}
-                        >
-                          {statusLabel(job.status, job.failed)}
-                        </span>
-                      </td>
-                      <td className="meta">{formatDate(job.startedAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+  }, [runningId, setLive, setCanceling, setCanceledNote, reload]);
 }
 
-function progressOf(done: number, total: number): number {
-  if (!total || total <= 0) return 0;
-  return Math.min(100, Math.round((done / total) * 100));
+/** 预检超时（服务端 503 与客户端超时同口径）：提示缩小目录范围。 */
+function isDryTimeout(error: ApiError): boolean {
+  return error.kind === "timeout" || error.status === 503;
 }
 
 /** 取消失败的文案：任务消失 / 已结束 / 其它，都说成人话。 */
@@ -408,13 +392,4 @@ function cancelErrorText(error: unknown): string {
     if (error.kind === "timeout") return "取消请求超时了，稍后再试。";
   }
   return "取消没能生效，稍后再试。";
-}
-
-function statusLabel(status: string, failed: number): string {
-  // 部分失败是「完成了但有失败文件」，不能显示成排队中
-  if (status === "completed_with_errors") return "完成（部分失败）";
-  if (status === "completed") return failed > 0 ? "部分未成功" : "已完成";
-  if (status === "failed") return "中断";
-  if (status === "canceled") return "已取消";
-  return "排队中";
 }
