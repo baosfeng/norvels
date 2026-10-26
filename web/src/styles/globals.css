@@ -443,3 +443,45 @@ body.h5-sheet-open {
     color: var(--meta, var(--muted));
   }
 }
+
+/* ── 交互契约共享落地样式（designing-interactions） ───────────────────────────
+   契约里反复出现的两类要求集中在这里，避免每个页面各写一份：
+   1) 禁用/不可用必须有常驻可见原因（触屏没有悬停，藏起来等于没有）；
+   2) 按下态在 100ms 内可感知，触屏可点区 ≥44×44（PC 仍按 32×32 底线）。 */
+.inline-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.btn:active:not(:disabled),
+.icon-btn:active:not(:disabled) {
+  background: var(--surface-warm);
+  border-color: var(--accent);
+}
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-active);
+  border-color: var(--accent-active);
+}
+.chip:active:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+@media (max-width: 768px) {
+  .btn,
+  .icon-btn,
+  .chip,
+  .pagination a,
+  .pagination button,
+  .seg button {
+    min-height: 44px;
+  }
+  .icon-btn {
+    min-width: 44px;
+  }
+}
+
+@import "./ix-discovery.css";
+@import "./ix-reader.css";
+@import "./ix-library.css";
+@import "./ix-ops.css";
