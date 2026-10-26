@@ -34,12 +34,15 @@ type bookPatch struct {
 	PubDate   *string `json:"pubDate"`
 	ISBN      *string `json:"isbn"`
 	Language  *string `json:"language"`
+	// 分类（0015）：给出即全量写入，空串表示清空（落到「未分类」）。
+	CategoryL1 *string `json:"categoryL1"`
+	CategoryL2 *string `json:"categoryL2"`
 }
 
 // bookPatchFieldsHint 是空 patch 的 400 文案（单本与批量共用，避免两处口径漂移）。
 const bookPatchFieldsHint = "请求体至少包含一个可修改字段：" +
 	"title/author/authors/intro/tags/series/seriesIndex/serialStatus/readStatus/" +
-	"rating/publisher/pubDate/isbn/language"
+	"rating/publisher/pubDate/isbn/language/categoryL1/categoryL2"
 
 // PATCH authors 的跨信任边界上限：条数与单名长度。
 const (
@@ -156,5 +159,7 @@ func (p bookPatch) toStorePatch() store.BookMetaPatch {
 		PubDate:      p.PubDate,
 		ISBN:         p.ISBN,
 		Language:     p.Language,
+		CategoryL1:   p.CategoryL1,
+		CategoryL2:   p.CategoryL2,
 	}
 }

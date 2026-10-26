@@ -71,6 +71,9 @@ func bookListQuery(r *http.Request) (store.BookQuery, error) {
 		Size:         size,
 		ReadStatus:   status.read,
 		SerialStatus: status.serial,
+		// 分类（0015）：只给 L1 = 该大分类全部，两级都给 = 精确到小分类。
+		CategoryL1: strings.TrimSpace(r.URL.Query().Get("categoryL1")),
+		CategoryL2: strings.TrimSpace(r.URL.Query().Get("categoryL2")),
 	}, nil
 }
 

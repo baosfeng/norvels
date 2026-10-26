@@ -131,6 +131,8 @@ func (s *Server) registerLibraryRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/series", s.handleListSeries)
 	mux.HandleFunc("GET /api/series/{name}", s.handleGetSeries)
 	mux.HandleFunc("GET /api/search", s.handleSearch)
+	// 分类聚合（0015）：大分类 → 小分类 → 书数，供书架筛选器与分类页使用。
+	mux.HandleFunc("GET /api/categories", s.handleListCategories)
 	mux.HandleFunc("GET /api/tags", s.handleListTags)
 	// 标签 CRUD（P3 管理侧补全）：同名新建返回已有（201/200），删除全库解绑。
 	mux.HandleFunc("POST /api/tags", s.handleCreateTag)
