@@ -373,6 +373,22 @@ describe("导入页：章节识别规则", () => {
     ]);
   });
 
+  it("C-13 新增一条规则：末尾立刻多一行，焦点进名称框（满 20 条另禁用）", () => {
+    renderPage();
+    expect(screen.getAllByTestId("rule-row")).toHaveLength(1);
+    fireEvent.click(screen.getByText("新增一条规则"));
+    expect(screen.getAllByTestId("rule-row")).toHaveLength(2);
+    expect(document.activeElement).toBe(screen.getByLabelText("规则 2 · 名称"));
+  });
+
+  it("C-12 删除这条规则：行数减一、焦点回「新增一条规则」，最后一条也能删", () => {
+    renderPage();
+    fireEvent.click(screen.getByLabelText("删除第 1 条规则"));
+    expect(screen.queryAllByTestId("rule-row")).toHaveLength(0);
+    expect(screen.getByTestId("rules-empty").textContent).toContain("还没有自定义规则，导入一律走内置切章");
+    expect(document.activeElement).toBe(screen.getByText("新增一条规则"));
+  });
+
   it("非法正则在本地就拦下：括号没闭合与写法不对分开说，都不发请求", () => {
     renderPage();
 

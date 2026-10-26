@@ -54,6 +54,17 @@ describe("标签管理弹窗", () => {
     expect(screen.getByTestId("tag-manage-empty")).toBeTruthy();
   });
 
+  it("C-79 新建标签是「名称输入 + 新建按钮」一对：空名给常驻文案", () => {
+    renderDialog();
+    const input = screen.getByTestId("tag-new");
+    const button = screen.getByTestId("tag-create");
+    expect(input.getAttribute("data-od-id")).toBe("C-79");
+    expect(button.getAttribute("data-od-id")).toBe("C-79");
+    fireEvent.click(button);
+    expect(screen.getByTestId("tag-manage-error").textContent).toContain("先填一个标签名。");
+    expect(createTag).not.toHaveBeenCalled();
+  });
+
   it("新建：空名不发请求，填了名字就调 createTag 并刷新列表", async () => {
     createTag.mockResolvedValue({ id: 3, name: "奇幻", bookCount: 0 });
     const props = renderDialog();
