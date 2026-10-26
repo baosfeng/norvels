@@ -63,7 +63,3 @@ odops verify interaction/<域>/02-prototype.html --platform web --browser
 本目录的 `01-contract.md` 是**机器读取的对账表**，不受仓库「单文档 ≤120 行」约束
 （同 `docs/quality-gates.md` 的豁免登记口径）。其余文档仍按 120 行控制。
 
-## 旧版交互说明
-
-`docs/ux/` 是上一版按域写的交互说明（含评审报告），内容已并入本目录的契约；
-保留作历史对照，**不再作为开发依据**——以 `interaction/` 为准。

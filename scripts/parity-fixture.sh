@@ -303,7 +303,7 @@ async function get(p) { const r = await fetch(API + p); if (!r.ok) throw new Err
     const url = 'http://localhost:' + WEB + urlPath;
     let res = null;
     for (let i = 1; i <= 3; i++) {
-      const r = spawnSync('odops', ['parity', subset, url, '--tol', '3', '--json'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+      const r = spawnSync('odops', ['parity', subset, url, '--tol', '3', '--wait', '3500', '--json'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
       try { res = JSON.parse(r.stdout); res.exitCode = r.status; break; } catch (e) { spawnSync('sleep', ['2']); }
     }
     if (!res) { rows.push({ domain, page, url: urlPath, ok: false, reason: 'parity 无输出' }); continue; }
@@ -352,7 +352,7 @@ const WORK = process.argv[2], API = process.argv[3], WEB = process.argv[4];
         spawnSync('agent-browser', ['--session','parity-shots','set','viewport',String(w),String(h)]);
         const open = spawnSync('agent-browser', ['--session','parity-shots','open',url]);
         if (open.status !== 0) continue;
-        spawnSync('sleep', ['1.6']);
+        spawnSync('sleep', ['2.5']);
         const shot = spawnSync('agent-browser', ['--session','parity-shots','screenshot',file]);
         ok = shot.status === 0;
       }
