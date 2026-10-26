@@ -21,6 +21,8 @@ export interface ReaderControlsApi {
   visible: boolean;
   toggle: () => void;
   reveal: () => void;
+  /** 主动收起（全屏不支持时的降级路径），不改变「是否已经交互过」。 */
+  hide: () => void;
   /** 绑到正文区上的单击识别属性（滑动/点按钮/选字都不触发）。 */
   surfaceProps: {
     onPointerDown: (event: ReactPointerEvent) => void;
@@ -57,6 +59,11 @@ export function useReaderControls(options: { isH5: boolean; paused: boolean; aut
     setActivity((n) => n + 1);
   }, []);
 
+  const hide = useCallback(() => {
+    setVisible(false);
+    setActivity((n) => n + 1);
+  }, []);
+
   const surfaceProps = useMemo(
     () => ({
       onPointerDown(event: ReactPointerEvent) {
@@ -87,5 +94,5 @@ export function useReaderControls(options: { isH5: boolean; paused: boolean; aut
     [isH5, toggle],
   );
 
-  return { visible: isH5 ? visible : true, toggle, reveal, surfaceProps };
+  return { visible: isH5 ? visible : true, toggle, reveal, hide, surfaceProps };
 }

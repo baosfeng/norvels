@@ -37,7 +37,7 @@ export function ReaderHelpPanel({ open, onClose }: { open: boolean; onClose: () 
       >
         <div className="reader-help-head">
           <strong>快捷键</strong>
-          <button className="btn btn-ghost" type="button" onClick={onClose} aria-label="关闭快捷键帮助">
+          <button className="btn btn-ghost" type="button" onClick={onClose} aria-label="关闭快捷键帮助" data-od-id="C-57">
             关闭
           </button>
         </div>

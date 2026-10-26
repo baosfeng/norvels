@@ -1,36 +1,39 @@
 import { useRef } from "react";
 import type { Bookmark } from "../../api/types";
-import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
+import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { useFocusTrap } from "../../lib/focusTrap";
 import { bookmarkTitle } from "../../lib/bookmark";
 import type { ResourceState } from "../../lib/useResource";
 
 /**
  * 书签抽屉：与目录抽屉同级、互斥打开（父组件负责互斥），列表按时间倒序。
- * 每行可跳转到该段；「在这里加书签」记在当前读到的段落（段落下标即后端 paraIndex）。
+ * 每行可跳转到该段；「在这里加书签」记在当前读到的段落。
+ * 删除先弹二次确认（C-58），确认框本身在父级渲染——这里只负责发起。
  */
 export function BookmarksDrawer({
   open,
   bookmarks,
   currentChapterId,
-  deletingId,
   adding,
+  retrying,
   canAdd,
   onClose,
   onAdd,
   onJump,
-  onDelete,
+  onRequestDelete,
+  onRetry,
 }: {
   open: boolean;
   bookmarks: ResourceState<{ bookmarks: Bookmark[] }>;
   currentChapterId: number;
-  deletingId: number | null;
   adding: boolean;
+  retrying: boolean;
   canAdd: boolean;
   onClose: () => void;
   onAdd: () => void;
   onJump: (bookmark: Bookmark) => void;
-  onDelete: (id: number) => void;
+  onRequestDelete: (bookmark: Bookmark) => void;
+  onRetry: () => void;
 }) {
   const list = bookmarks.data?.bookmarks ?? [];
   const rootRef = useRef<HTMLElement | null>(null);
@@ -47,7 +50,7 @@ export function BookmarksDrawer({
       <div className="drawer-head">
         <strong>书签</strong>
         <span className="meta num">{list.length > 0 ? `${list.length} 条` : ""}</span>
-        <button className="btn btn-ghost" type="button" onClick={onClose}>
+        <button className="btn btn-ghost" type="button" data-od-id="C-36" onClick={onClose}>
           关闭
         </button>
       </div>
@@ -56,15 +59,28 @@ export function BookmarksDrawer({
           className="btn bookmark-add"
           type="button"
           data-testid="bookmark-add"
+          data-od-id="C-32"
           onClick={onAdd}
           disabled={!canAdd || adding}
         >
           {adding ? "正在保存…" : "在这里加书签"}
         </button>
+        {!canAdd ? <span className="inline-note">正文还没载入，稍后可以加书签</span> : null}
         {bookmarks.loading ? (
           <LoadingPanel title="正在读取书签" description="稍等一下。" />
         ) : bookmarks.error ? (
-          <ErrorPanel error={bookmarks.error} title="书签没能加载" onRetry={bookmarks.reload} testId="bookmark-error" />
+          <div className="state-panel is-error" data-testid="bookmark-error">
+            <span className="state-mark" aria-hidden="true">
+              !
+            </span>
+            <h2>书签没能加载</h2>
+            <p>正文不受影响，可以继续往下读。</p>
+            <div className="state-actions">
+              <button className="btn btn-primary" type="button" disabled={retrying} data-od-id="C-35" onClick={onRetry}>
+                {retrying ? "正在重试…" : "重试"}
+              </button>
+            </div>
+          </div>
         ) : list.length === 0 ? (
           <EmptyPanel
             title="还没有书签"
@@ -80,7 +96,7 @@ export function BookmarksDrawer({
                 data-testid={`bookmark-${bookmark.id}`}
                 data-current={bookmark.chapterId === currentChapterId}
               >
-                <button className="bookmark-jump" type="button" onClick={() => onJump(bookmark)}>
+                <button className="bookmark-jump" type="button" data-od-id="C-33" onClick={() => onJump(bookmark)}>
                   <span className="num">{bookmark.chapterTitle || `第 ${bookmark.chapterIdx + 1} 章`}</span>
                   <span className="bookmark-label">{bookmarkTitle(bookmark)}</span>
                 </button>
@@ -88,8 +104,9 @@ export function BookmarksDrawer({
                   className="bookmark-delete"
                   type="button"
                   aria-label={`删除书签 ${bookmarkTitle(bookmark)}`}
-                  disabled={deletingId === bookmark.id}
-                  onClick={() => onDelete(bookmark.id)}
+                  data-testid={`bookmark-delete-${bookmark.id}`}
+                  data-od-id="C-34"
+                  onClick={() => onRequestDelete(bookmark)}
                 >
                   删除
                 </button>

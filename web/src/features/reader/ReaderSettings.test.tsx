@@ -162,15 +162,15 @@ describe("阅读器：排版设置面板", () => {
     expect(shellVar("--reader-para")).toBe("0.4em");
   });
 
-  it("页宽三档：窄 32rem / 标准 42rem / 宽 52rem", () => {
+  it("正文宽度三档：窄 32rem / 标准 42rem / 宽 52rem", () => {
     renderReader();
     openSettings();
 
-    fireEvent.click(groupButton("页宽", "窄"));
+    fireEvent.click(groupButton("正文宽度", "窄"));
     expect(shellVar("--reader-width")).toBe("32rem");
-    fireEvent.click(groupButton("页宽", "宽"));
+    fireEvent.click(groupButton("正文宽度", "宽"));
     expect(shellVar("--reader-width")).toBe("52rem");
-    fireEvent.click(groupButton("页宽", "标准"));
+    fireEvent.click(groupButton("正文宽度", "标准"));
     expect(shellVar("--reader-width")).toBe("42rem");
   });
 

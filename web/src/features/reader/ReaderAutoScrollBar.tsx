@@ -15,16 +15,19 @@ export function ReaderAutoScrollBar({
   onTogglePause: () => void;
   onExit: () => void;
 }) {
+  const speedText = speed % 1 === 0 ? speed.toFixed(0) : speed.toFixed(1);
   return (
     <div className="reader-autoscroll" role="group" aria-label="自动滚动" data-testid="reader-autoscroll" aria-live="off">
       <span className="reader-autoscroll-state" data-testid="reader-autoscroll-state">
         {running ? "自动滚动中" : paused ? "已暂停" : "待开始"}
       </span>
-      <span className="meta num">{speed % 1 === 0 ? speed.toFixed(0) : speed.toFixed(1)} 档</span>
-      <button className="btn" type="button" onClick={onTogglePause} data-testid="reader-autoscroll-toggle">
+      <span className="meta num">
+        {speedText} 档{paused ? " · 已暂停" : ""}
+      </span>
+      <button className="btn" type="button" data-od-id="C-55" onClick={onTogglePause} data-testid="reader-autoscroll-toggle">
         {running ? "暂停" : "继续"}
       </button>
-      <button className="btn btn-ghost" type="button" onClick={onExit} aria-label="退出自动滚动">
+      <button className="btn btn-ghost" type="button" onClick={onExit} aria-label="退出自动滚动" data-od-id="C-56">
         退出
       </button>
     </div>

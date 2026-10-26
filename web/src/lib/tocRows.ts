@@ -59,3 +59,20 @@ export function filterChapters(chapters: readonly ChapterBrief[], query: string)
       String(chapter.idx + 1).includes(needle),
   );
 }
+/** 目录分块续显的步长：一次补 60 章（契约 C-29）。 */
+export const TOC_CHUNK = 60;
+
+/** 目录里的章节总数：卷内章节之和（卷为空也算 0）。 */
+export function countChapters(volumes: readonly { chapters: ChapterBrief[] }[]): number {
+  return volumes.reduce((sum, volume) => sum + volume.chapters.length, 0);
+}
+
+/** 当前已显示的前 n 章：按卷序、章序切出一段（不改原数组）。 */
+export function takeRevealed<T>(items: readonly T[], revealed: number): T[] {
+  return items.slice(0, Math.max(0, Math.trunc(revealed)));
+}
+
+/** 下一批要显示的章数：一次最多补 TOC_CHUNK 章。 */
+export function nextReveal(revealed: number, total: number): number {
+  return Math.min(total, Math.max(0, Math.trunc(revealed)) + TOC_CHUNK);
+}
