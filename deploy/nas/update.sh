@@ -4,7 +4,7 @@
 # 用法（必须有 docker 权限，飞牛上就是 root）：
 #   sudo ./update.sh              # 按 .env 里现有的 NORVELS_VERSION 更新
 #   sudo ./update.sh --latest     # 自动升级到 Docker Hub 上的最新正式版
-#   sudo ./update.sh 0.5.0        # 切到指定版本，并写回 .env
+#   sudo ./update.sh 0.6.0        # 切到指定版本，并写回 .env
 #   sudo ./update.sh --check      # 只看当前状态，不动任何东西
 #   sudo ./update.sh --check-updates  # 问一下上游有没有新版本，不升级
 #
