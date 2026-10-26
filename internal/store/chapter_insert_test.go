@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"norvels/internal/model"
 )
@@ -182,6 +183,10 @@ func TestSaveBookUpdateBadge(t *testing.T) {
 	first, err := st.SaveBook(ctx, seedInsertBookModel(1), SaveOptions{})
 	requireOK(t, "首次 SaveBook", err)
 	before := mustBookDetail(t, ctx, st, first.BookID)
+
+	// updated_at 是毫秒精度：两次写落在同一毫秒时不会前进，CI 上就跑成了赌机器速度。
+	// 显式让时钟走一格，再断言「追更必须推进 updated_at」。
+	time.Sleep(2 * time.Millisecond)
 
 	grown := seedInsertBookModel(1)
 	grown.Chapters = append(grown.Chapters, model.ParsedChapter{
