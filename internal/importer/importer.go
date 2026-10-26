@@ -116,6 +116,8 @@ func Run(ctx context.Context, st *store.Store, opt Options, cb func(Progress)) (
 	}
 	defer func() { _ = os.RemoveAll(scratch) }()
 	cands, issues := collectCandidates(files, opt, scratch)
+	// 分类按相对导入根的目录层级推断，必须在候选展开（zip → 条目）之后做。
+	annotateCategories(cands, dir)
 	// 同名多卷的 .txt 先归并成一个处理单元，其余候选保持一文件一个单元。
 	units := buildImportUnits(cands)
 
@@ -259,4 +261,6 @@ func fillBookSource(book *model.ParsedBook, cand candidate, data []byte, sha str
 	book.SourceName = cand.name
 	book.FileSize = int64(len(data))
 	book.SHA256 = sha
+	book.CategoryL1 = cand.categoryL1
+	book.CategoryL2 = cand.categoryL2
 }

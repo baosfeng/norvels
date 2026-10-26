@@ -109,6 +109,8 @@ func prepareBookWrite(b *model.ParsedBook) (bookWrite, []int, error) {
 		seriesIndex:  maxInt(b.SeriesIndex, 0),
 		sourceFormat: normalizeSourceFormat(b.SourceFormat),
 		hasCover:     boolToInt(b.Cover != nil),
+		categoryL1:   truncateRunes(strings.TrimSpace(b.CategoryL1), maxCategoryLen),
+		categoryL2:   truncateRunes(strings.TrimSpace(b.CategoryL2), maxCategoryLen),
 	}
 	return w, usedVols, nil
 }

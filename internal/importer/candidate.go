@@ -13,6 +13,10 @@ type candidate struct {
 	path   string // 磁盘上可读的路径（zip 条目 = 解包后的临时文件）
 	source string // 写库的来源路径（普通文件 = path；zip 条目 = 包路径 + ":" + 包内路径）
 	name   string // 对外名称（普通文件 = 文件名；zip 条目 = 包名 + ":" + 包内路径）
+	// 分类（0015 起）：由 annotateCategories 按相对导入根的前两级目录推断，
+	// 空串表示未分类（文件直接放在根下 / 目录以下划线开头）。
+	categoryL1 string
+	categoryL2 string
 }
 
 // expandIssue 是解包阶段的一条问题：整包失败或单个条目不支持，都按文件级终态记录。

@@ -32,16 +32,6 @@ func bookFilter(q BookQuery) ([]string, []any) {
 		where = append(where, "b.read_status = ?")
 		args = append(args, rs)
 	}
-	// 系列名与写入侧同口径（TRIM）；空系列不参与筛选。
-	if se := strings.TrimSpace(q.Series); se != "" {
-		where = append(where, "TRIM(b.series) = ?")
-		args = append(args, se)
-	}
-	// 评分 0 = 未评，不作为一个可见筛选项（与「未标记不筛」同一取舍）。
-	if q.Rating > 0 {
-		where = append(where, "b.rating = ?")
-		args = append(args, q.Rating)
-	}
 	// 书单是 M:N 关联，存在性子查询即可（collection_books 很小，不必 JOIN 去重）。
 	if q.Collection != 0 {
 		where = append(where, "EXISTS (SELECT 1 FROM collection_books cb "+
@@ -57,5 +47,9 @@ func bookFilter(q BookQuery) ([]string, []any) {
 			args = append(args, ss)
 		}
 	}
+	// 分类维度（系列 / 评分 / 大·小分类）只读 books 自身列，单独编译后拼在末尾。
+	cwhere, cargs := bookCategoryFilter(q)
+	where = append(where, cwhere...)
+	args = append(args, cargs...)
 	return where, args
 }

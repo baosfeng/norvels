@@ -27,6 +27,10 @@ type BookQuery struct {
 	Rating int
 	// Collection 是书单 id 筛选；0 表示不过滤。
 	Collection int64
+	// CategoryL1 / CategoryL2 是分类筛选（0015 起）：空表示不过滤。
+	// 只给 L1 = 该大分类下的全部书；两级都给 = 精确到小分类。
+	CategoryL1 string
+	CategoryL2 string
 }
 
 // AuthorQuery 描述作者列表的过滤与排序。
@@ -91,6 +95,11 @@ type BookSummary struct {
 	Rating int `json:"rating"`
 	// NewChapters 是追更累计的新章数（0014 起），书架/详情角标读它，ack 后清零。
 	NewChapters int `json:"newChapters"`
+	// CategoryL1 / CategoryL2 是书籍分类（0015 起）：大分类 / 小分类，
+	// 导入时按来源目录层级写入，空串表示未分类；老库升级时存量书统一归到
+	// 部署方指定的回填分类（NORVELS_LEGACY_CATEGORY，缺省「未分类」）。
+	CategoryL1 string `json:"categoryL1"`
+	CategoryL2 string `json:"categoryL2"`
 }
 
 // VolumeNode 是书籍详情里的一卷。

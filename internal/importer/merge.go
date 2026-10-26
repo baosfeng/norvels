@@ -289,6 +289,9 @@ func mergeVolumeBooks(g *volumeGroup, parts []*model.ParsedBook) *model.ParsedBo
 		Encoding:     first.Encoding,
 		SourceFormat: first.SourceFormat,
 		SHA256:       mergedSHA(parts),
+		// 分类跟着分卷走：同一组的卷文件必在同一目录，取首卷的即可。
+		CategoryL1: first.CategoryL1,
+		CategoryL2: first.CategoryL2,
 	}
 	for i, part := range parts {
 		out.Volumes = append(out.Volumes, model.ParsedVolume{

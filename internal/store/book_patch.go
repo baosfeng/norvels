@@ -43,6 +43,9 @@ type BookMetaPatch struct {
 	PubDate   *string // 只接受 YYYY-MM-DD 或空串
 	ISBN      *string
 	Language  *string
+	// 分类（0015）：大分类 / 小分类，给出即全量写入，空串表示清空（落到「未分类」）。
+	CategoryL1 *string
+	CategoryL2 *string
 }
 
 // IsEmpty 报告 patch 是否什么都没包含（空 patch 不写库）。
@@ -55,6 +58,7 @@ func (p BookMetaPatch) IsEmpty() bool {
 		p.Series == nil, p.SeriesIndex == nil, p.Tags == nil,
 		p.SerialStatus == nil, p.ReadStatus == nil, p.Rating == nil,
 		p.Publisher == nil, p.PubDate == nil, p.ISBN == nil, p.Language == nil,
+		p.CategoryL1 == nil, p.CategoryL2 == nil,
 	}
 	for _, ok := range unset {
 		if !ok {
@@ -260,7 +264,29 @@ func textColumnSets(sets []string, args []any, patch BookMetaPatch) ([]string, [
 	if patch.SeriesIndex != nil {
 		sets, args = append(sets, "series_index = ?"), append(args, maxInt(*patch.SeriesIndex, 0))
 	}
+	sets, args = categoryColumnSets(sets, args, patch)
 	return sets, args, nil
+}
+
+// categoryColumnSets 拼接分类两列（0015）：与系列同口径，TRIM 后按 40 字符截断。
+//
+// 大分类清空不连带清空小分类：小分类的语义依附于大分类，由前端在切换 L1 时一并提交。
+func categoryColumnSets(sets []string, args []any, patch BookMetaPatch) ([]string, []any) {
+	cols := []struct {
+		column string
+		value  *string
+	}{
+		{"category_l1", patch.CategoryL1},
+		{"category_l2", patch.CategoryL2},
+	}
+	for _, c := range cols {
+		if c.value == nil {
+			continue
+		}
+		sets, args = append(sets, c.column+" = ?"),
+			append(args, truncateRunes(strings.TrimSpace(*c.value), maxCategoryLen))
+	}
+	return sets, args
 }
 
 // statusColumnSets 校验并拼接枚举类状态列（serial_status / read_status）。

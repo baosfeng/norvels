@@ -18,7 +18,7 @@ const bookSummaryColumns = "b.id, b.title, b.author_id, COALESCE(a.name, ''), " 
 	"b.chapter_count, b.word_count, b.volume_count, b.intro, b.status, b.serial_status, " +
 	"b.read_status, b.imported_at, b.updated_at, " +
 	"b.language, b.publisher, b.isbn, b.pub_date, b.series, b.series_index, b.has_cover, b.source_format, " +
-	"b.rating, b.new_chapters"
+	"b.rating, b.new_chapters, b.category_l1, b.category_l2"
 
 // rowScanner 抽象 *sql.Row / *sql.Rows 的 Scan。
 type rowScanner interface {
@@ -35,6 +35,7 @@ func summaryScanTargets(bs *BookSummary, imported, updated *string) []any {
 		&bs.VolumeCount, &bs.Intro, &bs.Status, &bs.SerialStatus, &bs.ReadStatus, imported, updated,
 		&bs.Language, &bs.Publisher, &bs.ISBN, &bs.PubDate, &bs.Series, &bs.SeriesIndex,
 		&bs.HasCover, &bs.Format, &bs.Rating, &bs.NewChapters,
+		&bs.CategoryL1, &bs.CategoryL2,
 	}
 }
 

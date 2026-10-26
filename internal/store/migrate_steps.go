@@ -224,6 +224,10 @@ var migrationStepsByVersion = map[int][]migrationStep{
 		Name: "add p3 rating and progress columns",
 		Run:  addP3ColumnsStep,
 	}},
+	15: {{
+		Name: "add book category columns and backfill legacy",
+		Run:  addCategoryColumnsStep,
+	}},
 }
 
 // ---------- 0013：同书卷名唯一索引 ----------

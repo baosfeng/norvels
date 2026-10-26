@@ -28,6 +28,10 @@ type ParsedBook struct {
 	Series      string   // 系列 / 丛书名
 	SeriesIndex int      // 系列内序号，0 表示未知
 	Subjects    []string // 分类 / 标签（EPUB dc:subject）
+	// CategoryL1 / CategoryL2 是来源目录推断出的分类（0015 起）：
+	// 相对导入根的前两级目录，由导入链路统一写入。
+	CategoryL1 string
+	CategoryL2 string
 	// AutoTags 是词表规则命中的标签（导入链路写入，落库时 source=auto）。
 	// 与 Subjects 分开：两者的来源标记不同，且都只增不删。
 	AutoTags     []string

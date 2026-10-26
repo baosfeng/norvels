@@ -20,13 +20,15 @@ import (
 // 与主字段同一条语句写入：它们都描述「这本书是什么」，拆表只会多一次往返而没有收益。
 const bookInsertSQL = "INSERT INTO books(title, author_id, source_path, source_name, file_size, file_sha256, " +
 	"encoding, word_count, chapter_count, volume_count, intro, status, multi_book, imported_at, updated_at, " +
-	"language, publisher, isbn, pub_date, series, series_index, source_format, has_cover) " +
-	"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	"language, publisher, isbn, pub_date, series, series_index, source_format, has_cover, " +
+	"category_l1, category_l2) " +
+	"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
 const bookUpdateSQL = "UPDATE books SET title = ?, author_id = ?, source_path = ?, source_name = ?, file_size = ?, " +
 	"file_sha256 = ?, encoding = ?, word_count = ?, chapter_count = ?, volume_count = ?, intro = ?, " +
 	"status = ?, multi_book = ?, imported_at = ?, updated_at = ?, language = ?, publisher = ?, isbn = ?, " +
-	"pub_date = ?, series = ?, series_index = ?, source_format = ?, has_cover = ? WHERE id = ?"
+	"pub_date = ?, series = ?, series_index = ?, source_format = ?, has_cover = ?, " +
+	"category_l1 = ?, category_l2 = ? WHERE id = ?"
 
 // bookWrite 是一次写入所需的已归一化字段集合：由 prepareBookWrite 产出，
 // 让「校验/归一化」与「SQL 拼接」两部分各自单一职责。
@@ -54,6 +56,9 @@ type bookWrite struct {
 	seriesIndex  int
 	sourceFormat string
 	hasCover     int
+	// ---- 分类（0015 起，来源目录推断，空串表示未分类）----
+	categoryL1 string
+	categoryL2 string
 }
 
 // execArgs 返回书籍写入语句的占位符参数（不含 WHERE 的 id）。
@@ -62,6 +67,7 @@ func (w bookWrite) execArgs(authorID int64) []any {
 		w.title, authorID, w.sourcePath, w.sourceName, w.fileSize, w.sha, w.encoding,
 		w.wordCount, w.chapterCount, w.volumeCount, w.intro, "parsed", w.multiBook, w.nowText, w.nowText,
 		w.language, w.publisher, w.isbn, w.pubDate, w.series, w.seriesIndex, w.sourceFormat, w.hasCover,
+		w.categoryL1, w.categoryL2,
 	}
 }
 
