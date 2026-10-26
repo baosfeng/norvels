@@ -21,7 +21,7 @@
 |---|---|---|---|
 | 发现 | `../norvels-wt-discovery` | `impl/discovery` | `web/src/layouts/**`、`features/{start,shelf,search,series,history}/**`、`styles/ix-discovery.css` |
 | 阅读 | `../norvels-wt-reader` | `impl/reader` | `features/reader/**`、`lib/{useReaderControls,autoScroll,tocRows,bookmark,readerSearch,readerSettings}.ts`、`styles/ix-reader.css` |
-| 书目 | `../norvels-wt-library` | `impl/library` | `features/{book,authors,dashboard}/**`、`lib/charts.ts`、`styles/ix-library.css` |
+| 书目 | `../norvels-wt-library` | `impl/library` | `features/{book,authors,dashboard}/**`、`lib/charts.ts`、`styles/ix-library.css`、`routes.tsx`（仅新增作者作品路由） |
 | 运营 | `../norvels-wt-ops` | `impl/ops` | `features/{import,admin}/**`、`styles/ix-ops.css` |
 
 `web/src/styles/{ix-*.css}` 已建好并 import，**只由本域改**。其余共享文件（`globals.css` / `tokens.css` / `prototype.css` / `routes.tsx` / `api/**`）默认不动；确需改动先回报，由 lead 统一改。
