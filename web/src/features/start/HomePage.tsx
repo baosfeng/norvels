@@ -5,6 +5,7 @@ import { Cover } from "../../components/Cover";
 import { MenuIcon, SearchIcon } from "../../components/Icons";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount } from "../../lib/format";
+import { useNavDrawer } from "../../layouts/navDrawer";
 
 /**
  * H5 首屏（≤768）：继续阅读 → 最近在读 → 搜索入口 → 书架列表。
@@ -12,6 +13,7 @@ import { formatCount } from "../../lib/format";
  */
 export function HomePage() {
   const navigate = useNavigate();
+  const nav = useNavDrawer();
   const progress = useReadingProgress();
   const recent = useBooks({ sort: "updated", page: 1, size: 5 });
   const [q, setQ] = useState("");
@@ -31,8 +33,10 @@ export function HomePage() {
         <button
           className="icon-btn h5-burger"
           type="button"
-          onClick={() => document.body.classList.add("nav-open")}
+          data-od-id="C-15"
+          onClick={(event) => nav.toggle(event.currentTarget)}
           aria-label="打开导航"
+          aria-expanded={nav.open}
         >
           <MenuIcon size={20} />
         </button>

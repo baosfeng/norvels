@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { ShelfModeContext, type ShelfMode } from "./shelfMode";
+import { NavDrawerContext } from "./navDrawer";
+import { useFocusTrap } from "../lib/focusTrap";
 import { useTier } from "../lib/tier";
 
 /**
  * PC 外壳：常驻侧栏 + 粘性顶栏。
  * H5 外壳：无侧栏，导航进汉堡抽屉；首屏不显示顶栏。
- * 管理类入口在 Sidebar 里按 tier 条件渲染，不靠 CSS 隐藏。
+ * 抽屉：焦点循环在侧栏内，Esc / 遮罩 / 选中导航项都能关；关闭后焦点回打开它的汉堡。
  */
 export function AppShell() {
   const [mode, setMode] = useState<ShelfMode>("grid");
@@ -23,10 +25,22 @@ export function AppShell() {
   const navOpen = openFor === location.pathname;
   const setNavOpen = (next: boolean) => setOpenFor(next ? location.pathname : null);
 
+  const sidebarRef = useRef<HTMLElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const pathRef = useRef(location.pathname);
+  useFocusTrap(navOpen, sidebarRef, () => setNavOpen(false));
+
   useEffect(() => {
     document.body.classList.toggle("nav-open", navOpen);
     return () => document.body.classList.remove("nav-open");
   }, [navOpen]);
+
+  useEffect(() => {
+    const navigated = pathRef.current !== location.pathname;
+    pathRef.current = location.pathname;
+    // 关闭后焦点回触发按钮；跳路由导致的收起不抢焦点（焦点该跟到新页面）
+    if (!navOpen && !navigated) openerRef.current?.focus();
+  }, [navOpen, location.pathname]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -36,33 +50,44 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const drawer = {
+    open: navOpen,
+    toggle: (trigger: HTMLElement | null) => {
+      openerRef.current = trigger ?? openerRef.current;
+      setNavOpen(!navOpen);
+    },
+    close: () => setNavOpen(false),
+  };
+
   return (
     <ShelfModeContext.Provider value={{ mode, setMode }}>
-      <div className="layout-a">
-        <button
-          className="nav-scrim"
-          type="button"
-          aria-label="关闭导航"
-          onClick={() => setNavOpen(false)}
-          tabIndex={navOpen ? 0 : -1}
-        />
-        <Sidebar onNavigate={() => setNavOpen(false)} />
-        <div className="workarea">
-          {isHome ? null : (
-            <Topbar
-              onOpenNav={() => setNavOpen(!navOpen)}
-              mode={mode}
-              onModeChange={setMode}
-              showViewToggle={showViewToggle}
-            />
-          )}
-          <main className="container" data-od-id="main">
-            <Outlet />
-          </main>
+      <NavDrawerContext.Provider value={drawer}>
+        <div className="layout-a">
+          <button
+            className="nav-scrim"
+            type="button"
+            aria-label="关闭导航"
+            data-od-id="C-16"
+            onClick={() => setNavOpen(false)}
+            tabIndex={navOpen ? 0 : -1}
+          />
+          <Sidebar navRef={sidebarRef} onNavigate={() => setNavOpen(false)} />
+          <div className="workarea">
+            {isHome ? null : (
+              <Topbar
+                mode={mode}
+                onModeChange={setMode}
+                showViewToggle={showViewToggle}
+              />
+            )}
+            <main className="container" data-od-id="main">
+              <Outlet />
+            </main>
+          </div>
+          {/* ToastHost 不在这里挂：它挂在 App 根（路由之外），否则 /read 这类 AppShell 之外
+              的路由永远没有 toast，而两处都挂会同一状态渲染两份。 */}
         </div>
-        {/* ToastHost 不在这里挂：它挂在 App 根（路由之外），否则 /read 这类 AppShell 之外的
-            路由永远没有 toast，而两处都挂会同一状态渲染两份。 */}
-      </div>
+      </NavDrawerContext.Provider>
     </ShelfModeContext.Provider>
   );
 }

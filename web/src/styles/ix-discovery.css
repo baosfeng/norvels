@@ -1,1 +1,75 @@
-/* 发现域交互实现样式（契约落地，2026-10-27 夜）。只由 discovery 分支写。 */
+/* 发现域交互实现样式（契约落地，2026-10-27 夜）。只由 discovery 分支写。
+   仅补产品缺的行为；hover / focus 的基础样式仍在 prototype.css / globals.css。 */
+
+/* ── 外壳：侧栏 · 顶栏 · 抽屉（C-01…C-16） ── */
+.sidebar .side-nav a {
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+.sidebar .side-nav a:hover,
+.sidebar .side-nav a:active {
+  background: var(--surface-warm);
+  color: var(--fg);
+}
+.sidebar .brand:hover,
+.sidebar .brand:focus-visible {
+  color: var(--fg);
+}
+.sidebar .brand:hover strong,
+.sidebar .brand:focus-visible strong {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.sidebar .continue-card {
+  transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+}
+.sidebar .continue-card:hover,
+.sidebar .continue-card:focus-visible {
+  border-color: var(--muted);
+  box-shadow: var(--elev-raised);
+}
+.topbar .view-toggle button {
+  transition: color var(--motion-fast) var(--ease-standard), background-color var(--motion-fast) var(--ease-standard);
+}
+.topbar .view-toggle button:hover {
+  color: var(--fg-2);
+}
+.topbar .view-toggle button:active {
+  background: var(--surface-warm);
+}
+
+/* 焦点环：契约口径 4px var(--focus-ring)；全局 :focus-visible 只给 2px outline */
+.sidebar :focus-visible,
+.topbar :focus-visible,
+.nav-scrim:focus-visible,
+.h5-home :focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* 导航抽屉：240ms 滑入、遮罩 240ms 淡入到 62%，打开期间背景不可滚动 */
+@media (max-width: 1024px) {
+  .sidebar {
+    transition: transform var(--motion-base) var(--ease-standard);
+  }
+  .nav-scrim {
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: color-mix(in oklab, var(--fg) 62%, transparent);
+    transition: opacity var(--motion-base) var(--ease-standard), visibility 0s linear var(--motion-base);
+  }
+  body.nav-open .nav-scrim {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+  .nav-scrim:active {
+    background: color-mix(in oklab, var(--fg) 70%, transparent);
+  }
+  body.nav-open {
+    overflow: hidden;
+  }
+}
