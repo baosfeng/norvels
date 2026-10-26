@@ -1,1 +1,217 @@
 /* 阅读域交互实现样式（契约落地，2026-10-27 夜）。只由 reader 分支写。 */
+
+/* ── 焦点环：契约要求每个可点控件 4px --focus-ring；全局只给了一部分元素 ── */
+.reader-shell :is(button, a, input, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
+}
+.reader-main:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 8px;
+}
+.reader-main {
+  outline: none;
+}
+
+/* ── 正文手势层：C-09 外层（可聚焦），C-10 内层（承载正文） ── */
+.reader-swipe-layer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+/* ── 进度恢复提示条（C-16） ── */
+.restore-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 auto 18px;
+  padding: 8px 12px 8px 16px;
+  width: 100%;
+  max-width: var(--reader-width, 42rem);
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius-sm);
+  background: var(--r-surface);
+  color: var(--r-fg);
+  font-size: 13px;
+  animation: hintFadeIn 150ms var(--ease-standard) both;
+}
+.restore-hint .btn {
+  min-height: 44px;
+}
+@keyframes hintFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── 禁用原因：顶栏 / 底栏 / 面板里一律常驻可见 ── */
+.reader-top-actions .inline-note {
+  max-width: 132px;
+  align-self: center;
+}
+.h5-reader-bar .inline-note {
+  font-size: 9px;
+  line-height: 1.15;
+  color: var(--r-muted);
+  text-align: center;
+}
+.settings-row .inline-note,
+.settings-panel > .inline-note {
+  flex-basis: 100%;
+}
+.switch-wrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.switch-wrap .inline-note {
+  flex-basis: 100%;
+  text-align: right;
+}
+
+/* ── 章末翻章条（C-11…C-13）：禁用原因跟在按钮旁边 ── */
+.reader-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.reader-pager .inline-note {
+  margin-right: 8px;
+}
+
+/* ── 正文错误态的重试兜底（C-14） ── */
+.reader-retry-fallback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* ── 目录：卷折叠（C-27）/ 分块续显（C-29）/ 搜索与跳转（C-25、C-26） ── */
+.drawer-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.drawer-search .input {
+  flex: 1 1 150px;
+  min-width: 0;
+  min-height: 44px;
+}
+.drawer-search .meta {
+  flex-basis: 100%;
+}
+.toc-vol-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+.toc-vol {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--r-fg);
+  font-size: 13px;
+  text-align: left;
+  transition: background-color 150ms var(--ease-standard);
+}
+.toc-vol:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--r-fg), transparent 92%);
+}
+.toc-vol:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.toc-vol .n {
+  margin-left: auto;
+  color: var(--r-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.toc-vol .chev {
+  flex: none;
+  transition: transform 150ms var(--ease-standard);
+}
+.toc-vol[aria-expanded="false"] .chev {
+  transform: rotate(-90deg);
+}
+.vol-body {
+  display: flex;
+  flex-direction: column;
+}
+.toc-more {
+  margin: 12px 0 16px;
+}
+.drawer-scroll .cv-row {
+  min-height: 44px;
+}
+.drawer-scroll .cv-row.is-current {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* ── 删除书签确认框（C-58…C-60）：复用全局 .confirm-backdrop，内部自己排版 ── */
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(440px, 100%);
+  padding: 20px;
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius);
+  background: var(--r-raised);
+  color: var(--r-fg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
+  animation: hintFadeIn 150ms var(--ease-standard) both;
+}
+.confirm strong {
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+.confirm p {
+  margin: 0;
+  color: var(--r-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.confirm-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 抽屉 / 设置面板里的禁用说明不能被裁掉 */
+.drawer-body .inline-note,
+.settings-panel .inline-note {
+  display: block;
+  margin: 4px 0 6px;
+}
+
+@media (max-width: 768px) {
+  .drawer-search .input,
+  .drawer-search .btn {
+    min-height: 44px;
+  }
+  .confirm {
+    padding: 16px;
+  }
+}

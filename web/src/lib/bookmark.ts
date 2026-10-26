@@ -20,3 +20,8 @@ export function bookmarkTitle(bookmark: Bookmark): string {
 export function isValidPosition(chapterId: number, paraIndex: number): boolean {
   return Number.isInteger(chapterId) && chapterId > 0 && Number.isInteger(paraIndex) && paraIndex >= 0;
 }
+/** 删除确认框正文：写明对象名与「不可恢复」，对象名优先取章节标题（契约 C-58）。 */
+export function bookmarkConfirmBody(bookmark: Bookmark): string {
+  const title = bookmark.chapterTitle?.trim() || `第 ${bookmark.chapterIdx + 1} 章`;
+  return `删除后立即移除，不可恢复。这一条是「${title}」。`;
+}

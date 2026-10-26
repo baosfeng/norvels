@@ -42,6 +42,7 @@ export function ReaderSearchPanel({
 
   if (!open) return null;
   const searching = query.trim().length > 0;
+  const empty = searching && total === 0;
 
   return (
     <div className="reader-search" role="search" data-testid="reader-search" ref={panelRef}>
@@ -53,6 +54,7 @@ export function ReaderSearchPanel({
         placeholder="搜索本章"
         aria-label="搜索本章"
         data-testid="reader-search-input"
+        data-od-id="C-37"
         onChange={(event) => onQueryChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
@@ -69,14 +71,15 @@ export function ReaderSearchPanel({
           仅显示前 200 处
         </span>
       ) : null}
+      {empty ? <span className="inline-note">本章没有匹配的内容</span> : null}
       <div className="reader-search-actions">
-        <button className="btn" type="button" aria-label="上一处" onClick={onPrev} disabled={hits === 0}>
+        <button className="btn" type="button" aria-label="上一处" data-od-id="C-38" onClick={onPrev} disabled={hits === 0}>
           上一处
         </button>
-        <button className="btn" type="button" aria-label="下一处" onClick={onNext} disabled={hits === 0}>
+        <button className="btn" type="button" aria-label="下一处" data-od-id="C-39" onClick={onNext} disabled={hits === 0}>
           下一处
         </button>
-        <button className="btn btn-ghost" type="button" aria-label="关闭搜索" onClick={onClose}>
+        <button className="btn btn-ghost" type="button" aria-label="关闭搜索" data-od-id="C-40" onClick={onClose}>
           关闭
         </button>
       </div>

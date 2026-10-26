@@ -1,9 +1,13 @@
-import { useRef } from "react";
+import { useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useFocusTrap } from "../../lib/focusTrap";
 import type { Theme } from "../../lib/theme";
 import {
   ALIGN_LABELS,
   FONT_FAMILY_LABELS,
+  FONT_MAX,
+  FONT_MIN,
+  LEADING_MAX,
+  LEADING_MIN,
   PARA_LEVELS,
   SPEED_MAX,
   SPEED_MIN,
@@ -36,28 +40,100 @@ const WIDTHS: ReaderWidth[] = ["narrow", "normal", "wide"];
 const ALIGNS: ReaderAlign[] = ["left", "justify"];
 
 /** 开关：用 role="switch" 表达状态，读屏软件念得出「开 / 关」。 */
-function Switch({ checked, label, onChange }: { checked: boolean; label: string; onChange: (next: boolean) => void }) {
+function Switch({
+  checked,
+  label,
+  disabled,
+  onChange,
+  disabledNote,
+}: {
+  checked: boolean;
+  label: string;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+  disabledNote?: string;
+}) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className={`switch${checked ? " is-on" : ""}`}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="switch-knob" aria-hidden="true" />
-    </button>
+    <span className="switch-wrap">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        className={`switch${checked ? " is-on" : ""}`}
+        onClick={() => onChange(!checked)}
+      >
+        <span className="switch-knob" aria-hidden="true" />
+      </button>
+      {disabled && disabledNote ? <span className="inline-note">{disabledNote}</span> : null}
+    </span>
+  );
+}
+
+/** 分段选择组：一组按钮，方向键在组内移动并立即生效（契约各组键盘行）。 */
+function SegGroup<T extends string | number>({
+  label,
+  values,
+  current,
+  labelOf,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  values: readonly T[];
+  current: T;
+  labelOf: (value: T) => string;
+  disabled?: boolean;
+  onChange: (value: T) => void;
+}) {
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    event.preventDefault();
+    const delta = event.key === "ArrowRight" ? 1 : -1;
+    const next = buttons[(at + delta + buttons.length) % buttons.length];
+    next?.focus();
+    onChange(values[(at + delta + values.length) % values.length]);
+  };
+  return (
+    <div className="seg" role="group" aria-label={label} onKeyDown={disabled ? undefined : onKeyDown}>
+      {values.map((value) => (
+        <button
+          key={String(value)}
+          type="button"
+          className={current === value ? "is-active" : ""}
+          aria-pressed={current === value}
+          disabled={disabled}
+          onClick={() => onChange(value)}
+        >
+          {labelOf(value)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="settings-row">
+      <span>{label}</span>
+      {children}
+    </div>
   );
 }
 
 /**
  * 阅读设置面板：排版细节一屏改完。
- * 与目录 / 书签 / 搜索同级——互斥打开由 ReaderPage 负责；这里是覆盖层，
- * 打开时焦点收进面板、Esc 关闭、关闭后焦点回到「设置」按钮。
+ * 与目录 / 书签 / 搜索同级——互斥打开由 ReaderPage 负责；覆盖层焦点收进面板、
+ * Esc 关闭、关闭后焦点回到「设置」按钮。禁用项一律带常驻原因，不靠悬停提示。
  */
 export function ReaderSettingsPanel({
   open,
+  isH5,
+  autoScrollAvailable,
   settings,
   onChange,
   theme,
@@ -66,6 +142,8 @@ export function ReaderSettingsPanel({
   onClose,
 }: {
   open: boolean;
+  isH5: boolean;
+  autoScrollAvailable: boolean;
   settings: ReaderSettings;
   onChange: (patch: Partial<ReaderSettings>) => void;
   theme: Theme;
@@ -75,6 +153,8 @@ export function ReaderSettingsPanel({
 }) {
   const rootRef = useRef<HTMLElement | null>(null);
   useFocusTrap(open, rootRef, onClose);
+  const fontLocked = settings.followSystemFont;
+  const speedLocked = !settings.autoScroll;
 
   return (
     <aside
@@ -87,186 +167,207 @@ export function ReaderSettingsPanel({
     >
       <div className="settings-head">
         <strong>阅读设置</strong>
-        <button className="btn btn-ghost" type="button" onClick={onClose} aria-label="关闭阅读设置">
+        <button className="btn btn-ghost" type="button" data-od-id="C-54" onClick={onClose} aria-label="关闭阅读设置">
           关闭
         </button>
       </div>
 
-      <div className="settings-row">
-        <span>字号</span>
-        <div className="stepper">
-          <button type="button" aria-label="减小字号" onClick={() => onChange({ font: stepFont(settings.font, -1) })}>
+      <Row label="字号">
+        <div className="stepper" data-od-id="C-42">
+          <button
+            type="button"
+            aria-label="减小字号"
+            disabled={fontLocked || settings.font <= FONT_MIN}
+            onClick={() => onChange({ font: stepFont(settings.font, -1) })}
+          >
             A−
           </button>
-          <span className="num" data-testid="reader-font-value">{settings.font}</span>
-          <button type="button" aria-label="增大字号" onClick={() => onChange({ font: stepFont(settings.font, 1) })}>
+          <span className="num" data-testid="reader-font-value">
+            {settings.font}
+          </span>
+          <button
+            type="button"
+            aria-label="增大字号"
+            disabled={fontLocked || settings.font >= FONT_MAX}
+            onClick={() => onChange({ font: stepFont(settings.font, 1) })}
+          >
             A+
           </button>
         </div>
-      </div>
+      </Row>
+      {fontLocked ? <span className="inline-note">正在跟随系统字号，先关掉它再调</span> : null}
+      {!fontLocked && settings.font <= FONT_MIN ? <span className="inline-note">已经是最小字号</span> : null}
+      {!fontLocked && settings.font >= FONT_MAX ? <span className="inline-note">已经是最大字号</span> : null}
 
-      <div className="settings-row">
-        <span>跟随系统字号</span>
-        <Switch
+      <Row label="跟随系统字号">
+        <span data-od-id="C-43">
+          <Switch
           checked={settings.followSystemFont}
           label="跟随系统字号"
           onChange={(next) => onChange({ followSystemFont: next })}
         />
-      </div>
+        </span>
+      </Row>
 
-      <div className="settings-row">
-        <span>行距</span>
-        <div className="stepper">
-          <button type="button" aria-label="减小行距" onClick={() => onChange({ leading: stepLeading(settings.leading, -0.1) })}>
+      <Row label="行距">
+        <div className="stepper" data-od-id="C-44">
+          <button
+            type="button"
+            aria-label="减小行距"
+            disabled={settings.leading <= LEADING_MIN}
+            onClick={() => onChange({ leading: stepLeading(settings.leading, -0.1) })}
+          >
             −
           </button>
           <span className="num">{settings.leading.toFixed(1)}</span>
-          <button type="button" aria-label="增大行距" onClick={() => onChange({ leading: stepLeading(settings.leading, 0.1) })}>
+          <button
+            type="button"
+            aria-label="增大行距"
+            disabled={settings.leading >= LEADING_MAX}
+            onClick={() => onChange({ leading: stepLeading(settings.leading, 0.1) })}
+          >
             +
           </button>
         </div>
-      </div>
+      </Row>
+      {settings.leading <= LEADING_MIN ? <span className="inline-note">已经是最小行距</span> : null}
+      {settings.leading >= LEADING_MAX ? <span className="inline-note">已经是最大行距</span> : null}
 
-      <div className="settings-row">
-        <span>字体</span>
-        <div className="seg" role="group" aria-label="字体">
-          {FONT_FAMILIES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={settings.fontFamily === value ? "is-active" : ""}
-              aria-pressed={settings.fontFamily === value}
-              onClick={() => onChange({ fontFamily: value })}
-            >
-              {FONT_FAMILY_LABELS[value]}
-            </button>
-          ))}
+      <Row label="字体">
+        <div data-od-id="C-45">
+          <SegGroup
+          label="字体"
+          values={FONT_FAMILIES}
+          current={settings.fontFamily}
+          labelOf={(value) => FONT_FAMILY_LABELS[value]}
+          onChange={(value) => onChange({ fontFamily: value })}
+        />
         </div>
-      </div>
+      </Row>
 
-      <div className="settings-row">
-        <span>段距</span>
-        <div className="seg" role="group" aria-label="段距">
-          {PARA_LEVELS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={settings.para === value ? "is-active" : ""}
-              aria-pressed={settings.para === value}
-              onClick={() => onChange({ para: stepParaLevel(value, 0) })}
-            >
-              {PARA_LABELS[value]}
-            </button>
-          ))}
+      <Row label="段距">
+        <div data-od-id="C-46">
+          <SegGroup
+          label="段距"
+          values={PARA_LEVELS}
+          current={stepParaLevel(settings.para, 0)}
+          labelOf={(value) => PARA_LABELS[value]}
+          onChange={(value) => onChange({ para: value })}
+        />
         </div>
-      </div>
+      </Row>
 
-      <div className="settings-row">
-        <span>页宽</span>
-        <div className="seg" role="group" aria-label="页宽">
-          {WIDTHS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={settings.width === value ? "is-active" : ""}
-              aria-pressed={settings.width === value}
-              onClick={() => onChange({ width: value })}
-            >
-              {WIDTH_LABELS[value]}
-            </button>
-          ))}
+      <Row label="正文宽度">
+        <div data-od-id="C-47">
+          <SegGroup
+          label="正文宽度"
+          values={WIDTHS}
+          current={settings.width}
+          labelOf={(value) => WIDTH_LABELS[value]}
+          disabled={isH5}
+          onChange={(value) => onChange({ width: value })}
+        />
         </div>
-      </div>
+      </Row>
+      {isH5 ? <span className="inline-note">手机上正文始终铺满屏幕</span> : null}
 
-      <div className="settings-row">
-        <span>对齐</span>
-        <div className="seg" role="group" aria-label="对齐">
-          {ALIGNS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={settings.align === value ? "is-active" : ""}
-              aria-pressed={settings.align === value}
-              onClick={() => onChange({ align: value })}
-            >
-              {ALIGN_LABELS[value]}
-            </button>
-          ))}
+      <Row label="对齐">
+        <div data-od-id="C-48">
+          <SegGroup
+          label="对齐"
+          values={ALIGNS}
+          current={settings.align}
+          labelOf={(value) => ALIGN_LABELS[value]}
+          onChange={(value) => onChange({ align: value })}
+        />
         </div>
-      </div>
+      </Row>
 
-      <div className="settings-row">
-        <span>首行缩进</span>
-        <Switch checked={settings.indent} label="首行缩进" onChange={(next) => onChange({ indent: next })} />
-      </div>
+      <Row label="首行缩进">
+        <span data-od-id="C-49">
+          <Switch
+          checked={settings.indent}
+          label="首行缩进"
+          onChange={(next) => onChange({ indent: next })}
+        />
+        </span>
+      </Row>
 
-      <div className="settings-row">
-        <span>繁体转简体</span>
-        <Switch checked={settings.script} label="繁体转简体" onChange={(next) => onChange({ script: next })} />
-      </div>
+      <Row label="繁体转简体">
+        <span data-od-id="C-50">
+          <Switch
+          checked={settings.script}
+          label="繁体转简体"
+          onChange={(next) => onChange({ script: next })}
+        />
+        </span>
+      </Row>
 
-      <div className="settings-row">
-        <span>自动滚动</span>
-        <Switch
+      <Row label="自动滚动">
+        <span data-od-id="C-51">
+          <Switch
           checked={settings.autoScroll}
           label="自动滚动"
+          disabled={!autoScrollAvailable}
           onChange={(next) => onChange({ autoScroll: next, autoScrollNext: next ? settings.autoScrollNext : false })}
+          disabledNote="正文还没载入，稍后可以自动滚动"
         />
-      </div>
+        </span>
+      </Row>
 
-      <div className="settings-row is-indent">
-        <span>滚动速度</span>
-        <div className="stepper">
+      <Row label="滚动速度">
+        <div className="stepper" data-od-id="C-52">
           <button
             type="button"
             aria-label="减慢自动滚动"
-            disabled={settings.autoScrollSpeed <= SPEED_MIN}
+            disabled={speedLocked || settings.autoScrollSpeed <= SPEED_MIN}
             onClick={() => onChange({ autoScrollSpeed: stepSpeed(settings.autoScrollSpeed, -0.5) })}
           >
             −
           </button>
-          <span className="num" data-testid="reader-speed-value" title={`约 ${speedToPxPerSec(settings.autoScrollSpeed)} 像素/秒`}>
+          <span className="num" data-testid="reader-speed-value">
             {formatSpeed(settings.autoScrollSpeed)}
           </span>
           <button
             type="button"
             aria-label="加快自动滚动"
-            disabled={settings.autoScrollSpeed >= SPEED_MAX}
+            disabled={speedLocked || settings.autoScrollSpeed >= SPEED_MAX}
             onClick={() => onChange({ autoScrollSpeed: stepSpeed(settings.autoScrollSpeed, 0.5) })}
           >
             +
           </button>
         </div>
-      </div>
+      </Row>
+      {speedLocked ? <span className="inline-note">先打开自动滚动再调速</span> : null}
+      {!speedLocked && settings.autoScrollSpeed <= SPEED_MIN ? <span className="inline-note">已经是最慢速度</span> : null}
+      {!speedLocked && settings.autoScrollSpeed >= SPEED_MAX ? <span className="inline-note">已经是最快速度</span> : null}
       <p className="settings-note" data-testid="reader-speed-hint">
         {SPEED_MIN}–{SPEED_MAX} 档，步进 0.5 · 当前约 {speedToPxPerSec(settings.autoScrollSpeed)} 像素/秒
       </p>
 
-      <div className="settings-row">
-        <span>到底自动下一章</span>
-        <Switch
+      <Row label="到底自动下一章">
+        <span data-od-id="C-53">
+          <Switch
           checked={settings.autoScrollNext}
           label="到底自动下一章"
+          disabled={!settings.autoScroll}
+          disabledNote="先打开自动滚动"
           onChange={(next) => onChange({ autoScrollNext: next })}
         />
-      </div>
+        </span>
+      </Row>
 
-      <div className="settings-row">
-        <span>主题</span>
-        <div className="seg" role="group" aria-label="主题">
-          {themes.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={theme === value ? "is-active" : ""}
-              aria-pressed={theme === value}
-              onClick={() => setTheme(value)}
-            >
-              {THEME_LABELS[value]}
-            </button>
-          ))}
+      <Row label="主题">
+        <div data-od-id="C-41">
+          <SegGroup
+          label="主题"
+          values={themes}
+          current={theme}
+          labelOf={(value) => THEME_LABELS[value]}
+          onChange={(value) => setTheme(value)}
+        />
         </div>
-      </div>
+      </Row>
     </aside>
   );
 }

@@ -57,12 +57,14 @@ function IconSearch() {
 
 /**
  * H5 底部控制栏：与顶部 header 同属控制层，一起显隐。
- * 上一章 / 目录 / 书签 / 搜索 / 书架 / 设置 / 下一章，每个可点区域 ≥48px。
+ * 上一章 / 目录 / 书签 / 搜索 / 书架 / 设置 / 下一章，每个可点区域 ≥48px；
+ * 首末章与正文未载入时按钮置灰，原因文案常驻在按钮内第二行。
  */
 export function ReaderBottomBar({
   hidden,
   prev,
   next,
+  searchEnabled,
   onPrev,
   onNext,
   onOpenDrawer,
@@ -78,6 +80,7 @@ export function ReaderBottomBar({
   hidden: boolean;
   prev: ChapterBrief | null;
   next: ChapterBrief | null;
+  searchEnabled: boolean;
   onPrev: () => void;
   onNext: () => void;
   onOpenDrawer: () => void;
@@ -92,33 +95,43 @@ export function ReaderBottomBar({
 }) {
   return (
     <nav className="h5-reader-bar" data-testid="reader-bar" aria-label="阅读控制" aria-hidden={hidden}>
-      <button type="button" aria-label="上一章" disabled={!prev} onClick={onPrev}>
+      <button type="button" aria-label="上一章" disabled={!prev} data-od-id="C-17" onClick={onPrev}>
         <IconPrev />
         <span>上一章</span>
+        {!prev ? <span className="inline-note">已经是第一章了</span> : null}
       </button>
-      <button type="button" aria-label="章节目录" aria-expanded={drawerOpen} onClick={onOpenDrawer}>
+      <button type="button" aria-label="章节目录" aria-expanded={drawerOpen} data-od-id="C-18" onClick={onOpenDrawer}>
         <IconMenu />
         <span>目录</span>
       </button>
-      <button type="button" aria-label="打开书签" aria-expanded={bookmarksOpen} onClick={onOpenBookmarks}>
+      <button type="button" aria-label="打开书签" aria-expanded={bookmarksOpen} data-od-id="C-19" onClick={onOpenBookmarks}>
         <IconBookmark />
         <span>书签</span>
       </button>
-      <button type="button" aria-label="搜索本章" aria-expanded={searchOpen} onClick={onToggleSearch}>
+      <button
+        type="button"
+        aria-label="搜索本章"
+        aria-expanded={searchOpen}
+        disabled={!searchEnabled}
+        data-od-id="C-20"
+        onClick={onToggleSearch}
+      >
         <IconSearch />
         <span>搜索</span>
+        {!searchEnabled ? <span className="inline-note">正文还没载入，稍后可以搜索</span> : null}
       </button>
-      <button type="button" aria-label="返回书架" onClick={onGoShelf}>
+      <button type="button" aria-label="返回书架" data-od-id="C-21" onClick={onGoShelf}>
         <IconShelf />
         <span>书架</span>
       </button>
-      <button type="button" aria-label="阅读设置" aria-expanded={settingsOpen} onClick={onToggleSettings}>
+      <button type="button" aria-label="阅读设置" aria-expanded={settingsOpen} data-od-id="C-22" onClick={onToggleSettings}>
         <IconSettings />
         <span>设置</span>
       </button>
-      <button type="button" aria-label="下一章" disabled={!next} onClick={onNext}>
+      <button type="button" aria-label="下一章" disabled={!next} data-od-id="C-23" onClick={onNext}>
         <IconNext />
         <span>下一章</span>
+        {!next ? <span className="inline-note">已经是最后一章了</span> : null}
       </button>
     </nav>
   );
