@@ -10,8 +10,16 @@ import (
 	"norvels/internal/parser"
 )
 
-// minSegmentChapters 是合集拆分时每段的最少章节数：太短的分段更可能是章号误判。
-const minSegmentChapters = 3
+// 合集拆分的两道门控：段数上限与书名标记。
+//
+// 只有章号重置会被 parser 判成「新书开始」，而网文常见「每卷从第一章重新编号」——
+// 不设上限时一本 137 卷的书会被拆成 137 本（标题变成「原标题（第 N 段）」）。
+const (
+	// minSegmentChapters 是合集拆分时每段的最少章节数：太短的分段更可能是章号误判。
+	minSegmentChapters = 3
+	// maxSplitSegments 是段数上限：真合集一般 2–20 本，再多几乎都是卷内章号重置被误判。
+	maxSplitSegments = 20
+)
 
 // splitBooks 按合集拆分点把一本书切成多本；不满足门控时原样返回单本。
 //
@@ -31,11 +39,32 @@ func splitBooks(b *model.ParsedBook) []*model.ParsedBook {
 			"疑似多书合集（%d 段），但有段落不足 %d 章，已按单本导入", len(segs), minSegmentChapters))
 		return []*model.ParsedBook{b}
 	}
+	if len(segs) > maxSplitSegments {
+		b.Warnings = append(b.Warnings, fmt.Sprintf(
+			"疑似多书合集（%d 段），超过 %d 段上限（多为卷内章号重置），已按单本导入", len(segs), maxSplitSegments))
+		return []*model.ParsedBook{b}
+	}
+	if !everySegmentTitled(segs) {
+		b.Warnings = append(b.Warnings, fmt.Sprintf(
+			"疑似多书合集（%d 段），但第 2 段起缺少书名标记，已按单本导入", len(segs)))
+		return []*model.ParsedBook{b}
+	}
 	out := make([]*model.ParsedBook, 0, len(segs))
 	for i, seg := range segs {
 		out = append(out, segmentBook(b, seg, i))
 	}
 	return out
+}
+
+// everySegmentTitled 判断第 2 段起是否都取到书名标记：取不到说明切点更像章号重置，
+// 而不是真的换了一本书（合集里书名标记一般紧挨在新书第一章之前）。
+func everySegmentTitled(segs []parser.Segment) bool {
+	for i := 1; i < len(segs); i++ {
+		if strings.TrimSpace(segs[i].Title) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // eachSegmentBigEnough 判断是否每段都够长。
