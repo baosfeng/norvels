@@ -30,6 +30,8 @@ export function AddToCollectionPanel({
   const [loadedKey, setLoadedKey] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [tip, setTip] = useState("");
+  /** 本数的就地增减：勾上 +1、取消 -1，失败回滚（契约 C-17 结果列）。 */
+  const [countDelta, setCountDelta] = useState<Record<number, number>>({});
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const collections = list.data?.items ?? [];
   /** 这一屏的书单集合：成员回来时按它标记「已取全」，换一批书单会自动重新取。 */
@@ -102,13 +104,16 @@ export function AddToCollectionPanel({
       showToast("这个书单里的书太多了，先在这里改动可能会丢成员。", "error");
       return;
     }
+    const step = add ? 1 : -1;
     setBusyId(collectionId);
     setMembers((prev) => ({ ...prev, [collectionId]: { ids: next, complete: true } }));
+    setCountDelta((prev) => ({ ...prev, [collectionId]: (prev[collectionId] ?? 0) + step }));
     try {
       await api.replaceCollectionBooks(collectionId, next);
       setTip(add ? "已加入书单" : "已移出书单");
     } catch {
       setMembers((prev) => ({ ...prev, [collectionId]: current }));
+      setCountDelta((prev) => ({ ...prev, [collectionId]: (prev[collectionId] ?? 0) - step }));
       showToast("书单没能保存，稍后再试。", "error");
     } finally {
       setBusyId(null);
@@ -161,8 +166,8 @@ export function AddToCollectionPanel({
                     />
                     <span>{item.name}</span>
                   </label>
-                  <span className="meta">
-                    {blocked ? "成员过多，暂不支持在这里改动" : `${item.bookCount} 本`}
+                  <span className="meta" data-testid={`collection-count-${item.id}`}>
+                    {blocked ? "成员过多，暂不支持在这里改动" : `${item.bookCount + (countDelta[item.id] ?? 0)} 本`}
                   </span>
                 </li>
               );

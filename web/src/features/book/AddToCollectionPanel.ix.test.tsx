@@ -69,8 +69,11 @@ describe("书单面板的移除后与边界（C-17 / C-18）", () => {
     replaceCollectionBooks.mockResolvedValue(undefined);
     renderPanel();
     await waitFor(() => expect(screen.getByTestId("collection-check-2")).toBeTruthy());
+    expect(screen.getByTestId("collection-count-2").textContent).toBe("1 本");
     fireEvent.click(screen.getByTestId("collection-check-2"));
     await waitFor(() => expect(screen.getByTestId("add-to-collection-tip").textContent).toBe("已加入书单"));
+    // 计数联动：加入后右侧本数 +1（契约 C-17 结果列）
+    await waitFor(() => expect(screen.getByTestId("collection-count-2").textContent).toBe("2 本"));
   });
 
   it("Esc 与「完成」都能关闭面板（焦点回触发按钮由详情页负责）", async () => {
