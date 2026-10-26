@@ -36,6 +36,7 @@ export function CategoryFilter({
           className="select"
           value={l1}
           data-testid="filter-category-l1"
+          data-od-id="C-26"
           onChange={(e) => onChange({ l1: e.target.value || null, l2: null })}
         >
           <option value="">全部分类</option>
@@ -53,6 +54,7 @@ export function CategoryFilter({
             className="select"
             value={value.l2 ?? ""}
             data-testid="filter-category-l2"
+            data-od-id="C-27"
             onChange={(e) => onChange({ l1, l2: e.target.value || null })}
           >
             <option value="">全部小分类</option>

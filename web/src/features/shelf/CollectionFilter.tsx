@@ -26,6 +26,7 @@ export function CollectionFilter({
         className="select"
         value={value ?? ""}
         data-testid="filter-collection-select"
+        data-od-id="C-25"
         onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
       >
         <option value="">全部书单</option>

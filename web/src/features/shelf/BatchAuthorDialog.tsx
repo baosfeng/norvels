@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { BookSummary } from "../../api/types";
 import { parseAuthorList } from "../../lib/authors";
+import { useFocusTrap } from "../../lib/focusTrap";
 
 /**
  * 批量设作者：纯前端循环 PATCH /api/books/{id}（authors 字段），不发新请求类型。
@@ -23,6 +24,11 @@ export function BatchAuthorDialog({
   const [succeeded, setSucceeded] = useState<Set<number>>(new Set());
   const [failedIds, setFailedIds] = useState<Set<number>>(new Set());
   const [errorText, setErrorText] = useState("");
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  // 焦点进对话框、Esc 关闭（跑批期间不可关）、关闭后回到「批量设作者」按钮
+  useFocusTrap(true, dialogRef, () => {
+    if (!running) onClose();
+  });
 
   const authors = parseAuthorList(authorText);
   const failed = books.filter((book) => failedIds.has(book.id));
@@ -50,8 +56,16 @@ export function BatchAuthorDialog({
   }
 
   return (
-    <div className="confirm-backdrop" data-testid="batch-author-dialog" onClick={onClose}>
+    <div
+      className="confirm-backdrop"
+      data-testid="batch-author-dialog"
+      data-od-id="C-34"
+      onClick={() => {
+        if (!running) onClose();
+      }}
+    >
       <div
+        ref={dialogRef}
         className="confirm-dialog"
         role="dialog"
         aria-modal="true"
