@@ -19,7 +19,8 @@ export function ResumeCard() {
       className="resume-card"
       to={`/read/${resume.bookId}/${resume.chapterId}`}
       data-testid="shelf-resume"
-      data-od-id="shelf:resume"
+      data-od-id="C-36"
+      data-legacy-od-id="shelf:resume"
     >
       <Cover title={resume.bookTitle} showLabel={false} />
       <div className="resume-body">

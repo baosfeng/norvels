@@ -20,7 +20,7 @@ export function SeriesDetailPage() {
 
   return (
     <section data-testid="view:series-detail" data-od-id="series-detail">
-      <nav className="crumbs" aria-label="面包屑">
+      <nav className="crumbs" aria-label="面包屑" data-od-id="C-62">
         <Link className="crumb-link" to="/series">
           系列
         </Link>
@@ -42,18 +42,22 @@ export function SeriesDetailPage() {
         <LoadingPanel title="正在打开系列" description="正在取回这个系列的书目。" />
       ) : feed.error ? (
         feed.error.status === 404 ? (
-          <EmptyPanel
-            title="没有这个系列"
-            description="系列名可能改了，或者这个系列下的书都换到了别的系列。"
-            testId="series-detail-empty"
-            actions={
-              <Link className="btn btn-primary" to="/series">
-                回系列列表
-              </Link>
-            }
-          />
+          <div data-od-id="C-64">
+            <EmptyPanel
+              title="没有这个系列"
+              description="系列名可能改了，或者这个系列下的书都换到了别的系列。"
+              testId="series-detail-empty"
+              actions={
+                <Link className="btn btn-primary" to="/series">
+                  回系列列表
+                </Link>
+              }
+            />
+          </div>
         ) : (
-          <ErrorPanel error={feed.error} title="系列没能打开" onRetry={feed.reload} testId="series-detail-error" />
+          <div data-od-id="C-65">
+            <ErrorPanel error={feed.error} title="系列没能打开" onRetry={feed.reload} testId="series-detail-error" />
+          </div>
         )
       ) : books.length === 0 ? (
         <EmptyPanel title="这个系列还没有书" description="系列里的书被移走或改了系列名之后，这里会空下来。" testId="series-detail-empty" />
@@ -71,7 +75,7 @@ export function SeriesDetailPage() {
 /** 系列内的一本书：与书架卡片同一套结构与样式，只多一个「第 N 部」的位置提示。 */
 function SeriesBookCard({ book, order }: { book: BookSummary; order: number }) {
   return (
-    <article className="book-card" data-book-id={book.id} data-testid={`series-book-${book.id}`}>
+    <article className="book-card" data-book-id={book.id} data-testid={`series-book-${book.id}`} data-od-id="C-63">
       <Link className="book-link" to={`/book/${book.id}`}>
         <Cover
           title={book.title}

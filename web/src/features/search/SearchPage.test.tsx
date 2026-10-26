@@ -109,7 +109,7 @@ describe("搜索页：检索范围只剩书名 / 作者 / 章节标题", () => {
     });
     const { unmount } = renderAt("旧城");
     await waitFor(() => expect(screen.getByText("章节标题")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /书名和作者/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /书名和作者/ }));
     const hint = await screen.findByTestId("search-books-empty");
     expect(hint.textContent).toContain("没有匹配的书名或作者");
     unmount();
@@ -123,7 +123,7 @@ describe("搜索页：检索范围只剩书名 / 作者 / 章节标题", () => {
     });
     renderAt("旧城");
     await waitFor(() => expect(screen.getByText("书名和作者")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /章节标题/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /章节标题/ }));
     const hint2 = await screen.findByTestId("search-chapters-empty");
     expect(hint2.textContent).toContain("没有匹配的章节标题");
   });

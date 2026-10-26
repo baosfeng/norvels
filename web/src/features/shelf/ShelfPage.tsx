@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import { useAuthors, useTags } from "../../api/hooks";
 import type { BookSummary, ReadStatus } from "../../api/types";
@@ -83,6 +83,10 @@ export function ShelfPage() {
   const restoredRef = useRef(false);
   // 记住「最后一次看到的滚动位置」：卸载时 DOM 已换成更短的下一页，再读 window.scrollY 会被夹到 0
   const scrollYRef = useRef(cached?.scrollTop ?? 0);
+  const location = useLocation();
+  // 清除筛选后焦点回到排序下拉（C-29）；404 回书架后焦点交给页标题（C-18）
+  const sortRef = useRef<HTMLSelectElement | null>(null);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
 
   // 筛选项的候选：作者与标签都是 PC 专属，H5 不发这两个请求
   const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: !isH5 });
@@ -240,24 +244,49 @@ export function ShelfPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [sheetOpen]);
 
+  function scrollToTopOfList() {
+    // 换了排序 / 筛选 / 页码都回到列表顶部；老浏览器与测试环境可能没有 scrollTo
+    try {
+      window.scrollTo({ top: 0 });
+    } catch {
+      /* 不影响结果 */
+    }
+  }
+
+  // 404 的「回书架」把焦点交给页标题（C-18 离开空态）
+  useEffect(() => {
+    if ((location.state as { focusTitle?: boolean } | null)?.focusTitle) titleRef.current?.focus();
+  }, [location.state]);
+
   function chooseSort(next: SortValue) {
     setSheetOpen(false);
     if (next === sort) return;
     setSort(next);
-    // 换了排序就是一份新列表：回到顶部，页码由钩子重置为 1
-    try {
-      window.scrollTo({ top: 0 });
-    } catch {
-      /* 老浏览器与测试环境可能没有 scrollTo：不影响排序结果 */
-    }
+    scrollToTopOfList();
   }
 
+  /** PC 行内排序（C-19）：选中即生效，页码由取数钩子按查询键重置为 1。 */
+  function chooseSortOnPc(next: SortValue) {
+    if (next === sort) return;
+    setSort(next);
+    scrollToTopOfList();
+  }
+
+  function changePage(next: number) {
+    scrollToTopOfList();
+    feed.setPage(next);
+  }
+
+  /** 一次清空七项筛选（C-29），焦点回排序下拉；只清筛选不动排序。 */
   function resetFilters() {
     setAuthorId(null);
     setTag(null);
     setReadStatus(null);
     setRating(null);
     setCollection(null);
+    setCategory({ l1: null, l2: null });
+    sortRef.current?.focus();
+    scrollToTopOfList();
   }
 
   function chooseReadStatus(next: Exclude<ReadStatus, ""> | null) {
@@ -277,6 +306,8 @@ export function ShelfPage() {
     setStatusOverrides((prev) => ({ ...prev, [book.id]: next }));
     try {
       await api.updateBook(book.id, { readStatus: next });
+      // 结果原文要能让用户对上刚才点的是哪本
+      showToast(`《${book.title}》标记为「${READ_STATUS_LABELS[next]}」。`);
     } catch {
       setStatusOverrides((prev) => ({ ...prev, [book.id]: current }));
       showToast("阅读状态没能保存，稍后再试。");
@@ -305,7 +336,9 @@ export function ShelfPage() {
       <div className="page-head">
         <div>
           <p className="eyebrow">书架 · {loading ? "读取中" : `${formatCount(total)} 本`}</p>
-          <h1>{isH5 ? "书架" : "最近入库"}</h1>
+          <h1 ref={titleRef} tabIndex={-1}>
+            {isH5 ? "书架" : "最近入库"}
+          </h1>
           {isH5 ? null : (
             <p className="sub">
               按{sortLabel}排序 · 共 {formatCount(total)} 本
@@ -321,6 +354,7 @@ export function ShelfPage() {
             className="btn"
             type="button"
             data-testid="shelf-select-toggle"
+            data-od-id="C-32"
             aria-pressed={selecting}
             onClick={toggleSelecting}
           >
@@ -331,17 +365,24 @@ export function ShelfPage() {
               className="btn btn-primary"
               type="button"
               data-testid="shelf-batch-author"
+              data-od-id="C-33"
               disabled={selected.size === 0}
               onClick={() => setBatchOpen(true)}
             >
               批量设作者（{selected.size}）
             </button>
           ) : null}
+          {selecting && selected.size === 0 ? (
+            <span className="inline-note" data-testid="shelf-batch-hint">
+              勾选至少一本书后可用。
+            </span>
+          ) : null}
           {isH5 ? (
             <button
               className="btn shelf-sort-trigger"
               type="button"
               data-testid="shelf-sort-trigger"
+              data-od-id="C-20"
               aria-haspopup="dialog"
               aria-expanded={sheetOpen}
               onClick={() => setSheetOpen(true)}
@@ -358,7 +399,13 @@ export function ShelfPage() {
         <div className="toolbar" data-testid="shelf-toolbar">
           <label>
             排序
-            <select className="select" value={sort} onChange={(e) => setSort(e.target.value as SortValue)}>
+            <select
+              ref={sortRef}
+              className="select"
+              value={sort}
+              data-od-id="C-19"
+              onChange={(e) => chooseSortOnPc(e.target.value as SortValue)}
+            >
               {SORTS.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
@@ -373,6 +420,7 @@ export function ShelfPage() {
               className="select"
               value={readStatus ?? ""}
               data-testid="filter-read-status"
+              data-od-id="C-22"
               onChange={(e) => chooseReadStatus((e.target.value || null) as Exclude<ReadStatus, ""> | null)}
             >
               {READ_STATUS_FILTERS.map((option) => (
@@ -389,6 +437,7 @@ export function ShelfPage() {
               className="select"
               value={rating ?? ""}
               data-testid="filter-rating"
+              data-od-id="C-23"
               onChange={(e) => setRating(e.target.value ? Number(e.target.value) : null)}
             >
               <option value="">全部评分</option>
@@ -407,6 +456,7 @@ export function ShelfPage() {
               value={authorId ?? ""}
               onChange={(e) => setAuthorId(e.target.value ? Number(e.target.value) : null)}
               data-testid="filter-author"
+              data-od-id="C-24"
             >
               <option value="">全部作者</option>
               {(authorOptions.data?.items ?? []).map((author) => (
@@ -424,7 +474,7 @@ export function ShelfPage() {
 
           <CategoryFilter value={category} onChange={setCategory} />
 
-          <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags">
+          <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags" data-od-id="C-28">
             <button type="button" className={`chip${tag === null ? " is-active" : ""}`} onClick={() => setTag(null)}>
               全部
             </button>
@@ -441,7 +491,7 @@ export function ShelfPage() {
           </div>
 
           {filtering ? (
-            <button className="btn btn-ghost" type="button" onClick={resetFilters}>
+            <button className="btn btn-ghost" type="button" data-od-id="C-29" onClick={resetFilters}>
               清除筛选
             </button>
           ) : null}
@@ -464,30 +514,34 @@ export function ShelfPage() {
           <CardSkeleton count={isH5 ? 3 : 4} />
         </div>
       ) : error ? (
-        <ErrorPanel error={error} title="书架没能加载" onRetry={reload} testId="shelf-error" />
+        <div data-od-id="C-41">
+          <ErrorPanel error={error} title="书架没能加载" onRetry={reload} testId="shelf-error" />
+        </div>
       ) : items.length === 0 ? (
-        <EmptyPanel
-          title={filtering ? "没有符合筛选条件的书" : "书架还是空的"}
-          description={
-            filtering
-              ? "换一个作者或标签试试，或者清除筛选看全部书目。"
-              : isH5
-                ? "先在电脑上把存放 txt 的目录导入，书目会同步到这里。"
-                : "把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。"
-          }
-          testId="shelf-empty"
-          actions={
-            filtering ? (
-              <button className="btn btn-primary" type="button" onClick={resetFilters}>
-                清除筛选
-              </button>
-            ) : isH5 ? null : (
-              <Link className="btn btn-primary" to="/import">
-                去导入
-              </Link>
-            )
-          }
-        />
+        <div data-od-id="C-40">
+          <EmptyPanel
+            title={filtering ? "没有符合筛选条件的书" : "书架还是空的"}
+            description={
+              filtering
+                ? "换一个作者或标签试试，或者清除筛选看全部书目。"
+                : isH5
+                  ? "先在电脑上把存放 txt 的目录导入，书目会同步到这里。"
+                  : "把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。"
+            }
+            testId="shelf-empty"
+            actions={
+              filtering ? (
+                <button className="btn btn-primary" type="button" onClick={resetFilters}>
+                  清除筛选
+                </button>
+              ) : isH5 ? null : (
+                <Link className="btn btn-primary" to="/import">
+                  去导入
+                </Link>
+              )
+            }
+          />
+        </div>
       ) : (
         <>
           <div className={`book-grid ${mode === "list" && !isH5 ? "is-list" : ""}`.trim()} data-testid="shelf-live">
@@ -527,9 +581,11 @@ export function ShelfPage() {
                 <>
                   <div ref={sentinelRef} data-testid="shelf-sentinel" aria-hidden="true" style={{ height: 1 }} />
                   {canObserve ? null : (
-                    <button className="btn" type="button" onClick={feed.loadMore} data-testid="shelf-load-more">
-                      加载更多
-                    </button>
+                    <div data-od-id="C-39">
+                      <button className="btn" type="button" onClick={feed.loadMore} data-testid="shelf-load-more">
+                        加载更多
+                      </button>
+                    </div>
                   )}
                 </>
               ) : (
@@ -543,8 +599,9 @@ export function ShelfPage() {
               <button
                 type="button"
                 aria-label="上一页"
+                data-od-id="C-37"
                 disabled={feed.page <= 1}
-                onClick={() => feed.setPage(feed.page - 1)}
+                onClick={() => changePage(feed.page - 1)}
               >
                 ←
               </button>
@@ -553,8 +610,9 @@ export function ShelfPage() {
               <button
                 type="button"
                 aria-label="下一页"
+                data-od-id="C-38"
                 disabled={feed.page >= pages}
-                onClick={() => feed.setPage(feed.page + 1)}
+                onClick={() => changePage(feed.page + 1)}
               >
                 →
               </button>
@@ -564,7 +622,7 @@ export function ShelfPage() {
       )}
 
       {isH5 && sheetOpen ? (
-        <div className="sheet-backdrop" data-testid="shelf-sort-sheet" onClick={() => setSheetOpen(false)}>
+        <div className="sheet-backdrop" data-testid="shelf-sort-sheet" data-od-id="C-21" onClick={() => setSheetOpen(false)}>
           <div
             className="sheet"
             role="dialog"
@@ -679,6 +737,7 @@ function BookCard({
       className="book-status"
       type="button"
       data-testid={`book-status-${book.id}`}
+      data-od-id="C-31"
       data-status={status}
       aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
       onClick={onCycle}
@@ -720,6 +779,7 @@ function BookCard({
       className={`book-card${selecting ? " is-selecting" : ""}${selected ? " is-selected" : ""}`}
       data-status={status}
       data-book-id={book.id}
+      data-od-id="C-30"
     >
       {selecting ? (
         <button
