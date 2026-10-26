@@ -314,8 +314,12 @@ func insertVolumes(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Parse
 
 // insertVolumeRow 建一行卷并返回 id（全库唯一的卷写入语句，追更路径复用）。
 func insertVolumeRow(ctx context.Context, tx *sql.Tx, bookID int64, v model.ParsedVolume) (int64, error) {
+	title, err := dedupeVolumeTitle(ctx, tx, bookID, strings.TrimSpace(v.Title))
+	if err != nil {
+		return 0, err
+	}
 	res, err := tx.ExecContext(ctx, "INSERT INTO volumes(book_id, idx, title) VALUES (?, ?, ?)",
-		bookID, v.Idx, strings.TrimSpace(v.Title))
+		bookID, v.Idx, title)
 	if err != nil {
 		return 0, fmt.Errorf("store: save volume %d: %w", v.Idx, err)
 	}

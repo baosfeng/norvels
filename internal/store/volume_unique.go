@@ -8,6 +8,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -41,6 +42,28 @@ func (s *Store) explainVolumeWriteFailure(ctx context.Context, bookID int64, tit
 		return err
 	}
 	return fmt.Errorf("%w: %s", ErrVolumeNameTaken, title)
+}
+
+// dedupeVolumeTitle 为导入/追更路径生成一个不撞同书唯一索引的卷名。
+//
+// 解析结果里同一本书可能出现两个同名卷（多书合集拆段、卷名归一化后重名），
+// 而 uq_volumes_book_title 只认 TRIM 后完全相等：批量导入时整本失败，代价是一本书一本书地丢。
+// 手工建卷/改卷仍走 ensureVolumeNameFree 报 409，不去重（用户输入的卷名要如实反馈）。
+func dedupeVolumeTitle(ctx context.Context, tx *sql.Tx, bookID int64, title string) (string, error) {
+	candidate := title
+	for n := 2; n <= maxVolumeTitleRunes; n++ {
+		var count int
+		if err := tx.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM volumes WHERE book_id = ? AND TRIM(title) = ?",
+			bookID, candidate).Scan(&count); err != nil {
+			return "", fmt.Errorf("store: check volume title %q: %w", title, err)
+		}
+		if count == 0 {
+			return candidate, nil
+		}
+		candidate = fmt.Sprintf("%s (%d)", title, n)
+	}
+	return "", fmt.Errorf("store: volume title %q 重名过多", title)
 }
 
 // volumeTitleTakenNow 用事务外的一次读判断同书是否已有该卷名（含并发写入的那条）。
