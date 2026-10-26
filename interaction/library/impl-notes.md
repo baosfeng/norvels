@@ -18,7 +18,7 @@
 | 锚点 | 控件 | 文件:行 |
 |---|---|---|
 | C-01 | 面包屑「书架」 | `features/book/BookPage.tsx:106` |
-| C-02 | 继续阅读 | `features/book/BookAside.tsx:48` |
+| C-02 | 继续阅读（无进度不渲染） | `features/book/BookAside.tsx:48` |
 | C-03 | 从第一章开始 | `features/book/BookAside.tsx:53` |
 | C-04 | 加入书单 | `features/book/BookAside.tsx:62` |
 | C-05 | 管理这本书（仅 PC） | `features/book/BookAside.tsx:73` |
@@ -90,7 +90,7 @@ node scripts/check-anchors.mjs --root ../norvels-wt-library --domain library
 
 # 定向测试（含新增控件用例）
 pnpm -C web exec vitest run src/features/book src/features/authors src/features/dashboard src/lib/charts.test.ts
-# → Test Files 17 passed (17)；Tests 136 passed (136)；exit 0
+# → Test Files 17 passed (17)；Tests 137 passed (137)；exit 0
 
 pnpm -C web typecheck        # → exit 0
 pnpm -C web exec eslint src/features/book src/features/authors src/features/dashboard src/lib/charts.ts src/routes.tsx
@@ -112,7 +112,8 @@ grep -rn 'demo-only' web/src | wc -l    # → 0
 | 5 | C-16 按钮的网格定位 | 按钮在目录网格之下、全宽（CSS 带 `grid-column:1/-1` 兜底） | 目录网格由虚拟滚动容器拥有，插入网格内会与虚拟行高度冲突；视觉上仍跨满整行 |
 | 6 | 焦点环规格 | 全部控件用全局 `:focus-visible`（2px `--accent` + 2px offset），未逐控件写「4px rgba(155,91,50,.24) 外环」 | 全站已有统一焦点环口径；逐控件覆写会造成同一页三种焦点环。属 A 类翻译损耗 |
 | 7 | C-31 的覆盖范围 | 只挂在 6 张图共用的 `ChartFrame`（对应契约点名的 `Charts.tsx:64`）；阅读时长卡失败态的重试按钮仍是无锚点的按钮 | 契约 C-31 只点名图表卡；热力卡是否同样纳入需产品决定 |
-| 8 | 前端函数长度的 70 行口径 | 新增 TSX 组件按 JSX 统计超过 70 行（与既有 `DashboardPage` / `ChapterList` 同口径）；纯逻辑函数全部 <70 行 | 仓库 `scripts/gate-size.sh` 只统计 Go；前端没有对应脚本，严格套用会把所有组件判定超标。若要强制，需先定 JSX 计数口径 |
+| 8 | C-13 前置「本书 3 卷及以上」 | 产品与既有用例是「2 卷及以上才出卷跳转」；本轮保持产品现状 | 既有 `BookPage.test.tsx` 用 2 卷书断言卷跳转存在，改契约口径会打破既有用例；且 2 卷时跳转确实省一次滚动。建议作者确认是否真要在 2 卷时去掉 |
+| 9 | 前端函数长度的 70 行口径 | 新增 TSX 组件按 JSX 统计超过 70 行（与既有 `DashboardPage` / `ChapterList` 同口径）；纯逻辑函数全部 <70 行 | 仓库 `scripts/gate-size.sh` 只统计 Go；前端没有对应脚本，严格套用会把所有组件判定超标。若要强制，需先定 JSX 计数口径 |
 
 ## 7 需要的共享 / 跨域改动
 

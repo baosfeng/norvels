@@ -32,8 +32,6 @@ export function BookAside({
   onOpenCollection: () => void;
   onReadStatusChange: (next: ReadStatus) => void;
 }) {
-  const target = resume ?? (first ? { chapterId: first.id, chapterTitle: first.title } : null);
-
   return (
     <aside className="book-aside" data-od-id="book-aside">
       <Cover
@@ -44,9 +42,10 @@ export function BookAside({
         showLabel={!isH5}
       />
       <div className="actions">
-        {target ? (
-          <Link className="btn btn-primary" to={`/read/${book.id}/${target.chapterId}`} data-od-id="C-02">
-            继续阅读 · {target.chapterTitle}
+        {/* C-02 边界：没有阅读进度时整颗按钮不渲染（不是禁用），改由「从第一章开始」承接 */}
+        {resume ? (
+          <Link className="btn btn-primary" to={`/read/${book.id}/${resume.chapterId}`} data-od-id="C-02">
+            继续阅读 · {resume.chapterTitle}
           </Link>
         ) : null}
         {first ? (

@@ -60,6 +60,12 @@ describe("详情页左栏锚点", () => {
     expect(screen.getByTestId("book-admin-link").getAttribute("data-od-id")).toBe("C-05");
   });
 
+  it("没有阅读进度时 C-02 整颗按钮不渲染，只留「从第一章开始」（契约边界）", () => {
+    renderAside({ resume: null });
+    expect(screen.queryByText(/继续阅读/)).toBeNull();
+    expect(screen.getByText("从第一章开始")).toBeTruthy();
+  });
+
   it("H5 不渲染「管理这本书」（不是隐藏，而是没有节点）", () => {
     renderAside({ isH5: true });
     expect(screen.queryByTestId("book-admin-link")).toBeNull();

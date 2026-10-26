@@ -173,6 +173,11 @@
   margin-top: var(--space-3);
 }
 
+/* ── C-15 当前章：accent 12% 底色（只覆盖详情页目录，抽屉沿用阅读器主题色） ── */
+.book-main .cv-row.is-current {
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+}
+
 /* ── C-13 卷跳转：当前展开的卷高亮（chip 高 32px，H5 由全局抬到 44px） ── */
 .vol-jump button {
   min-height: 32px;
