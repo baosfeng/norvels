@@ -74,13 +74,16 @@ export function useAuthors(
   return useResource((signal: AbortSignal) => api.authors(params, { signal }), [key], options);
 }
 
-export function useSearch(q: string, type: "all" | "book" | "chapter" = "all") {
+/**
+ * 搜索取数：两栏共用一份结果，按同一 page / size 分页（翻页时两栏一起换）。
+ * 后端要求关键词至少 2 个字符，不足时不发请求（避免把 400 当成错误态展示）。
+ */
+export function useSearch(q: string, type: "all" | "book" | "chapter" = "all", page = 1, size = 8) {
   const trimmed = q.trim();
-  // 后端要求关键词至少 2 个字符，不足时不发请求（避免把 400 当成错误态展示）
   const enabled = trimmed.length >= 2;
   return useResource(
-    (signal: AbortSignal) => api.search(trimmed, { type }, { signal }),
-    [trimmed, type],
+    (signal: AbortSignal) => api.search(trimmed, { type, page, size }, { signal }),
+    [trimmed, type, page, size],
     { enabled },
   );
 }

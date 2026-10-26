@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSeries } from "../../api/hooks";
 import { Cover } from "../../components/Cover";
@@ -18,6 +18,7 @@ export function SeriesPage() {
   const q = (params.get("q") ?? "").trim();
   const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
   const [draft, setDraft] = useState(q);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const feed = useSeries({ q: q || undefined, page, size: PAGE_SIZE });
 
   const model = useMemo(() => buildSeriesCards(feed.data?.items ?? []), [feed.data]);
@@ -40,6 +41,37 @@ export function SeriesPage() {
     apply({ q: draft, page: 1 });
   }
 
+  function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    // Esc 清空并回到全部系列，焦点留在输入框（C-56）
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setDraft("");
+      apply({ q: "", page: 1 });
+      return;
+    }
+    if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
+  }
+
+  function clearSearch() {
+    setDraft("");
+    apply({ q: "", page: 1 });
+    searchRef.current?.focus();
+  }
+
+  function goPage(next: number) {
+    apply({ page: next });
+    try {
+      window.scrollTo({ top: 0 });
+    } catch {
+      /* 测试环境没有 scrollTo */
+    }
+  }
+
+  function retry() {
+    feed.reload();
+    searchRef.current?.focus();
+  }
+
   return (
     <section data-testid="view:series" data-od-id="series">
       <div className="page-head">
@@ -54,12 +86,14 @@ export function SeriesPage() {
         </div>
       </div>
 
-      <form className="searchbar" onSubmit={submit} role="search" data-testid="series-search">
+      <form className="searchbar" onSubmit={submit} role="search" data-testid="series-search" data-od-id="C-56">
         <input
+          ref={searchRef}
           className="input"
           type="search"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={onSearchKeyDown}
           placeholder="搜系列名"
           aria-label="搜索系列名"
           data-testid="series-search-input"
@@ -72,10 +106,7 @@ export function SeriesPage() {
             className="btn btn-ghost"
             type="button"
             data-testid="series-search-clear"
-            onClick={() => {
-              setDraft("");
-              apply({ q: "", page: 1 });
-            }}
+            onClick={clearSearch}
           >
             清除
           </button>
@@ -85,33 +116,37 @@ export function SeriesPage() {
       {feed.loading ? (
         <LoadingPanel title="正在整理系列" description="正在按系列归并书目，稍等一下。" />
       ) : feed.error ? (
-        <ErrorPanel error={feed.error} title="系列没能加载" onRetry={feed.reload} testId="series-error" />
+        <div data-od-id="C-59">
+          <ErrorPanel error={feed.error} title="系列没能加载" onRetry={retry} testId="series-error" />
+        </div>
       ) : model.empty ? (
-        <EmptyPanel
-          title={q ? "没有匹配的系列" : "还没有系列"}
-          description={
-            q
-              ? "换个关键词试试，或者清除搜索看全部系列。"
-              : "书的元信息里带系列名（例如多部成套的作品）时，会聚合到这里。"
-          }
-          testId="series-empty"
-          actions={
-            q ? (
-              <button className="btn btn-primary" type="button" onClick={() => { setDraft(""); apply({ q: "", page: 1 }); }}>
-                清除搜索
-              </button>
-            ) : (
-              <Link className="btn btn-primary" to="/shelf">
-                去书架
-              </Link>
-            )
-          }
-        />
+        <div data-od-id="C-58">
+          <EmptyPanel
+            title={q ? "没有匹配的系列" : "还没有系列"}
+            description={
+              q
+                ? "换个关键词试试，或者清除搜索看全部系列。"
+                : "书的元信息里带系列名（例如多部成套的作品）时，会聚合到这里。"
+            }
+            testId="series-empty"
+            actions={
+              q ? (
+                <button className="btn btn-primary" type="button" onClick={clearSearch}>
+                  清除搜索
+                </button>
+              ) : (
+                <Link className="btn btn-primary" to="/shelf">
+                  去书架
+                </Link>
+              )
+            }
+          />
+        </div>
       ) : (
         <>
           <div className="book-grid" data-testid="series-live">
             {model.cards.map((card) => (
-              <article className="book-card" key={card.name} data-testid={`series-card-${card.name}`}>
+              <article className="book-card" key={card.name} data-testid={`series-card-${card.name}`} data-od-id="C-57">
                 <Link className="book-link" to={`/series/${encodeURIComponent(card.name)}`}>
                   <Cover title={card.name} bookId={card.coverBookId} hasCover={card.hasCover} />
                   <div className="book-card-body">
@@ -130,12 +165,12 @@ export function SeriesPage() {
 
           {pages <= 1 ? null : (
             <nav className="pagination" aria-label="分页" data-testid="series-pagination">
-              <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => apply({ page: page - 1 })}>
+              <button type="button" aria-label="上一页" data-od-id="C-60" disabled={page <= 1} onClick={() => goPage(page - 1)}>
                 ←
               </button>
               <span className="is-current num">{page}</span>
               <span className="meta">/ {pages}</span>
-              <button type="button" aria-label="下一页" disabled={page >= pages} onClick={() => apply({ page: page + 1 })}>
+              <button type="button" aria-label="下一页" data-od-id="C-61" disabled={page >= pages} onClick={() => goPage(page + 1)}>
                 →
               </button>
             </nav>

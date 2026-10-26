@@ -19,6 +19,11 @@ export function HistoryPage() {
 
   function go(next: number) {
     setPage(Math.min(Math.max(1, next), pages));
+    try {
+      window.scrollTo({ top: 0 });
+    } catch {
+      /* 测试环境没有 scrollTo */
+    }
   }
 
   return (
@@ -34,18 +39,22 @@ export function HistoryPage() {
       {feed.loading ? (
         <LoadingPanel title="正在整理阅读记录" description="正在汇总每本书的最后位置与累计时长。" />
       ) : feed.error ? (
-        <ErrorPanel error={feed.error} title="阅读历史没能加载" onRetry={feed.reload} testId="history-error" />
+        <div data-od-id="C-68">
+          <ErrorPanel error={feed.error} title="阅读历史没能加载" onRetry={feed.reload} testId="history-error" />
+        </div>
       ) : rows.length === 0 ? (
-        <EmptyPanel
-          title="还没有阅读记录"
-          description="打开一本书读上几分钟，这里就会记下最后读到的章节和累计时长。"
-          testId="history-empty"
-          actions={
-            <Link className="btn btn-primary" to="/shelf">
-              去书架挑一本
-            </Link>
-          }
-        />
+        <div data-od-id="C-67">
+          <EmptyPanel
+            title="还没有阅读记录"
+            description="打开一本书读上几分钟，这里就会记下最后读到的章节和累计时长。"
+            testId="history-empty"
+            actions={
+              <Link className="btn btn-primary" to="/shelf">
+                去书架挑一本
+              </Link>
+            }
+          />
+        </div>
       ) : (
         <>
           <div className="table-wrap">
@@ -61,7 +70,7 @@ export function HistoryPage() {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.bookId} data-testid={`history-row-${row.bookId}`}>
+                  <tr key={row.bookId} data-testid={`history-row-${row.bookId}`} data-od-id="C-66">
                     <td>
                       <Link className="book-title" to={`/read/${row.bookId}/${row.chapterId}`}>
                         {row.bookTitle}
@@ -79,12 +88,12 @@ export function HistoryPage() {
 
           {pages > 1 ? (
             <nav className="pagination" aria-label="分页" data-testid="history-pagination">
-              <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => go(page - 1)}>
+              <button type="button" aria-label="上一页" data-od-id="C-69" disabled={page <= 1} onClick={() => go(page - 1)}>
                 ←
               </button>
               <span className="is-current num">{page}</span>
               <span className="meta">/ {pages}</span>
-              <button type="button" aria-label="下一页" disabled={page >= pages} onClick={() => go(page + 1)}>
+              <button type="button" aria-label="下一页" data-od-id="C-70" disabled={page >= pages} onClick={() => go(page + 1)}>
                 →
               </button>
             </nav>

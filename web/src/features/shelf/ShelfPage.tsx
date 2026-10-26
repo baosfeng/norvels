@@ -514,30 +514,34 @@ export function ShelfPage() {
           <CardSkeleton count={isH5 ? 3 : 4} />
         </div>
       ) : error ? (
-        <ErrorPanel error={error} title="书架没能加载" onRetry={reload} testId="shelf-error" />
+        <div data-od-id="C-41">
+          <ErrorPanel error={error} title="书架没能加载" onRetry={reload} testId="shelf-error" />
+        </div>
       ) : items.length === 0 ? (
-        <EmptyPanel
-          title={filtering ? "没有符合筛选条件的书" : "书架还是空的"}
-          description={
-            filtering
-              ? "换一个作者或标签试试，或者清除筛选看全部书目。"
-              : isH5
-                ? "先在电脑上把存放 txt 的目录导入，书目会同步到这里。"
-                : "把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。"
-          }
-          testId="shelf-empty"
-          actions={
-            filtering ? (
-              <button className="btn btn-primary" type="button" onClick={resetFilters}>
-                清除筛选
-              </button>
-            ) : isH5 ? null : (
-              <Link className="btn btn-primary" to="/import">
-                去导入
-              </Link>
-            )
-          }
-        />
+        <div data-od-id="C-40">
+          <EmptyPanel
+            title={filtering ? "没有符合筛选条件的书" : "书架还是空的"}
+            description={
+              filtering
+                ? "换一个作者或标签试试，或者清除筛选看全部书目。"
+                : isH5
+                  ? "先在电脑上把存放 txt 的目录导入，书目会同步到这里。"
+                  : "把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。"
+            }
+            testId="shelf-empty"
+            actions={
+              filtering ? (
+                <button className="btn btn-primary" type="button" onClick={resetFilters}>
+                  清除筛选
+                </button>
+              ) : isH5 ? null : (
+                <Link className="btn btn-primary" to="/import">
+                  去导入
+                </Link>
+              )
+            }
+          />
+        </div>
       ) : (
         <>
           <div className={`book-grid ${mode === "list" && !isH5 ? "is-list" : ""}`.trim()} data-testid="shelf-live">
@@ -577,9 +581,11 @@ export function ShelfPage() {
                 <>
                   <div ref={sentinelRef} data-testid="shelf-sentinel" aria-hidden="true" style={{ height: 1 }} />
                   {canObserve ? null : (
-                    <button className="btn" type="button" onClick={feed.loadMore} data-testid="shelf-load-more">
-                      加载更多
-                    </button>
+                    <div data-od-id="C-39">
+                      <button className="btn" type="button" onClick={feed.loadMore} data-testid="shelf-load-more">
+                        加载更多
+                      </button>
+                    </div>
                   )}
                 </>
               ) : (
