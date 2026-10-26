@@ -1,1 +1,326 @@
-/* 书目域交互实现样式（契约落地，2026-10-27 夜）。只由 library 分支写。 */
+/* 书目域交互实现样式（契约落地，2026-10-27 夜）。只由 library 分支写。
+   只补「产品缺该行为」的部分：hover / focus 环 / 按下态沿用 prototype.css 的全局口径，
+   这里只加各控件自己的形貌（下划线、chip 态、浮层、骨架、图例按钮）。 */
+
+/* ── C-01 面包屑「书架」：hover 直接给下划线与强调色（默认是按钮，没有链接样式） ── */
+.crumbs .crumb-link {
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.crumbs .crumb-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ── C-02 / C-03 左栏主按钮与次按钮 ── */
+.book-aside .actions .btn {
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+.book-aside .actions .btn:hover:not(.btn-primary) {
+  background: var(--border-soft);
+  border-color: var(--border);
+}
+
+/* ── C-05 / C-06 / C-22 / C-23 / C-24 / C-32：文字型入口统一「强调色 + 下划线」 ── */
+.fact-link,
+.byline a,
+.author-link,
+.dash-block-head a.meta {
+  color: inherit;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    text-decoration-color var(--motion-fast) var(--ease-standard);
+}
+.fact-link:hover,
+.byline a:hover,
+.author-link:hover,
+.dash-block-head a.meta:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.fact-link:focus-visible,
+.author-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--space-1);
+}
+.author-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* H5 也要够 44 宽：左右各补 4px 内边距（契约 C-32 边界） */
+  padding: 2px 4px;
+  margin-left: -4px;
+}
+/* C-06 系列名：点击区 PC 32px / H5 44px（用行内高度撑，不打断 facts 行） */
+.fact-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+@media (max-width: 768px) {
+  .fact-link {
+    min-height: 44px;
+  }
+}
+
+/* ── C-07 阅读状态下拉：保存中置灰（原因写在 .inline-note 里） ── */
+.book-aside .select:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+.book-aside .select.is-saving {
+  opacity: 0.55;
+}
+.facts .inline-note {
+  grid-column: 1 / -1;
+}
+
+/* ── C-08 评分：hover 只做预览，占位星也点亮但比真值淡一档 ── */
+.rating-row .chip {
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+.rating-row .chip.is-preview {
+  border-color: color-mix(in oklab, var(--accent), transparent 45%);
+  color: color-mix(in oklab, var(--accent), transparent 30%);
+}
+
+/* ── C-09 标签 chip：从静态 span 变成按钮，hover 与按下态都在这里 ── */
+.chips .chip {
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+.book-main .chips .chip:hover {
+  background: var(--surface-warm);
+  color: var(--fg);
+}
+.book-main .chips .chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (max-width: 768px) {
+  .book-main .chips .chip {
+    min-height: 44px;
+  }
+}
+
+/* ── C-11 / C-12 目录搜索：下划线式输入框，聚焦后不再响应 hover ── */
+.dir-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) 0 var(--space-2);
+}
+.dir-search .input {
+  flex: 1 1 auto;
+  min-height: 34px;
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.dir-search .input:hover:not(:focus) {
+  border-bottom-color: var(--muted);
+}
+.dir-search .input:focus {
+  border-bottom-color: var(--accent);
+  box-shadow: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.dir-search .meta {
+  flex: none;
+}
+@media (max-width: 768px) {
+  .dir-search .input {
+    min-height: 44px;
+  }
+}
+
+/* 结果区 150ms 淡入；无匹配空态与目录同宽 */
+.dir-results {
+  animation: ix-fade-in var(--motion-fast) var(--ease-standard);
+}
+@keyframes ix-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.dir-empty {
+  margin-top: var(--space-3);
+}
+
+/* ── C-13 卷跳转：当前展开的卷高亮 ── */
+.vol-jump button.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── C-16 卷内「再显示 60 章」：跨满整行 ── */
+.vol-more {
+  width: 100%;
+  margin-top: 6px;
+  grid-column: 1 / -1;
+  justify-content: center;
+  min-height: 36px;
+  font-size: var(--text-xs);
+}
+@media (max-width: 768px) {
+  .vol-more {
+    min-height: 44px;
+  }
+}
+
+/* ── C-17 书单勾选框：整行禁用时文字变淡，hover 描边加深 ── */
+.check-row {
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.check-row input[type="checkbox"] {
+  accent-color: var(--accent);
+  transition: outline-color var(--motion-fast) var(--ease-standard);
+}
+.check-row:hover input[type="checkbox"]:not(:disabled) {
+  outline: 2px solid var(--muted);
+  outline-offset: 1px;
+}
+.check-row.is-disabled {
+  color: var(--muted);
+}
+.inline-note.is-tip {
+  color: var(--accent);
+}
+
+/* ── C-26 环形图图例：从不可点的 span 变成按钮 ── */
+.legend-btn {
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: var(--space-1);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+.legend-btn:hover {
+  background: var(--surface-warm);
+}
+.legend-btn.is-off {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.legend-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.donut-seg {
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+.dash-block .donut-legend .inline-note {
+  margin-top: var(--space-1);
+}
+
+/* ── C-27 / C-28 健康卡下一步 ── */
+.health-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* ── C-29 页头刷新 ── */
+.page-head > .btn {
+  align-self: flex-start;
+}
+
+/* ── C-30 热力格与浮层：每格可点可聚焦，浮层固定定位在格子上方 30px ── */
+.heat-cell {
+  display: block;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+.heat-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.heat-cell.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.heat-tip {
+  position: fixed;
+  z-index: 70;
+  padding: 3px 8px;
+  border-radius: var(--space-1);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-100%);
+  box-shadow: 0 6px 18px rgba(32, 25, 20, 0.18);
+}
+
+/* ── C-31 图表卡重试：重试中禁用 + 骨架块 ── */
+.retry-btn[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+.retry-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) 0;
+}
+.retry-skeleton span {
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--border-soft);
+}
+.retry-skeleton span:nth-child(1) {
+  width: 80%;
+}
+.retry-skeleton span:nth-child(2) {
+  width: 60%;
+}
+.retry-skeleton span:nth-child(3) {
+  width: 70%;
+}
+
+/* 作者作品页：卡片网格沿用书架口径，这里只补列数 */
+[data-testid="view:author-works"] .book-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+@media (max-width: 768px) {
+  [data-testid="view:author-works"] .book-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dir-results,
+  .donut-seg,
+  .legend-btn,
+  .chip,
+  .btn,
+  .fact-link,
+  .author-link {
+    animation: none;
+    transition: none;
+  }
+}

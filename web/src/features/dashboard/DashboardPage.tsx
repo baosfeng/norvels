@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { showToast } from "../../lib/toastStore";
 import {
   useHealthReport,
   useImportJobs,
@@ -40,6 +42,22 @@ export function DashboardPage() {
   const topAuthors = useTopAuthors(10);
   /** 近 90 天阅读时长：今日 / 本周 / 累计 / 连续天数 + 日历热力图 */
   const reading = useReadingStats(90);
+  const [refreshing, setRefreshing] = useState(false);
+
+  /** 刷新概览（契约 C-29）：重取全部数据源，卡片保持旧值直到新值回来。 */
+  async function refreshOverview() {
+    if (refreshing) return;
+    setRefreshing(true);
+    const started = Date.now();
+    for (const source of [stats, progress, progressAll, jobs, health, trend, topAuthors, reading]) {
+      source.reload();
+    }
+    const wait = Math.max(0, 240 - (Date.now() - started));
+    window.setTimeout(() => {
+      setRefreshing(false);
+      showToast("概览已刷新");
+    }, wait);
+  }
 
   const loading = stats.loading && !stats.data;
   const error = stats.error;
@@ -67,6 +85,15 @@ export function DashboardPage() {
           <h1>驾驶舱</h1>
           <p className="sub">书库状态、阅读进度与最近动态</p>
         </div>
+        <button
+          className="btn btn-sm"
+          type="button"
+          data-od-id="C-29"
+          disabled={refreshing}
+          onClick={() => void refreshOverview()}
+        >
+          {refreshing ? "正在刷新…" : "刷新概览"}
+        </button>
       </div>
 
       {loading ? (
@@ -96,7 +123,7 @@ export function DashboardPage() {
             <section className="dash-block" data-od-id="dashboard:reading">
               <div className="dash-block-head">
                 <h2>最近在读</h2>
-                <Link className="meta" to="/shelf">
+                <Link className="meta" to="/shelf" data-od-id="C-23">
                   全部书架 →
                 </Link>
               </div>
@@ -109,7 +136,12 @@ export function DashboardPage() {
               ) : (
                 <div className="dash-list">
                   {progress.data?.items.map((item) => (
-                    <Link className="dash-row" key={item.bookId} to={`/read/${item.bookId}/${item.chapterId}`}>
+                    <Link
+                      className="dash-row"
+                      key={item.bookId}
+                      to={`/read/${item.bookId}/${item.chapterId}`}
+                      data-od-id="C-25"
+                    >
                       <Cover title={item.bookTitle} showLabel={false} />
                       <div className="dash-row-main">
                         <b>{item.bookTitle}</b>
@@ -131,7 +163,7 @@ export function DashboardPage() {
             <section className="dash-block" data-od-id="dashboard:import">
               <div className="dash-block-head">
                 <h2>导入概况</h2>
-                <Link className="meta" to="/import">
+                <Link className="meta" to="/import" data-od-id="C-24">
                   前往导入管理 →
                 </Link>
               </div>
@@ -217,6 +249,15 @@ export function DashboardPage() {
                     </div>
                     <p className="health-num num">{formatDate(stats.data?.lastImportAt ?? null)}</p>
                     <p className="meta">库里最新一次导入的时间。</p>
+                  </div>
+                  {/* C-27 / C-28（新增）：健康卡给出下一步入口，按指出的问题去补 */}
+                  <div className="health-actions">
+                    <Link className="btn btn-sm" to="/admin" data-od-id="C-27">
+                      去书籍管理
+                    </Link>
+                    <Link className="btn btn-sm btn-ghost" to="/import" data-od-id="C-28">
+                      去导入
+                    </Link>
                   </div>
                 </>
               ) : null}

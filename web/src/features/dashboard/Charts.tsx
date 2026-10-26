@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   buildChapterBuckets,
@@ -38,11 +39,43 @@ interface ChartFrameProps extends ChartState {
   children: ReactNode;
 }
 
+/** 重试最短可见时长：点完立刻成功也要让「重试中…」被看见（契约 C-31）。 */
+const RETRY_MIN_MS = 240;
+/** 连续失败到这个次数就补一句排查提示（契约 C-31 边界）。 */
+const RETRY_HINT_AFTER = 3;
+
 function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty, stale, children }: ChartFrameProps) {
+  const [retrying, setRetrying] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const retriedRef = useRef(false);
+
+  /** 重试成功（失败态消失）后把焦点送回卡片标题——按钮那时已经不存在了。 */
+  useEffect(() => {
+    if (!retriedRef.current || failed || loading) return;
+    retriedRef.current = false;
+    titleRef.current?.focus();
+  }, [failed, loading]);
+
+  function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    const started = Date.now();
+    onRetry();
+    const wait = Math.max(0, RETRY_MIN_MS - (Date.now() - started));
+    window.setTimeout(() => {
+      setRetrying(false);
+      setAttempts((n) => n + 1);
+      retriedRef.current = true;
+    }, wait);
+  }
+
   return (
     <article className="chart-card" data-chart={id} data-testid={`chart:${id}`} data-od-id={`chart:${id}`}>
       <div className="chart-head">
-        <h3>{title}</h3>
+        <h3 tabIndex={-1} ref={titleRef}>
+          {title}
+        </h3>
         <p className="chart-note">
           {loading ? "正在读取…" : note}
           {!loading && !failed && stale ? <span className="chart-stale">数据更新中</span> : null}
@@ -54,16 +87,27 @@ function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty
         ) : null}
       </div>
       <div className="chart-body">
-        {loading ? (
+        {loading || retrying ? (
           <div className="chart-empty" data-testid={`chart:${id}:loading`}>
-            正在读取…
+            {retrying ? <RetrySkeleton /> : "正在读取…"}
           </div>
         ) : failed ? (
           <div className="chart-empty" data-testid={`chart:${id}:error`}>
             <span>数据暂不可用</span>
-            <button className="load-more" type="button" onClick={onRetry}>
-              重试
+            <button
+              className="load-more retry-btn"
+              type="button"
+              data-od-id="C-31"
+              disabled={retrying}
+              onClick={retry}
+            >
+              {retrying ? "重试中…" : "重试"}
             </button>
+            {attempts >= RETRY_HINT_AFTER ? (
+              <p className="inline-note" data-testid={`chart:${id}:retry-hint`}>
+                多次失败，检查服务是否在运行。
+              </p>
+            ) : null}
           </div>
         ) : isEmpty ? (
           <div className="chart-empty" data-testid={`chart:${id}:empty`}>
@@ -74,6 +118,17 @@ function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty
         )}
       </div>
     </article>
+  );
+}
+
+/** 重试时的骨架块：卡片不许在等待里闪白（契约 C-31 反馈）。 */
+function RetrySkeleton() {
+  return (
+    <div className="retry-skeleton" aria-hidden="true" data-testid="chart-retry-skeleton">
+      <span />
+      <span />
+      <span />
+    </div>
   );
 }
 
@@ -155,6 +210,18 @@ export function ReadingDistChart({
 } & ChartState) {
   const model = buildReadingDist(progress, totalBooks, limitReached, buckets);
   const note = model.data.partial ? `${model.note}（按最近 50 条记录聚合）` : model.note;
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+  /** 图例过滤（契约 C-26）：只改这张图的显隐，不改任何数字，也不发请求。 */
+  function toggleLegend(key: string) {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   return (
     <ChartFrame id="reading" title="阅读进度分布" note={note} isEmpty={model.empty} {...state}>
       <div className="donut-wrap">
@@ -163,6 +230,7 @@ export function ReadingDistChart({
             segment.value > 0 ? (
               <circle
                 key={segment.key}
+                className="donut-seg"
                 cx="60"
                 cy="60"
                 r={RADIUS}
@@ -172,6 +240,7 @@ export function ReadingDistChart({
                 strokeDasharray={segment.dash}
                 strokeDashoffset={String(segment.offset)}
                 transform="rotate(-90 60 60)"
+                opacity={hidden.has(segment.key) ? 0.16 : 1}
               >
                 <title>{`${segment.label} ${segment.value} 本`}</title>
               </circle>
@@ -180,11 +249,25 @@ export function ReadingDistChart({
         </svg>
         <div className="donut-legend">
           {model.data.segments.map((segment) => (
-            <span className="legend-row" key={segment.key}>
+            <button
+              className={`legend-row legend-btn${hidden.has(segment.key) ? " is-off" : ""}`}
+              key={segment.key}
+              type="button"
+              data-od-id="C-26"
+              data-testid={`legend-${segment.key}`}
+              aria-pressed={!hidden.has(segment.key)}
+              aria-label={`${segment.label} ${segment.value} 本`}
+              onClick={() => toggleLegend(segment.key)}
+            >
               <span className="legend-dot" style={{ background: segment.color }} />
               {segment.label} {segment.value} 本
-            </span>
+            </button>
           ))}
+          {hidden.size > 0 ? (
+            <p className="inline-note" data-testid="legend-hidden-note">
+              已隐藏的段不画在环上，总数不变。
+            </p>
+          ) : null}
         </div>
       </div>
     </ChartFrame>
