@@ -22,7 +22,7 @@ vi.mock("../../api/hooks", async () => {
   const React = await import("react");
   return {
     useBook: () => {
-      const [, force] = React.useReducer((x: number, _step: number) => x + 1, 0);
+      const [, force] = React.useReducer((x: number, step: number) => x + step, 0);
       bookState.reload = () => force(1);
       return bookState;
     },

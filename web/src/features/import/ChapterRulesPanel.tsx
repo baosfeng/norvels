@@ -73,7 +73,7 @@ function RuleEditor({ initial, onSaved }: { initial: ChapterRule[]; onSaved: (co
   const [saving, setSaving] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [sample, setSample] = useState("");
-  const [preview, setPreview] = useState<RulePreview | null>(null);
+  const [, setPreview] = useState<RulePreview | null>(null);
   const [previewNote, setPreviewNote] = useState("");
   const [focusKey, setFocusKey] = useState<number | null>(null);
   const nextKey = useRef(initial.length + 1);
@@ -84,7 +84,7 @@ function RuleEditor({ initial, onSaved }: { initial: ChapterRule[]; onSaved: (co
   useEffect(() => {
     if (focusKey === null) return;
     inputs.current.get(focusKey)?.focus();
-    setFocusKey(null);
+    queueMicrotask(() => setFocusKey(null));
   }, [focusKey]);
 
   function patchRow(key: number, field: "name" | "pattern", value: string) {

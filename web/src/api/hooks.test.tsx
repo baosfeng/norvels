@@ -185,7 +185,7 @@ describe("各域取数 hook 都能拿到数据", () => {
 
     const ok = renderHook(() => hooks.useSearch("两个字"));
     await waitFor(() => expect(ok.result.current.data?.chapters.total).toBe(1));
-    expect(mocks.search).toHaveBeenCalledWith("两个字", { type: "all" }, expect.anything());
+    expect(mocks.search).toHaveBeenCalledWith("两个字", { type: "all", page: 1, size: 8 }, expect.anything());
   });
 
   it("useImportJobs 与 useReadingProgress", async () => {

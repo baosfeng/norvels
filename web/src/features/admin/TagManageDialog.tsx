@@ -40,7 +40,7 @@ export function TagManageDialog({
   useEffect(() => {
     if (focusTag === null) return;
     deleteRefs.current.get(focusTag)?.focus();
-    setFocusTag(null);
+    queueMicrotask(() => setFocusTag(null));
   }, [focusTag]);
 
   function succeeded(message: string) {

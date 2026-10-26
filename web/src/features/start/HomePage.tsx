@@ -25,7 +25,7 @@ export function HomePage() {
   // 重试成功后焦点交给最近入库的第一行（C-71 离开错误态）
   useEffect(() => {
     if (!awaitRetry || recent.loading || recent.error) return;
-    setAwaitRetry(false);
+    queueMicrotask(() => setAwaitRetry(false));
     recentRowsRef.current?.querySelector<HTMLElement>("a")?.focus();
   }, [awaitRetry, recent.loading, recent.error]);
 

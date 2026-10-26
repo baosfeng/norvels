@@ -94,15 +94,16 @@ export function ShelfPage() {
 
   const pageSize = isH5 ? H5_PAGE_SIZE : PAGE_SIZE;
   // 缓存命中就先用它渲染；够新（60 秒内）时连后台刷新都不做，返回瞬间不再发第 1 页
+  const [now] = useState(() => Date.now());
   const restore = useMemo<BookFeedRestore | undefined>(() => {
     if (!cached || cached.size !== pageSize || cached.items.length === 0) return undefined;
     return {
       items: cached.items,
       total: cached.total,
       page: cached.page,
-      refresh: Date.now() - cached.savedAt > SHELF_REFRESH_MIN_AGE_MS,
+      refresh: now - cached.savedAt > SHELF_REFRESH_MIN_AGE_MS,
     };
-  }, [cached, pageSize]);
+  }, [cached, pageSize, now]);
   const feed = useBookFeed({
     sort,
     authorId: authorId ?? undefined,

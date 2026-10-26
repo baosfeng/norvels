@@ -491,7 +491,7 @@ describe("书架：长标题与角标布局（样式契约）", () => {
     const css = await readCss("../../styles/prototype.css");
     expect(css).toContain(".book-author{display:-webkit-box;-webkit-line-clamp:2");
     expect(css).toContain(".book-status {\n  margin-left: auto;");
-    expect(css).not.toMatch(/\.book-status \{\n  position: absolute;/);
+    expect(css).not.toMatch(/\.book-status \{\n {2}position: absolute;/);
     // ≤520 单列
     expect(css).toContain("@media (max-width: 520px)");
   });

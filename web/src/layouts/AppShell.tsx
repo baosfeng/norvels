@@ -18,7 +18,8 @@ export function AppShell() {
   const isHome = location.pathname === "/home";
   // H5 的书架是强制单列简表（ShelfPage 里 mode 只对 PC 生效），
   // 所以视图切换按钮只在 PC 的书架出现——H5 上放一个按了不动的按钮是缺陷
-  const showViewToggle = location.pathname === "/shelf" && useTier() === "pc";
+  const tier = useTier();
+  const showViewToggle = location.pathname === "/shelf" && tier === "pc";
 
   // 导航抽屉的打开状态绑定到当时的路由：路由一变就自然收起，不需要在 effect 里 setState
   const [openFor, setOpenFor] = useState<string | null>(null);

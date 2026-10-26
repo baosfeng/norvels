@@ -66,7 +66,7 @@ export function ImportPage() {
   // 预检的已跑秒数：取消时照实显示，不假装瞬间完成（契约 C-21）
   useEffect(() => {
     if (!dryBusy) return;
-    setDryElapsed(0);
+    queueMicrotask(() => setDryElapsed(0));
     const timer = window.setInterval(() => setDryElapsed((n) => n + 1), 1000);
     return () => window.clearInterval(timer);
   }, [dryBusy]);
