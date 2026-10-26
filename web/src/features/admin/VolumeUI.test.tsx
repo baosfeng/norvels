@@ -94,11 +94,25 @@ describe("卷管理弹窗", () => {
   it("新建空卷：空名与重名都在前端挡下，不发请求", () => {
     renderManage();
     fireEvent.click(screen.getByTestId("volume-create"));
-    expect(screen.getByTestId("volume-error").textContent).toBe("卷名不能为空。");
+    expect(screen.getByTestId("volume-error").textContent).toBe("先填一个卷名。");
     fireEvent.change(screen.getByTestId("volume-new-input"), { target: { value: " 卷一 " } });
     fireEvent.click(screen.getByTestId("volume-create"));
-    expect(screen.getByTestId("volume-error").textContent).toBe("这本书已经有同名卷了");
+    expect(screen.getByTestId("volume-error").textContent).toBe("同名卷已经有了，换个名字。");
     expect(createVolume).not.toHaveBeenCalled();
+  });
+
+  it("C-73 新建卷是「输入 + 新建卷按钮」一对：空名给常驻文案，成功提示带卷名", async () => {
+    createVolume.mockResolvedValue({ volume: { id: 9, idx: 3, title: "卷三 · 归途", chapters: [] } });
+    renderManage();
+    const input = screen.getByTestId("volume-new-input");
+    const button = screen.getByTestId("volume-create");
+    expect(input.getAttribute("data-od-id")).toBe("C-73");
+    expect(button.getAttribute("data-od-id")).toBe("C-73");
+    fireEvent.click(button);
+    expect(screen.getByTestId("volume-error").textContent).toBe("先填一个卷名。");
+    fireEvent.change(input, { target: { value: "卷三 · 归途" } });
+    fireEvent.click(button);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("已新建空卷「卷三 · 归途」"));
   });
 
   it("新建成功后清空输入并回传提示", async () => {
@@ -119,7 +133,7 @@ describe("卷管理弹窗", () => {
     expect(input.value).toBe("卷二");
     fireEvent.change(input, { target: { value: "卷一" } });
     fireEvent.click(screen.getByTestId("volume-rename-save"));
-    expect(screen.getByTestId("volume-error").textContent).toBe("这本书已经有同名卷了");
+    expect(screen.getByTestId("volume-error").textContent).toBe("同名卷已经有了，换个名字。");
     expect(renameVolume).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByTestId("volume-rename-input"), { target: { value: "卷二 · 上" } });
@@ -130,12 +144,12 @@ describe("卷管理弹窗", () => {
 
   it("后端 409 重名用同一句文案，弹窗不关闭", async () => {
     const { ApiError } = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-    renameVolume.mockRejectedValue(new ApiError("http", "这本书已经有同名卷了", 409, "volume_name_taken"));
+    renameVolume.mockRejectedValue(new ApiError("http", "同名卷已经有了，换个名字。", 409, "volume_name_taken"));
     renderManage();
     fireEvent.click(screen.getByTestId("volume-rename-open-2"));
     fireEvent.change(screen.getByTestId("volume-rename-input"), { target: { value: "卷二 · 上" } });
     fireEvent.click(screen.getByTestId("volume-rename-save"));
-    await waitFor(() => expect(screen.getByTestId("volume-error").textContent).toBe("这本书已经有同名卷了"));
+    await waitFor(() => expect(screen.getByTestId("volume-error").textContent).toBe("同名卷已经有了，换个名字。"));
     expect(screen.getByTestId("volume-manage-dialog")).toBeTruthy();
     expect(onSaved).not.toHaveBeenCalled();
   });
@@ -263,8 +277,10 @@ describe("章节区的卷入口", () => {
 
   it("勾选后批量条出现「移动到卷…」，点开弹窗写明目标卷", () => {
     render(<AdminChapters book={book} onChanged={vi.fn()} onError={vi.fn()} />);
-    expect(screen.queryByTestId("admin-ch-move")).toBeNull();
+    // 未选章时按钮在但禁用（契约 C-60 前置：已选至少 1 章），勾上才解锁
+    expect((screen.getByTestId("admin-ch-move") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("admin-chapter-pick-20"));
+    expect((screen.getByTestId("admin-ch-move") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByTestId("admin-ch-move"));
     expect(screen.getByTestId("volume-move-dialog")).toBeTruthy();
     expect(screen.getByTestId("volume-move-sub").textContent).toBe("把已选 1 章移到「卷一」末尾。");

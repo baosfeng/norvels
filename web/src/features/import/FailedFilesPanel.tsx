@@ -21,6 +21,8 @@ export function FailedFilesPanel({
   const [note, setNote] = useState("");
   const list = files.data?.files ?? [];
   const failedCount = job.failedCount ?? job.failed;
+  /** 任务还在跑时不能重试：失败项可能继续增加，判定口径也不稳定。 */
+  const taskRunning = job.status === "running";
 
   async function retry(sources?: string[]) {
     if (pending) return;
@@ -70,11 +72,17 @@ export function FailedFilesPanel({
         className="btn"
         type="button"
         data-testid="retry-all-failed"
-        disabled={pending !== null}
+        disabled={pending !== null || taskRunning}
+        data-od-id="C-24"
         onClick={() => void retry()}
       >
         {pending === "__all__" ? "正在重试…" : "重试全部失败"}
       </button>
+      {taskRunning ? (
+        <p className="inline-note" data-testid="retry-reason">
+          任务还在跑，等它结束再重试失败项。
+        </p>
+      ) : null}
       <div className="import-errors">
         <table className="table">
           <thead>

@@ -5,6 +5,15 @@ import type { ChapterRule, DryRunReport, ImportJob, ImportJobFile, UploadResult 
 import { TierProvider } from "../../lib/tier";
 import { TierRoute } from "../../layouts/TierRoute";
 
+/** 页里有「去书籍管理」这类站内链接，渲染需要路由上下文（产品由 App 提供）。 */
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <ImportPage />
+    </MemoryRouter>,
+  );
+}
+
 const jobState = {
   data: { items: [] as ImportJob[] },
   loading: false,
@@ -93,7 +102,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
   });
 
   it("空态：没选文件时说清支持什么，上传按钮先不可用", () => {
-    render(<ImportPage />);
+    renderPage();
 
     expect(screen.getByTestId("upload-panel")).toBeTruthy();
     expect(screen.getByText("支持 TXT、EPUB、ZIP，可一次选多个")).toBeTruthy();
@@ -105,7 +114,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
 
   it("混批选择：合法文件照常上传，pdf 逐个说明原因且不阻断", async () => {
     uploadImport.mockResolvedValueOnce(acceptedTxt);
-    render(<ImportPage />);
+    renderPage();
 
     pickFiles(sample("示例书简.txt"), sample("示例书简.pdf"));
     expect(screen.getByTestId("upload-picked").textContent).toContain("示例书简.txt");
@@ -127,7 +136,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
 
   it("拖入文件与点选等效，勾选重导后 force 一并提交", async () => {
     uploadImport.mockResolvedValueOnce({ jobId: 8, accepted: [{ name: "示例书简.epub", format: "epub" }], rejected: [] });
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.drop(screen.getByTestId("upload-dropzone"), {
       dataTransfer: { files: [sample("示例书简.epub")] },
@@ -152,7 +161,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
         { name: "示例合集.zip:说明.pdf", code: "unsupported_format", message: "暂不支持 .pdf，目前支持 TXT、EPUB、ZIP" },
       ],
     });
-    render(<ImportPage />);
+    renderPage();
 
     pickFiles(sample("示例合集.zip"));
     const hint = screen.getByTestId("upload-zip-hint").textContent ?? "";
@@ -174,7 +183,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
 
   it("勾选追更后 update 随上传提交，不误带 force", async () => {
     uploadImport.mockResolvedValueOnce(acceptedTxt);
-    render(<ImportPage />);
+    renderPage();
 
     pickFiles(sample("示例书简.txt"));
     fireEvent.click(screen.getByLabelText("追更（只追加新章节）"));
@@ -186,7 +195,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
   });
 
   it("整批都不支持：不发请求，直接说明目前支持什么", () => {
-    render(<ImportPage />);
+    renderPage();
 
     pickFiles(sample("示例书简.pdf"));
     clickUpload();
@@ -197,7 +206,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
   });
 
   it("单本超过 64 MB 时在上传前挡下并说清上限", () => {
-    render(<ImportPage />);
+    renderPage();
     const huge = sample("示例书简.epub");
     Object.defineProperty(huge, "size", { value: 65 * 1024 * 1024 });
 
@@ -210,7 +219,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
 
   it("已有任务在跑时把冲突翻成人话", async () => {
     uploadImport.mockRejectedValueOnce(new ApiError("http", "import job already running", 409, "conflict"));
-    render(<ImportPage />);
+    renderPage();
 
     pickFiles(sample("示例书简.txt"));
     clickUpload();
@@ -221,13 +230,13 @@ describe("导入页：文件上传与逐文件友好报错", () => {
 
   it("任务列表的加载态与错误态照常呈现，不被上传区吞掉", () => {
     jobState.loading = true;
-    const first = render(<ImportPage />);
+    const first = renderPage();
     expect(screen.getByTestId("state:loading")).toBeTruthy();
     first.unmount();
 
     jobState.loading = false;
     jobState.error = new ApiError("http", "boom", 500);
-    render(<ImportPage />);
+    renderPage();
     expect(screen.getByTestId("state:error")).toBeTruthy();
   });
 
@@ -285,9 +294,11 @@ describe("导入页：取消进行中的任务", () => {
   it("运行中任务给出取消入口，点击调取消接口并轮询到 canceled 后给出提示", async () => {
     cancelImport.mockResolvedValueOnce({ status: "canceling" });
     importJob.mockResolvedValueOnce({ ...runningJob, status: "canceled", imported: 3 });
-    render(<ImportPage />);
+    renderPage();
 
+    // 取消要二次确认：先点「取消任务」，再点弹层里的「确认取消」（契约 C-22）
     fireEvent.click(screen.getByTestId("import-cancel"));
+    fireEvent.click(screen.getByTestId("import-cancel-confirm-btn"));
 
     await waitFor(() => expect(cancelImport).toHaveBeenCalledWith(42));
     // 轮询拿到 canceled 才停：提示里带上是哪一单、保留了多少本
@@ -298,16 +309,17 @@ describe("导入页：取消进行中的任务", () => {
 
   it("取消失败把冲突翻成人话，不把后端错误甩给用户", async () => {
     cancelImport.mockRejectedValueOnce(new ApiError("http", "conflict", 409, "conflict"));
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.click(screen.getByTestId("import-cancel"));
+    fireEvent.click(screen.getByTestId("import-cancel-confirm-btn"));
 
     await waitFor(() => expect(screen.getByTestId("import-cancel-note").textContent).toContain("已经结束"));
   });
 
   it("没有运行中的任务时不给取消入口", () => {
     jobState.data = { items: [] };
-    render(<ImportPage />);
+    renderPage();
 
     expect(screen.queryByTestId("import-cancel")).toBeNull();
     expect(screen.getByTestId("state:empty")).toBeTruthy();
@@ -329,7 +341,7 @@ describe("导入页：章节识别规则", () => {
 
   it("回填已有规则，编辑后按全量 PUT 提交并说明生效时机", async () => {
     putChapterRules.mockResolvedValueOnce(undefined);
-    render(<ImportPage />);
+    renderPage();
 
     const name = screen.getByLabelText("规则 1 · 名称") as HTMLInputElement;
     expect(name.value).toBe("分节符");
@@ -343,7 +355,7 @@ describe("导入页：章节识别规则", () => {
 
   it("新增与删除都是本地编辑，点保存才一次性提交全量", async () => {
     putChapterRules.mockResolvedValueOnce(undefined);
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "新增一条规则" }));
     const names = screen.getAllByLabelText(/规则 \d+ · 名称/);
@@ -361,19 +373,40 @@ describe("导入页：章节识别规则", () => {
     ]);
   });
 
-  it("非法正则在本地就拦下：不发请求，并说清是哪一条", () => {
-    render(<ImportPage />);
+  it("C-13 新增一条规则：末尾立刻多一行，焦点进名称框（满 20 条另禁用）", () => {
+    renderPage();
+    expect(screen.getAllByTestId("rule-row")).toHaveLength(1);
+    fireEvent.click(screen.getByText("新增一条规则"));
+    expect(screen.getAllByTestId("rule-row")).toHaveLength(2);
+    expect(document.activeElement).toBe(screen.getByLabelText("规则 2 · 名称"));
+  });
 
+  it("C-12 删除这条规则：行数减一、焦点回「新增一条规则」，最后一条也能删", () => {
+    renderPage();
+    fireEvent.click(screen.getByLabelText("删除第 1 条规则"));
+    expect(screen.queryAllByTestId("rule-row")).toHaveLength(0);
+    expect(screen.getByTestId("rules-empty").textContent).toContain("还没有自定义规则，导入一律走内置切章");
+    expect(document.activeElement).toBe(screen.getByText("新增一条规则"));
+  });
+
+  it("非法正则在本地就拦下：括号没闭合与写法不对分开说，都不发请求", () => {
+    renderPage();
+
+    // 括号没闭合：契约 C-11 要求单独一句「没闭合」，不要混成「写得不对」
     fireEvent.change(screen.getByLabelText("正则"), { target: { value: "([ " } });
     fireEvent.click(screen.getByTestId("rules-save"));
+    expect(screen.getByTestId("rules-error-text").textContent).toContain("正则没闭合");
 
+    // 括号闭合但写法非法：仍走「写得不对」
+    fireEvent.change(screen.getByLabelText("正则"), { target: { value: "[z-a]" } });
+    fireEvent.click(screen.getByTestId("rules-save"));
     expect(screen.getByTestId("rules-error-text").textContent).toContain("第 1 条规则的正则写得不对");
     expect(putChapterRules).not.toHaveBeenCalled();
   });
 
   it("试切预览按命中行数报章数，不碰后端", () => {
     rulesState.data = { rules: [{ name: "分节符", pattern: "^第\\d+章" }] };
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.change(screen.getByLabelText("试切预览 · 粘一段正文"), {
       target: { value: "第1章 开端\n正文\n第2章 承接\n第3章 结尾" },
@@ -385,7 +418,7 @@ describe("导入页：章节识别规则", () => {
   });
 
   it("一条规则都没命中时如实说明会退回内置切章", () => {
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.change(screen.getByLabelText("试切预览 · 粘一段正文"), { target: { value: "一整段没有分节符的正文" } });
     fireEvent.click(screen.getByTestId("rules-preview-run"));
@@ -395,19 +428,19 @@ describe("导入页：章节识别规则", () => {
 
   it("规则区的加载 / 错误 / 空态各有可读状态", () => {
     rulesState.loading = true;
-    const first = render(<ImportPage />);
+    const first = renderPage();
     expect(screen.getByTestId("rules-loading")).toBeTruthy();
     first.unmount();
 
     rulesState.loading = false;
     rulesState.error = new ApiError("http", "boom", 500);
-    const second = render(<ImportPage />);
+    const second = renderPage();
     expect(screen.getByTestId("rules-error")).toBeTruthy();
     second.unmount();
 
     rulesState.error = null;
     rulesState.data = { rules: [] };
-    render(<ImportPage />);
+    renderPage();
     expect(screen.getByTestId("rules-empty")).toBeTruthy();
   });
 });
@@ -441,7 +474,7 @@ describe("导入页：只预检（dry-run）", () => {
       ],
       errors: [{ source: "/path/to/x.pdf", reason: "unsupported_format" }],
     });
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.change(screen.getByLabelText("目录或单个文件路径"), { target: { value: "/path/to/txt" } });
     fireEvent.click(screen.getByTestId("import-dry-run"));
@@ -454,13 +487,15 @@ describe("导入页：只预检（dry-run）", () => {
     expect(screen.getByTestId("dry-run-failed").textContent).toBe("0");
     expect(screen.getByTestId("dry-run-total").textContent).toBe("12");
     expect(screen.getByTestId("dry-run-sample").textContent).toContain("示例书简");
+    // 告警默认收起（契约 C-20）：点折叠条才展开明细
+    fireEvent.click(screen.getByTestId("dry-run-warnings").querySelector("button")!);
     expect(screen.getByTestId("dry-run-errors").textContent).toContain("unsupported_format");
     // 预检不建任务
     expect(startImport).not.toHaveBeenCalled();
   });
 
   it("没填路径时先拦下，不发预检请求", () => {
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.click(screen.getByTestId("import-dry-run"));
 
@@ -470,7 +505,7 @@ describe("导入页：只预检（dry-run）", () => {
 
   it("预检失败给错误面板，不把失败当成功", async () => {
     dryRunImport.mockRejectedValueOnce(new ApiError("http", "timeout", 503, "timeout"));
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.change(screen.getByLabelText("目录或单个文件路径"), { target: { value: "/path/to/txt" } });
     fireEvent.click(screen.getByTestId("import-dry-run"));
@@ -487,7 +522,7 @@ describe("导入页：只预检（dry-run）", () => {
       sample: [],
       errors: [],
     });
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.change(screen.getByLabelText("目录或单个文件路径"), { target: { value: "/path/to/txt" } });
     fireEvent.click(screen.getByTestId("import-dry-run"));
@@ -545,7 +580,7 @@ describe("导入页：失败清单与重试", () => {
 
   it("每行可单独重试，顶部可一键重试全部失败，成功后提示新任务号", async () => {
     retryImport.mockResolvedValue({ jobId: 9 });
-    render(<ImportPage />);
+    renderPage();
 
     expect(screen.getByTestId("failed-files")).toBeTruthy();
 
@@ -561,7 +596,7 @@ describe("导入页：失败清单与重试", () => {
 
   it("任务还在跑时重试被拒，把 409 说成人话", async () => {
     retryImport.mockRejectedValueOnce(new ApiError("http", "conflict", 409, "conflict"));
-    render(<ImportPage />);
+    renderPage();
 
     fireEvent.click(screen.getByTestId("retry-all-failed"));
 
@@ -570,7 +605,7 @@ describe("导入页：失败清单与重试", () => {
 
   it("completed_with_errors 显示「完成（部分失败）」，不再落到排队中", () => {
     failedFilesState.data = { files: [] };
-    render(<ImportPage />);
+    renderPage();
 
     expect(screen.getByText("完成（部分失败）")).toBeTruthy();
     expect(screen.queryByText("排队中")).toBeNull();
@@ -599,7 +634,7 @@ describe("导入页：运行中任务的进度轮询", () => {
   it("进页面先拉一次，之后每 2 秒一次：进度条与计数跟着动", async () => {
     vi.useFakeTimers();
     importJob.mockResolvedValue({ ...runningJob, imported: 6, skipped: 2 });
-    render(<ImportPage />);
+    renderPage();
     // 列表里那份是 3 + 1 = 4 个文件；轮询回来后变 6 + 2 = 8
     expect(screen.getByTestId("import-progress-done").textContent).toBe("4");
     await settle();
@@ -617,7 +652,7 @@ describe("导入页：运行中任务的进度轮询", () => {
   it("到终态就停：completed 后不再轮询，并刷新一次任务列表", async () => {
     vi.useFakeTimers();
     importJob.mockResolvedValueOnce({ ...runningJob, status: "completed", imported: 10, skipped: 0, failed: 0 });
-    render(<ImportPage />);
+    renderPage();
     await settle();
 
     expect(jobState.reload).toHaveBeenCalledTimes(1);
@@ -631,7 +666,7 @@ describe("导入页：运行中任务的进度轮询", () => {
   it("卸载后定时器清掉：不再发轮询请求", async () => {
     vi.useFakeTimers();
     importJob.mockResolvedValue({ ...runningJob });
-    const view = render(<ImportPage />);
+    const view = renderPage();
     await settle();
     view.unmount();
     importJob.mockClear();
@@ -646,7 +681,7 @@ describe("导入页：运行中任务的进度轮询", () => {
     importJob
       .mockRejectedValueOnce(new ApiError("network", "boom"))
       .mockResolvedValue({ ...runningJob, imported: 8, skipped: 1, failed: 0 });
-    render(<ImportPage />);
+    renderPage();
     await settle();
     // 这一轮失败：仍显示进页面时列表里的 3 + 1 = 4，不报错也不清空
     expect(screen.getByTestId("import-progress-done").textContent).toBe("4");
@@ -661,7 +696,7 @@ describe("导入页：运行中任务的进度轮询", () => {
   it("没有运行中的任务时不轮询", async () => {
     vi.useFakeTimers();
     jobState.data = { items: [{ ...runningJob, status: "completed" }] };
-    render(<ImportPage />);
+    renderPage();
     await settle();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);

@@ -17,7 +17,12 @@ export function AdminMetaForm({
   seriesIndexInvalid?: boolean;
 }) {
   return (
-    <form className="admin-meta" data-testid="admin-meta-form" onSubmit={(event) => event.preventDefault()}>
+    <form
+      className="admin-meta"
+      data-testid="admin-meta-form"
+      data-od-id="C-48"
+      onSubmit={(event) => event.preventDefault()}
+    >
       <div className="field">
         <label htmlFor="admin-title">书名</label>
         <input
@@ -166,6 +171,7 @@ export function AdminMetaForm({
             disabled={disabled}
             placeholder="留空清空"
             data-testid="admin-series-index"
+            data-od-id="C-49"
             onChange={(event) => onChange("seriesIndex", event.target.value)}
           />
         </div>

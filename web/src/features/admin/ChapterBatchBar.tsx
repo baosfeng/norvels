@@ -1,7 +1,10 @@
+/** 未选章时的常驻原因（契约 C-60 / C-61 边界列原话）。 */
+export const NO_PICK_HINT = "先勾选章节，才能移动或删除";
+
 /**
- * 章节批量条：有勾选才渲染。合并按钮的可用性由 mergeVerdict 决定，
- * 不可用时把原因写在按钮左边——用户不用点了才知道为什么不行。
- * 「移动到卷…」只看勾选数（跨卷选择正是它的用途），不禁用。
+ * 章节批量条：三个动作都要求先勾选，所以未勾选时按钮禁用、原因常驻在左边——
+ * 用户不用点一次才知道为什么不能点。合并另外要求「同一卷且连续」，
+ * 不可合并的原因由 mergeVerdict 给出，与本条并排显示。
  */
 export function ChapterBatchBar({
   count,
@@ -19,34 +22,46 @@ export function ChapterBatchBar({
   onDelete: () => void;
   onClear: () => void;
 }) {
-  if (count === 0) return null;
+  const empty = count === 0;
   return (
     <div className="ch-batch" data-testid="admin-ch-batch" aria-live="polite">
       <span className="meta">
         已选 <strong className="num">{count}</strong> 章
       </span>
-      {mergeReason ? (
+      {empty ? (
+        <span className="inline-note" data-testid="admin-ch-batch-hint">
+          {NO_PICK_HINT}
+        </span>
+      ) : mergeReason ? (
         <span className="reason" role="status" data-testid="admin-ch-merge-reason">
           {mergeReason}
         </span>
       ) : null}
       <div className="actions">
-        <button className="btn btn-sm" type="button" data-testid="admin-ch-clear" onClick={onClear}>
+        <button className="btn btn-sm" type="button" data-testid="admin-ch-clear" disabled={empty} onClick={onClear}>
           取消选择
         </button>
         <button
           className="btn btn-sm"
           type="button"
           data-testid="admin-ch-merge"
-          disabled={mergeReason !== ""}
+          disabled={empty || mergeReason !== ""}
+          data-od-id="C-59"
           onClick={onMerge}
         >
           合并
         </button>
-        <button className="btn btn-sm" type="button" data-testid="admin-ch-move" onClick={onMove}>
+        <button className="btn btn-sm" type="button" data-testid="admin-ch-move" disabled={empty} data-od-id="C-60" onClick={onMove}>
           移动到卷…
         </button>
-        <button className="btn btn-sm btn-danger" type="button" data-testid="admin-ch-batch-delete" onClick={onDelete}>
+        <button
+          className="btn btn-sm btn-danger"
+          type="button"
+          data-testid="admin-ch-batch-delete"
+          disabled={empty}
+          data-od-id="C-61"
+          onClick={onDelete}
+        >
           删除所选
         </button>
       </div>

@@ -164,6 +164,7 @@ export function AdminChapters({
             value={query}
             placeholder="搜章节标题或章号"
             data-testid="admin-chapter-search"
+            data-od-id="C-53"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -176,6 +177,7 @@ export function AdminChapters({
           className="btn btn-sm toolbar-end"
           type="button"
           data-testid="admin-chapter-new-open"
+          data-od-id="C-54"
           onClick={() => setCreating(true)}
         >
           新建章节…
@@ -184,6 +186,8 @@ export function AdminChapters({
           className="btn btn-sm"
           type="button"
           data-testid="admin-chapter-rename-open"
+          data-od-id="C-55"
+          disabled={total === 0}
           onClick={() => setRenaming(true)}
         >
           按序号重命名…
@@ -192,11 +196,17 @@ export function AdminChapters({
           className="btn btn-sm"
           type="button"
           data-testid="admin-volume-manage-open"
+          data-od-id="C-56"
           onClick={() => setManagingVolumes(true)}
         >
           卷管理…
         </button>
       </div>
+      {total === 0 ? (
+        <p className="inline-note" data-testid="admin-chapter-none">
+          这本书还没有章节
+        </p>
+      ) : null}
 
       <ChapterBatchBar
         count={pickedList.length}

@@ -215,7 +215,14 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
         </p>
       ) : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button className="btn btn-primary" type="button" onClick={submit} disabled={!canSubmit} data-testid="upload-submit">
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={submit}
+          disabled={!canSubmit}
+          data-testid="upload-submit"
+          data-od-id="C-09"
+        >
           {uploading ? "正在上传…" : picked.length > 0 ? `上传文件（${screened.accepted.length}）` : "上传文件"}
         </button>
         {picked.length > 0 || result ? (
@@ -224,6 +231,15 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
           </button>
         ) : null}
       </div>
+      {disabled ? (
+        <p className="inline-note" data-testid="upload-reason">
+          已经有一个导入任务在跑，等它结束再上传。
+        </p>
+      ) : picked.length === 0 ? (
+        <p className="inline-note" data-testid="upload-reason">
+          先选文件，才能上传。
+        </p>
+      ) : null}
       {uploading ? (
         <p className="meta" role="status" data-testid="upload-loading">
           正在上传，文件多的时候会久一点，先别关掉页面。
@@ -276,17 +292,9 @@ function DropZone({
         onDragState(false);
         onDrop(event.dataTransfer?.files ?? null);
       }}
-      style={{
-        display: "grid",
-        placeItems: "center",
-        gap: 4,
-        padding: "22px 16px",
-        border: `1.5px dashed ${dragging ? "var(--accent, #c26b3f)" : "var(--border)"}`,
-        borderRadius: "var(--radius)",
-        background: dragging ? "var(--surface-warm)" : "transparent",
-        cursor: disabled ? "not-allowed" : "pointer",
-        textAlign: "center",
-      }}
+      className={`upload-dropzone${dragging ? " is-dragging" : ""}${disabled ? " is-disabled" : ""}`}
+      data-od-id="C-08"
+      aria-disabled={disabled}
     >
       <strong style={{ fontSize: 13 }}>拖文件到这里，或点击选择</strong>
       <span className="meta">支持 TXT、EPUB、ZIP，可一次选多个</span>

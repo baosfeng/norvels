@@ -99,6 +99,8 @@ export function ChapterBodyDrawer({
               type="button"
               aria-pressed={full}
               data-testid="chapter-body-full"
+              data-od-id="C-71"
+              disabled={!data}
               onClick={() => setFull((prev) => !prev)}
             >
               {full ? "退出全屏" : "全屏"}
@@ -113,6 +115,9 @@ export function ChapterBodyDrawer({
               ×
             </button>
           </div>
+        </div>
+        <div>
+          {!data ? <p className="inline-note">等正文读完就能全屏</p> : null}
         </div>
 
         <div className="ch-editor-notes" data-testid="chapter-body-notes">
@@ -165,6 +170,7 @@ export function ChapterBodyDrawer({
             type="button"
             disabled={busy || !data}
             data-testid="chapter-body-save"
+            data-od-id="C-72"
             onClick={() => void save()}
           >
             {busy ? "保存中…" : "保存"}

@@ -68,6 +68,15 @@ function renderChapters() {
 const pick = (id: number) => screen.getByTestId(`admin-chapter-pick-${id}`) as HTMLInputElement;
 const batchBar = () => screen.queryByTestId("admin-ch-batch");
 
+/** 未勾选时批量条仍在，但三个动作都禁用且原因常驻（契约 C-59/C-60/C-61 边界）。 */
+function expectBatchIdle() {
+  const bar = batchBar();
+  expect(bar?.textContent).toContain("已选 0 章");
+  expect(bar?.textContent).toContain("先勾选章节，才能移动或删除");
+  expect((screen.getByTestId("admin-ch-move") as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByTestId("admin-ch-batch-delete") as HTMLButtonElement).disabled).toBe(true);
+}
+
 describe("章节勾选与批量条", () => {
   beforeEach(() => {
     batchDeleteChapters.mockReset();
@@ -78,9 +87,9 @@ describe("章节勾选与批量条", () => {
     onError.mockReset();
   });
 
-  it("没有勾选时不渲染批量条", () => {
+  it("没有勾选时批量条禁用，并常驻说明为什么要先勾选", () => {
     renderChapters();
-    expect(batchBar()).toBeNull();
+    expectBatchIdle();
   });
 
   it("勾一行出现「已选 1 章」，取消选择后消失", () => {
@@ -88,7 +97,7 @@ describe("章节勾选与批量条", () => {
     fireEvent.click(pick(10));
     expect(batchBar()?.textContent).toContain("已选 1 章");
     fireEvent.click(screen.getByTestId("admin-ch-clear"));
-    expect(batchBar()).toBeNull();
+    expectBatchIdle();
     expect(pick(10).checked).toBe(false);
   });
 
@@ -96,7 +105,7 @@ describe("章节勾选与批量条", () => {
     renderChapters();
     fireEvent.click(screen.getByTestId("admin-chapter-edit-10"));
     expect(pick(10).checked).toBe(false);
-    expect(batchBar()).toBeNull();
+    expectBatchIdle();
     expect(screen.getByTestId("admin-chapter-title-input")).toBeTruthy();
   });
 
@@ -105,7 +114,7 @@ describe("章节勾选与批量条", () => {
     fireEvent.click(screen.getByTestId("admin-chapter-pick-all"));
     expect(batchBar()?.textContent).toContain("已选 4 章");
     fireEvent.click(screen.getByTestId("admin-chapter-pick-all"));
-    expect(batchBar()).toBeNull();
+    expectBatchIdle();
   });
 
   it("卷头勾选只勾这一卷的章", () => {
@@ -165,7 +174,7 @@ describe("合并章节", () => {
     expect(onChanged).toHaveBeenCalledWith(expect.stringContaining("已把 2 章合并为 1 章"));
     expect(onChanged).toHaveBeenCalledWith(expect.stringContaining("3 章"));
     expect(updateChapter).not.toHaveBeenCalled();
-    expect(batchBar()).toBeNull();
+    expectBatchIdle();
   });
 
   it("面板里改过标题就在合并成功后补一次 PATCH", async () => {
@@ -238,7 +247,7 @@ describe("批量删除章节", () => {
     await waitFor(() => expect(batchDeleteChapters).toHaveBeenCalledWith(7, [10, 11]));
     await waitFor(() => expect(screen.queryByTestId("chapter-batch-delete-dialog")).toBeNull());
     expect(onChanged).toHaveBeenCalledWith(expect.stringContaining("已删除 2 章"));
-    expect(batchBar()).toBeNull();
+    expectBatchIdle();
   });
 });
 

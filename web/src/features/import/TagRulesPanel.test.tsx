@@ -89,7 +89,7 @@ describe("词表规则面板", () => {
     fireEvent.click(screen.getByTestId("tag-rules-save"));
 
     await waitFor(() =>
-      expect(screen.getByTestId("tag-rules-error-text").textContent).toContain("没通过后端校验"),
+      expect(screen.getByTestId("tag-rules-error-text").textContent).toContain("词表没通过校验"),
     );
     expect(screen.getByLabelText("规则 1 · 标签名")).toBeTruthy();
   });
