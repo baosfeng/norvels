@@ -3,7 +3,7 @@
 ## 书籍
 
 ### GET /api/books
-查询参数：`q`（书名/作者模糊）、`authorId`、`tag`、`series`、`rating`=1–5（0 = 未评，不可筛）、`collection`（书单 id）、`readStatus`=`want|reading|done`、`serialStatus`=`ongoing|completed|none`（`none` 筛「未知」）、`sort`=`updated|title|chapters|words|imported|rating`（默认 updated）、`page`、`size`。留空 = 不过滤，非法值 400。
+查询参数：`q`（书名/作者模糊）、`authorId`、`tag`、`series`、`rating`=1–5（0 = 未评，不可筛）、`collection`（书单 id）、`categoryL1`/`categoryL2`（分类，见 [api-category](api-category.md)）、`readStatus`=`want|reading|done`、`serialStatus`=`ongoing|completed|none`（`none` 筛「未知」）、`sort`=`updated|title|chapters|words|imported|rating`（默认 updated）、`page`、`size`。留空 = 不过滤，非法值 400。
 
 ```json
 { "items": [{ "id": 1, "title": "山居杂记", "authorId": 12, "authorName": "示例作者",
@@ -22,7 +22,7 @@
   "volumes": [ { "id": 1, "idx": 0, "title": "第一卷",
     "chapters": [ { "id": 10, "idx": 1, "title": "第1章 穿越" } ] } ] }
 ```
-> 未归卷的章节放在伪卷 `{ "id": 0, "idx": -1, "title": "未分卷" }` 里。增量字段（只加不改）：0008 起 `language`/`publisher`/`isbn`/`pubDate`/`series`/`seriesIndex`/`hasCover`/`format` + 详情独有 `tags`；0010 起 `serialStatus`/`lastChapterIdx`/`lastChapterTitle`；0011 起 `readStatus`（列表也有）与 `bookmarkCount`（详情独有）。三套状态互不覆写：`status`（解析）/ `serialStatus`（连载）/ `readStatus`（读者）。
+> 未归卷的章节放在伪卷 `{ "id": 0, "idx": -1, "title": "未分卷" }` 里。增量字段（只加不改）：0008 起 `language`/`publisher`/`isbn`/`pubDate`/`series`/`seriesIndex`/`hasCover`/`format` + 详情独有 `tags`；0010 起 `serialStatus`/`lastChapterIdx`/`lastChapterTitle`；0011 起 `readStatus`（列表也有）与 `bookmarkCount`（详情独有）；0015 起 `categoryL1`/`categoryL2`（列表也有）。三套状态互不覆写：`status`（解析）/ `serialStatus`（连载）/ `readStatus`（读者）。
 
 ### GET /api/books/{id}/chapters/{chapterId}
 ```json
@@ -32,9 +32,9 @@
 > `prevId`/`nextId` 为 0 表示到头；章节按 `(book_id, idx, id)` 排序。
 
 ### PATCH /api/books/{id}
-body 为任意子集：`title`、`author`、`authors`（**全量替换**，最多 10 个；空数组 = 清空作者）、`intro`、`tags`（**全量替换**）、`series`、`seriesIndex`、`serialStatus`、`readStatus`、`rating`(0–5)、`publisher`、`pubDate`(YYYY-MM-DD)、`isbn`、`language`。
+body 为任意子集：`title`、`author`、`authors`（**全量替换**，最多 10 个；空数组 = 清空作者）、`intro`、`tags`（**全量替换**）、`series`、`seriesIndex`、`serialStatus`、`readStatus`、`rating`(0–5)、`publisher`、`pubDate`(YYYY-MM-DD)、`isbn`、`language`、`categoryL1`/`categoryL2`。
 
-- 成功 200，返回更新后的 BookDetail；`authors` 与 `author` 同时给出时 `authors` 优先；清空语义：`intro`/`series`/`publisher`/`pubDate`/`isbn`/`language` 传 `""`，`seriesIndex`/`rating` 传 `0`，`authors`/`tags` 传空数组；
+- 成功 200，返回更新后的 BookDetail；`authors` 与 `author` 同时给出时 `authors` 优先；清空语义：`intro`/`series`/`publisher`/`pubDate`/`isbn`/`language`/`categoryL1`/`categoryL2` 传 `""`，`seriesIndex`/`rating` 传 `0`，`authors`/`tags` 传空数组；
 - 空 body / 空对象 / 只含未知字段 / title 空白 → 400 `invalid_param`；id 非数字 → 400 `invalid_id`；书不存在 → 404；
 - `serialStatus` 只接受 `""|ongoing|completed`、`readStatus` 只接受 `""|want|reading|done`，其它值 400（两者与解析状态 `status` 互不覆写）；`rating` 越界或 `pubDate` 非 YYYY-MM-DD → 400；改作者会重算新旧作者的聚合列，改 `tags` 会清理孤儿标签。
 

@@ -26,6 +26,27 @@ export interface BookMeta {
   hasCover?: boolean;
   /** 来源格式：txt / epub */
   format?: string;
+  /** 大分类（0015）：导入时按来源目录第一级写入，空串 = 未分类 */
+  categoryL1?: string;
+  /** 小分类（0015）：来源目录第二级，空串 = 该大分类下未细分 */
+  categoryL2?: string;
+}
+
+/** GET /api/categories 的响应：大分类 → 小分类 → 书数（两级，最多两层）。 */
+export interface CategoryLeaf {
+  l2: string;
+  count: number;
+}
+
+export interface CategoryNode {
+  l1: string;
+  count: number;
+  items: CategoryLeaf[];
+}
+
+export interface CategoryTree {
+  items: CategoryNode[];
+  total: number;
 }
 
 /** PATCH /api/books/{id} 的请求体：任意子集；tags 与 authors 是全量替换。 */
@@ -56,6 +77,10 @@ export interface BookMetaPatch {
   language?: string;
   /** 评分 0–5：0 = 未评（不参与 rating 筛选与 sort=rating），越界后端 400 invalid_param。 */
   rating?: number;
+  /** 大分类；传 "" 即清空（落到「未分类」）。 */
+  categoryL1?: string;
+  /** 小分类；传 "" 即清空。 */
+  categoryL2?: string;
 }
 
 export interface UploadAccepted {

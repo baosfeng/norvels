@@ -208,6 +208,15 @@ export function BookPage() {
                 </dd>
               </div>
             ) : null}
+            {book.categoryL1 ? (
+              <div>
+                <dt>分类</dt>
+                <dd data-testid="book-category">
+                  {book.categoryL1}
+                  {book.categoryL2 ? ` / ${book.categoryL2}` : ""}
+                </dd>
+              </div>
+            ) : null}
             {book.publisher || book.pubDate ? (
               <div>
                 <dt>出版</dt>

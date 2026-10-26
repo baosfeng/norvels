@@ -7,5 +7,6 @@
 - [api-import.md](api/api-import.md)：导入任务（dry-run 预检/上传/重试/取消）与设置（章节规则/标签规则）
 - [api-dashboard.md](api/api-dashboard.md)：元信息（health/stats）、驾驶舱端点、其它端点
 - [api-p3.md](api/api-p3.md)：P3 增量（评分/系列/书单/标签 CRUD/阅读时长与历史/批量与新建章节）
+- [api-category.md](api/api-category.md)：书籍分类（0015：两级分类、导入推断、`GET /api/categories`）
 
 原章节号对照：§1/§7/§9 → [api-dashboard.md](api/api-dashboard.md)；§2/§3 → [api-books.md](api/api-books.md)；§4/§8/§10 → [README.md](api/README.md)；§5/§6 → [api-import.md](api/api-import.md)。

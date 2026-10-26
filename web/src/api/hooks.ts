@@ -35,6 +35,11 @@ export function useBooks(params: BookQuery) {
   );
 }
 
+/** 分类树：书架筛选器与分类页共用；书变动后由书架自己 reload。 */
+export function useCategories(opts?: { enabled?: boolean }) {
+  return useResource((signal: AbortSignal) => api.categories({ signal }), [], opts);
+}
+
 export function useBook(id: number | null) {
   return useResource(
     (signal: AbortSignal) => api.book(id as number, { signal }),

@@ -175,6 +175,36 @@ export function AdminMetaForm({
           系列序号要填 0 或正整数，留空表示清空。
         </p>
       ) : null}
+
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor="admin-category-l1">大分类</label>
+          <input
+            className="input"
+            id="admin-category-l1"
+            value={draft.categoryL1}
+            disabled={disabled}
+            placeholder="例如 玄幻"
+            spellCheck={false}
+            data-testid="admin-category-l1"
+            onChange={(event) => onChange("categoryL1", event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="admin-category-l2">小分类</label>
+          <input
+            className="input"
+            id="admin-category-l2"
+            value={draft.categoryL2}
+            disabled={disabled}
+            placeholder="例如 东方玄幻"
+            spellCheck={false}
+            data-testid="admin-category-l2"
+            onChange={(event) => onChange("categoryL2", event.target.value)}
+          />
+        </div>
+      </div>
+      <p className="meta">分类由导入时的目录层级写入，这里留空即清空。</p>
     </form>
   );
 }

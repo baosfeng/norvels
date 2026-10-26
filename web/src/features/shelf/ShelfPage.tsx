@@ -17,6 +17,7 @@ import { stripTags } from "../../lib/text";
 import { showToast } from "../../lib/toastStore";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { CollectionFilter } from "./CollectionFilter";
+import { CategoryFilter, type CategoryValue } from "./CategoryFilter";
 import { RandomBookButton } from "./RandomBookButton";
 import { ResumeCard } from "./ResumeCard";
 import { useIsH5 } from "../../lib/tier";
@@ -64,6 +65,11 @@ export function ShelfPage() {
   const [rating, setRating] = useState<number | null>(cached?.rating ?? null);
   /** 书单筛选（扁平收藏夹，一本书可属多个书单） */
   const [collection, setCollection] = useState<number | null>(cached?.collection ?? null);
+  /** 分类筛选（0015）：大分类 + 联动的小分类 */
+  const [category, setCategory] = useState<CategoryValue>({
+    l1: cached?.categoryL1 ?? null,
+    l2: cached?.categoryL2 ?? null,
+  });
   // 角标点击后的乐观值：列表重新取数会拿回后端值，这里只兜住「刚点完还没刷新」的空窗
   const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -100,6 +106,8 @@ export function ShelfPage() {
     readStatus: readStatus ?? undefined,
     rating: rating ?? undefined,
     collection: collection ?? undefined,
+    categoryL1: category.l1 ?? undefined,
+    categoryL2: category.l2 ?? undefined,
     size: pageSize,
     mode: isH5 ? "infinite" : "paged",
     restore,
@@ -107,7 +115,13 @@ export function ShelfPage() {
 
   const { items, total, loading, error, reload, loadMore, hasMore } = feed;
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const filtering = authorId !== null || tag !== null || readStatus !== null || rating !== null || collection !== null;
+  const filtering =
+    authorId !== null ||
+    tag !== null ||
+    readStatus !== null ||
+    rating !== null ||
+    collection !== null ||
+    category.l1 !== null;
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "";
   // 老浏览器 / 测试环境没有 IntersectionObserver：改用底部「加载更多」按钮兜底
   const canObserve = typeof IntersectionObserver !== "undefined";
@@ -122,6 +136,8 @@ export function ShelfPage() {
       readStatus,
       rating,
       collection,
+      categoryL1: category.l1,
+      categoryL2: category.l2,
       size: pageSize,
       mode: isH5 ? "infinite" : "paged",
       items,
@@ -130,7 +146,7 @@ export function ShelfPage() {
       scrollTop: Math.round(scrollYRef.current),
       lastBookId: lastBookRef.current,
     });
-  }, [sort, authorId, tag, readStatus, rating, collection, pageSize, isH5, items, total, feed.page]);
+  }, [sort, authorId, tag, readStatus, rating, collection, category.l1, category.l2, pageSize, isH5, items, total, feed.page]);
 
   /** 进详情/阅读器前记一下「最近打开的书 + 当前滚动位置」，返回时据此定位。 */
   function rememberBook(id: number) {
@@ -144,6 +160,8 @@ export function ShelfPage() {
       readStatus,
       rating,
       collection,
+      categoryL1: category.l1,
+      categoryL2: category.l2,
       size: pageSize,
       mode: isH5 ? "infinite" : "paged",
       items,
@@ -403,6 +421,8 @@ export function ShelfPage() {
             书单
             <CollectionFilter value={collection} onChange={setCollection} />
           </label>
+
+          <CategoryFilter value={category} onChange={setCategory} />
 
           <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags">
             <button type="button" className={`chip${tag === null ? " is-active" : ""}`} onClick={() => setTag(null)}>

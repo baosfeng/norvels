@@ -21,6 +21,8 @@ services:
       TZ: "${TZ:-Asia/Shanghai}"
       # 只在小局域网里用可以留空；要从公网访问就设一串随机值。
       NORVELS_AUTH_TOKEN: "${NORVELS_AUTH_TOKEN:-}"
+      # 存量书回填分类（0015 迁移用）：不设时落「未分类」。
+      NORVELS_LEGACY_CATEGORY: "${NORVELS_LEGACY_CATEGORY:-}"
     volumes:
       # 数据库目录：SQLite 主库 + WAL + SHM 都在这里。
       # 放独立数据盘（如 /vol1/norvels/data），不要放在系统分区。

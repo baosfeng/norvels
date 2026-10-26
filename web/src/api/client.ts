@@ -34,6 +34,7 @@ import type {
   Stats,
   TagRule,
   TagRules,
+  CategoryTree,
   TagSummary,
   UploadResult,
   Volume,
@@ -196,6 +197,10 @@ export interface BookQuery {
   rating?: number;
   /** 书单 id 筛选。 */
   collection?: number;
+  /** 大分类筛选（0015）；空串不落进 URL。 */
+  categoryL1?: string;
+  /** 小分类筛选（0015）：依附于大分类，单独给 L2 时后端按不过滤处理。 */
+  categoryL2?: string;
 }
 
 /** 契约文档（docs/specs/2026-10-25-p1-reading.md §2.3）里的名字；与 BookQuery 是同一份参数。 */
@@ -232,6 +237,7 @@ export const api = {
     request<SearchResult>(`/search${query({ q, ...params })}`, opts),
   importJobs: (opts?: RequestOptions) => request<{ items: ImportJob[] }>("/import/jobs", opts),
   tags: (opts?: RequestOptions) => request<{ items: TagSummary[] }>("/tags", opts),
+  categories: (opts?: RequestOptions) => request<CategoryTree>("/categories", opts),
   importJob: (id: number, opts?: RequestOptions) => request<ImportJob>(`/import/jobs/${id}`, opts),
   startImport: (body: { dir: string; recursive?: boolean; force?: boolean; update?: boolean; workers?: number; dryRun?: boolean }, opts?: RequestOptions) =>
     request<{ jobId: number }>("/import", { ...opts, method: "POST", body }),

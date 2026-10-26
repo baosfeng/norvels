@@ -19,6 +19,10 @@ export interface ShelfCache {
   rating?: number | null;
   /** 书单筛选；null / 缺省 = 全部 */
   collection?: number | null;
+  /** 大分类筛选（0015）；null / 缺省 = 全部 */
+  categoryL1?: string | null;
+  /** 小分类筛选（0015）；null / 缺省 = 全部 */
+  categoryL2?: string | null;
   size: number;
   mode: "paged" | "infinite";
   items: BookSummary[];

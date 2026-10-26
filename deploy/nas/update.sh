@@ -157,6 +157,7 @@ docker pull "$IMAGE"
 # 变成 "serve migrate --dry-run"，静默起一个服务、永远看不到迁移计划。
 echo "== 检查待应用迁移 =="
 DRY_OUT=$(docker run --rm --user 65532:65532 --entrypoint /norvels \
+  -e NORVELS_LEGACY_CATEGORY="${NORVELS_LEGACY_CATEGORY:-}" \
   -v "$DATA_DIR:/data" "$IMAGE" migrate --db /data/norvels.db --dry-run 2>&1)
 echo "$DRY_OUT"
 
@@ -172,7 +173,9 @@ PENDING=$(printf '%s\n' "$DRY_OUT" | grep -c '^  0' || true)
 if [ "${PENDING:-0}" -gt 0 ]; then
   echo "== 检测到 $PENDING 个待应用迁移，先单独执行（大库可能需要几十分钟）=="
   echo "   期间不要中断；完成后推荐再跑一次 VACUUM 回收空间（见 README）。"
+  # NORVELS_LEGACY_CATEGORY 必须传进去：0015 迁移的存量回填依赖它（不传就是默认「未分类」）。
   docker run --rm --user 65532:65532 --entrypoint /norvels \
+    -e NORVELS_LEGACY_CATEGORY="${NORVELS_LEGACY_CATEGORY:-}" \
     -v "$DATA_DIR:/data" "$IMAGE" migrate --db /data/norvels.db
 else
   echo "无待应用迁移，直接重启容器"

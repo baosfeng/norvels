@@ -12,10 +12,13 @@ export interface PubDraft extends MetaDraft {
   pubDate: string;
   isbn: string;
   language: string;
+  /** 书籍分类（0015）：大分类 / 小分类，空串 = 未分类。 */
+  categoryL1: string;
+  categoryL2: string;
 }
 
-/** 出版字段清单：脏值计数与 patch 都按它生成，加字段只改这一处。 */
-const PUB_KEYS = ["publisher", "pubDate", "isbn", "language"] as const;
+/** 附加字段清单：脏值计数与 patch 都按它生成，加字段只改这一处。 */
+const PUB_KEYS = ["publisher", "pubDate", "isbn", "language", "categoryL1", "categoryL2"] as const;
 
 /** 出版日期只认 YYYY-MM-DD：后端若给带时间的值就截到日期，date input 才显示得出来。 */
 export function toDateInput(value: string | undefined): string {
@@ -31,6 +34,8 @@ export function pubDraftOf(book: BookDetail): PubDraft {
     pubDate: toDateInput(book.pubDate),
     isbn: book.isbn ?? "",
     language: book.language ?? "",
+    categoryL1: book.categoryL1 ?? "",
+    categoryL2: book.categoryL2 ?? "",
   };
 }
 

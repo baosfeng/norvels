@@ -16,6 +16,10 @@ export interface BookFeedQuery {
   rating?: number;
   /** 书单筛选 */
   collection?: number;
+  /** 大分类筛选（0015） */
+  categoryL1?: string;
+  /** 小分类筛选（0015）：依附于大分类 */
+  categoryL2?: string;
   size: number;
   mode: BookFeedMode;
   /**
@@ -86,6 +90,8 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
     query.readStatus ?? null,
     query.rating ?? null,
     query.collection ?? null,
+    query.categoryL1 ?? null,
+    query.categoryL2 ?? null,
     query.size,
     query.mode,
   ]);
@@ -127,6 +133,8 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
           readStatus: query.readStatus,
           rating: query.rating,
           collection: query.collection,
+          categoryL1: query.categoryL1,
+          categoryL2: query.categoryL2,
           page,
           size: query.size,
         },
