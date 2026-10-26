@@ -1,0 +1,1842 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>norvels · 发现域交互原型（外壳 / 书架 / 搜索 / 系列 / 阅读历史）</title>
+<style>
+:root {
+  --bg: #fbf6ee;
+  --surface: #fffdf8;
+  --surface-warm: #f1e3cf;
+  --fg: #201914;
+  --fg-2: #4c4037;
+  --muted: #7a6d63;
+  --meta: #9b5b32;
+  --border: #ded2c3;
+  --border-soft: #eee4d7;
+  --accent: #9b5b32;
+  --accent-on: #ffffff;
+  --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+  --accent-active: color-mix(in oklab, var(--accent), black 14%);
+  --success: #4f8a4f;
+  --warn: #c9822f;
+  --danger: #b33a3a;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 17px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: 42px;
+  --text-3xl: 64px;
+  --text-4xl: 88px;
+  --leading-body: 1.62;
+  --leading-tight: 1;
+  --tracking-display: -0.025em;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --section-y-desktop: 112px;
+  --section-y-tablet: 80px;
+  --section-y-phone: 56px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 9999px;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 20px 52px rgba(32, 25, 20, 0.12);
+  --focus-ring: 0 0 0 4px rgba(155, 91, 50, 0.24);
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max: 1180px;
+  --container-gutter-desktop: 36px;
+  --container-gutter-tablet: 24px;
+  --container-gutter-phone: 16px;
+  /* 派生色：语义色向正文色混合，仅用于文字级使用（原始语义色当小字不达 4.5:1） */
+  --success-text: color-mix(in oklab, var(--success), var(--fg) 55%);
+  --danger-text: color-mix(in oklab, var(--danger), var(--fg) 28%);
+  --scrim: color-mix(in oklab, var(--fg), transparent 62%);
+  /* 文字级次要色：--muted 压在小字号 + 暖色表面只有 3.96:1，派生一档向 --fg 混合的版本 */
+  --muted-text: color-mix(in oklab, var(--muted), var(--fg) 35%);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:var(--text-base);line-height:var(--leading-body);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--font-display);line-height:var(--leading-tight);letter-spacing:var(--tracking-display);margin:0}
+p{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.meta{color:var(--muted-text);font-size:var(--text-xs)}
+.eyebrow{color:var(--meta);font-size:var(--text-xs);letter-spacing:.08em;text-transform:uppercase}
+:focus-visible{outline:0;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+
+/* ── 演示控制条（原型专属，不进产品） ── */
+.demo-bar{position:sticky;top:0;z-index:200;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);padding:var(--space-2) var(--space-3);background:var(--surface-warm);border-bottom:1px solid var(--border)}
+.demo-bar .demo-label{font-size:var(--text-xs);color:var(--fg-2);font-weight:600}
+/* 窄屏把控制条压成一条可横滑的窄带，别把首屏吃掉。
+   媒体查询按真实视口算，舞台模拟窄屏时靠 body[data-tier] 同一套规则兜住。 */
+body[data-tier="h5"] .demo-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding:var(--space-1) var(--space-2);gap:var(--space-2)}
+body[data-tier="h5"] .demo-bar .demo-label{display:none}
+body[data-tier="h5"] .demo-group{flex-wrap:nowrap;flex:none}
+body[data-tier="h5"] .demo-group button{min-height:36px;padding:0 var(--space-2);font-size:11px;white-space:nowrap}
+@media (max-width: 768px){
+  .demo-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding:var(--space-1) var(--space-2);gap:var(--space-2)}
+  .demo-bar .demo-label{display:none}
+  .demo-group{flex-wrap:nowrap;flex:none}
+  .demo-group button{min-height:36px;padding:0 var(--space-2);font-size:11px;white-space:nowrap}
+}
+.demo-group{display:flex;flex-wrap:wrap;gap:2px;padding:2px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface)}
+.demo-group button{min-height:32px;padding:0 var(--space-3);border-radius:var(--radius-pill);font-size:var(--text-xs);color:var(--fg-2)}
+.demo-group button[aria-pressed="true"]{background:var(--surface-warm);color:var(--fg);font-weight:600}
+.demo-group button:hover{color:var(--fg)}
+
+.stage{max-width:1440px;margin:0 auto;background:var(--bg);min-height:100vh;position:relative}
+.app{display:flex;align-items:flex-start;min-height:calc(100vh - 46px)}
+
+/* ── 侧栏 ── */
+.sidebar{width:252px;flex:none;position:sticky;top:var(--demo-h,46px);height:calc(100vh - var(--demo-h,46px));overflow:auto;padding:var(--space-5) var(--space-4);border-right:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;gap:var(--space-5)}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand strong{font-family:var(--font-display);font-size:var(--text-lg)}
+.brand span{color:var(--muted-text);font-size:var(--text-xs)}
+.side-nav{display:flex;flex-direction:column;gap:2px}
+.side-nav a{display:flex;align-items:center;gap:var(--space-2);min-height:36px;padding:0 var(--space-3);border-radius:var(--radius-sm);color:var(--fg-2);font-size:var(--text-sm)}
+.side-nav a:hover{background:var(--border-soft);color:var(--fg)}
+.side-nav a[aria-current="page"]{background:var(--surface-warm);color:var(--fg);font-weight:600}
+.nav-count{margin-left:auto;color:var(--muted-text);font-size:var(--text-xs)}
+.side-label{color:var(--muted-text);font-size:var(--text-xs);margin-bottom:var(--space-2)}
+.continue-card{display:flex;gap:var(--space-3);align-items:center;padding:var(--space-2);border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+.continue-card:hover{border-color:var(--muted-text)}
+.continue-text{display:flex;flex-direction:column;gap:1px;min-width:0}
+.continue-text strong{font-size:var(--text-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-stats{display:flex;gap:var(--space-4);padding-top:var(--space-3);border-top:1px solid var(--border-soft)}
+.side-stats div{display:flex;flex-direction:column}
+.side-stats strong{font-size:var(--text-sm)}
+.side-stats span{color:var(--muted-text);font-size:var(--text-xs)}
+.side-foot{margin-top:auto;color:var(--muted-text);font-size:var(--text-xs)}
+.nav-scrim{position:fixed;inset:0;z-index:55;background:var(--scrim);border:0;display:none}
+body.nav-open .nav-scrim{display:block}
+
+/* ── 顶栏 ── */
+.workarea{flex:1;min-width:0}
+.topbar{position:sticky;top:var(--demo-h,46px);z-index:40;background:var(--bg);border-bottom:1px solid var(--border-soft)}
+.topbar-inner{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-6)}
+.icon-btn.nav-toggle{display:none}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--fg-2)}
+.icon-btn:hover{color:var(--fg);border-color:var(--muted-text)}
+.searchbar{display:flex;align-items:center;gap:var(--space-2);flex:1;min-width:0;padding:0 var(--space-3);border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface);min-height:40px}
+.searchbar:focus-within{border-color:var(--meta);box-shadow:var(--focus-ring)}
+.searchbar-icon{display:inline-flex;color:var(--muted-text)}
+.input{flex:1;min-width:0;border:0;background:none;font:inherit;font-size:var(--text-sm);color:var(--fg);padding:var(--space-1) 0;min-height:32px}
+.input::placeholder{color:var(--muted-text)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:34px;padding:0 var(--space-4);border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--fg);font-size:var(--text-sm);white-space:nowrap}
+.btn:hover{border-color:var(--muted-text)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-ghost{background:none;border-color:transparent;color:var(--muted-text)}
+.btn-ghost:hover{color:var(--fg);border-color:var(--border)}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:var(--accent-on)}
+.view-toggle{display:flex;flex:none;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface)}
+.view-toggle button{min-height:34px;padding:0 var(--space-3);font-size:var(--text-sm);color:var(--fg-2)}
+.view-toggle button[aria-pressed="true"]{background:var(--surface-warm);color:var(--fg);font-weight:600}
+
+/* ── 主区 ── */
+.container{max-width:var(--container-max);margin:0 auto;padding:var(--space-6) var(--space-6) var(--space-12)}
+.view{display:none}
+body[data-view="shelf"] .view[data-view="shelf"],
+body[data-view="home"] .view[data-view="home"],
+body[data-view="search"] .view[data-view="search"],
+body[data-view="series"] .view[data-view="series"],
+body[data-view="series-detail"] .view[data-view="series-detail"],
+body[data-view="history"] .view[data-view="history"],
+body[data-view="notfound"] .view[data-view="notfound"]{display:block}
+[data-state-block]{display:none}
+body[data-state="ok"] [data-state-block="ok"],
+body[data-state="loading"] [data-state-block="loading"],
+body[data-state="empty"] [data-state-block="empty"],
+body[data-state="error"] [data-state-block="error"]{display:block}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-4);flex-wrap:wrap;padding-bottom:var(--space-4)}
+.page-head h1{font-size:var(--text-xl)}
+.page-head .eyebrow{margin-bottom:var(--space-2)}
+.page-head .sub{color:var(--muted-text);font-size:var(--text-sm);margin-top:var(--space-2)}
+.shelf-head-actions{display:flex;gap:var(--space-2);flex-wrap:wrap}
+
+/* 继续阅读卡 */
+.resume-card{display:flex;gap:var(--space-4);align-items:center;padding:var(--space-4);border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);margin-bottom:var(--space-5);max-width:620px}
+.resume-card:hover{border-color:var(--muted-text);box-shadow:var(--elev-raised)}
+.resume-body{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.resume-body strong{font-family:var(--font-display);font-size:var(--text-lg)}
+.resume-bar{display:block;height:4px;border-radius:var(--radius-pill);background:var(--border);overflow:hidden;margin:var(--space-1) 0}
+.resume-bar i{display:block;height:100%;background:var(--meta)}
+.resume-cta{align-self:flex-start;margin-top:var(--space-1)}
+
+/* 工具栏 */
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-4);padding:var(--space-3) 0;border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft);margin-bottom:var(--space-4)}
+.toolbar label{display:inline-flex;align-items:center;gap:var(--space-2);color:var(--muted-text);font-size:var(--text-xs)}
+.select{min-height:34px;padding:0 var(--space-2);border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:var(--text-sm)}
+.select:focus-visible{box-shadow:var(--focus-ring)}
+.chips{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+.chip{min-height:32px;padding:0 var(--space-3);border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface);color:var(--fg-2);font-size:var(--text-xs);display:inline-flex;align-items:center}
+.chip:hover{border-color:var(--muted-text)}
+.chip.is-active{background:var(--surface-warm);border-color:var(--muted-text);color:var(--fg);font-weight:600}
+.filter-hints{color:var(--muted-text);font-size:var(--text-xs);padding-bottom:var(--space-3)}
+
+/* 书卡 */
+.book-grid{display:grid;gap:var(--space-4);grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
+body[data-mode="list"] .book-grid{grid-template-columns:1fr}
+.book-card{position:relative;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-2)}
+.book-card:hover{border-color:var(--muted-text);box-shadow:var(--elev-raised)}
+.book-card.is-recent{border-color:var(--meta);box-shadow:var(--focus-ring)}
+.book-card.is-selected{border-color:var(--meta);background:var(--surface-warm)}
+.book-link{display:flex;gap:var(--space-3);align-items:flex-start;min-width:0}
+.cover{width:72px;flex:none;aspect-ratio:3/4;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface-warm);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);color:var(--fg-2);font-size:var(--text-lg)}
+.cover-xs{width:36px;font-size:var(--text-sm)}
+.book-card-body{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.book-title{font-family:var(--font-display);font-size:var(--text-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.book-author{color:var(--fg-2);font-size:var(--text-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.book-meta{display:flex;flex-wrap:wrap;gap:var(--space-2);color:var(--muted-text);font-size:var(--text-xs);align-items:center}
+.book-intro{color:var(--muted-text);font-size:var(--text-xs);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.book-card-foot{display:flex;align-items:center;gap:var(--space-2);justify-content:flex-end;margin-top:auto}
+.book-status{min-height:30px;padding:0 var(--space-2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:var(--text-xs);color:var(--fg-2);background:var(--surface)}
+.book-status[data-status="want"]{color:var(--meta);border-color:var(--meta)}
+.book-status[data-status="reading"]{color:var(--success-text);border-color:var(--success)}
+.book-status[data-status="done"]{color:var(--fg);border-color:var(--muted-text);background:var(--surface-warm)}
+.book-card.is-selecting .book-status{display:none}
+.book-check{position:absolute;top:var(--space-2);right:var(--space-2);width:20px;height:20px;border-radius:var(--radius-pill);border:1px solid var(--muted);display:flex;align-items:center;justify-content:center;font-size:var(--text-xs);color:var(--accent-on)}
+.book-card.is-selected .book-check{background:var(--meta);border-color:var(--meta)}
+.stars{display:inline-flex;gap:1px}
+.stars button{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;color:var(--border)}
+.stars button.is-on{color:var(--meta)}
+.stars button:hover{color:var(--fg-2)}
+.pill{display:inline-flex;align-items:center;min-height:22px;padding:0 var(--space-2);border-radius:var(--radius-pill);border:1px solid var(--border);color:var(--fg-2);font-size:var(--text-xs)}
+.pill.is-live{border-color:var(--success);color:var(--success-text)}
+
+/* 分页 / 无限滚动 */
+.pagination{display:flex;align-items:center;justify-content:center;gap:var(--space-3);padding:var(--space-6) 0 0}
+.pagination button{min-width:36px;min-height:36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg-2)}
+.pagination button:disabled{opacity:.4;cursor:not-allowed}
+.pagination .is-current{font-weight:600;color:var(--fg)}
+.shelf-more{display:flex;flex-direction:column;align-items:center;gap:var(--space-2);padding:var(--space-5) 0 var(--space-2)}
+.shelf-end{color:var(--muted-text);font-size:var(--text-xs)}
+
+/* 状态面板 */
+.state-panel{border:1px dashed var(--border);border-radius:var(--radius-md);background:var(--surface);padding:var(--space-12) var(--space-6);text-align:center;display:flex;flex-direction:column;align-items:center;gap:var(--space-2)}
+.state-panel .state-mark{width:40px;height:40px;border-radius:var(--radius-pill);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted-text);font-size:var(--text-sm)}
+.state-panel h2{font-size:var(--text-lg)}
+.state-panel p{color:var(--muted-text);font-size:var(--text-sm);max-width:42ch}
+.state-panel.is-error{border-color:var(--danger)}
+.state-panel.is-error .state-mark{color:var(--danger-text);border-color:var(--danger)}
+.state-actions{display:flex;gap:var(--space-2);margin-top:var(--space-3);flex-wrap:wrap;justify-content:center}
+.spinner{width:16px;height:16px;border-radius:var(--radius-pill);border:2px solid var(--border);border-top-color:var(--meta);animation:spin 800ms linear infinite;display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skeleton-card{border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-3);display:flex;gap:var(--space-3)}
+.sk{background:var(--border-soft);border-radius:var(--radius-sm)}
+.sk-cover{width:72px;aspect-ratio:3/4;flex:none}
+.sk-lines{display:flex;flex-direction:column;gap:var(--space-2);flex:1}
+.sk-line{height:10px}
+.w80{width:80%}.w60{width:60%}.w40{width:40%}
+
+/* H5 排序弹层 / 抽屉 */
+.sheet-backdrop{position:fixed;inset:0;z-index:120;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:520px;background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);max-height:80vh;overflow:auto}
+.sheet-head{display:flex;align-items:center;justify-content:space-between}
+.sheet-head strong{font-size:var(--text-base)}
+.sheet-section-title{color:var(--muted-text);font-size:var(--text-xs);display:block;margin-bottom:var(--space-2)}
+.sheet-list{display:flex;flex-direction:column;gap:2px}
+.sheet-option{display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:0 var(--space-3);border-radius:var(--radius-sm);font-size:var(--text-sm);color:var(--fg-2)}
+.sheet-option:hover{background:var(--border-soft)}
+.sheet-option[aria-pressed="true"]{background:var(--surface-warm);color:var(--fg);font-weight:600}
+body.h5-sheet-open{overflow:hidden}
+
+/* 确认弹层（批量设作者） */
+.confirm-backdrop{position:fixed;inset:0;z-index:130;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:var(--space-4)}
+.confirm-dialog{width:100%;max-width:460px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-5);display:flex;flex-direction:column;gap:var(--space-3)}
+.confirm-dialog h2{font-size:var(--text-lg)}
+.confirm-actions{display:flex;gap:var(--space-2);justify-content:flex-end;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:var(--space-1)}
+.field label{font-size:var(--text-xs);color:var(--muted-text)}
+.field .input{border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 var(--space-3);min-height:44px;background:var(--surface)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:var(--space-6);transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:var(--space-3);max-width:min(92vw,560px);padding:var(--space-2) var(--space-2) var(--space-2) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface);box-shadow:var(--elev-raised);font-size:var(--text-sm)}
+.toast.is-error{border-color:var(--danger);color:var(--danger-text)}
+.toast .btn-ghost{min-height:32px}
+
+/* 搜索 */
+.search-head{display:flex;flex-direction:column;gap:var(--space-3);padding-bottom:var(--space-4)}
+.search-head h1{font-size:var(--text-xl)}
+.search-form{display:flex;gap:var(--space-2);max-width:640px}
+.search-form .input{min-height:40px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 var(--space-3);background:var(--surface)}
+.search-form .input:focus{border-color:var(--meta)}
+.search-summary{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.search-tabs{display:flex;gap:var(--space-4);border-bottom:1px solid var(--border)}
+.search-tabs button{min-height:40px;color:var(--muted-text);font-size:var(--text-sm);border-bottom:2px solid transparent}
+.search-tabs button.is-active{color:var(--fg);border-bottom-color:var(--meta);font-weight:600}
+.search-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-6);align-items:start}
+.search-layout h2{font-size:var(--text-base);display:flex;gap:var(--space-2);align-items:baseline;padding-bottom:var(--space-2);border-bottom:1px solid var(--border-soft)}
+.search-books{display:flex;flex-direction:column;gap:var(--space-2);padding-top:var(--space-3)}
+.search-book{border:1px solid var(--border);border-radius:var(--radius-sm);padding:var(--space-2);background:var(--surface)}
+.search-book:hover{border-color:var(--muted-text)}
+.hits{display:flex;flex-direction:column;padding-top:var(--space-2)}
+.hit{padding:var(--space-3) 0;border-bottom:1px solid var(--border-soft)}
+.hit-meta{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;font-size:var(--text-sm)}
+.hit-meta a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 var(--space-1)}
+.hit-meta a:first-child{color:var(--muted-text)}
+.hit-meta a:last-child{font-weight:600;border-bottom:1px solid var(--border)}
+.hit-meta a:hover{color:var(--meta)}
+.hit-snippet{color:var(--fg-2);font-size:var(--text-sm);margin-top:var(--space-1)}
+.hit-snippet b{background:var(--surface-warm);font-weight:600;padding:0 1px}
+
+/* 系列 / 历史 */
+.crumbs{display:flex;gap:var(--space-2);align-items:center;color:var(--muted-text);font-size:var(--text-xs);padding-bottom:var(--space-3)}
+.crumb-link{color:var(--meta)}
+.crumb-link:hover{border-bottom:1px solid var(--meta)}
+.series-search{display:flex;gap:var(--space-2);max-width:560px;margin-bottom:var(--space-5)}
+.series-search .input{min-height:40px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 var(--space-3);background:var(--surface)}
+.table-wrap{overflow-x:auto}
+.table{width:100%;border-collapse:collapse;font-size:var(--text-sm)}
+.table th,.table td{text-align:left;padding:var(--space-3) var(--space-2);border-bottom:1px solid var(--border-soft);white-space:nowrap}
+.table th{color:var(--muted-text);font-size:var(--text-xs);font-weight:500}
+.table tbody tr:hover{background:var(--surface)}
+.table .book-title{font-size:var(--text-sm)}
+.book-title-link{border-bottom:1px solid var(--border)}
+.book-title-link:hover{color:var(--meta);border-bottom-color:var(--meta)}
+
+/* H5 首页 */
+.h5-top{display:flex;align-items:flex-start;gap:var(--space-3);padding-bottom:var(--space-4)}
+.h5-top h1{font-size:var(--text-xl)}
+.h5-top .eyebrow{margin-bottom:var(--space-1)}
+.h5-search{display:flex;gap:var(--space-2);margin:var(--space-4) 0}
+.h5-search .input{min-height:44px;border:1px solid var(--border);border-radius:var(--radius-pill);padding:0 var(--space-4);background:var(--surface)}
+.h5-section{padding-top:var(--space-5)}
+.h5-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);margin-bottom:var(--space-2)}
+.h5-section-head h2{font-size:var(--text-base)}
+.h5-section-head .meta{color:var(--meta);min-height:44px;display:inline-flex;align-items:center;padding:0 var(--space-2);border-radius:var(--radius-sm)}
+.h5-section-head .meta:hover{color:var(--fg);background:var(--surface-warm)}
+.h5-list{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);overflow:hidden}
+.h5-row{display:flex;align-items:center;gap:var(--space-3);min-height:64px;padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--border-soft)}
+.h5-row:last-child{border-bottom:0}
+.h5-row:hover{background:var(--surface-warm)}
+.h5-row-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.h5-row-title{font-size:var(--text-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h5-row-pct{color:var(--muted-text);font-size:var(--text-xs);flex:none}
+
+/* ── H5 分档（JS 按容器宽度打 data-tier，媒体查询作真实视口兜底） ── */
+body[data-tier="h5"] .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:60;width:280px;height:100%;transform:translateX(-100%);transition:transform var(--motion-base) var(--ease-standard);border-right:1px solid var(--border)}
+body[data-tier="h5"].nav-open .sidebar{transform:none}
+body[data-tier="h5"] .workarea{width:100%}
+body[data-tier="h5"] .topbar{top:var(--demo-h,46px)}
+body[data-tier="h5"] .nav-toggle{display:inline-flex}
+body[data-tier="h5"] .topbar-inner{padding:var(--space-2) var(--space-4);gap:var(--space-2)}
+body[data-tier="h5"] .container{padding:var(--space-4) var(--container-gutter-phone) var(--space-8)}
+body[data-tier="h5"] .book-grid{grid-template-columns:1fr}
+body[data-tier="h5"] .book-card{padding:var(--space-2) var(--space-3)}
+body[data-tier="h5"] .cover{width:40px;font-size:var(--text-sm)}
+body[data-tier="h5"] .book-intro{display:none}
+body[data-tier="h5"] .page-head h1{font-size:var(--text-lg)}
+body[data-tier="h5"] .search-layout{grid-template-columns:minmax(0,1fr);gap:var(--space-5)}
+body[data-tier="h5"] .search-tabs{display:none}
+body[data-tier="h5"] .page-head .sub{display:none}
+body[data-tier="h5"] #shelf-view-toggle{display:none}
+body[data-tier="h5"] .searchbar{padding:0 var(--space-2)}
+body[data-tier="h5"] .searchbar .btn{padding:0 var(--space-3)}
+body[data-view="home"] #topbar{display:none}
+/* 视图切换只在书架页出现（源码 showViewToggle = 路由是 /shelf 且为 PC） */
+body:not([data-view="shelf"]) #shelf-view-toggle{display:none}
+body[data-tier="h5"][data-view="home"] #topbar{display:none}
+body[data-tier="pc"] .shelf-sort-trigger{display:none}
+body[data-tier="h5"] .btn,body[data-tier="h5"] .select,body[data-tier="h5"] .chip,body[data-tier="h5"] .icon-btn{min-height:44px}
+body[data-tier="h5"] .icon-btn{width:44px;height:44px}
+body[data-tier="h5"] .book-status{min-height:44px;padding:0 var(--space-3)}
+body[data-tier="h5"] .pagination button{min-width:44px;min-height:44px}
+body[data-tier="h5"] .side-nav a{min-height:44px}
+body[data-tier="h5"] .continue-card{min-height:56px}
+body[data-tier="h5"] .input{min-height:44px}
+body[data-tier="h5"] .searchbar{min-height:44px}
+body[data-tier="h5"] .stars button{width:44px;height:44px}
+body[data-tier="h5"] .demo-group button{min-height:36px}
+body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-width:none}
+
+/* 真实视口兜底（与上面同一口径） */
+@media (min-width: 1440px){
+  .container{max-width:var(--container-max)}
+}
+@media (max-width: 1024px){
+  .sidebar{width:220px}
+  .book-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+  .search-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-4)}
+  .topbar-inner{padding:var(--space-2) var(--space-4)}
+  .container{padding:var(--space-5) var(--container-gutter-tablet) var(--space-8)}
+}
+@media (max-width: 768px){
+  body .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:60;width:280px;height:100%;transform:translateX(-100%);transition:transform var(--motion-base) var(--ease-standard)}
+  body.nav-open .sidebar{transform:none}
+  .nav-toggle{display:inline-flex}
+  .book-grid{grid-template-columns:1fr}
+  .search-layout{grid-template-columns:minmax(0,1fr)}
+  .search-tabs{display:none}
+  .btn,.select,.chip{min-height:44px}
+  .icon-btn{width:44px;height:44px}
+  .side-nav a{min-height:44px}
+  .input,.searchbar{min-height:44px}
+  .container{padding:var(--space-4) var(--container-gutter-phone) var(--space-8)}
+}
+@media (max-width: 390px){
+  .page-head h1{font-size:var(--text-lg)}
+  .container{padding-left:var(--space-3);padding-right:var(--space-3)}
+  .demo-bar{padding:var(--space-1) var(--space-2)}
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:1ms !important;transition-duration:1ms !important}
+}
+[hidden]{display:none !important}
+#home-recent-list[hidden]{display:none !important}
+[id^="book-"]{scroll-margin-top:76px}
+</style>
+</head>
+<body data-tier="pc" data-view="shelf" data-state="ok" data-mode="grid">
+
+<div class="demo-bar" data-od-id="demo-only:bar" role="group" aria-label="原型演示控制条">
+  <span class="demo-label">原型控制条（不进产品）</span>
+  <div class="demo-group" role="group" aria-label="切页面">
+    <button type="button" data-demo="view" data-value="shelf" aria-pressed="true">书架</button>
+    <button type="button" data-demo="view" data-value="home" aria-pressed="false">H5 首页</button>
+    <button type="button" data-demo="view" data-value="search" aria-pressed="false">搜索</button>
+    <button type="button" data-demo="view" data-value="series" aria-pressed="false">系列</button>
+    <button type="button" data-demo="view" data-value="series-detail" aria-pressed="false">系列详情</button>
+    <button type="button" data-demo="view" data-value="history" aria-pressed="false">阅读历史</button>
+    <button type="button" data-demo="view" data-value="notfound" aria-pressed="false">404</button>
+  </div>
+  <div class="demo-group" role="group" aria-label="切状态">
+    <button type="button" data-demo="state" data-value="ok" aria-pressed="true">正常</button>
+    <button type="button" data-demo="state" data-value="loading" aria-pressed="false">加载</button>
+    <button type="button" data-demo="state" data-value="empty" aria-pressed="false">空</button>
+    <button type="button" data-demo="state" data-value="error" aria-pressed="false">错误</button>
+  </div>
+  <div class="demo-group" role="group" aria-label="切宽度">
+    <button type="button" data-demo="width" data-value="1440" aria-pressed="true">1440</button>
+    <button type="button" data-demo="width" data-value="1024" aria-pressed="false">1024</button>
+    <button type="button" data-demo="width" data-value="768" aria-pressed="false">768</button>
+    <button type="button" data-demo="width" data-value="390" aria-pressed="false">390</button>
+  </div>
+  <div class="demo-group" role="group" aria-label="快捷演示">
+    <button type="button" data-demo="nav">抽屉</button>
+    <button type="button" data-demo="sheet">排序弹层</button>
+    <button type="button" data-demo="batch">批量作者</button>
+    <button type="button" data-demo="toast">提示条</button>
+  </div>
+</div>
+
+<div class="stage" id="stage">
+  <div class="app">
+    <button class="nav-scrim" type="button" data-od-id="C-16" aria-label="关闭导航"></button>
+
+    <aside class="sidebar" data-od-id="region:sidebar" aria-label="站点导航">
+      <a class="brand" href="#" data-nav="shelf" data-od-id="C-01">
+        <strong>norvels</strong>
+        <span>本地中文小说库</span>
+      </a>
+      <nav class="side-nav" aria-label="主导航">
+        <a href="#" data-nav="home" data-h5-only aria-current="false" data-od-id="C-04">首页</a>
+        <a href="#" data-nav="shelf" data-od-id="C-02" aria-current="page">书架<span class="nav-count num">60</span></a>
+        <a href="#" data-nav="search" data-od-id="C-03">搜索</a>
+        <a href="#" data-nav="series" data-pc-only data-od-id="C-05">系列</a>
+        <a href="#" data-nav="history" data-pc-only data-od-id="C-06">阅读历史</a>
+        <a href="#" data-nav="admin" data-pc-only data-od-id="C-07">书籍管理</a>
+        <a href="#" data-nav="dashboard" data-pc-only data-od-id="C-08">驾驶舱</a>
+        <a href="#" data-nav="authors" data-pc-only data-od-id="C-09">作者<span class="nav-count num">12</span></a>
+        <a href="#" data-nav="import" data-pc-only data-od-id="C-10">导入管理</a>
+      </nav>
+
+      <div class="side-block">
+        <p class="side-label">继续阅读</p>
+        <a class="continue-card" href="#" data-open-book="1" data-od-id="C-11">
+          <span class="cover cover-xs" aria-hidden="true">长</span>
+          <span class="continue-text">
+            <strong>长夜未明</strong>
+            <span class="meta">第 42 章 · 36%</span>
+          </span>
+        </a>
+      </div>
+
+      <div class="side-stats">
+        <div><strong class="num">60</strong><span>本书</span></div>
+        <div><strong class="num">8.6 万</strong><span>章节</span></div>
+        <div><strong class="num">4.1 亿</strong><span>字数</span></div>
+      </div>
+      <p class="side-foot meta">所有数据保存在你的电脑里</p>
+    </aside>
+
+    <div class="workarea">
+      <header class="topbar" id="topbar" data-od-id="region:topbar">
+        <div class="topbar-inner">
+          <button class="icon-btn nav-toggle" type="button" data-od-id="C-14" aria-label="打开导航" aria-expanded="false">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <form class="searchbar" id="topbar-search" data-od-id="C-12" role="search">
+            <span class="searchbar-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+            </span>
+            <input class="input" type="search" name="q" placeholder="搜书名、作者、章节标题…" aria-label="搜索书名、作者、章节标题">
+            <button class="btn" type="submit">搜索</button>
+          </form>
+          <div class="view-toggle" id="shelf-view-toggle" data-od-id="C-13" data-pc-only role="group" aria-label="视图切换">
+            <button type="button" data-mode="grid" aria-pressed="true">网格</button>
+            <button type="button" data-mode="list" aria-pressed="false">列表</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="container" data-od-id="region:main">
+
+        <!-- ═══ 书架 ═══ -->
+        <section class="view view-shelf" data-view="shelf" data-od-id="region:shelf" aria-label="书架">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">书架 · <span id="shelf-count">60 本</span></p>
+              <h1 id="shelf-title">最近入库</h1>
+              <p class="sub" id="shelf-sub">按最近更新排序 · 共 60 本</p>
+            </div>
+            <div class="shelf-head-actions">
+              <button class="btn" type="button" id="shelf-random" data-od-id="C-35" data-pc-only>随机一本</button>
+              <button class="btn" type="button" id="shelf-select-toggle" data-od-id="C-32" aria-pressed="false">选择</button>
+              <button class="btn btn-primary" type="button" id="shelf-batch-author" data-od-id="C-33" hidden disabled>批量设作者（0）</button>
+              <button class="btn shelf-sort-trigger" type="button" id="shelf-sort-trigger" data-od-id="C-20" aria-haspopup="dialog" aria-expanded="false">排序：最近更新</button>
+            </div>
+          </div>
+
+          <a class="resume-card" href="#" data-open-book="1" id="shelf-resume" data-od-id="C-36" data-pc-only>
+            <span class="cover" aria-hidden="true">长</span>
+            <span class="resume-body">
+              <span class="meta">继续阅读 · 第 42 章</span>
+              <strong>长夜未明</strong>
+              <span class="meta">已读 36% · 10 月 24 日</span>
+              <span class="resume-bar"><i style="width:36%"></i></span>
+              <span class="btn btn-primary resume-cta">接着读</span>
+            </span>
+          </a>
+
+          <div class="toolbar" data-pc-only>
+            <label>排序
+              <select class="select" id="shelf-sort" data-od-id="C-19">
+                <option value="updated">最近更新</option>
+                <option value="imported">导入时间</option>
+                <option value="title">书名</option>
+                <option value="chapters">章节数</option>
+                <option value="words">字数</option>
+                <option value="rating">评分</option>
+              </select>
+            </label>
+            <label>阅读状态
+              <select class="select" id="shelf-filter-status" data-od-id="C-22">
+                <option value="">全部</option>
+                <option value="want">想读</option>
+                <option value="reading">在读</option>
+                <option value="done">已读</option>
+              </select>
+            </label>
+            <label>评分
+              <select class="select" id="shelf-filter-rating" data-od-id="C-23">
+                <option value="">全部评分</option>
+                <option value="5">5 星</option>
+                <option value="4">4 星</option>
+                <option value="3">3 星</option>
+                <option value="2">2 星</option>
+                <option value="1">1 星</option>
+              </select>
+            </label>
+            <label>作者
+              <select class="select" id="shelf-filter-author" data-od-id="C-24">
+                <option value="">全部作者</option>
+              </select>
+            </label>
+            <label>书单
+              <select class="select" id="shelf-filter-collection" data-od-id="C-25">
+                <option value="">全部书单</option>
+                <option value="1">今年想读（8）</option>
+                <option value="2">夜读清单（5）</option>
+                <option value="3">重读（3）</option>
+              </select>
+            </label>
+            <label>分类
+              <select class="select" id="shelf-filter-category" data-od-id="C-26">
+                <option value="">全部分类</option>
+                <option value="武侠">武侠（24）</option>
+                <option value="都市">都市（18）</option>
+                <option value="历史">历史（11）</option>
+              </select>
+            </label>
+            <label id="shelf-subcategory-label" hidden>小分类
+              <select class="select" id="shelf-filter-subcategory" data-od-id="C-27">
+                <option value="">全部小分类</option>
+              </select>
+            </label>
+            <div class="chips" role="group" aria-label="标签筛选" id="shelf-filter-tags" data-od-id="C-28">
+              <button class="chip is-active" type="button" data-tag="">全部</button>
+              <button class="chip" type="button" data-tag="连载中">连载中</button>
+              <button class="chip" type="button" data-tag="完结">完结</button>
+              <button class="chip" type="button" data-tag="慢热">慢热</button>
+            </div>
+            <button class="btn btn-ghost" type="button" id="shelf-filter-clear" data-od-id="C-29" hidden>清除筛选</button>
+            <span class="meta" id="shelf-rating-hint" hidden>只列已评分的书（0 星 = 未评，不参与评分筛选与按评分排序）。</span>
+          </div>
+
+          <p class="meta filter-hints" id="shelf-filter-hints" data-pc-only hidden></p>
+
+          <div data-state-block="loading">
+            <div class="state-panel">
+              <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+              <h2>正在读取书架</h2>
+              <p>正在整理本地书目，全部 60 本大约需要 1–2 秒。</p>
+            </div>
+            <div class="book-grid" style="margin-top:var(--space-4)">
+              <div class="skeleton-card"><div class="sk sk-cover"></div><div class="sk-lines"><div class="sk sk-line w80"></div><div class="sk sk-line w60"></div><div class="sk sk-line w40"></div></div></div>
+              <div class="skeleton-card"><div class="sk sk-cover"></div><div class="sk-lines"><div class="sk sk-line w80"></div><div class="sk sk-line w60"></div><div class="sk sk-line w40"></div></div></div>
+              <div class="skeleton-card"><div class="sk sk-cover"></div><div class="sk-lines"><div class="sk sk-line w80"></div><div class="sk sk-line w60"></div><div class="sk sk-line w40"></div></div></div>
+            </div>
+          </div>
+
+          <div data-state-block="error">
+            <div class="state-panel is-error" data-od-id="C-41">
+              <span class="state-mark" aria-hidden="true">!</span>
+              <h2>书架没能加载</h2>
+              <p>读取时出了点问题。可以重试，或者稍后再回来看；已经导入的书目不会丢失。</p>
+              <div class="state-actions">
+                <button class="btn btn-primary" type="button" data-retry>重试</button>
+                <button class="btn btn-ghost" type="button" data-nav="import">去导入管理</button>
+              </div>
+            </div>
+          </div>
+
+          <div data-state-block="empty">
+            <div class="state-panel" data-od-id="C-40">
+              <span class="state-mark" aria-hidden="true">空</span>
+              <h2 id="shelf-empty-title">书架还是空的</h2>
+              <p id="shelf-empty-desc">把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。</p>
+              <div class="state-actions">
+                <button class="btn btn-primary" type="button" id="shelf-empty-action" data-nav="import">去导入</button>
+              </div>
+            </div>
+          </div>
+
+          <div data-state-block="ok">
+            <div class="book-grid" id="shelf-grid" aria-live="polite"></div>
+            <nav class="pagination" id="shelf-pagination" data-pc-only aria-label="分页">
+              <button type="button" id="shelf-prev" data-od-id="C-37" aria-label="上一页">←</button>
+              <span class="is-current num" id="shelf-page">1</span>
+              <span class="meta" id="shelf-pages">/ 3</span>
+              <button type="button" id="shelf-next" data-od-id="C-38" aria-label="下一页">→</button>
+            </nav>
+            <div class="shelf-more" data-h5-only>
+              <p class="meta" id="shelf-more-loading" hidden>正在加载更多…</p>
+              <div id="shelf-more-error" hidden>
+                <p class="meta" role="alert">后面的书没取回来，检查网络后再试一次。</p>
+                <button class="btn" type="button" id="shelf-more-retry">重试</button>
+              </div>
+              <div data-od-id="C-39"><button class="btn" type="button" id="shelf-load-more">加载更多</button></div>
+              <p class="meta shelf-end" id="shelf-end" hidden>没有更多了 · 共 60 本</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══ H5 首页 ═══ -->
+        <section class="view view-home" data-view="home" data-od-id="region:home" aria-label="H5 首页">
+          <div class="h5-top">
+            <button class="icon-btn h5-burger" type="button" data-od-id="C-15" aria-label="打开导航" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
+            <div>
+              <p class="eyebrow">norvels · 本地书库</p>
+              <h1>今晚读点什么</h1>
+            </div>
+          </div>
+
+          <a class="resume-card" href="#" data-open-book="1" data-od-id="C-42">
+            <span class="cover" aria-hidden="true">长</span>
+            <span class="resume-body">
+              <span class="meta">继续阅读 · 第 42 章</span>
+              <strong>长夜未明</strong>
+              <span class="meta">已读 36%</span>
+              <span class="resume-bar"><i style="width:36%"></i></span>
+              <span class="btn btn-primary resume-cta">接着读</span>
+            </span>
+          </a>
+
+          <div class="state-panel" id="home-empty" data-od-id="C-45" hidden style="margin-bottom:var(--space-4)">
+            <span class="state-mark" aria-hidden="true">空</span>
+            <h2>还没有阅读记录</h2>
+            <p>从书架挑一本开始读，下次回来就能从这里接着看。</p>
+            <div class="state-actions"><button class="btn btn-primary" type="button" data-nav="shelf">去书架</button></div>
+          </div>
+
+          <form class="h5-search" id="home-search" data-od-id="C-43" role="search">
+            <input class="input" type="search" name="q" placeholder="搜书名、作者、章节标题…" aria-label="搜索书名、作者、章节标题">
+            <button class="btn" type="submit">搜索</button>
+          </form>
+
+          <div class="h5-section" data-od-id="C-44">
+            <div class="h5-section-head">
+              <h2>最近在读</h2>
+              <button class="meta" type="button" data-nav="shelf" data-od-id="C-44">全部书架 →</button>
+            </div>
+            <div class="h5-list">
+              <a class="h5-row" href="#" data-open-book="2" data-od-id="C-46"><span class="cover cover-xs" aria-hidden="true">山</span><span class="h5-row-text"><span class="h5-row-title">山雨欲来</b><span class="meta">第 108 章</span></span><span class="h5-row-pct num">62%</span></a>
+              <a class="h5-row" href="#" data-open-book="3" data-od-id="C-46"><span class="cover cover-xs" aria-hidden="true">旧</span><span class="h5-row-text"><span class="h5-row-title">旧巷灯影</b><span class="meta">第 12 章</span></span><span class="h5-row-pct num">18%</span></a>
+              <a class="h5-row" href="#" data-open-book="4" data-od-id="C-46"><span class="cover cover-xs" aria-hidden="true">远</span><span class="h5-row-text"><span class="h5-row-title">远山淡影</b><span class="meta">第 76 章</span></span><span class="h5-row-pct num">44%</span></a>
+            </div>
+          </div>
+
+          <div class="h5-section">
+            <div class="h5-section-head">
+              <h2>最近入库</h2>
+              <button class="meta" type="button" data-nav="shelf" data-od-id="C-47">全部 →</button>
+            </div>
+            <div id="home-loading" hidden>
+              <div class="state-panel">
+                <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+                <h2>正在读取书目</h2>
+                <p>稍等一下，正在取回最近入库的书。</p>
+              </div>
+            </div>
+            <div id="home-error" hidden>
+              <div class="state-panel is-error">
+                <span class="state-mark" aria-hidden="true">!</span>
+                <h2>书目没能加载</h2>
+                <p>读取时出了点问题。可以重试，或者稍后再回来看。</p>
+                <div class="state-actions"><button class="btn btn-primary" type="button" id="home-retry" data-od-id="C-71">重试</button></div>
+              </div>
+            </div>
+            <div class="h5-list" id="home-recent-list"></div>
+          </div>
+        </section>
+
+        <!-- ═══ 搜索 ═══ -->
+        <section class="view view-search" data-view="search" data-od-id="region:search" aria-label="搜索结果">
+          <div class="search-head">
+            <p class="eyebrow">搜索书库</p>
+            <h1 id="search-title">搜索</h1>
+            <form class="search-form" id="search-form" data-od-id="C-49" role="search">
+              <input class="input" id="search-input" type="search" value="" placeholder="输入书名、作者或章节标题" aria-label="搜索关键词">
+              <button class="btn btn-primary" type="submit">搜索</button>
+            </form>
+            <div class="search-summary">
+              <span class="meta" id="search-summary-text">找到 0 本书 · 0 个章节</span>
+              <span class="pill">书名 · 作者 · 章节标题</span>
+            </div>
+            <div class="search-tabs" data-od-id="C-50" role="tablist" aria-label="结果分类">
+              <button type="button" role="tab" class="is-active" data-search-tab="all" aria-selected="true">全部</button>
+              <button type="button" role="tab" data-search-tab="book" aria-selected="false">书名和作者 <span class="num" id="search-book-count">0</span></button>
+              <button type="button" role="tab" data-search-tab="chapter" aria-selected="false">章节标题 <span class="num" id="search-chapter-count">0</span></button>
+            </div>
+          </div>
+
+          <div data-state-block="loading">
+            <div class="state-panel">
+              <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+              <h2>正在查找</h2>
+              <p>正在书名、作者和章节标题里一起找。</p>
+            </div>
+          </div>
+          <div data-state-block="error">
+            <div class="state-panel is-error" data-od-id="C-53">
+              <span class="state-mark" aria-hidden="true">!</span>
+              <h2>搜索没能完成</h2>
+              <p>读取时出了点问题。可以重试，或者换个关键词。</p>
+              <div class="state-actions"><button class="btn btn-primary" type="button" data-retry>重试</button></div>
+            </div>
+          </div>
+          <div data-state-block="empty">
+            <div class="state-panel" id="search-empty">
+              <span class="state-mark" aria-hidden="true">空</span>
+              <h2 id="search-empty-title">输入关键词开始查找</h2>
+              <p id="search-empty-desc">可以按书名、作者或章节标题查找。</p>
+            </div>
+          </div>
+          <div data-state-block="ok">
+            <div class="search-layout">
+              <aside data-od-id="region:search-books" aria-label="书名和作者结果">
+                <h2>书名和作者 <span class="meta num" id="search-books-total">0</span></h2>
+                <div class="search-books" id="search-books"></div>
+              </aside>
+              <div>
+                <h2>章节标题 <span class="meta num" id="search-chapters-total">0</span></h2>
+                <div class="hits" id="search-hits"></div>
+              </div>
+            </div>
+            <p class="meta" id="search-tab-empty" hidden></p>
+            <p class="meta" id="search-hit-snippet-note">结果是书名、作者名与章节标题的匹配列表；正文不参与检索，因此不显示正文片段，也不做关键词加粗。</p>
+            <nav class="pagination" id="search-pagination" aria-label="分页">
+              <button type="button" id="search-prev" data-od-id="C-54" aria-label="上一页">←</button>
+              <span class="is-current num" id="search-page">1</span>
+              <span class="meta" id="search-pages">/ 1</span>
+              <button type="button" id="search-next" data-od-id="C-55" aria-label="下一页">→</button>
+            </nav>
+          </div>
+        </section>
+
+        <!-- ═══ 系列列表 ═══ -->
+        <section class="view view-series" data-view="series" data-od-id="region:series" aria-label="系列">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">系列 · <span id="series-count">3 个</span></p>
+              <h1>系列</h1>
+              <p class="sub">按系列聚合书目</p>
+            </div>
+          </div>
+          <form class="series-search" id="series-search" data-od-id="C-56" role="search">
+            <input class="input" type="search" id="series-search-input" placeholder="搜系列名" aria-label="搜索系列名">
+            <button class="btn btn-primary" type="submit">搜索</button>
+            <button class="btn btn-ghost" type="button" id="series-search-clear" hidden>清除</button>
+          </form>
+          <div data-state-block="loading">
+            <div class="state-panel">
+              <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+              <h2>正在整理系列</h2>
+              <p>正在按系列归并书目，稍等一下。</p>
+            </div>
+          </div>
+          <div data-state-block="error">
+            <div class="state-panel is-error" data-od-id="C-59">
+              <span class="state-mark" aria-hidden="true">!</span>
+              <h2>系列没能加载</h2>
+              <p>读取时出了点问题。可以重试。</p>
+              <div class="state-actions"><button class="btn btn-primary" type="button" data-retry>重试</button></div>
+            </div>
+          </div>
+          <div data-state-block="empty">
+            <div class="state-panel" data-od-id="C-58">
+              <span class="state-mark" aria-hidden="true">空</span>
+              <h2 id="series-empty-title">还没有系列</h2>
+              <p id="series-empty-desc">书的元信息里带系列名（例如多部成套的作品）时，会聚合到这里。</p>
+              <div class="state-actions"><button class="btn btn-primary" type="button" data-nav="shelf">去书架</button></div>
+            </div>
+          </div>
+          <div data-state-block="ok">
+            <div class="book-grid" id="series-grid"></div>
+            <nav class="pagination" aria-label="分页">
+              <button type="button" id="series-prev" data-od-id="C-60" aria-label="上一页">←</button>
+              <span class="is-current num" id="series-page">1</span>
+              <span class="meta" id="series-pages">/ 1</span>
+              <button type="button" id="series-next" data-od-id="C-61" aria-label="下一页">→</button>
+            </nav>
+          </div>
+        </section>
+
+        <!-- ═══ 系列详情 ═══ -->
+        <section class="view view-series-detail" data-view="series-detail" data-od-id="region:series-detail" aria-label="系列详情">
+          <nav class="crumbs" data-od-id="C-62" aria-label="面包屑">
+            <button class="crumb-link" type="button" data-nav="series">系列</button>
+            <span aria-hidden="true">/</span>
+            <span class="meta" id="series-detail-crumb">长夜三部</span>
+          </nav>
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">系列 · <span id="series-detail-count">3 本</span></p>
+              <h1 id="series-detail-title">长夜三部</h1>
+              <p class="sub" id="series-detail-sub">本系列合计 4 320 000 字 · 按系列序号排列</p>
+            </div>
+          </div>
+          <div data-state-block="loading">
+            <div class="state-panel">
+              <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+              <h2>正在打开系列</h2>
+              <p>正在取回这个系列的书目。</p>
+            </div>
+          </div>
+          <div data-state-block="error">
+            <div class="state-panel is-error" data-od-id="C-65">
+              <span class="state-mark" aria-hidden="true">!</span>
+              <h2>系列没能打开</h2>
+              <p>读取时出了点问题。可以重试。</p>
+              <div class="state-actions"><button class="btn btn-primary" type="button" data-retry>重试</button></div>
+            </div>
+          </div>
+          <div data-state-block="empty">
+            <div class="state-panel" data-od-id="C-64">
+              <span class="state-mark" aria-hidden="true">空</span>
+              <h2>这个系列还没有书</h2>
+              <p>系列里的书被移走或改了系列名之后，这里会空下来。</p>
+              <div class="state-actions"><button class="btn btn-primary" type="button" data-nav="series">回系列列表</button></div>
+            </div>
+          </div>
+          <div data-state-block="ok">
+            <div class="book-grid" id="series-detail-grid"></div>
+          </div>
+        </section>
+
+        <!-- ═══ 阅读历史 ═══ -->
+        <section class="view view-history" data-view="history" data-od-id="region:history" aria-label="阅读历史">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">阅读 · <span id="history-count">0 本</span></p>
+              <h1>阅读历史</h1>
+              <p class="sub">按书聚合的最后阅读位置与累计时长，最近读过的排在前面</p>
+            </div>
+          </div>
+          <div data-state-block="loading">
+            <div class="state-panel">
+              <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+              <h2>正在整理阅读记录</h2>
+              <p>正在汇总每本书的最后位置与累计时长。</p>
+            </div>
+          </div>
+          <div data-state-block="error">
+            <div class="state-panel is-error" data-od-id="C-68">
+              <span class="state-mark" aria-hidden="true">!</span>
+              <h2>阅读历史没能加载</h2>
+              <p>读取时出了点问题。可以重试。</p>
+              <div class="state-actions"><button class="btn btn-primary" type="button" data-retry>重试</button></div>
+            </div>
+          </div>
+          <div data-state-block="empty">
+            <div class="state-panel" data-od-id="C-67">
+              <span class="state-mark" aria-hidden="true">空</span>
+              <h2>还没有阅读记录</h2>
+              <p>打开一本书读上几分钟，这里就会记下最后读到的章节和累计时长。</p>
+              <div class="state-actions"><button class="btn btn-primary" type="button" data-nav="shelf">去书架挑一本</button></div>
+            </div>
+          </div>
+          <div data-state-block="ok">
+            <div class="table-wrap">
+              <table class="table" aria-label="阅读历史">
+                <thead><tr><th scope="col">书</th><th scope="col">最后章节</th><th scope="col">最后阅读</th><th scope="col">累计时长</th><th scope="col">阅读天数</th></tr></thead>
+                <tbody id="history-body"></tbody>
+              </table>
+            </div>
+            <nav class="pagination" aria-label="分页">
+              <button type="button" id="history-prev" data-od-id="C-69" aria-label="上一页">←</button>
+              <span class="is-current num" id="history-page">1</span>
+              <span class="meta" id="history-pages">/ 1</span>
+              <button type="button" id="history-next" data-od-id="C-70" aria-label="下一页">→</button>
+            </nav>
+          </div>
+        </section>
+
+        <!-- ═══ 404 ═══ -->
+        <section class="view view-notfound" data-view="notfound" data-od-id="region:notfound" aria-label="页面不存在">
+          <div class="state-panel">
+            <span class="state-mark" aria-hidden="true">空</span>
+            <h2>这个页面不存在</h2>
+            <p>链接可能过期了，回到书架重新找一本。</p>
+            <div class="state-actions">
+              <button class="btn btn-primary" type="button" data-od-id="C-18" data-nav="shelf">回书架</button>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- H5 排序底部弹层 -->
+<div class="sheet-backdrop" id="sort-sheet" data-od-id="C-21" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="排序方式">
+    <div class="sheet-head">
+      <strong>排序方式</strong>
+      <button class="btn btn-ghost" type="button" data-sheet-close>关闭</button>
+    </div>
+    <div class="sheet-section" role="group" aria-label="阅读状态筛选">
+      <span class="sheet-section-title">阅读状态</span>
+      <button class="sheet-option" type="button" data-sheet-status="" aria-pressed="true">全部</button>
+      <button class="sheet-option" type="button" data-sheet-status="want" aria-pressed="false">想读</button>
+      <button class="sheet-option" type="button" data-sheet-status="reading" aria-pressed="false">在读</button>
+      <button class="sheet-option" type="button" data-sheet-status="done" aria-pressed="false">已读</button>
+    </div>
+    <div class="sheet-list" id="sort-sheet-list" role="group" aria-label="排序选项">
+      <button class="sheet-option" type="button" data-sheet-sort="updated" aria-pressed="true">最近更新</button>
+      <button class="sheet-option" type="button" data-sheet-sort="imported" aria-pressed="false">导入时间</button>
+      <button class="sheet-option" type="button" data-sheet-sort="title" aria-pressed="false">书名</button>
+      <button class="sheet-option" type="button" data-sheet-sort="chapters" aria-pressed="false">章节数</button>
+      <button class="sheet-option" type="button" data-sheet-sort="words" aria-pressed="false">字数</button>
+      <button class="sheet-option" type="button" data-sheet-sort="rating" aria-pressed="false">评分</button>
+    </div>
+  </div>
+</div>
+
+<!-- 批量设作者 -->
+<div class="confirm-backdrop" id="batch-dialog" data-od-id="C-34" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-title">
+    <h2 id="batch-title">批量设置作者</h2>
+    <p class="meta" id="batch-targets">选中 0 本</p>
+    <div class="field">
+      <label for="batch-authors">作者（多位用「、」或逗号分隔）</label>
+      <input class="input" id="batch-authors" placeholder="留空表示清空这些书的作者" value="">
+    </div>
+    <p class="meta" id="batch-hint">作者留空：确认后会把这批书的作者清空。</p>
+    <p class="meta" id="batch-progress" role="status" hidden>已完成 0 / 0</p>
+    <div class="confirm-actions">
+      <button class="btn btn-primary" type="button" id="batch-confirm" disabled>设为…</button>
+      <button class="btn btn-ghost" type="button" id="batch-cancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" data-od-id="C-17" role="status" aria-live="polite" hidden>
+  <span id="toast-text"></span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var PRE = ['长夜', '山雨', '旧巷', '远山', '青川', '灯下', '残卷', '孤舟', '西窗', '古驿', '半坡', '小楼'];
+  var SUF = ['未明', '欲来', '灯影', '淡影', '旧事', '客话', '拾遗', '夜话', '琐记', '遗闻', '手记', '札记'];
+  var AUTHORS = ['林砚', '佚名', '周述', '云间客', '苏时雨'];
+  var SERIES = [{ name: '长夜三部', idx: 3 }, { name: '山雨两部', idx: 2 }, { name: '旧巷外篇', idx: 3 }];
+  var TAGS = ['连载中', '完结', '慢热'];
+  var CAT1 = ['武侠', '都市', '历史'];
+  var STATUS_CYCLE = ['', 'want', 'reading', 'done'];
+  var STATUS_LABEL = { '': '未标记', want: '想读', reading: '在读', done: '已读' };
+  var SORT_LABEL = { updated: '最近更新', imported: '导入时间', title: '书名', chapters: '章节数', words: '字数', rating: '评分' };
+  var PC_PAGE = 24, H5_PAGE = 30;
+  var HOUR = 3600000, DAY = 24 * HOUR, NOW = Date.now();
+
+  var books = (function () {
+    var out = [];
+    for (var i = 0; i < 60; i++) {
+      var title = PRE[i % 12] + SUF[i % 12];
+      if (i >= 12) title = PRE[(i * 5) % 12] + SUF[(i * 7) % 12] + '·' + ['外传', '续篇', '前传', '别录', '补遗'][Math.floor(i / 12) % 5];
+      var chapters = 96 + ((i * 977) % 5800);
+      out.push({
+        id: i + 1,
+        title: title,
+        author: AUTHORS[(i * 3) % AUTHORS.length],
+        chapters: chapters,
+        words: chapters * (2600 + ((i * 37) % 3000)),
+        volumes: i % 3 === 0 ? 3 : 0,
+        rating: i % 4 === 0 ? 0 : 2 + (i % 4),
+        readStatus: i % 5 === 0 ? '' : STATUS_CYCLE[1 + (i % 3)],
+        tag: TAGS[i % 3],
+        cat1: CAT1[i % 3],
+        cat2: i % 3 === 0 ? '江湖' : i % 3 === 1 ? '市井' : '旧朝',
+        series: i < 18 ? SERIES[i % 3].name : '',
+        seriesIndex: i < 18 ? (i % 3) + 1 : 0,
+        newChapters: i % 7 === 0 ? 2 + (i % 5) : 0,
+        importedAt: NOW - i * 5 * HOUR,
+        updatedAt: NOW - ((i * 17) % 40) * DAY - (i % 11) * HOUR,
+        intro: '一套旧稿整理出来的故事，读起来慢，但越到后面越舍不得放下。'
+      });
+    }
+    return out;
+  })();
+
+  var st = {
+    tier: 'pc', view: 'shelf', state: 'ok', mode: 'grid',
+    sort: 'updated', author: '', tag: '', status: '', rating: '', collection: '', cat1: '', cat2: '',
+    page: 1, shown: H5_PAGE, selecting: false, selected: {}, overrides: {},
+    keyword: '', searchTab: 'all', searchPage: 1, seriesQ: '', seriesPage: 1,
+    historyPage: 1, seriesName: SERIES[0].name, lastBook: null
+  };
+
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  // 分档切换会把 PC 专属控件整体移出文档，写入前一律判空
+  function text(sel, value) { var el = $(sel); if (el) el.textContent = value; }
+  function show(el, v) { if (el) el.hidden = !v; }
+  function fmtCount(n) {
+    if (n >= 100000000) return (n / 100000000).toFixed(1) + ' 亿';
+    if (n >= 10000) return (n / 10000).toFixed(1) + ' 万';
+    return String(n);
+  }
+  function fmtDate(ts) { var d = new Date(ts); return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日'; }
+  function statusOf(b) { return st.overrides[b.id] !== undefined ? st.overrides[b.id] : b.readStatus; }
+
+  /* ── toast（4 秒自动消失） ── */
+  var toastTimer = 0;
+  function showToast(text, tone) {
+    var host = $('#toast');
+    $('#toast-text').textContent = text;
+    host.classList.toggle('is-error', tone === 'error');
+    host.hidden = false;
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(function () { host.hidden = true; }, 4000);
+  }
+
+  /* ── 侧栏 / 抽屉 ── */
+  function openNav(on) {
+    document.body.classList.toggle('nav-open', !!on);
+    $$('.nav-toggle, .h5-burger').forEach(function (b) { b.setAttribute('aria-expanded', String(!!on)); });
+  }
+
+  /* ── 分档可达性：与源码 routes.tsx + TierRoute.tsx 一致，错档不画页面而是落回首屏 ── */
+  var VIEW_LABEL = { shelf: '书架', home: '首页', search: '搜索', series: '系列', 'series-detail': '系列详情', history: '阅读历史', notfound: '页面不存在' };
+  function tierAllows(view) {
+    if (st.tier === 'h5') return view === 'shelf' || view === 'home' || view === 'search' || view === 'notfound';
+    // PC：首页由 TierRoute minTier=h5 挡掉，会重定向到书架
+    return view !== 'home';
+  }
+
+  /* ── 视图切换 ── */
+  function setView(view) {
+    st.view = view;
+    document.body.setAttribute('data-view', view);
+    $$('[data-nav]').forEach(function (el) {
+      var target = el.getAttribute('data-nav');
+      var active = target === view || (view === 'series-detail' && target === 'series');
+      if (el.closest('.side-nav')) el.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+    $$('[data-demo="view"]').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-value') === view));
+    });
+    openNav(false);
+    st.force = null;
+    if (!tierAllows(view)) {
+      // 源码是 Navigate 重定向：错档进入直接落回本档首屏，而不是把那一页画出来
+      var fallback = st.tier === 'h5' ? 'home' : 'shelf';
+      var why = st.tier === 'h5'
+        ? '「' + VIEW_LABEL[view] + '」在窄屏不提供，已回到首页。'
+        : '「' + VIEW_LABEL[view] + '」只在窄屏提供，已回到书架。';
+      setView(fallback, true);
+      showToast(why);
+      return;
+    }
+    if (view === 'shelf') renderShelf();
+    if (view === 'home') renderHome();
+    if (view === 'search') renderSearch();
+    if (view === 'series') renderSeries();
+    if (view === 'series-detail') renderSeriesDetail();
+    if (view === 'history') renderHistory();
+    window.scrollTo({ top: 0 });
+  }
+
+  document.addEventListener('click', function (e) {
+    var nav = e.target.closest ? e.target.closest('[data-nav]') : null;
+    if (nav) {
+      e.preventDefault();
+      var target = nav.getAttribute('data-nav');
+      if (target === 'admin' || target === 'dashboard' || target === 'authors' || target === 'import') {
+        openNav(false);
+        showToast('「' + (nav.textContent || '').replace(/\s+/g, '') + '」这一页不在发现域原型里。');
+        return;
+      }
+      setView(target);
+      return;
+    }
+    var opener = e.target.closest ? e.target.closest('[data-open-book]') : null;
+    if (opener) {
+      e.preventDefault();
+      var id = Number(opener.getAttribute('data-open-book'));
+      st.lastBook = id;
+      var book = findBook(id);
+      showToast('已打开《' + (book ? book.title : '这本书') + '》，阅读页与详情页在别的原型里。');
+      return;
+    }
+    var retry = e.target.closest ? e.target.closest('[data-retry]') : null;
+    if (retry) {
+      st.force = null;
+      renderCurrent();
+      syncStateButtons();
+      showToast('已重新读取。');
+      return;
+    }
+  });
+
+  /* ── 三态 ──
+   * 两层：页面按自己的数据判定 pageState（ok / empty），演示控制条用 force 覆盖（加载 / 空 / 错误）。
+   * 切页面时清掉 force，否则上一页的「空」会跟着串到下一页。 */
+  function applyState(pageState) {
+    st.pageState = pageState;
+    var s = st.force || pageState;
+    st.state = s;
+    document.body.setAttribute('data-state', s);
+    if (s === 'empty') syncEmptyCopy();
+  }
+  function renderCurrent() {
+    if (st.view === 'shelf') renderShelf();
+    if (st.view === 'home') renderHome();
+    if (st.view === 'search') renderSearch();
+    if (st.view === 'series') renderSeries();
+    if (st.view === 'series-detail') renderSeriesDetail();
+    if (st.view === 'history') renderHistory();
+  }
+  function syncStateButtons() {
+    $$('[data-demo="state"]').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-value') === st.state));
+    });
+  }
+  function setForceState(state) {
+    st.force = state === 'ok' ? null : state;
+    syncStateButtons();
+    renderCurrent();
+    if (!st.force) applyState(st.pageState);
+    syncStateButtons();
+  }
+
+  function syncEmptyCopy() {
+    var filtering = !!(st.author || st.tag || st.status || st.rating || st.collection || st.cat1);
+    var h5 = st.tier === 'h5';
+    var title = $('#shelf-empty-title'), desc = $('#shelf-empty-desc'), action = $('#shelf-empty-action');
+    if (!title) return;
+    if (filtering) {
+      title.textContent = '没有符合筛选条件的书';
+      desc.textContent = '换一个作者或标签试试，或者清除筛选看全部书目。';
+      action.textContent = '清除筛选';
+      action.setAttribute('data-nav', 'shelf');
+      action.setAttribute('data-filter-clear', '1');
+      action.hidden = false;
+    } else if (h5) {
+      // H5 不能导入：不给一个点了没用的「去导入」，只说明去电脑上做
+      title.textContent = '书架还是空的';
+      desc.textContent = '先在电脑上把存放 txt 的目录导入，书目会同步到这里。';
+      action.hidden = true;
+    } else {
+      title.textContent = '书架还是空的';
+      desc.textContent = '把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。';
+      action.textContent = '去导入';
+      action.setAttribute('data-nav', 'import');
+      action.removeAttribute('data-filter-clear');
+      action.hidden = false;
+    }
+  }
+
+  /* ── 书架数据 ── */
+  function findBook(id) { for (var i = 0; i < books.length; i++) if (books[i].id === id) return books[i]; return null; }
+
+  function filtered() {
+    return books.filter(function (b) {
+      if (st.author && b.author !== st.author) return false;
+      if (st.tag && b.tag !== st.tag) return false;
+      if (st.status && statusOf(b) !== st.status) return false;
+      if (st.rating && b.rating !== Number(st.rating)) return false;
+      if (st.collection === '1' && b.id % 4 !== 0) return false;
+      if (st.collection === '2' && b.id % 5 !== 0) return false;
+      if (st.collection === '3' && b.id % 6 !== 0) return false;
+      if (st.cat1 && b.cat1 !== st.cat1) return false;
+      if (st.cat2 && b.cat2 !== st.cat2) return false;
+      return true;
+    }).sort(function (a, b) {
+      if (st.sort === 'title') return a.title.localeCompare(b.title, 'zh-Hans-CN');
+      if (st.sort === 'chapters') return b.chapters - a.chapters;
+      if (st.sort === 'words') return b.words - a.words;
+      if (st.sort === 'rating') return (b.rating || 0) - (a.rating || 0);
+      if (st.sort === 'imported') return b.importedAt - a.importedAt;
+      return b.updatedAt - a.updatedAt;
+    });
+  }
+
+  function cardHTML(b) {
+    var s = statusOf(b);
+    var picked = !!st.selected[b.id];
+    var intro = st.tier === 'h5' ? '' : '<p class="book-intro">' + esc(b.intro) + '</p>';
+    // 评分星标已移除：评分只在书籍详情页给，书架上第三个可点区会误触（评审冻结决策）
+    return '<article class="book-card' + (st.selecting ? ' is-selecting' : '') + (picked ? ' is-selected' : '') + '" data-status="' + s + '" data-book-id="' + b.id + '" id="book-' + b.id + '" data-od-id="C-30">' +
+      '<a class="book-link" href="#" data-open-book="' + b.id + '">' +
+        '<span class="cover" aria-hidden="true">' + esc(b.title.charAt(0)) + '</span>' +
+        '<span class="book-card-body">' +
+          '<h3 class="book-title">' + esc(b.title) + '</h3>' +
+          '<p class="book-author">' + esc(b.author) + '</p>' +
+          '<p class="book-meta"><span class="num">' + b.chapters + ' 章</span><span class="num">' + fmtCount(b.words) + ' 字</span>' +
+            (b.series ? '<span>' + esc(b.series) + '</span>' : '') +
+            (b.newChapters ? '<span class="pill is-live">新章 +' + b.newChapters + '</span>' : '') +
+          '</p>' + intro +
+        '</span>' +
+      '</a>' +
+      '<div class="book-card-foot">' +
+        '<button class="book-status" type="button" data-cycle="' + b.id + '" data-status="' + s + '" data-od-id="C-31" aria-label="阅读状态：' + STATUS_LABEL[s] + '，点击切换">' + STATUS_LABEL[s] + '</button>' +
+      '</div>' +
+      (st.selecting ? '<span class="book-check" aria-hidden="true">' + (picked ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>' : '') + '</span>' : '') +
+      '</article>';
+  }
+
+  function renderShelf() {
+    var list = filtered();
+    var total = list.length;
+    var pageSize = st.tier === 'h5' ? H5_PAGE : PC_PAGE;
+    var pages = Math.max(1, Math.ceil(total / pageSize));
+    if (st.page > pages) st.page = pages;
+    var start = st.tier === 'h5' ? 0 : (st.page - 1) * pageSize;
+    var slice = st.tier === 'h5' ? list.slice(0, st.shown) : list.slice(start, start + pageSize);
+
+    var grid = $('#shelf-grid');
+    if (grid) grid.innerHTML = slice.map(cardHTML).join('');
+
+    var filtering = !!(st.author || st.tag || st.status || st.rating || st.collection || st.cat1);
+    // H5 档位下 PC 专属控件已被移出文档，写 DOM 前一律判空——否则这里一抛错，
+    // 后面的弹层收起与「没有更多了」都不会执行
+    text('#shelf-count', fmtCount(total) + ' 本');
+    text('#shelf-title', st.tier === 'h5' ? '书架' : (st.page === 1 ? '最近入库' : '书架 · 第 ' + st.page + ' 页'));
+    text('#shelf-sub', '按' + SORT_LABEL[st.sort] + '排序 · 共 ' + total + ' 本' + (filtering ? '（已筛选）' : ''));
+    text('#shelf-page', String(st.page));
+    text('#shelf-pages', '/ ' + pages);
+    if ($('#shelf-prev')) $('#shelf-prev').disabled = st.page <= 1;
+    if ($('#shelf-next')) $('#shelf-next').disabled = st.page >= pages;
+    var pag = document.getElementById('shelf-pagination');
+    if (pag) pag.hidden = pages <= 1 || st.tier === 'h5';
+
+    var moreBtn = $('#shelf-load-more'), end = $('#shelf-end');
+    if (moreBtn) moreBtn.hidden = slice.length >= total;
+    if (end) { end.hidden = slice.length < total; end.textContent = '没有更多了 · 共 ' + total + ' 本'; }
+
+    if ($('#shelf-filter-clear')) $('#shelf-filter-clear').hidden = !filtering;
+    if ($('#shelf-rating-hint')) $('#shelf-rating-hint').hidden = !st.rating;
+    text('#shelf-batch-author', '批量设作者（' + (Object.keys(st.selected).length) + '）');
+    if ($('#shelf-batch-author')) $('#shelf-batch-author').disabled = Object.keys(st.selected).length === 0;
+    text('#shelf-sort-trigger', '排序：' + SORT_LABEL[st.sort]);
+    if ($('#shelf-sort-trigger')) $('#shelf-sort-trigger').hidden = st.tier !== 'h5';
+    document.body.setAttribute('data-mode', st.mode);
+    applyState(total === 0 ? 'empty' : 'ok');
+  }
+
+  function renderHome() {
+    // 空态：没有阅读记录时不给「继续阅读」大卡，改给一句去书架（源码 HomePage 的 EmptyPanel 分支）
+    var empty = st.state === 'empty';
+    if ($('#home-empty')) $('#home-empty').hidden = !empty;
+    var resumeCard = $('[data-od-id="C-42"]');
+    if (resumeCard) resumeCard.hidden = empty;
+    var host = $('#home-recent-list');
+    if (!host) return;
+    // 最近入库的三态：加载 / 错误 / 正常（评审 P0-1，原先只判了 empty）
+    var gate = st.force || st.pageState;
+    var loadingBox = $('#home-loading'), errorBox = $('#home-error');
+    if (loadingBox) loadingBox.hidden = gate !== 'loading';
+    if (errorBox) errorBox.hidden = gate !== 'error';
+    host.hidden = gate === 'loading' || gate === 'error';
+    if (host.hidden) return;
+    host.innerHTML = books.slice(0, 5).map(function (b) {
+      return '<a class="h5-row" href="#" data-open-book="' + b.id + '" data-od-id="C-48"><span class="cover cover-xs" aria-hidden="true">' + esc(b.title.charAt(0)) + '</span>' +
+        '<span class="h5-row-text"><span class="h5-row-title">' + esc(b.title) + '</span><span class="meta">' + esc(b.author) + '</span></span>' +
+        '<span class="h5-row-pct num">' + b.chapters + ' 章</span></a>';
+    }).join('');
+  }
+
+  /* ── 书架交互 ── */
+  $('#shelf-sort').addEventListener('change', function (e) { st.sort = e.target.value; st.page = 1; renderShelf(); syncSheet(); });
+  $('#shelf-filter-status').addEventListener('change', function (e) { st.status = e.target.value; st.page = 1; renderShelf(); });
+  $('#shelf-filter-rating').addEventListener('change', function (e) { st.rating = e.target.value; st.page = 1; renderShelf(); });
+  $('#shelf-filter-collection').addEventListener('change', function (e) { st.collection = e.target.value; st.page = 1; renderShelf(); });
+  $('#shelf-filter-author').addEventListener('change', function (e) { st.author = e.target.value; st.page = 1; renderShelf(); });
+  $('#shelf-filter-category').addEventListener('change', function (e) {
+    st.cat1 = e.target.value; st.cat2 = '';
+    var sub = $('#shelf-filter-subcategory');
+    var subLabel = $('#shelf-subcategory-label');
+    var leaves = st.cat1 === '武侠' ? ['江湖', '刀客'] : st.cat1 === '都市' ? ['市井', '职场'] : st.cat1 === '历史' ? ['旧朝', '边关'] : [];
+    if (subLabel) subLabel.hidden = leaves.length === 0;
+    sub.innerHTML = '<option value="">全部小分类</option>' + leaves.map(function (l) { return '<option value="' + l + '">' + l + '</option>'; }).join('');
+    st.page = 1; renderShelf();
+  });
+  $('#shelf-filter-subcategory').addEventListener('change', function (e) { st.cat2 = e.target.value; st.page = 1; renderShelf(); });
+  $('#shelf-filter-tags').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-tag]');
+    if (!btn) return;
+    st.tag = btn.getAttribute('data-tag');
+    $$('#shelf-filter-tags .chip').forEach(function (c) { c.classList.toggle('is-active', c === btn); });
+    st.page = 1; renderShelf();
+  });
+  $('#shelf-filter-clear').addEventListener('click', clearFilters);
+  function clearFilters() {
+    st.author = ''; st.tag = ''; st.status = ''; st.rating = ''; st.collection = ''; st.cat1 = ''; st.cat2 = '';
+    $('#shelf-sort').value = st.sort;
+    $('#shelf-filter-status').value = '';
+    $('#shelf-filter-rating').value = '';
+    $('#shelf-filter-collection').value = '';
+    $('#shelf-filter-author').value = '';
+    $('#shelf-filter-category').value = '';
+    if ($('#shelf-subcategory-label')) $('#shelf-subcategory-label').hidden = true;
+    $$('#shelf-filter-tags .chip').forEach(function (c, i) { c.classList.toggle('is-active', i === 0); });
+    st.page = 1; renderShelf();
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-filter-clear]')) clearFilters();
+  });
+
+  $('#shelf-grid').addEventListener('click', function (e) {
+    var cycle = e.target.closest('[data-cycle]');
+    if (cycle) {
+      e.preventDefault();
+      var id = Number(cycle.getAttribute('data-cycle'));
+      var book = findBook(id);
+      if (!book) return;
+      var cur = statusOf(book);
+      var next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length];
+      st.overrides[id] = next;
+      renderShelf();
+      showToast('《' + book.title + '》标记为「' + STATUS_LABEL[next] + '」。');
+      return;
+    }
+    var pick = e.target.closest('[data-select-pick]');
+    if (pick) {
+      var sid = Number(pick.getAttribute('data-select-pick'));
+      if (st.selected[sid]) delete st.selected[sid]; else st.selected[sid] = true;
+      renderShelf();
+      return;
+    }
+    if (st.selecting) {
+      var card = e.target.closest('.book-card');
+      if (card) {
+        e.preventDefault();
+        var cid = Number(card.getAttribute('data-book-id'));
+        if (st.selected[cid]) delete st.selected[cid]; else st.selected[cid] = true;
+        renderShelf();
+      }
+    }
+  });
+
+  $('#shelf-select-toggle').addEventListener('click', function () {
+    st.selecting = !st.selecting;
+    st.selected = {};
+    this.setAttribute('aria-pressed', String(st.selecting));
+    this.textContent = st.selecting ? '退出选择' : '选择';
+    $('#shelf-batch-author').hidden = !st.selecting;
+    renderShelf();
+    showToast(st.selecting ? '勾选几本书，再点「批量设作者」。' : '已退出选择。');
+  });
+
+  $('#shelf-random').addEventListener('click', function () {
+    var list = filtered();
+    if (!list.length) { showToast('没有符合条件的书，先放宽筛选试试。', 'error'); return; }
+    var pick = list[Math.floor(Math.random() * list.length)];
+    showToast('随机挑到《' + pick.title + '》，正在打开详情。');
+    window.setTimeout(function () { showToast('已打开《' + pick.title + '》的详情页；详情页在书目域原型里。'); }, 600);
+  });
+
+  $('#shelf-prev').addEventListener('click', function () { if (st.page > 1) { st.page--; renderShelf(); window.scrollTo({ top: 0 }); } });
+  $('#shelf-next').addEventListener('click', function () { st.page++; renderShelf(); window.scrollTo({ top: 0 }); });
+  $('#shelf-load-more').addEventListener('click', function () {
+    var total = filtered().length;
+    if (st.shown >= total) return;
+    var loading = $('#shelf-more-loading'), btn = $('#shelf-load-more');
+    loading.hidden = false; btn.hidden = true;
+    window.setTimeout(function () {
+      st.shown = Math.min(total, st.shown + H5_PAGE);
+      loading.hidden = true; btn.hidden = false;
+      renderShelf();
+    }, 600);
+  });
+  var homeRetry = document.getElementById('home-retry');
+  if (homeRetry) homeRetry.addEventListener('click', function () { st.force = null; renderHome(); showToast('已重新读取书目。'); });
+  $('#shelf-more-retry').addEventListener('click', function () { $('#shelf-more-error').hidden = true; showToast('已重试。'); });
+
+  /* ── H5 排序弹层 ── */
+  function openSheet() {
+    if (st.tier !== 'h5') { showToast('排序弹层只在手机宽度（≤768）出现。'); return; }
+    $('#sort-sheet').hidden = false;
+    document.body.classList.add('h5-sheet-open');
+    $('#shelf-sort-trigger').setAttribute('aria-expanded', 'true');
+    syncSheet();
+    window.setTimeout(function () { var cur = $('#sort-sheet [aria-pressed="true"]'); if (cur) cur.focus(); }, 30);
+  }
+  function closeSheet() {
+    $('#sort-sheet').hidden = true;
+    document.body.classList.remove('h5-sheet-open');
+    $('#shelf-sort-trigger').setAttribute('aria-expanded', 'false');
+    $('#shelf-sort-trigger').focus();
+  }
+  function syncSheet() {
+    $$('#sort-sheet [data-sheet-sort]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-sheet-sort') === st.sort)); });
+    $$('#sort-sheet [data-sheet-status]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-sheet-status') === st.status)); });
+  }
+  $('#shelf-sort-trigger').addEventListener('click', openSheet);
+  $('#sort-sheet').addEventListener('click', function (e) {
+    if (e.target === this) { closeSheet(); return; }
+    if (e.target.closest('[data-sheet-close]')) { closeSheet(); return; }
+    var so = e.target.closest('[data-sheet-sort]');
+    if (so) { st.sort = so.getAttribute('data-sheet-sort'); st.page = 1; renderShelf(); syncSheet(); closeSheet(); return; }
+    var ss = e.target.closest('[data-sheet-status]');
+    if (ss) { st.status = ss.getAttribute('data-sheet-status'); st.page = 1; renderShelf(); syncSheet(); closeSheet(); }
+  });
+
+  /* ── 批量设作者 ── */
+  function openBatch() {
+    var ids = Object.keys(st.selected);
+    var host = $('#batch-dialog');
+    if (!ids.length) { showToast('先勾选至少一本书。', 'error'); return; }
+    var titles = ids.slice(0, 3).map(function (id) { var b = findBook(Number(id)); return b ? '《' + b.title + '》' : ''; }).join('');
+    $('#batch-targets').textContent = '选中 ' + ids.length + ' 本：' + titles + (ids.length > 3 ? ' 等 ' + ids.length + ' 本' : '');
+    $('#batch-authors').value = '';
+    $('#batch-progress').hidden = true;
+    $('#batch-confirm').disabled = false;
+    $('#batch-confirm').textContent = '清空 ' + ids.length + ' 本作者';
+    host.hidden = false;
+  }
+  function closeBatch() { $('#batch-dialog').hidden = true; }
+  $('#shelf-batch-author').addEventListener('click', openBatch);
+  $('#batch-cancel').addEventListener('click', closeBatch);
+  $('#batch-dialog').addEventListener('click', function (e) { if (e.target === this) closeBatch(); });
+  $('#batch-authors').addEventListener('input', function () {
+    var names = this.value.split(/[、,，]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    var count = Object.keys(st.selected).length;
+    $('#batch-hint').textContent = names.length === 0 ? '作者留空：确认后会把这批书的作者清空。' : '将把这批书的作者统一设为 ' + names.join('、') + '。';
+    $('#batch-confirm').textContent = names.length === 0 ? '清空 ' + count + ' 本作者' : '设为 ' + names.join('、');
+  });
+  $('#batch-confirm').addEventListener('click', function () {
+    var names = $('#batch-authors').value.split(/[、,，]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    var ids = Object.keys(st.selected);
+    var host = $('#batch-dialog'), btn = this;
+    btn.disabled = true;
+    btn.textContent = '正在更新…';
+    var done = 0;
+    var progress = $('#batch-progress');
+    progress.hidden = false;
+    var timer = window.setInterval(function () {
+      done += 1;
+      progress.textContent = '已完成 ' + done + ' / ' + ids.length;
+      if (done >= ids.length) {
+        window.clearInterval(timer);
+        ids.forEach(function (id) { var b = findBook(Number(id)); if (b && names.length) b.author = names[0]; });
+        host.hidden = true;
+        st.selecting = false;
+        st.selected = {};
+        $('#shelf-select-toggle').setAttribute('aria-pressed', 'false');
+        $('#shelf-select-toggle').textContent = '选择';
+        $('#shelf-batch-author').hidden = true;
+        renderShelf();
+        showToast('已批量更新 ' + ids.length + ' 本书的作者');
+      }
+    }, 260);
+  });
+
+  /* ── 搜索 ── */
+  function searchable() {
+    var q = st.keyword.trim();
+    if (q.length < 2) return { books: [], hits: [], tooShort: q.length > 0, q: q };
+    var bookHits = books.filter(function (b) { return b.title.indexOf(q) >= 0 || b.author.indexOf(q) >= 0; });
+    var hits = [];
+    // 章节标题取自书名（不是关键词），作者命中的书不会凭空长出一堆含作者名的章节
+    var CH_TAIL = ['之前', '之后', '以外', '未尽', '渐深', '初起'];
+    books.forEach(function (b) {
+      for (var c = 1; c <= 6; c++) {
+        var title = '第 ' + c + ' 章 ' + b.title.slice(0, 2) + CH_TAIL[(c - 1) % CH_TAIL.length];
+        if (title.indexOf(q) >= 0) hits.push({ book: b, chapterId: c, title: title });
+      }
+    });
+    return { books: bookHits, hits: hits, tooShort: false, q: q };
+  }
+
+  function renderSearch() {
+    var r = searchable();
+    var q = r.q;
+    $('#search-title').textContent = q ? '“' + q + '”' : '搜索';
+    $('#search-input').value = q;
+    $('#search-book-count').textContent = String(r.books.length);
+    $('#search-chapter-count').textContent = String(r.hits.length);
+    $('#search-summary-text').textContent = '找到 ' + r.books.length + ' 本书 · ' + r.hits.length + ' 个章节';
+
+    if (!q) {
+      $('#search-empty-title').textContent = '输入关键词开始查找';
+      $('#search-empty-desc').textContent = '可以按书名、作者或章节标题查找。';
+      applyState('empty');
+      $('#search-pagination').hidden = true;
+      return;
+    }
+    if (r.tooShort) {
+      $('#search-empty-title').textContent = '关键词太短';
+      $('#search-empty-desc').textContent = '至少输入 2 个字，才能找到有意义的匹配。';
+      applyState('empty');
+      $('#search-pagination').hidden = true;
+      return;
+    }
+    applyState('ok');
+    if (!r.books.length && !r.hits.length) {
+      $('#search-empty-title').textContent = '没有匹配的书名、作者或章节标题';
+      $('#search-empty-desc').textContent = '试试更短的关键词，或者换一个说法。';
+      applyState('empty');
+      $('#search-pagination').hidden = true;
+      return;
+    }
+
+    var showBooks = st.searchTab !== 'chapter';
+    var showHits = st.searchTab !== 'book';
+    var PER = 8;
+    var pageBooks = r.books.slice((st.searchPage - 1) * PER, st.searchPage * PER);
+    var pageHits = r.hits.slice((st.searchPage - 1) * PER, st.searchPage * PER);
+    $('#search-books').innerHTML = showBooks ? pageBooks.map(function (b) {
+      return '<article class="search-book" data-od-id="C-51"><a class="book-link" href="#" data-open-book="' + b.id + '">' +
+        '<span class="cover cover-xs" aria-hidden="true">' + esc(b.title.charAt(0)) + '</span>' +
+        '<span class="book-card-body"><h3 class="book-title">' + esc(b.title) + '</h3>' +
+        '<p class="book-author">' + esc(b.author) + '</p>' +
+        '<p class="book-meta"><span class="num">' + b.chapters + ' 章</span><span class="num">' + fmtCount(b.words) + ' 字</span></p></span></a></article>';
+    }).join('') : '';
+    $('#search-hits').innerHTML = showHits ? pageHits.map(function (h) {
+      return '<article class="hit" data-od-id="C-52"><p class="hit-meta">' +
+        '<a href="#" data-open-book="' + h.book.id + '">' + esc(h.book.title) + '</a><span aria-hidden="true">·</span>' +
+        '<a href="#" data-open-book="' + h.book.id + '" data-chapter="' + h.chapterId + '">' + esc(h.title) + '</a></p></article>';
+    }).join('') : '';
+    $('#search-books-total').textContent = String(r.books.length);
+    $('#search-chapters-total').textContent = String(r.hits.length);
+
+    var maxRows = Math.max(r.books.length, r.hits.length);
+    var pages = Math.max(1, Math.ceil(maxRows / PER));
+    $('#search-page').textContent = String(Math.min(st.searchPage, pages));
+    $('#search-pages').textContent = '/ ' + pages;
+    $('#search-prev').disabled = st.searchPage <= 1;
+    $('#search-next').disabled = st.searchPage >= pages;
+    $('#search-pagination').hidden = pages <= 1;
+    
+    var tabNote = $('#search-tab-empty');
+    if (st.searchTab === 'book' && r.books.length === 0 && r.hits.length > 0) {
+      tabNote.hidden = false;
+      tabNote.textContent = '这个关键词没有匹配的书名或作者，可以切到「章节标题」看看。';
+    } else if (st.searchTab === 'chapter' && r.hits.length === 0 && r.books.length > 0) {
+      tabNote.hidden = false;
+      tabNote.textContent = '这个关键词没有匹配的章节标题，可以切到「书名和作者」看看。';
+    } else {
+      tabNote.hidden = true;
+    }
+  }
+
+  $$('[data-search-tab]').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      st.searchTab = tab.getAttribute('data-search-tab');
+      $$('[data-search-tab]').forEach(function (t) {
+        var on = t === tab;
+        t.classList.toggle('is-active', on);
+        t.setAttribute('aria-selected', String(on));
+      });
+      renderSearch();
+    });
+  });
+
+  function submitSearch(form) {
+    var input = form.querySelector('input[type="search"]');
+    st.keyword = (input.value || '').trim();
+    st.searchPage = 1;
+    setView('search');
+    renderSearch();
+  }
+  $('#search-form').addEventListener('submit', function (e) { e.preventDefault(); submitSearch(this); });
+  $('#home-search').addEventListener('submit', function (e) { e.preventDefault(); submitSearch(this); });
+  $('#topbar-search').addEventListener('submit', function (e) { e.preventDefault(); submitSearch(this); });
+  $('#search-prev').addEventListener('click', function () { if (st.searchPage > 1) { st.searchPage--; renderSearch(); } });
+  $('#search-next').addEventListener('click', function () { st.searchPage++; renderSearch(); });
+
+  /* ── 系列 ── */
+  function seriesList() {
+    var map = {};
+    books.forEach(function (b) {
+      if (!b.series) return;
+      if (!map[b.series]) map[b.series] = { name: b.series, count: 0, words: 0, coverBookId: b.id, updatedAt: 0 };
+      var s = map[b.series];
+      s.count += 1; s.words += b.words;
+      if (b.updatedAt > s.updatedAt) s.updatedAt = b.updatedAt;
+    });
+    var out = Object.keys(map).map(function (k) { return map[k]; });
+    if (st.seriesQ) out = out.filter(function (s) { return s.name.indexOf(st.seriesQ) >= 0; });
+    return out;
+  }
+  function renderSeries() {
+    var list = seriesList();
+    text('#series-count', list.length + ' 个');
+    if ($('#series-search-clear')) $('#series-search-clear').hidden = !st.seriesQ;
+    $('#series-grid').innerHTML = list.map(function (s) {
+      return '<article class="book-card" data-od-id="C-57" data-series="' + esc(s.name) + '"><a class="book-link" href="#" data-series-open="' + esc(s.name) + '">' +
+        '<span class="cover" aria-hidden="true">' + esc(s.name.charAt(0)) + '</span>' +
+        '<span class="book-card-body"><h3 class="book-title">' + esc(s.name) + '</h3>' +
+        '<p class="book-author">' + s.count + ' 本 · ' + fmtCount(s.words) + ' 字</p>' +
+        '<p class="book-meta"><span>最近更新 ' + fmtDate(s.updatedAt) + '</span></p></span></a></article>';
+    }).join('');
+    var pages = 1;
+    $('#series-page').textContent = '1';
+    $('#series-pages').textContent = '/ ' + pages;
+    $('#series-prev').disabled = true;
+    $('#series-next').disabled = pages <= 1;
+    if (list.length === 0) {
+      $('#series-empty-title').textContent = st.seriesQ ? '没有匹配的系列' : '还没有系列';
+      $('#series-empty-desc').textContent = st.seriesQ ? '换个关键词试试，或者清除搜索看全部系列。' : '书的元信息里带系列名（例如多部成套的作品）时，会聚合到这里。';
+      applyState('empty');
+    } else {
+      applyState('ok');
+    }
+  }
+  $('#series-search').addEventListener('submit', function (e) {
+    e.preventDefault();
+    st.seriesQ = ($('#series-search-input').value || '').trim();
+    renderSeries();
+  });
+  $('#series-search-clear').addEventListener('click', function () { st.seriesQ = ''; $('#series-search-input').value = ''; renderSeries(); });
+  $('#series-grid').addEventListener('click', function (e) {
+    var open = e.target.closest('[data-series-open]');
+    if (!open) return;
+    e.preventDefault();
+    st.seriesName = open.getAttribute('data-series-open');
+    setView('series-detail');
+  });
+  $('#series-prev').addEventListener('click', function () {});
+  $('#series-next').addEventListener('click', function () { showToast('这个系列只有一页。'); });
+
+  /* ── 系列详情 ── */
+  function renderSeriesDetail() {
+    var items = books.filter(function (b) { return b.series === st.seriesName; }).sort(function (a, b) { return a.seriesIndex - b.seriesIndex; });
+    var words = items.reduce(function (sum, b) { return sum + b.words; }, 0);
+    $('#series-detail-crumb').textContent = st.seriesName;
+    $('#series-detail-title').textContent = st.seriesName;
+    $('#series-detail-count').textContent = items.length + ' 本';
+    $('#series-detail-sub').textContent = items.length ? '本系列合计 ' + fmtCount(words) + ' 字 · 按系列序号排列' : '同一系列的书会聚合到这里';
+    $('#series-detail-grid').innerHTML = items.map(function (b, i) {
+      return '<article class="book-card" data-od-id="C-63"><a class="book-link" href="#" data-open-book="' + b.id + '">' +
+        '<span class="cover" aria-hidden="true">' + esc(b.title.charAt(0)) + '</span>' +
+        '<span class="book-card-body"><h3 class="book-title">' + esc(b.title) + '</h3>' +
+        '<p class="book-author">' + esc(b.author) + ' · 第 ' + b.seriesIndex + ' 部</p>' +
+        '<p class="book-meta"><span class="num">' + b.chapters + ' 章</span><span class="num">' + fmtCount(b.words) + ' 字</span></p>' +
+        '<p class="book-intro">系列内第 ' + (i + 1) + ' 本</p></span></a></article>';
+    }).join('');
+    applyState(items.length ? 'ok' : 'empty');
+  }
+
+  /* ── 阅读历史 ── */
+  var HISTORY = [
+    { id: 1, chapter: '第 42 章 夜行', at: NOW - 2 * HOUR, seconds: 12840, days: 9 },
+    { id: 2, chapter: '第 108 章 雨停之后', at: NOW - 26 * HOUR, seconds: 8420, days: 6 },
+    { id: 3, chapter: '第 12 章 灯下', at: NOW - 3 * DAY, seconds: 3910, days: 3 },
+    { id: 4, chapter: '第 76 章 远山', at: NOW - 5 * DAY, seconds: 15230, days: 11 },
+    { id: 5, chapter: '', at: NOW - 9 * DAY, seconds: 620, days: 1 }
+  ];
+  function fmtDuration(sec) {
+    var m = Math.round(sec / 60);
+    if (m >= 60) return Math.floor(m / 60) + ' 小时 ' + (m % 60) + ' 分';
+    return m + ' 分';
+  }
+  function renderHistory() {
+    var rows = HISTORY;
+    text('#history-count', rows.length + ' 本');
+    $('#history-body').innerHTML = rows.map(function (r) {
+      var b = findBook(r.id);
+      return '<tr data-od-id="C-66"><td><a class="book-title book-title-link" href="#" data-open-book="' + r.id + '">' + esc(b ? b.title : '这本书') + '</a></td>' +
+        '<td class="meta">' + esc(r.chapter || '—') + '</td>' +
+        '<td class="num">' + fmtDate(r.at) + '</td>' +
+        '<td class="num">' + fmtDuration(r.seconds) + '</td>' +
+        '<td class="num">' + (r.days > 0 ? r.days + ' 天' : '—') + '</td></tr>';
+    }).join('');
+    $('#history-page').textContent = '1';
+    $('#history-pages').textContent = '/ 1';
+    $('#history-prev').disabled = true;
+    $('#history-next').disabled = true;
+    applyState(rows.length ? 'ok' : 'empty');
+  }
+  $('#history-prev').addEventListener('click', function () {});
+  $('#history-next').addEventListener('click', function () {});
+
+  /* ── 顶栏视图切换 ── */
+  $$('#shelf-view-toggle [data-mode]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      st.mode = btn.getAttribute('data-mode');
+      $$('#shelf-view-toggle [data-mode]').forEach(function (b) { b.setAttribute('aria-pressed', String(b === btn)); });
+      document.body.setAttribute('data-mode', st.mode);
+    });
+  });
+
+  /* ── 汉堡 / 遮罩 / Esc ── */
+  $$('.nav-toggle, .h5-burger').forEach(function (btn) {
+    btn.addEventListener('click', function () { openNav(!document.body.classList.contains('nav-open')); });
+  });
+  $('[data-od-id="C-16"]').addEventListener('click', function () { openNav(false); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('#batch-dialog').hidden) { closeBatch(); return; }
+    if (!$('#sort-sheet').hidden) { closeSheet(); return; }
+    if (document.body.classList.contains('nav-open')) { openNav(false); return; }
+    if (!$('#toast').hidden) { $('#toast').hidden = true; }
+  });
+
+  /* ── 演示控制条 ── */
+  $$('[data-demo="view"]').forEach(function (b) {
+    b.addEventListener('click', function () { setView(b.getAttribute('data-value')); });
+  });
+  $$('[data-demo="state"]').forEach(function (b) {
+    b.addEventListener('click', function () { setForceState(b.getAttribute('data-value')); });
+  });
+  $$('[data-demo="width"]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var w = Number(b.getAttribute('data-value'));
+      $$('[data-demo="width"]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      var stage = $('#stage');
+      stage.style.width = w < 1440 ? w + 'px' : '';
+      stage.style.marginLeft = w < 1440 ? '0' : '';
+      syncTier();
+    });
+  });
+  $$('[data-demo="nav"], [data-demo="sheet"], [data-demo="batch"], [data-demo="toast"]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var kind = b.getAttribute('data-demo');
+      if (kind === 'nav') { if (st.tier !== 'h5') showToast('抽屉只在手机宽度（≤768）出现。'); else openNav(true); }
+      else if (kind === 'sheet') openSheet();
+      else if (kind === 'batch') openBatch();
+      else showToast('这是一条 4 秒后自动消失的提示。');
+    });
+  });
+
+  /* ── 分档：按舞台宽度决定 PC / H5，管理入口在 H5 直接移出文档 ── */
+  var stash = { pc: [], h5: [] };
+  function stashNodes(nodes, bucket) {
+    for (var i = nodes.length - 1; i >= 0; i--) {
+      var el = nodes[i];
+      if (!el.parentNode) continue;
+      var mark = document.createComment('stash:' + bucket);
+      el.parentNode.insertBefore(mark, el);
+      el.parentNode.removeChild(el);
+      stash[bucket].push({ node: el, mark: mark });
+    }
+  }
+  function restoreNodes(bucket) {
+    var list = stash[bucket];
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      if (item.mark && item.mark.parentNode) item.mark.parentNode.insertBefore(item.node, item.mark);
+      if (item.mark && item.mark.parentNode) item.mark.parentNode.removeChild(item.mark);
+    }
+    stash[bucket] = [];
+  }
+  /** 演示控制条在窄屏会换行/收窄，粘性偏移跟着它走 */
+  function syncDemoHeight() {
+    var bar = document.querySelector('.demo-bar');
+    document.documentElement.style.setProperty('--demo-h', (bar ? bar.offsetHeight : 46) + 'px');
+  }
+
+  var lastTier = null;
+  function syncTier() {
+    var stage = $('#stage');
+    var width = stage.clientWidth || window.innerWidth;
+    var tier = width <= 768 ? 'h5' : 'pc';
+    document.body.setAttribute('data-tier', tier);
+    if (tier === lastTier) { st.tier = tier; return; }
+    lastTier = tier; st.tier = tier;
+    if (tier === 'h5') {
+      restoreNodes('h5');
+      stashNodes($$('[data-pc-only]'), 'pc');
+      openNav(false);
+      st.shown = H5_PAGE;
+    } else {
+      restoreNodes('pc');
+      stashNodes($$('[data-h5-only]'), 'h5');
+      openNav(false);
+      st.page = 1;
+    }
+    renderShelf();
+    if (st.view === 'search') renderSearch();
+    if (st.view === 'history') renderHistory();
+    if (st.view === 'series') renderSeries();
+    if (st.view === 'series-detail') renderSeriesDetail();
+    if (st.view === 'home') renderHome();
+    syncDemoHeight();
+    if (st.state === 'empty') syncEmptyCopy();
+  }
+
+  /* ── 初始化 ── */
+  (function init() {
+    var opts = AUTHORS.map(function (a) { return '<option value="' + a + '">' + a + '（' + books.filter(function (b) { return b.author === a; }).length + '）</option>'; }).join('');
+    $('#shelf-filter-author').innerHTML = '<option value="">全部作者</option>' + opts;
+    renderShelf(); renderHome(); renderSearch(); renderSeries(); renderSeriesDetail(); renderHistory();
+    syncTier();
+    syncDemoHeight();
+    window.addEventListener('resize', syncDemoHeight);
+    if (window.ResizeObserver) new ResizeObserver(syncTier).observe(document.getElementById('stage'));
+    window.addEventListener('resize', syncTier);
+  })();
+})();
+</script>
+</body>
+</html>

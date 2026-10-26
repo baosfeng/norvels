@@ -1,0 +1,1588 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>norvels · 书目域交互原型（书籍详情 · 作者 · 驾驶舱）</title>
+<style>
+:root {
+  --bg: #fbf6ee;
+  --surface: #fffdf8;
+  --surface-warm: #f1e3cf;
+  --fg: #201914;
+  --fg-2: #4c4037;
+  --muted: #7a6d63;
+  --meta: #9b5b32;
+  --border: #ded2c3;
+  --border-soft: #eee4d7;
+  --accent: #9b5b32;
+  --accent-on: #ffffff;
+  --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+  --accent-active: color-mix(in oklab, var(--accent), black 14%);
+  --success: #4f8a4f;
+  --warn: #c9822f;
+  --danger: #b33a3a;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 17px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: 42px;
+  --text-3xl: 64px;
+  --text-4xl: 88px;
+  --leading-body: 1.62;
+  --leading-tight: 1;
+  --tracking-display: -0.025em;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --section-y-desktop: 112px;
+  --section-y-tablet: 80px;
+  --section-y-phone: 56px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 9999px;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 20px 52px rgba(32, 25, 20, 0.12);
+  --focus-ring: 0 0 0 4px rgba(155, 91, 50, 0.24);
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max: 1180px;
+  --container-gutter-desktop: 36px;
+  --container-gutter-tablet: 24px;
+  --container-gutter-phone: 16px;
+  --danger-text: color-mix(in oklab, var(--danger), var(--fg) 28%);
+  --success-text: color-mix(in oklab, var(--success), var(--fg) 30%);
+  --warn-text: color-mix(in oklab, var(--warn), var(--fg) 34%);
+  --scrim: rgba(32, 25, 20, 0.42);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:var(--text-sm);line-height:var(--leading-body);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--font-display);font-weight:400;letter-spacing:var(--tracking-display);margin:0;line-height:var(--leading-tight)}
+h1{font-size:var(--text-xl)}
+h2{font-size:var(--text-lg)}
+h3{font-size:var(--text-base)}
+p{margin:0}
+button{font-family:inherit;font-size:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:0;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.meta{font-size:var(--text-xs);color:var(--fg-2)}
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:var(--text-xs);color:var(--meta);text-transform:none;letter-spacing:.04em;margin-bottom:6px}
+.sub{font-size:var(--text-sm);color:var(--fg-2);margin-top:6px}
+.danger-text{color:var(--danger-text)}
+
+/* ── 演示控制条（只存在于原型） ── */
+.demo-bar{position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center;padding:10px var(--space-4);background:var(--surface-warm);border-bottom:1px solid var(--border)}
+.demo-bar .grp{display:flex;gap:6px;align-items:center;min-width:0}
+.demo-bar .lbl{font-size:var(--text-xs);color:var(--fg-2);font-weight:600}
+.demo-bar .note{margin-left:auto;font-size:var(--text-xs);color:var(--fg-2)}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius-pill);overflow:hidden;background:var(--bg)}
+.seg button{min-height:32px;padding:0 12px;border:0;background:transparent;cursor:pointer;font-size:var(--text-xs);color:var(--fg-2);white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-on)}
+.seg button:disabled{color:var(--muted);cursor:not-allowed;background:var(--border-soft)}
+.select,.input{min-height:32px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--fg);font-family:inherit;font-size:var(--text-sm)}
+.select:hover,.input:hover{border-color:var(--muted)}
+.input{width:100%;min-height:36px;padding:8px 10px}
+textarea.input{min-height:70px;resize:vertical}
+
+/* ── 外壳 ── */
+.app{display:flex;min-height:calc(100vh - 46px);max-width:1440px;margin:0 auto}
+.sidebar{width:208px;flex:0 0 208px;border-right:1px solid var(--border);padding:var(--space-5) var(--space-4);display:flex;flex-direction:column;gap:var(--space-4);background:var(--surface)}
+.sidebar .brand{display:grid;gap:2px;color:var(--fg)}
+.sidebar .brand strong{font-family:var(--font-display);font-size:var(--text-lg);font-weight:400}
+.sidebar .brand span{font-size:var(--text-xs);color:var(--muted)}
+.side-nav{display:grid;gap:2px}
+.side-nav a{display:flex;align-items:center;justify-content:space-between;min-height:34px;padding:6px 10px;border-radius:var(--radius-sm);color:var(--fg-2);font-size:var(--text-sm)}
+.side-nav a[aria-current="page"]{background:var(--surface-warm);color:var(--fg);font-weight:600}
+.side-nav a:hover{background:var(--border-soft);text-decoration:none}
+.main{flex:1 1 auto;min-width:0;padding:var(--space-8) var(--container-gutter-desktop) var(--section-y-tablet)}
+
+/* ── 页头 / 卡片 ── */
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--space-4);margin-bottom:var(--space-5)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-5)}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-3);margin-bottom:var(--space-3)}
+.pill{display:inline-flex;align-items:center;gap:4px;min-height:22px;padding:1px 9px;border:1px solid var(--border);border-radius:var(--radius-pill);font-size:var(--text-xs);color:var(--fg-2);background:var(--bg);white-space:nowrap}
+.pill.is-live{background:color-mix(in oklab, var(--success) 14%, var(--surface));border-color:color-mix(in oklab, var(--success) 34%, var(--border));color:var(--success-text)}
+.pill.is-warn{background:color-mix(in oklab, var(--warn) 16%, var(--surface));border-color:color-mix(in oklab, var(--warn) 36%, var(--border));color:var(--warn-text)}
+.pill.is-danger{background:color-mix(in oklab, var(--danger) 12%, var(--surface));border-color:color-mix(in oklab, var(--danger) 32%, var(--border));color:var(--danger-text)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:var(--space-3) 0}
+.chip{display:inline-flex;align-items:center;justify-content:center;min-height:30px;min-width:32px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface);font-size:var(--text-xs);color:var(--fg-2)}
+button.chip{cursor:pointer}
+button.chip:hover{background:var(--surface-warm);color:var(--fg)}
+button.chip.is-active{background:var(--accent);border-color:var(--accent);color:var(--accent-on)}
+
+/* ── 按钮 ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);cursor:pointer;font-size:var(--text-sm);white-space:nowrap;transition:background var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard)}
+.btn:hover{background:var(--border-soft)}
+.btn:active{background:var(--border)}
+.btn:disabled{background:var(--border-soft);border-color:var(--border);color:var(--muted);cursor:not-allowed}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-primary:disabled{background:var(--border-soft);border-color:var(--border);color:var(--muted)}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:var(--accent-on)}
+.btn-danger:hover{background:color-mix(in oklab, var(--danger), black 8%)}
+.btn-danger:disabled{background:var(--border-soft);border-color:var(--border);color:var(--fg-2)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--fg-2)}
+.btn-ghost:hover{background:var(--border-soft)}
+.btn-ghost.btn-danger{color:var(--danger-text)}
+.btn-sm{min-height:32px;padding:0 10px;font-size:var(--text-xs)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ── 三态面板 ── */
+.state-panel{display:grid;justify-items:center;gap:10px;text-align:center;padding:var(--space-12) var(--space-6);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md)}
+.state-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:var(--radius-pill);background:var(--surface-warm);color:var(--fg-2);font-size:var(--text-sm)}
+.state-panel h2{font-size:var(--text-base)}
+.state-panel p{max-width:48ch;color:var(--fg-2);font-size:var(--text-sm)}
+.state-panel.is-error .state-mark{background:color-mix(in oklab, var(--danger) 16%, var(--surface));color:var(--danger-text)}
+.state-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.spinner{width:16px;height:16px;border-radius:var(--radius-pill);border:2px solid var(--border);border-top-color:var(--accent);animation:spin 800ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── 书籍详情 ── */
+.crumbs{display:flex;gap:8px;align-items:center;font-size:var(--text-xs);color:var(--fg-2);margin-bottom:var(--space-4)}
+.crumb-link{min-height:32px;padding:0 2px;border:0;background:transparent;color:var(--accent);cursor:pointer;font-size:var(--text-xs)}
+.crumb-link:hover{text-decoration:underline}
+.book-layout{display:grid;grid-template-columns:216px minmax(0,1fr);gap:var(--space-8);align-items:start}
+.book-aside{display:grid;gap:var(--space-4);align-content:start}
+.cover{position:relative;display:grid;place-items:center;background:var(--surface-warm);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--fg-2);font-family:var(--font-display);overflow:hidden}
+.cover-lg{width:100%;aspect-ratio:2/3;font-size:var(--text-2xl)}
+.cover em{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-family:var(--font-body);font-style:normal;font-size:var(--text-xs);color:var(--fg-2)}
+.facts{display:grid;gap:10px;margin:0}
+.facts>div{display:grid;gap:2px}
+.facts dt{font-size:var(--text-xs);color:var(--muted)}
+.facts dd{margin:0;font-size:var(--text-sm);color:var(--fg)}
+.book-main{min-width:0;display:grid;gap:var(--space-4);align-content:start}
+.byline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:var(--text-sm);color:var(--fg-2)}
+.byline a{font-weight:600}
+.intro{font-size:var(--text-sm);color:var(--fg-2);line-height:var(--leading-body)}
+.intro.is-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.rating-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dir-head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-3);margin-top:var(--space-3);padding-top:var(--space-4);border-top:1px solid var(--border-soft)}
+.vol-jump{display:flex;flex-wrap:wrap;gap:6px}
+.vol-jump button{min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--bg);color:var(--fg-2);cursor:pointer;font-size:var(--text-xs)}
+.vol-jump button:hover{background:var(--surface-warm);color:var(--fg)}
+.vol-jump button.is-active{border-color:var(--accent);color:var(--accent)}
+.volume{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);margin-top:var(--space-3);overflow:hidden}
+.vol-head{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:8px 14px;border:0;background:var(--surface-warm);cursor:pointer;text-align:left;font-size:var(--text-sm)}
+.vol-head:hover{background:var(--border-soft)}
+.vol-title{font-weight:600}
+.vol-head .meta{margin-left:auto}
+.vol-chevron{font-family:var(--font-mono);color:var(--fg-2);width:14px;text-align:center}
+.vol-body{padding:6px 8px 10px}
+.cv-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:20px;row-gap:2px}
+.cv-grid.is-two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.cv-row{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 8px;border-radius:var(--radius-sm);color:var(--fg);font-size:var(--text-sm)}
+.cv-row:hover{background:var(--surface-warm);text-decoration:none}
+.cv-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cv-word{margin-left:auto;font-size:var(--text-xs);color:var(--muted);font-family:var(--font-mono);white-space:nowrap}
+.cv-row.is-current{background:color-mix(in oklab, var(--accent) 12%, var(--surface));font-weight:600}
+.cv-row.is-current .cv-word{color:var(--accent)}
+.dir-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:var(--space-3)}
+.dir-search .input{flex:1 1 200px;min-height:32px;padding:4px 10px}
+.dir-empty{margin-top:var(--space-3)}
+
+/* ── 表格 / 分页 ── */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-sm)}
+.table{width:100%;border-collapse:collapse;font-size:var(--text-sm);background:var(--surface)}
+.table th,.table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border-soft);vertical-align:middle}
+.table th{font-size:var(--text-xs);color:var(--fg-2);font-weight:600;background:var(--surface-warm);white-space:nowrap}
+.table tbody tr:hover{background:color-mix(in oklab, var(--surface-warm) 55%, var(--surface))}
+.table tbody tr:last-child td{border-bottom:0}
+.table .is-num{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--text-xs)}
+.author-link{color:var(--accent);min-height:32px;display:inline-flex;align-items:center}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:var(--space-4);padding:var(--space-3);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md)}
+.toolbar .field{display:grid;gap:4px;min-width:0}
+.toolbar .field>label,.field-label{font-size:var(--text-xs);color:var(--fg-2);font-weight:600}
+.toolbar .grow{flex:1 1 260px}
+.pagination{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:var(--space-4)}
+.pagination button{min-width:36px;min-height:36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer}
+.pagination button:disabled{color:var(--fg-2);cursor:not-allowed;background:var(--border-soft)}
+.pagination .is-current{font-family:var(--font-mono);font-size:var(--text-sm);color:var(--fg)}
+
+/* ── 驾驶舱 ── */
+.dash-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:var(--space-5);align-items:start}
+.dash-main{display:grid;gap:var(--space-5);min-width:0}
+.dash-side{display:grid;gap:var(--space-4);align-content:start}
+.dash-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3)}
+.stat-card{display:grid;gap:2px;padding:var(--space-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md)}
+.stat-label{font-size:var(--text-xs);color:var(--fg-2)}
+.stat-num{font-family:var(--font-display);font-size:var(--text-xl);font-weight:400}
+.stat-hint{font-size:var(--text-xs);color:var(--muted)}
+.dash-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-4)}
+.dash-block-head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-3);margin-bottom:var(--space-3)}
+.dash-block-head h2{font-size:var(--text-base)}
+.dash-list{display:grid;gap:8px}
+.dash-row{display:flex;gap:12px;align-items:center;padding:6px;border-radius:var(--radius-sm);color:var(--fg)}
+.dash-row:hover{background:var(--surface-warm);text-decoration:none}
+.dash-row .cover{width:32px;height:44px;flex:0 0 32px;font-size:var(--text-sm)}
+.dash-row-main{display:grid;gap:2px;min-width:0;flex:1 1 auto}
+.dash-row-main b{font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-bar{display:block;height:6px;border-radius:var(--radius-pill);background:var(--border-soft);overflow:hidden;width:100%;max-width:280px}
+.dash-bar i{display:block;height:100%;background:var(--accent)}
+.dash-row-side{display:grid;gap:2px;justify-items:end;text-align:right}
+.dash-recent{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3)}
+.dash-recent>div{display:grid;gap:2px}
+.dash-recent b{font-size:var(--text-sm);white-space:nowrap}
+.chart-card .dash-recent b{font-size:var(--text-xs)}
+.chart-card .dash-recent>div{min-width:0}
+.chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-4);display:grid;gap:10px;align-content:start}
+.chart-head{display:grid;gap:2px}
+.chart-head h3{font-size:var(--text-sm);font-weight:600;font-family:var(--font-body)}
+.chart-note{font-size:var(--text-xs);color:var(--fg-2)}
+.chart-stale{margin-left:6px;color:var(--warn-text)}
+.chart-body{min-height:110px;display:grid;align-content:end}
+.chart-empty{display:grid;place-items:center;gap:8px;min-height:104px;border:1px dashed var(--border);border-radius:var(--radius-sm);font-size:var(--text-xs);color:var(--muted)}
+.load-more{min-height:32px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);font-size:var(--text-xs);cursor:pointer}
+.load-more:hover{background:var(--border-soft)}
+.load-more:disabled{background:var(--border-soft);color:var(--fg-2);cursor:not-allowed}
+.bars{display:flex;align-items:flex-end;gap:4px;height:120px}
+.bar-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
+.bar-fill{display:block;width:100%;max-width:26px;background:color-mix(in oklab, var(--accent) 78%, var(--surface));border-radius:3px 3px 0 0;transition:background var(--motion-fast) var(--ease-standard)}
+.bar-col:hover .bar-fill{background:var(--accent)}
+.bar-val{font-size:10px;color:var(--fg-2);font-family:var(--font-mono)}
+.bar-lbl{font-size:10px;color:var(--muted);white-space:nowrap}
+.hbars{display:grid;gap:6px}
+.hbar-row{display:grid;grid-template-columns:6.5em minmax(0,1fr) auto;gap:8px;align-items:center;font-size:var(--text-xs)}
+.hbar-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.hbar-track{height:8px;border-radius:var(--radius-pill);background:var(--border-soft);overflow:hidden}
+.hbar-fill{display:block;height:100%;background:color-mix(in oklab, var(--accent) 74%, var(--surface))}
+.hbar-val{font-family:var(--font-mono);color:var(--fg-2);white-space:nowrap}
+.cols{display:flex;align-items:flex-end;gap:8px;height:120px}
+.col-item{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
+.col-fill{display:block;width:100%;max-width:38px;background:color-mix(in oklab, var(--accent) 62%, var(--surface));border-radius:3px 3px 0 0}
+.col-fill.is-peak{background:var(--accent)}
+.donut-wrap{display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap}
+.donut{width:120px;height:120px;flex:0 0 auto}
+.donut circle{transition:opacity var(--motion-base) var(--ease-standard)}
+.donut circle.is-off{opacity:.16}
+.donut-legend{display:grid;gap:4px;font-size:var(--text-xs);color:var(--fg-2)}
+.legend-row{display:flex;gap:6px;align-items:center;border:0;background:transparent;color:inherit;font-size:var(--text-xs);min-height:26px;padding:0 4px;border-radius:var(--radius-sm);cursor:pointer;text-align:left}
+.legend-row:hover{background:var(--surface-warm)}
+.legend-row.is-off{color:var(--muted);text-decoration:line-through}
+.legend-dot{width:8px;height:8px;border-radius:2px;flex:0 0 8px}
+.stack{display:flex;height:16px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)}
+.stack-seg{display:block;height:100%}
+.stack-legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:var(--text-xs);color:var(--fg-2)}
+.heat-wrap{display:grid;gap:8px}
+.heat-grid{display:flex;gap:3px;align-items:flex-start;overflow-x:auto;padding-bottom:2px}
+.heat-col{display:flex;flex-direction:column;gap:3px}
+.heat-wd{font-size:9px;line-height:11px;color:var(--muted);height:11px}
+.heat-cell{width:11px;height:11px;border-radius:2px;display:inline-block;cursor:default}
+.heat-l0{background:var(--border-soft)}
+.heat-l1{background:color-mix(in oklab, var(--accent) 22%, var(--surface))}
+.heat-l2{background:color-mix(in oklab, var(--accent) 42%, var(--surface))}
+.heat-l3{background:color-mix(in oklab, var(--accent) 66%, var(--surface))}
+.heat-l4{background:var(--accent)}
+.seg-accent{background:var(--accent)}
+.seg-accent-soft{background:color-mix(in oklab, var(--accent) 55%, var(--surface))}
+.seg-neutral{background:var(--border)}
+.seg-text{background:color-mix(in oklab, var(--accent) 52%, var(--surface))}
+/* 图表色板：脚本只引用这些类名，body 内不再出现强调色 */
+.tone-1{background:var(--accent)}
+.tone-2{background:color-mix(in oklab, var(--accent) 55%, var(--surface))}
+.tone-3{background:var(--border)}
+.heat-legend{display:flex;gap:6px;align-items:center;font-size:var(--text-xs);color:var(--fg-2)}
+.health-item{display:grid;gap:2px;padding:10px 0;border-bottom:1px solid var(--border-soft)}
+.health-item:last-child{border-bottom:0}
+.health-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.health-top b{font-size:var(--text-sm)}
+.health-num{font-size:var(--text-sm)}
+.health-item.is-warn .health-top b{color:var(--warn-text)}
+
+/* ── 弹层 ── */
+.confirm-backdrop{position:fixed;inset:0;z-index:80;background:var(--scrim);display:grid;place-items:center;padding:var(--space-4)}
+.confirm-dialog{width:min(100%,560px);max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--elev-raised);padding:var(--space-5);display:grid;gap:var(--space-3)}
+.confirm-dialog h2{font-size:var(--text-lg)}
+.confirm-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:var(--space-2)}
+.field{display:grid;gap:4px;margin-bottom:var(--space-3)}
+.list-plain{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.list-plain li{display:flex;gap:8px;align-items:center;padding:6px 10px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--bg)}
+.list-plain li .meta{margin-left:auto}
+.check-row{display:flex;align-items:center;gap:8px}
+.check-row label{font-size:var(--text-sm)}
+input[type=checkbox]{appearance:none;-webkit-appearance:none;width:32px;height:32px;margin:0;padding:0;border:0;background:transparent;position:relative;cursor:pointer;flex:0 0 auto}
+input[type=checkbox]::before{content:"";position:absolute;inset:6px;border:1.5px solid var(--border);border-radius:4px;background:var(--bg);transition:background var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard)}
+input[type=checkbox]:checked::before{background:var(--accent);border-color:var(--accent)}
+input[type=checkbox]:checked::after{content:"";position:absolute;left:12px;top:9px;width:6px;height:10px;border:solid var(--accent-on);border-width:0 2px 2px 0;transform:rotate(42deg)}
+input[type=checkbox]:disabled{cursor:not-allowed}
+input[type=checkbox]:disabled::before{background:var(--border-soft);border-color:var(--border)}
+.notice{padding:10px 12px;border-radius:var(--radius-sm);background:color-mix(in oklab, var(--success) 12%, var(--surface));color:var(--success-text);font-size:var(--text-sm)}
+.notice.is-error{background:color-mix(in oklab, var(--danger) 12%, var(--surface));color:var(--danger-text)}
+.notice.is-warn{background:color-mix(in oklab, var(--warn) 14%, var(--surface));color:var(--warn-text)}
+.toast-host{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:120;pointer-events:none;display:grid;gap:6px;justify-items:center}
+.toast{display:flex;align-items:center;gap:10px;background:var(--fg);color:var(--bg);padding:8px 10px 8px 16px;border-radius:var(--radius-pill);font-size:var(--text-sm);box-shadow:var(--elev-raised)}
+.toast button{min-width:24px;min-height:24px}
+.toast.is-error{background:var(--danger);color:var(--accent-on)}
+.tip{position:fixed;z-index:130;pointer-events:none;background:var(--fg);color:var(--bg);padding:5px 9px;border-radius:var(--radius-sm);font-size:var(--text-xs);white-space:nowrap}
+
+/* ── 断点 ── */
+@media (max-width:1240px){
+  .book-layout{grid-template-columns:190px minmax(0,1fr);gap:var(--space-6)}
+  .dash-layout{grid-template-columns:minmax(0,1fr)}
+  .dash-side{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cv-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:1024px){
+  .sidebar{width:184px;flex:0 0 184px}
+  .main{padding-left:var(--container-gutter-tablet);padding-right:var(--container-gutter-tablet)}
+  .dash-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .chart-grid{grid-template-columns:minmax(0,1fr)}
+  .dash-recent{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:768px){
+  .app{flex-direction:column}
+  .sidebar{display:none}
+  .main{padding:var(--space-4) var(--container-gutter-phone) var(--section-y-phone)}
+  /* 单列：封面 + 主操作并排成紧凑头部，书名与简介紧随其后，信息栏沉到目录之后 */
+  .book-layout{grid-template-columns:96px minmax(0,1fr);gap:var(--space-4)}
+  .book-aside{display:contents}
+  .book-aside .cover{order:1;grid-column:1;grid-row:1}
+  .book-aside .actions{order:2;grid-column:2;grid-row:1;display:grid;gap:10px}
+  .book-main{order:3;grid-column:1/-1}
+  .book-aside .facts{order:4;grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px var(--space-4);margin-top:var(--space-4);padding-top:var(--space-4);border-top:1px solid var(--border-soft)}
+  .cover-lg{aspect-ratio:2/3}
+  .cover-lg em{display:none}
+  .actions{gap:10px}
+  .cv-grid,.cv-grid.is-two{grid-template-columns:minmax(0,1fr)}
+  .cv-row{min-height:44px}
+  .btn{min-height:44px}
+  .btn-sm{min-height:36px}
+  .seg button{min-height:36px}
+  .vol-head{min-height:48px}
+  .chart-grid{grid-template-columns:minmax(0,1fr)}
+  .dash-side{grid-template-columns:minmax(0,1fr)}
+  .demo-bar .note{display:none}
+  .toolbar .grow{flex:1 1 100%}
+  .pagination button{min-width:44px;min-height:44px}
+  .dir-search .input{min-height:44px}
+  .select{min-height:44px}
+  /* H5 触控：所有可点目标抬到 44（PC 保持 32 的鼠标密度） */
+  .crumb-link,.chip,.vol-jump button,.byline a,.author-link,.pagination button{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center}
+  .byline a,.author-link{min-width:auto;padding:0 4px}
+  .chips{gap:10px}
+  .vol-jump{gap:8px}
+  .btn-ghost.btn-sm{min-height:44px}
+  #introToggle{min-height:44px}
+  [data-od-id="C-16"]{min-height:44px}
+}
+@media (max-width:390px){
+  .main{padding:12px 12px 56px}
+  h1{font-size:var(--text-lg)}
+  .book-aside{grid-template-columns:84px minmax(0,1fr)}
+  .dash-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .stat-card{padding:10px}
+  .stat-num{font-size:var(--text-lg)}
+  .demo-bar{padding:8px 10px;gap:6px}
+  .demo-bar .lbl{display:none}
+  .seg button{padding:6px 9px}
+  .confirm-actions .btn{flex:1 1 auto}
+  .hbar-row{grid-template-columns:4.6em minmax(0,1fr) auto}
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<div class="demo-bar" data-od-id="demo-only:bar">
+  <div class="grp" data-od-id="demo-only:switch-page">
+    <span class="lbl">页面</span>
+    <div class="seg" role="group" aria-label="切换页面">
+      <button type="button" data-page="book" aria-pressed="true">书籍详情</button>
+      <button type="button" data-page="authors" aria-pressed="false">作者</button>
+      <button type="button" data-page="dashboard" aria-pressed="false">驾驶舱</button>
+    </div>
+  </div>
+  <div class="grp" data-od-id="demo-only:switch-state">
+    <span class="lbl">状态</span>
+    <select class="select" id="demoState" aria-label="切换状态" style="width:auto">
+      <option value="normal">正常</option>
+      <option value="loading">加载中</option>
+      <option value="empty">空</option>
+      <option value="error">错误</option>
+    </select>
+  </div>
+  <div class="grp" data-od-id="demo-only:switch-tier">
+    <span class="lbl">分档</span>
+    <div class="seg" role="group" aria-label="切换分档">
+      <button type="button" data-tier="pc" aria-pressed="true">PC 1440</button>
+      <button type="button" data-tier="h5" aria-pressed="false">H5 390</button>
+    </div>
+  </div>
+  <p class="note" data-od-id="demo-only:note">演示控制条只存在于原型，不进产品；H5 档下作者与驾驶舱整页不渲染（回首页），书籍详情保留但改为单列。</p>
+</div>
+
+<div class="app" id="pcApp" data-od-id="region:app">
+  <aside class="sidebar" data-od-id="region:sidebar" aria-label="侧栏">
+    <div class="brand"><strong>norvels</strong><span>本地中文小说库</span></div>
+    <nav class="side-nav" aria-label="主导航">
+      <a href="#" aria-current="page" data-nav="book">书架</a>
+      <a href="#" data-nav="search">搜索</a>
+      <a href="#" data-nav="series">系列</a>
+      <a href="#" data-nav="history">阅读历史</a>
+      <a href="#" data-nav="admin">书籍管理</a>
+      <a href="#" data-nav="dashboard">驾驶舱</a>
+      <a href="#" data-nav="authors">作者</a>
+      <a href="#" data-nav="import">导入管理</a>
+    </nav>
+  </aside>
+
+  <main class="main" data-od-id="region:main">
+
+    <!-- ═══════════ 页面 1 · 书籍详情 ═══════════ -->
+    <section class="page" id="page-book" data-od-id="region:page-book" aria-labelledby="book-h1">
+      <nav class="crumbs" aria-label="面包屑">
+        <button class="crumb-link" type="button" data-od-id="C-01" id="crumbBack">书架</button>
+        <span aria-hidden="true">/</span>
+        <span class="meta">书籍详情</span>
+      </nav>
+
+      <div class="book-layout" id="bookNormal">
+        <aside class="book-aside" data-od-id="region:aside-book">
+          <div class="cover cover-lg" role="img" aria-label="长夜未明的封面" data-od-id="region:cover">
+            <span aria-hidden="true">长</span>
+            <em aria-hidden="true">封面占位</em>
+          </div>
+          <div class="actions" style="display:grid;gap:8px" data-od-id="region:actions">
+            <a class="btn btn-primary" href="#" data-nav="read" id="resumeBtn" data-od-id="C-02">继续阅读 · 第 128 章 雨停之前</a>
+            <a class="btn" href="#" data-nav="read" id="startBtn" data-od-id="C-03">从第一章开始</a>
+            <button class="btn btn-ghost" type="button" id="openCollection" data-od-id="C-04">加入书单</button>
+            <a class="btn btn-ghost" href="#" data-nav="admin" data-od-id="C-05" data-pc-only>管理这本书</a>
+          </div>
+          <dl class="facts" data-od-id="region:facts">
+            <div><dt>字数</dt><dd class="num">128.6 万</dd></div>
+            <div><dt>导入时间</dt><dd class="num">10 月 24 日</dd></div>
+            <div><dt>系列</dt><dd><button class="btn btn-ghost btn-sm" type="button" style="padding:0" data-od-id="C-06" data-nav="series">长夜 · 第 2 部</button></dd></div>
+            <div><dt><label for="readStatus">阅读状态</label></dt>
+              <dd>
+                <select class="select" id="readStatus" style="width:100%" data-od-id="C-07">
+                  <option value="">未标记</option>
+                  <option value="want">想读</option>
+                  <option value="reading" selected>在读</option>
+                  <option value="done">已读</option>
+                </select>
+              </dd>
+            </div>
+            <div><dt>评分</dt><dd>
+              <div class="rating-row" role="group" aria-label="评分" id="ratingRow" data-od-id="C-08">
+                <button class="chip" type="button" aria-label="1 星" aria-pressed="false" data-star="1">☆</button>
+                <button class="chip" type="button" aria-label="2 星" aria-pressed="false" data-star="2">☆</button>
+                <button class="chip" type="button" aria-label="3 星" aria-pressed="false" data-star="3">☆</button>
+                <button class="chip" type="button" aria-label="4 星" aria-pressed="false" data-star="4">☆</button>
+                <button class="chip" type="button" aria-label="5 星" aria-pressed="false" data-star="5">☆</button>
+                <span class="meta" id="ratingLabel">未评分</span>
+              </div>
+            </dd></div>
+            <div><dt>书签</dt><dd class="num">12 条</dd></div>
+            <div><dt>分类</dt><dd>悬疑 / 民国</dd></div>
+            <div><dt>出版</dt><dd>山雨出版社 · 2019</dd></div>
+          </dl>
+          <div class="notice is-warn" style="display:grid;gap:6px" data-od-id="demo-only:legacy-delete-entry" data-pc-only>
+            <span class="meta">演示用：删除入口在「管理这本书」里，详情页本身不提供删除。</span>
+            <button class="btn btn-ghost btn-danger btn-sm" type="button" id="deleteEntry" style="justify-self:start">打开删除确认（演示）</button>
+          </div>
+        </aside>
+
+        <div class="book-main">
+          <h1 id="book-h1" data-od-id="region:title">长夜未明</h1>
+          <p class="byline">
+            <a href="#" data-od-id="C-32" data-nav="authors">林砚</a>
+            <span class="meta">· 已入库</span>
+            <span class="meta" data-od-id="region:serial">连载中</span>
+            <span class="pill is-live" data-od-id="region:new-chapters" id="newChapters">新章 +3</span>
+          </p>
+          <p class="meta" data-od-id="region:last-chapter">最后更新 · 3 天前 · 最新章节 · 第 412 章 灯下无人</p>
+
+          <p class="chips" data-od-id="C-09">
+            <button class="chip" type="button" data-tag="民国">民国</button>
+            <button class="chip" type="button" data-tag="悬疑">悬疑</button>
+            <button class="chip" type="button" data-tag="群像">群像</button>
+          </p>
+          <p class="notice" role="status" id="bookNotice" data-od-id="region:notice" hidden></p>
+
+          <p class="intro is-clamp" id="bookIntro" data-od-id="region:intro">民国二十三年的南京，雨一连下了四十天。电报局的接线员沈砚在雨夜接到一通没有来电人的电话，对面只说了一句话：「你弟弟的案子，不是意外。」从那一夜起，她开始把每一天的雨声记进账本，也把自己一步步走进那场没有人承认发生过的调查。</p>
+          <div><button class="btn btn-ghost btn-sm" type="button" id="introToggle" data-od-id="C-10" aria-expanded="false">展开简介</button></div>
+
+          <div class="dir-head">
+            <h2>目录</h2>
+            <span class="meta" data-od-id="region:dir-meta">共 412 章 · 3 卷</span>
+          </div>
+
+          <div class="dir-search">
+            <label class="sr-only" for="tocSearch">搜索章节</label>
+            <input class="input" id="tocSearch" data-od-id="C-11" placeholder="搜索章节名或章号，例如「雨」">
+            <span class="meta" id="tocCount">412 章</span>
+          </div>
+
+          <div id="searchWrap" hidden data-od-id="region:dir-results">
+            <p class="meta" id="searchMeta" style="margin:6px 0"></p>
+            <div class="cv-grid" id="searchGrid"></div>
+          </div>
+
+          <div data-od-id="C-13">
+            <div class="vol-jump" role="group" aria-label="卷跳转">
+              <button type="button" data-jump="0" class="is-active">第一卷 灯下无月</button>
+              <button type="button" data-jump="1">第二卷 雨夜来客</button>
+              <button type="button" data-jump="2">第三卷 长夜将明</button>
+            </div>
+          </div>
+
+          <div id="volumes"></div>
+
+          <p class="meta" id="tocMoreHint" hidden></p>
+
+          <div class="dir-empty state-panel" id="tocNoMatch" data-od-id="region:dir-empty" hidden>
+            <span class="state-mark" aria-hidden="true">空</span>
+            <h2>没有找到章节</h2>
+            <p>换个词试试，章节名与章号都能搜。</p>
+            <div class="state-actions"><button class="btn btn-primary" type="button" id="tocClear" data-od-id="C-12">清空搜索</button></div>
+          </div>
+
+          <div class="dir-empty state-panel" id="bookNoToc" data-od-id="region:dir-single" hidden>
+            <span class="state-mark" aria-hidden="true">空</span>
+            <h2>还没有目录</h2>
+            <p>这本书尚未拆出章节，导入完成后会显示目录。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="state-panel" id="bookLoading" data-od-id="region:state-loading-book" hidden>
+        <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+        <h2>正在打开这本书</h2><p>正在取回书名、简介与目录。</p>
+      </div>
+
+      <div class="state-panel is-error" id="bookError" data-od-id="region:state-error-panel-book" hidden>
+        <span class="state-mark" aria-hidden="true">!</span>
+        <h2>这本书没能打开</h2><p>读取时出了点问题。可以重试，或者稍后再回来看。</p>
+        <div class="state-actions"><button class="btn btn-primary" type="button" data-toast="正在重试…">重试</button></div>
+      </div>
+
+      <div class="state-panel" id="bookEmpty" data-od-id="region:state-empty-panel-book" hidden>
+        <span class="state-mark" aria-hidden="true">空</span>
+        <h2>没有这本书</h2><p>链接可能过期了，回到书架重新找一本。</p>
+        <div class="state-actions"><a class="btn btn-primary" href="#" data-nav="shelf">回书架</a></div>
+      </div>
+    </section>
+<!-- ═══════════ 页面 2 · 作者 ═══════════ -->
+    <section class="page" id="page-authors" data-od-id="region:page-authors" aria-labelledby="authors-h1" hidden>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow" id="authorsEyebrow" data-od-id="region:authors-count">作者 · 96 位</p>
+          <h1 id="authors-h1">作者</h1>
+          <p class="sub" id="authorsSub">按书籍数排序</p>
+        </div>
+      </div>
+
+      <div class="toolbar" data-od-id="region:authors-toolbar">
+        <div class="field">
+          <label for="authorSort">排序</label>
+          <select class="select" id="authorSort" data-od-id="C-19" style="min-width:120px">
+            <option value="books">书籍数</option>
+            <option value="words">总字数</option>
+            <option value="name">名字</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="authors-page" id="authorsNormal" data-od-id="region:authors-table">
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>作者</th><th class="is-num">作品</th><th class="is-num">总字数</th></tr></thead>
+            <tbody id="authorsBody">
+              <tr><td><a class="author-link" href="#" data-author="林砚" data-od-id="C-22">林砚</a></td><td class="is-num">4</td><td class="is-num">486 万</td></tr>
+              <tr><td><a class="author-link" href="#" data-author="佚名">佚名</a></td><td class="is-num">12</td><td class="is-num">231 万</td></tr>
+              <tr><td><a class="author-link" href="#" data-author="沈既白">沈既白</a></td><td class="is-num">9</td><td class="is-num">188 万</td></tr>
+              <tr><td><a class="author-link" href="#" data-author="程雨眠">程雨眠</a></td><td class="is-num">6</td><td class="is-num">97.2 万</td></tr>
+              <tr><td><a class="author-link" href="#" data-author="山雨社">山雨社</a></td><td class="is-num">5</td><td class="is-num">82.4 万</td></tr>
+              <tr><td><a class="author-link" href="#" data-author="周砚秋">周砚秋</a></td><td class="is-num">3</td><td class="is-num">64.1 万</td></tr>
+              <tr><td><a class="author-link" href="#" data-author="无名氏">无名氏</a></td><td class="is-num">2</td><td class="is-num">41.8 万</td></tr>
+              <tr><td><a class="author-link" href="#" data-author="顾长川">顾长川</a></td><td class="is-num">1</td><td class="is-num">28.6 万</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="state-panel" id="authorsLoading" data-od-id="region:authors-loading" hidden>
+        <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+        <h2>正在读取作者</h2><p>正在整理作者与其作品。</p>
+      </div>
+      <div class="state-panel" id="authorsEmpty" data-od-id="region:authors-empty" hidden>
+        <span class="state-mark" aria-hidden="true">空</span>
+        <h2 id="authorsEmptyTitle">还没有作者</h2>
+        <p id="authorsEmptyDesc">导入书目后，作者会按作品数自动汇总到这里。</p>
+      </div>
+      <div class="state-panel is-error" id="authorsError" data-od-id="region:authors-error" hidden>
+        <span class="state-mark" aria-hidden="true">!</span>
+        <h2>作者列表没能加载</h2><p>读取时出了点问题。可以重试，或者稍后再回来看。</p>
+        <div class="state-actions"><button class="btn btn-primary" type="button" data-toast="正在重试…">重试</button></div>
+      </div>
+
+      <nav class="pagination" aria-label="分页" id="authorsPager" data-od-id="region:authors-pager">
+        <button type="button" aria-label="上一页" id="authorPrev" data-od-id="C-20" disabled>←</button>
+        <span class="is-current num" id="authorPage">1</span>
+        <span class="meta">/ <span id="authorPages">4</span></span>
+        <button type="button" aria-label="下一页" id="authorNext" data-od-id="C-21">→</button>
+      </nav>
+    </section>
+
+    <!-- ═══════════ 页面 3 · 驾驶舱 ═══════════ -->
+    <section class="page" id="page-dashboard" data-od-id="region:page-dashboard" aria-labelledby="dash-h1" hidden>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">库总览</p>
+          <h1 id="dash-h1">驾驶舱</h1>
+          <p class="sub">书库状态、阅读进度与最近动态</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-sm" type="button" id="dashRefresh" data-od-id="C-29">刷新概览</button>
+        </div>
+      </div>
+
+      <div class="dash-layout" id="dashNormal">
+        <div class="dash-main">
+          <div class="dash-stats" data-od-id="region:stats">
+            <div class="stat-card"><span class="stat-label">书籍总数</span><b class="stat-num num">486</b><span class="stat-hint">本</span></div>
+            <div class="stat-card"><span class="stat-label">章节总数</span><b class="stat-num num">12.4 万</b><span class="stat-hint">章</span></div>
+            <div class="stat-card"><span class="stat-label">作者</span><b class="stat-num num">96</b><span class="stat-hint">位</span></div>
+            <div class="stat-card"><span class="stat-label">总字数</span><b class="stat-num num">3.2 亿</b><span class="stat-hint">字</span></div>
+          </div>
+
+          <section class="dash-block" data-od-id="region:block-reading">
+            <div class="dash-block-head">
+              <h2>最近在读</h2>
+              <a class="meta" href="#" data-od-id="C-23">全部书架 →</a>
+            </div>
+            <div class="dash-list">
+              <a class="dash-row" href="#" data-nav="read" data-od-id="C-25">
+                <span class="cover" role="img" aria-label="长夜未明的封面"><span aria-hidden="true">长</span></span>
+                <span class="dash-row-main"><b>长夜未明</b><span class="meta">第 128 章 雨停之前</span><span class="dash-bar"><i style="width:31%"></i></span></span>
+                <span class="dash-row-side"><b class="num">31%</b><span class="meta">2 小时前</span></span>
+              </a>
+              <a class="dash-row" href="#" data-nav="read">
+                <span class="cover" role="img" aria-label="山雨欲来的封面"><span aria-hidden="true">山</span></span>
+                <span class="dash-row-main"><b>山雨欲来</b><span class="meta">第 6 章 旧巷灯影</span><span class="dash-bar"><i style="width:8%"></i></span></span>
+                <span class="dash-row-side"><b class="num">8%</b><span class="meta">3 天前</span></span>
+              </a>
+              <a class="dash-row" href="#" data-nav="read">
+                <span class="cover" role="img" aria-label="旧巷灯影的封面"><span aria-hidden="true">旧</span></span>
+                <span class="dash-row-main"><b>旧巷灯影</b><span class="meta">第 240 章 归途</span><span class="dash-bar"><i style="width:100%"></i></span></span>
+                <span class="dash-row-side"><b class="num">100%</b><span class="meta">上周</span></span>
+              </a>
+            </div>
+          </section>
+
+          <section class="dash-block" data-od-id="region:block-import">
+            <div class="dash-block-head">
+              <h2>导入概况</h2>
+              <a class="meta" href="#" data-od-id="C-24">前往导入管理 →</a>
+            </div>
+            <div class="dash-recent">
+              <div><span class="meta">上次导入</span><b>10 月 24 日</b></div>
+              <div><span class="meta">导入</span><b class="num">312 本</b></div>
+              <div><span class="meta">跳过</span><b class="num">9 本</b></div>
+              <div><span class="meta">未成功</span><b class="num">0 本</b></div>
+            </div>
+          </section>
+
+          <div class="chart-grid" data-od-id="region:chart-grid">
+
+            <article class="chart-card" data-od-id="region:card-heat">
+              <div class="chart-head">
+                <h3>阅读时长</h3>
+                <p class="chart-note" id="heatNote">近 91 天有 58 天在读，单日最长 1 小时 10 分。</p>
+              </div>
+              <div class="dash-recent" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+                <div><span class="meta">今日</span><b class="num">38 分</b></div>
+                <div><span class="meta">本周</span><b class="num">4 小时 12 分</b></div>
+                <div><span class="meta">累计</span><b class="num">31 小时 06 分</b></div>
+                <div><span class="meta">连续</span><b class="num">5 天</b></div>
+              </div>
+              <div class="heat-wrap" id="heatWrap">
+                <div class="heat-grid" id="heatGrid" aria-label="近 91 天阅读热力图"></div>
+                <div class="heat-legend"><span>少</span>
+                  <span class="heat-cell heat-l0"></span>
+                  <span class="heat-cell heat-l1"></span>
+                  <span class="heat-cell heat-l2"></span>
+                  <span class="heat-cell heat-l3"></span>
+                  <span class="heat-cell heat-l4"></span>
+                  <span>多</span>
+                </div>
+              </div>
+              <div class="chart-empty" id="heatEmpty" hidden>读几分钟就会在这里留下第一格</div>
+            </article>
+
+            <article class="chart-card" data-od-id="region:card-trend">
+              <div class="chart-head"><h3>近 14 天导入量</h3>
+                <p class="chart-note">14 天共导入 398 本，最多的一天 312 本。</p></div>
+              <div class="bars" id="trendBars"></div>
+              <div class="chart-empty" id="trendRetry" hidden><span>数据暂不可用</span><button class="load-more" type="button" data-od-id="C-31" data-retry="trend">重试</button></div>
+            </article>
+
+            <article class="chart-card" data-od-id="region:card-authors">
+              <div class="chart-head"><h3>字数 Top 10 作者</h3>
+                <p class="chart-note">前 10 位占全库 65%，头部集中在 1 位作者。</p></div>
+              <div class="hbars" id="authorBars"></div>
+            </article>
+
+            <article class="chart-card" data-od-id="region:card-buckets">
+              <div class="chart-head"><h3>章节数分布</h3>
+                <p class="chart-note">多数书在 200–999 章之间，1000 章以上有 60 本。</p></div>
+              <div class="bars" id="bucketBars"></div>
+            </article>
+
+            <article class="chart-card" data-od-id="region:card-donut">
+              <div class="chart-head"><h3>阅读进度分布</h3>
+                <p class="chart-note" id="donutNote">翻过 60 本，占全库 12%；426 本还没开始。</p></div>
+              <div class="donut-wrap">
+                <svg class="donut" viewBox="0 0 120 120" role="img" aria-label="阅读进度分布环形图" id="donut"></svg>
+                <div class="donut-legend" id="donutLegend"></div>
+              </div>
+            </article>
+
+            <article class="chart-card" data-od-id="region:card-storage">
+              <div class="chart-head"><h3>库体积构成</h3>
+                <p class="chart-note" id="storageNote">全书库 620 MB，正文占 94%。</p></div>
+              <div>
+                <div class="stack" id="stackBar"></div>
+                <div class="stack-legend" id="stackLegend"></div>
+              </div>
+            </article>
+
+            <article class="chart-card" data-od-id="region:card-len">
+              <div class="chart-head"><h3>章节长度分布</h3>
+                <p class="chart-note">峰值落在 1 千–3 千字，超长章节只有 3 个。</p></div>
+              <div class="cols" id="lenBars"></div>
+            </article>
+
+          </div>
+        </div>
+
+        <aside class="dash-side" data-od-id="region:dash-side">
+          <section class="dash-block" data-od-id="region:health-card">
+            <div class="dash-block-head"><h2>库健康状况</h2></div>
+            <div class="health-item">
+              <div class="health-top"><b>章节完整</b><span class="pill is-live">良好</span></div>
+              <p class="health-num num">481 / 486 本</p>
+              <p class="meta">3 本书的章节数偏少，可能是原文缺少章节标记。</p>
+            </div>
+            <div class="health-item is-warn">
+              <div class="health-top"><b>待补信息</b><span class="pill is-warn">需处理</span></div>
+              <p class="health-num num">0 本缺作者 · 64 本缺简介</p>
+              <p class="meta">补全后，在书架和搜索结果里更容易分辨。</p>
+            </div>
+            <div class="health-item">
+              <div class="health-top"><b>超长章节</b><span class="pill">留意</span></div>
+              <p class="health-num num">3 个</p>
+              <p class="meta">单章超过 3 万字，可能是章节分界没识别到。</p>
+            </div>
+            <div class="health-item">
+              <div class="health-top"><b>最近更新</b></div>
+              <p class="health-num num">10 月 24 日</p>
+              <p class="meta">库里最新一次导入的时间。</p>
+            </div>
+            <div class="actions" style="margin-top:10px">
+              <a class="btn btn-sm" href="#" data-nav="admin" data-od-id="C-27">去书籍管理</a>
+              <a class="btn btn-sm btn-ghost" href="#" data-nav="import" data-od-id="C-28">去导入</a>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <div class="state-panel" id="dashLoading" data-od-id="region:dash-loading" hidden>
+        <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
+        <h2>正在读取书库概览</h2><p>正在汇总书籍、章节与最近动态。</p>
+      </div>
+      <div class="state-panel" id="dashEmpty" data-od-id="region:dash-empty" hidden>
+        <span class="state-mark" aria-hidden="true">空</span>
+        <h2>书库还没有内容</h2>
+        <p>把存放 txt 的目录导入之后，这里会显示书库规模、阅读进度和最近动态。</p>
+        <div class="state-actions"><a class="btn btn-primary" href="#" data-nav="import">去导入</a></div>
+      </div>
+      <div class="state-panel is-error" id="dashError" data-od-id="region:dash-error-panel" hidden>
+        <span class="state-mark" aria-hidden="true">!</span>
+        <h2>概览没能加载</h2><p>读取时出了点问题。可以重试，或者稍后再回来看。</p>
+        <div class="state-actions"><button class="btn btn-primary" type="button" data-toast="正在重试…">重试</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast-host" id="toastHost" data-od-id="region:toast" aria-live="polite"></div>
+<div class="tip" id="tip" data-od-id="region:tip" hidden></div>
+<!-- ═══ 加入书单面板 ═══ -->
+<div class="confirm-backdrop" id="dlgCollection" data-od-id="region:collection-panel" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="collectionTitle">
+    <h2 id="collectionTitle">加入书单</h2>
+    <p class="meta">《长夜未明》可以同时放进多个书单。</p>
+    <p class="meta" id="collectionLoading" role="status">正在读取书单…</p>
+    <ul class="list-plain" id="collectionList" hidden>
+      <li><label class="check-row" style="flex:1 1 auto"><input type="checkbox" checked id="col1" data-od-id="C-17"><span>雨夜要读</span></label><span class="meta">6 本</span></li>
+      <li><label class="check-row" style="flex:1 1 auto"><input type="checkbox" id="col2" data-od-id="C-17"><span>民国悬疑</span></label><span class="meta">12 本</span></li>
+      <li><label class="check-row" style="flex:1 1 auto"><input type="checkbox" disabled id="col3" data-od-id="C-17"><span>长篇待读</span></label><span class="meta">成员过多，暂不支持在这里改动</span></li>
+    </ul>
+    <p class="meta" id="collectionEmpty" hidden>还没有书单。到书架的筛选区点「管理书单」新建一个，再回来把书放进去。</p>
+    <p class="meta danger-text" id="collectionError" role="alert" hidden>书单暂时读不到，稍后再试。</p>
+    <div class="confirm-actions"><button class="btn btn-primary" type="button" id="collectionDone" data-od-id="C-18">完成</button></div>
+  </div>
+</div>
+
+<!-- ═══ 删除本书二次确认 ═══ -->
+<div class="confirm-backdrop" id="dlgDelete" data-od-id="demo-only:legacy-delete" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+    <h2 id="deleteTitle">删除《长夜未明》</h2>
+    <p class="meta">这本书的章节、封面与阅读进度会一并删除，删掉之后不能恢复。确认无误请把书名抄进下面。</p>
+    <div class="field">
+      <label for="deleteInput">输入书名「长夜未明」以确认</label>
+      <input class="input" id="deleteInput" autocomplete="off" placeholder="长夜未明">
+    </div>
+    <div class="confirm-actions">
+      <button class="btn btn-danger" type="button" id="deleteConfirm" disabled data-od-id="demo-only:legacy-delete-confirm">确认删除</button>
+      <button class="btn btn-ghost" type="button" id="deleteCancel">取消</button>
+    </div>
+    <p class="meta" id="deleteHint">书名还没对上，确认按钮先不可用。</p>
+    <p class="meta danger-text" id="deleteError" role="alert" hidden>这本书正在被导入任务使用，等任务结束再删。</p>
+  </div>
+</div>
+<script>
+(function(){
+  var $ = function(s,r){ return (r||document).querySelector(s); };
+  var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  var H5_QUERY = '(max-width: 768px)';
+  var state = { page:'book', demo:'normal', tier:'pc', dialog:null };
+
+  /* ── 提示条 ── */
+  function toast(text, tone){
+    var host = $('#toastHost');
+    var el = document.createElement('div');
+    el.className = 'toast' + (tone === 'error' ? ' is-error' : '');
+    el.innerHTML = '<span></span><button type="button" aria-label="关闭提示" style="border:0;background:transparent;color:inherit;cursor:pointer">×</button>';
+    el.firstChild.textContent = text;
+    el.lastChild.addEventListener('click', function(){ if (el.parentNode) el.parentNode.removeChild(el); });
+    host.innerHTML = ''; host.appendChild(el);
+    window.setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 4000);
+  }
+
+  /* ── 页面切换 ── */
+  function showPage(page){
+    state.page = page;
+    $$('.page').forEach(function(el){ el.hidden = el.id !== 'page-' + page; });
+    $$('.demo-bar [data-page]').forEach(function(b){ b.setAttribute('aria-pressed', String(b.getAttribute('data-page') === page)); });
+    $$('.side-nav a').forEach(function(a){ a.removeAttribute('aria-current'); });
+    var navMap = { book:'book', authors:'authors', dashboard:'dashboard' };
+    var cur = $('.side-nav a[data-nav="' + navMap[page] + '"]');
+    if (cur) cur.setAttribute('aria-current','page');
+    window.scrollTo(0,0);
+    applyState();
+  }
+
+  /* ── 状态演示 ── */
+  function stateHost(page){
+    return {
+      book: { normal:'#bookNormal', loading:'#bookLoading', error:'#bookError', empty:'#bookEmpty' },
+      authors: { normal:'#authorsNormal', loading:'#authorsLoading', error:'#authorsError', empty:'#authorsEmpty' },
+      dashboard: { normal:'#dashNormal', loading:'#dashLoading', error:'#dashError', empty:'#dashEmpty' }
+    }[page];
+  }
+  function applyState(){
+    if (state.tier === 'h5' && (state.page === 'authors' || state.page === 'dashboard')){
+      /* H5 下管理类页面整页不渲染：留在书架提示 */
+      return;
+    }
+    var host = stateHost(state.page);
+    Object.keys(host).forEach(function(k){ $(host[k]).hidden = k !== state.demo; });
+    if (state.page === 'book'){
+      $$('#page-book .crumbs').forEach(function(el){ el.hidden = state.demo === 'loading'; });
+    }
+    if (state.page === 'authors'){
+      $('#authorsPager').hidden = state.demo !== 'normal';
+      $('#authorsEyebrow').hidden = state.demo === 'loading';
+      if (state.demo === 'empty'){
+        $('#authorsEmptyTitle').textContent = '还没有作者';
+        $('#authorsEmptyDesc').textContent = '导入书目后，作者会按作品数自动汇总到这里。';
+      }
+    }
+  }
+
+  /* ── 分档：PC 专属入口在 H5 下从 DOM 里摘除（不放 CSS 隐藏） ── */
+  function applyPcOnly(){
+    var h5 = state.tier === 'h5';
+    $$('[data-pc-only]').forEach(function(el){
+      if (h5 && el.parentNode){
+        el.__ph = document.createComment('pc-only');
+        el.parentNode.replaceChild(el.__ph, el);
+      } else if (!h5 && el.__ph && el.__ph.parentNode){
+        el.__ph.parentNode.replaceChild(el, el.__ph);
+        el.__ph = null;
+        bindNav(el);
+      }
+    });
+  }
+
+  function setTier(tier){
+    state.tier = tier;
+    var h5 = tier === 'h5';
+    document.body.style.maxWidth = h5 ? '390px' : '';
+    document.body.style.margin = h5 ? '0 auto' : '';
+    document.body.style.border = h5 ? '1px solid var(--border)' : '';
+    /* H5：作者与驾驶舱整页不渲染（与真实页面 TierRoute 一致），控制条上也点不动 */
+    $$('.demo-bar [data-page]').forEach(function(b){
+      var p = b.getAttribute('data-page');
+      b.disabled = h5 && (p === 'authors' || p === 'dashboard');
+    });
+    if (h5 && (state.page === 'authors' || state.page === 'dashboard')){
+      state.page = 'book';
+      $$('.page').forEach(function(el){ el.hidden = el.id !== 'page-book'; });
+      toast('H5 下不渲染作者与驾驶舱，已回到书籍详情');
+    }
+    $$('.demo-bar [data-page]').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-page') === state.page));
+    });
+    $('#introToggle').hidden = !h5;
+    applyPcOnly();
+    renderIntro();
+    $$('[data-tier]').forEach(function(b){ b.setAttribute('aria-pressed', String((b.getAttribute('data-tier') === 'h5') === h5)); });
+    applyState();
+  }
+
+  /* ── 书籍详情 ── */
+  var BOOK = {
+    title:'长夜未明',
+    volumes: [
+      { idx:0, title:'第一卷 灯下无月', from:1, count:160 },
+      { idx:1, title:'第二卷 雨夜来客', from:161, count:170 },
+      { idx:2, title:'第三卷 长夜将明', from:331, count:82 }
+    ],
+    currentChapter: 128,
+    lastChapter: 412,
+    open:{ 0:true }
+  };
+  var CHUNK = 60;
+  /* 首屏只铺一小段（真实页面靠虚拟滚动按需补行），「再显示」按钮演示 1000+ 章的分块补行 */
+  var volShown = { 0: 15, 1: CHUNK, 2: CHUNK };
+  var chapterNames = ['雨从黄昏开始','电报局的第七个窗口','雨停之前','账本第一页','没有来电人','旧巷口的灯','第一次夜行','灯下无人','雨夜来客','长夜将明','归途','那年的雨'];
+  function chapterTitle(no){
+    var name = chapterNames[(no - 1) % chapterNames.length];
+    return String(no).padStart(3,'0') + ' ' + name;
+  }
+  function chapterWord(no){ return 1800 + (no * 37) % 1400; }
+
+  /* 用模板字面量建元素：锚点写在 HTML 里，源码与渲染结果都对得上 */
+  function el(html){
+    var t = document.createElement('template');
+    t.innerHTML = html.trim();
+    return t.content.firstElementChild;
+  }
+
+  function renderVolumes(){
+    var host = $('#volumes');
+    host.innerHTML = '';
+    BOOK.volumes.forEach(function(v){
+      var open = !!BOOK.open[v.idx];
+      var sec = el('<section class="volume" data-od-id="region:volume"></section>');
+      sec.className = 'volume' + (open ? ' is-open' : '');
+      sec.setAttribute('data-volume', String(v.idx));
+      var head = el('<button class="vol-head" type="button" data-od-id="C-14"></button>');
+      head.setAttribute('aria-expanded', String(open));
+      head.innerHTML = '<span class="vol-title">' + v.title + '</span>'
+        + '<span class="meta num">第 ' + v.from + '–' + (v.from + v.count - 1) + ' 章</span>'
+        + '<span class="vol-chevron" aria-hidden="true">' + (open ? '−' : '+') + '</span>';
+      head.addEventListener('click', function(){
+        BOOK.open[v.idx] = !BOOK.open[v.idx];
+        renderVolumes();
+        /* renderVolumes() 重建了整段 DOM，旧卷头已不存在 —— 焦点必须显式还给新卷头 */
+        var again = document.querySelector('[data-volume="' + v.idx + '"] [data-od-id="C-14"]');
+        if (again) again.focus();
+      });
+      sec.appendChild(head);
+      if (open){
+        var body = document.createElement('div');
+        body.className = 'vol-body';
+        body.appendChild(buildGrid(v.idx));
+        sec.appendChild(body);
+      }
+      host.appendChild(sec);
+    });
+  }
+
+  function buildGrid(vidx){
+    var v = BOOK.volumes[vidx];
+    var wrap = el('<div class="cv-grid" data-od-id="region:chapter-grid"></div>');
+    var shown = Math.min(volShown[vidx], v.count);
+    for (var i = 0; i < shown; i++){
+      var no = v.from + i;
+      var a = el('<a class="cv-row" href="#" data-od-id="C-15"></a>');
+      a.className = 'cv-row' + (no === BOOK.currentChapter ? ' is-current' : '');
+      a.setAttribute('data-chapter', String(no));
+      if (no === BOOK.currentChapter) a.setAttribute('aria-current','true');
+      var t = chapterTitle(no) + (no === BOOK.currentChapter ? '（读到这一章）' : '');
+      a.innerHTML = '<span class="cv-title">' + t + '</span><span class="cv-word">' + chapterWord(no).toLocaleString('en-US') + ' 字</span>';
+      a.addEventListener('click', function(ev){ ev.preventDefault(); openChapter(Number(this.getAttribute('data-chapter'))); });
+      wrap.appendChild(a);
+    }
+    if (shown < v.count){
+      var more = el('<button class="btn btn-sm" type="button" data-od-id="C-16" style="grid-column:1/-1;margin-top:6px"></button>');
+      more.textContent = '在本卷再显示 ' + Math.min(CHUNK, v.count - shown) + ' 章（本卷还有 ' + (v.count - shown) + ' 章）';
+      more.addEventListener('click', function(){
+        volShown[vidx] += CHUNK;
+        renderVolumes();
+        /* 契约 C-16：按钮仍在时焦点回到重建后的新按钮；按钮消失才落到新增末行 */
+        var next = document.querySelector('[data-volume="' + vidx + '"] [data-od-id="C-16"]');
+        if (next) next.focus();
+        else {
+          var rows = document.querySelectorAll('[data-volume="' + vidx + '"] [data-od-id="C-15"]');
+          if (rows.length) rows[rows.length - 1].focus();
+        }
+      });
+      wrap.appendChild(more);
+    }
+    return wrap;
+  }
+
+  function openChapter(no){
+    if (no === BOOK.lastChapter){
+      var badge = $('#newChapters');
+      if (badge && !badge.hidden){
+        badge.hidden = true;
+        toast('已读到最后一章，追更提示已清');
+      } else {
+        toast('原型演示：将打开第 ' + no + ' 章');
+      }
+    } else {
+      toast('原型演示：将打开第 ' + no + ' 章');
+    }
+  }
+
+  /* ── 目录搜索 ── */
+  var searchResults = null;
+  function runTocSearch(q){
+    q = (q || '').trim();
+    if (!q){ searchResults = null; renderSearchView(); return; }
+    var all = [];
+    BOOK.volumes.forEach(function(v){
+      for (var i = 0; i < v.count; i++){
+        var no = v.from + i;
+        var title = chapterTitle(no);
+        if (title.indexOf(q) >= 0 || String(no) === q) all.push({ no:no, vol:v.idx });
+      }
+    });
+    searchResults = all;
+    renderSearchView();
+  }
+  function renderSearchView(){
+    var grid = $('#searchGrid'), wrap = $('#searchWrap'), none = $('#tocNoMatch');
+    /* 清空搜索时必须把无匹配空态一并收起，否则空态面板会粘在目录上（对应契约 C-12 的移除后） */
+    if (!searchResults){ wrap.hidden = true; none.hidden = true; return; }
+    wrap.hidden = false;
+    if (searchResults.length === 0){ wrap.hidden = true; none.hidden = false; return; }
+    none.hidden = true;
+    grid.innerHTML = '';
+    searchResults.slice(0, 60).forEach(function(hit){
+      var a = document.createElement('a');
+      a.className = 'cv-row' + (hit.no === BOOK.currentChapter ? ' is-current' : '');
+      a.href = '#';
+      a.innerHTML = '<span class="cv-title">' + chapterTitle(hit.no) + '</span><span class="cv-word">' + chapterWord(hit.no).toLocaleString('en-US') + ' 字</span>';
+      a.addEventListener('click', function(ev){ ev.preventDefault(); openChapter(hit.no); });
+      grid.appendChild(a);
+    });
+    $('#searchMeta').textContent = searchResults.length > 60
+      ? '找到 ' + searchResults.length + ' 章，先显示前 60 章'
+      : '找到 ' + searchResults.length + ' 章';
+    $('#tocCount').textContent = searchResults.length + ' 章匹配';
+  }
+
+  /* ── 简介折叠 ── */
+  var introOpen = false;
+  function renderIntro(){
+    var p = $('#bookIntro'), btn = $('#introToggle');
+    var h5 = state.tier === 'h5';
+    p.className = 'intro' + (h5 && !introOpen ? ' is-clamp' : '');
+    btn.setAttribute('aria-expanded', String(h5 ? introOpen : true));
+    btn.textContent = introOpen ? '收起简介' : '展开简介';
+  }
+
+  /* ── 评分 ── */
+  var rating = 0;
+  function renderRating(){
+    $$('#ratingRow [data-star]').forEach(function(b){
+      var n = Number(b.getAttribute('data-star'));
+      var on = n <= rating;
+      b.textContent = on ? '★' : '☆';
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(n === rating));
+    });
+    $('#ratingLabel').textContent = rating > 0 ? rating + ' 星' : '未评分';
+  }
+
+  /* ── 阅读状态 ── */
+  $('#readStatus').addEventListener('change', function(ev){
+    var labels = { '':'未标记', want:'想读', reading:'在读', done:'已读' };
+    var notice = $('#bookNotice');
+    notice.hidden = false;
+    notice.className = 'notice';
+    notice.textContent = '阅读状态已改为「' + labels[ev.target.value] + '」。';
+    window.setTimeout(function(){ notice.hidden = true; }, 3200);
+  });
+
+  /* ── 弹层 ── */
+  function openDialog(sel){
+    var d = $(sel);
+    d.hidden = false; state.dialog = d;
+    var f = d.querySelector('button:not([disabled]), input:not([disabled])');
+    if (f) f.focus();
+  }
+  function closeDialog(){ if (state.dialog){ state.dialog.hidden = true; state.dialog = null; } }
+  document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closeDialog(); });
+  $$('.confirm-backdrop').forEach(function(bd){
+    bd.addEventListener('mousedown', function(ev){ if (ev.target === bd) closeDialog(); });
+  });
+
+  /* ═══ 图表（虚构示意数据，形状与真实页面一致） ═══ */
+  var LEVEL_CLASS = ['heat-l0','heat-l1','heat-l2','heat-l3','heat-l4'];
+  function heatLevel(sec){
+    if (!sec) return 0;
+    if (sec < 900) return 1;
+    if (sec < 1800) return 2;
+    if (sec < 3600) return 3;
+    return 4;
+  }
+  /* 每格一个闭包参数：循环里用 var 会让 91 格共享最后一个 cell，浮层就全显示同一天 */
+  function makeHeatCell(cell, col){
+    if (!cell){
+      var blank = document.createElement('span');
+      blank.className = 'heat-cell';
+      blank.style.background = 'transparent';
+      blank.setAttribute('aria-hidden', 'true');
+      col.appendChild(blank);
+      return;
+    }
+    var s2 = el('<span class="heat-cell" role="button" tabindex="0" data-od-id="C-30"></span>');
+    s2.className = 'heat-cell ' + LEVEL_CLASS[cell.level];
+    s2.setAttribute('data-sec', String(cell.sec));
+    var label = (cell.date.getMonth() + 1) + ' 月 ' + cell.date.getDate() + ' 日 · '
+      + (cell.sec > 0 ? fmtDur(cell.sec) : '没有阅读');
+    s2.setAttribute('aria-label', label);
+    var hoverTimer = null;
+    s2.addEventListener('mouseenter', function(){
+      if (s2.dataset.pinned) return;
+      /* 契约 C-30 hover 行：鼠标停留 120ms 后才浮出，扫过不弹 */
+      hoverTimer = window.setTimeout(function(){ showTip(s2); }, 120);
+    });
+    s2.addEventListener('mouseleave', function(){
+      window.clearTimeout(hoverTimer);
+      if (!s2.dataset.pinned) $('#tip').hidden = true;
+    });
+    s2.addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); s2.click(); }
+      if (ev.key === 'Escape'){ delete s2.dataset.pinned; $('#tip').hidden = true; }
+    });
+    s2.addEventListener('click', function(){
+      $$('#heatGrid .heat-cell').forEach(function(x){ delete x.dataset.pinned; });
+      s2.dataset.pinned = '1';
+      showTip(s2);
+      window.setTimeout(function(){ if (s2.dataset.pinned){ delete s2.dataset.pinned; $('#tip').hidden = true; } }, 5000);
+    });
+    col.appendChild(s2);
+  }
+
+  function renderHeatmap(empty){
+    var grid = $('#heatGrid');
+    grid.innerHTML = '';
+    if (empty){ $('#heatWrap').hidden = true; $('#heatEmpty').hidden = false; $('#heatNote').textContent = '近 90 天还没有阅读记录。'; return; }
+    $('#heatWrap').hidden = false; $('#heatEmpty').hidden = true;
+    var days = 91;
+    var today = new Date(2026, 9, 26);
+    var list = [];
+    for (var i = days - 1; i >= 0; i--){
+      var d = new Date(today.getTime() - i * 86400000);
+      var seed = (d.getDate() * 7 + d.getMonth() * 13) % 11;
+      var sec = seed < 4 ? 0 : (seed === 4 ? 720 : seed === 5 ? 1500 : seed === 6 ? 2400 : seed === 7 ? 3000 : seed === 8 ? 4200 : seed === 9 ? 1800 : 900);
+      list.push({ date:d, sec:sec, level:heatLevel(sec) });
+    }
+    var firstWeekday = (list[0].date.getDay() + 6) % 7;
+    var cells = [];
+    for (var p = 0; p < firstWeekday; p++) cells.push(null);
+    list.forEach(function(x){ cells.push(x); });
+    while (cells.length % 7 !== 0) cells.push(null);
+    var wdLabels = ['一','','三','','五','',''];
+    var cols = cells.length / 7;
+    var wd = document.createElement('div');
+    wd.className = 'heat-col';
+    wd.setAttribute('aria-hidden','true');
+    wdLabels.forEach(function(l){
+      var s = document.createElement('span');
+      s.className = 'heat-wd'; s.textContent = l;
+      wd.appendChild(s);
+    });
+    grid.appendChild(wd);
+    for (var c = 0; c < cols; c++){
+      var col = document.createElement('div');
+      col.className = 'heat-col';
+      for (var r = 0; r < 7; r++) makeHeatCell(cells[c * 7 + r], col);
+      grid.appendChild(col);
+    }
+    var active = list.filter(function(x){ return x.level > 0; }).length;
+    var maxSec = list.reduce(function(m,x){ return Math.max(m, x.sec); }, 0);
+    $('#heatNote').textContent = '近 ' + days + ' 天有 ' + active + ' 天在读，单日最长 ' + fmtDur(maxSec) + '。';
+  }
+  /* 热力图浮层：格子上方 30px，左对齐不越屏；role=status 让读屏也读到 */
+  function showTip(cell){
+    var tip = $('#tip');
+    tip.textContent = cell.getAttribute('aria-label');
+    tip.hidden = false;
+    var box = cell.getBoundingClientRect();
+    tip.style.left = Math.max(8, Math.min(box.left - 10, window.innerWidth - tip.offsetWidth - 8)) + 'px';
+    tip.style.top = Math.max(8, box.top - 30) + 'px';
+  }
+
+  function fmtDur(sec){
+    var h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    if (h > 0) return h + ' 小时 ' + (m > 0 ? m + ' 分' : '');
+    return m + ' 分';
+  }
+
+  function renderTrend(empty){
+    var host = $('#trendBars');
+    host.innerHTML = '';
+    if (empty){ host.outerHTML = '<div class="chart-empty" id="trendBars">暂无数据</div>'; return; }
+    /* 虚构示意：14 天里有导入的日子分布不均，最大一天 312 本 */
+    var data = [0,0,18,0,0,42,0,0,0,26,0,0,312,0];
+    var labels = ['13','14','15','16','17','18','19','20','21','22','23','24','25','26'];
+    var max = 312;
+    data.forEach(function(v, i){
+      var col = document.createElement('div');
+      col.className = 'bar-col';
+      col.title = '10 月 ' + labels[i] + ' 日 · 导入 ' + v + ' 本';
+      if (v > 0){
+        var fill = document.createElement('span');
+        fill.className = 'bar-fill';
+        fill.style.height = Math.max(4, Math.round(v / max * 100)) + '%';
+        col.appendChild(fill);
+      }
+      var lbl = document.createElement('span');
+      lbl.className = 'bar-lbl';
+      lbl.textContent = i % 3 === 0 || i === data.length - 1 ? labels[i] : '';
+      col.appendChild(lbl);
+      host.appendChild(col);
+    });
+  }
+
+  function renderBuckets(empty){
+    var host = $('#bucketBars');
+    host.innerHTML = '';
+    if (empty){ host.outerHTML = '<div class="chart-empty" id="bucketBars">暂无数据</div>'; return; }
+    var data = [['1',2],['2-9',18],['10-49',41],['50-199',97],['200-999',268],['1000+',60]];
+    var max = 268;
+    data.forEach(function(pair){
+      var col = document.createElement('div');
+      col.className = 'bar-col';
+      col.title = pair[0] + ' 章 · ' + pair[1] + ' 本';
+      var val = document.createElement('span');
+      val.className = 'bar-val'; val.textContent = String(pair[1]);
+      col.appendChild(val);
+      if (pair[1] > 0){
+        var fill = document.createElement('span');
+        fill.className = 'bar-fill';
+        fill.style.height = Math.max(4, Math.round(pair[1] / max * 100)) + '%';
+        col.appendChild(fill);
+      }
+      var lbl = document.createElement('span');
+      lbl.className = 'bar-lbl'; lbl.textContent = pair[0];
+      col.appendChild(lbl);
+      host.appendChild(col);
+    });
+  }
+
+  function renderAuthors(empty){
+    var host = $('#authorBars');
+    host.innerHTML = '';
+    if (empty){ host.outerHTML = '<div class="chart-empty" id="authorBars">暂无数据</div>'; return; }
+    var data = [['佚名','6200 万'],['林砚','3860 万'],['沈既白','2940 万'],['程雨眠','1730 万'],['山雨社','1240 万'],['周砚秋','910 万'],['无名氏','640 万'],['顾长川','520 万'],['周雨窗','380 万'],['其他','其余 87 位']];
+    var max = 6200;
+    data.forEach(function(row){
+      var el = document.createElement('div');
+      el.className = 'hbar-row';
+      el.title = row[0] + ' · ' + row[1];
+      el.innerHTML = '<span class="hbar-name">' + row[0] + '</span>'
+        + '<span class="hbar-track"><span class="hbar-fill" style="width:' + (row[0] === '其他' ? 12 : Math.max(4, Math.round(parseFloat(row[1]) / max * 100))) + '%"></span></span>'
+        + '<span class="hbar-val">' + row[1] + '</span>';
+      host.appendChild(el);
+    });
+  }
+
+  var donutOff = {};
+  function renderDonut(empty){
+    var svg = $('#donut'), legend = $('#donutLegend');
+    svg.innerHTML = ''; legend.innerHTML = '';
+    if (empty){ svg.parentNode.innerHTML = '<div class="chart-empty">暂无数据</div>'; $('#donutNote').textContent = '还没有阅读记录。'; return; }
+    var segs = [
+      { key:'finished', label:'已读完', value:38, color:'var(--accent)', cls:'tone-1' },
+      { key:'reading', label:'在读', value:22, color:'color-mix(in oklab, var(--accent) 55%, var(--surface))', cls:'tone-2' },
+      { key:'unread', label:'还没开始', value:426, color:'var(--border)', cls:'tone-3' }
+    ];
+    var total = segs.reduce(function(s,x){ return s + x.value; }, 0);
+    var R = 52, C = 2 * Math.PI * R, acc = 0;
+    segs.forEach(function(s){
+      var len = s.value / total * C;
+      var circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      circle.setAttribute('cx','60'); circle.setAttribute('cy','60'); circle.setAttribute('r', String(R));
+      circle.setAttribute('fill','none');
+      circle.setAttribute('stroke', s.color);
+      circle.setAttribute('stroke-width','16');
+      circle.setAttribute('stroke-dasharray', len + ' ' + (C - len));
+      circle.setAttribute('stroke-dashoffset', String(-acc));
+      circle.setAttribute('transform','rotate(-90 60 60)');
+      circle.setAttribute('data-seg', s.key);
+      if (donutOff[s.key]) circle.classList.add('is-off');
+      var title = document.createElementNS('http://www.w3.org/2000/svg','title');
+      title.textContent = s.label + ' ' + s.value + ' 本';
+      circle.appendChild(title);
+      svg.appendChild(circle);
+      acc += len;
+    });
+    segs.forEach(function(s){
+      var row = el('<button type="button" class="legend-row" data-od-id="C-26"></button>');
+      row.className = 'legend-row' + (donutOff[s.key] ? ' is-off' : '');
+      /* 契约 C-26 键盘行：aria-pressed 与隐藏状态同步 */
+      row.setAttribute('aria-pressed', String(!donutOff[s.key]));
+      row.innerHTML = '<span class="legend-dot ' + s.cls + '"></span>' + s.label + ' ' + s.value + ' 本';
+      row.addEventListener('click', function(){
+        donutOff[s.key] = !donutOff[s.key];
+        renderDonut(false);
+      });
+      legend.appendChild(row);
+    });
+  }
+
+  function renderStorage(empty){
+    var bar = $('#stackBar'), legend = $('#stackLegend');
+    bar.innerHTML = ''; legend.innerHTML = '';
+    if (empty){ bar.parentNode.innerHTML = '<div class="chart-empty">暂无数据</div>'; $('#storageNote').textContent = '库还没有内容。'; return; }
+    var parts = [
+      { label:'正文', display:'583 MB', pct:94, cls:'tone-1' },
+      { label:'目录与索引', display:'25 MB', pct:4, cls:'tone-text' },
+      { label:'其他', display:'12 MB', pct:2, cls:'tone-3' }
+    ];
+    parts.forEach(function(p){
+      var seg = document.createElement('span');
+      seg.className = 'stack-seg';
+      seg.style.width = p.pct + '%';
+      seg.className = 'stack-seg ' + p.cls;
+      seg.title = p.label + ' ' + p.display;
+      bar.appendChild(seg);
+      var row = document.createElement('span');
+      row.className = 'legend-row';
+      row.innerHTML = '<span class="legend-dot ' + p.cls + '"></span>' + p.label + ' ' + p.display;
+      legend.appendChild(row);
+    });
+  }
+
+  function renderLens(empty){
+    var host = $('#lenBars');
+    host.innerHTML = '';
+    if (empty){ host.outerHTML = '<div class="chart-empty" id="lenBars">暂无数据</div>'; return; }
+    var data = [['<1千',4210],['1千-3千',82640],['3千-5千',24180],['5千-1万',11820],['1万+',1470]];
+    var max = 82640;
+    data.forEach(function(pair){
+      var col = document.createElement('div');
+      col.className = 'col-item';
+      col.title = pair[0] + ' 字 · ' + pair[1] + ' 章';
+      var h = Math.max(4, Math.round(pair[1] / max * 100));
+      var fill = document.createElement('span');
+      fill.className = 'col-fill' + (pair[1] === max ? ' is-peak' : '');
+      fill.style.height = h + '%';
+      col.appendChild(fill);
+      var lbl = document.createElement('span');
+      lbl.className = 'bar-lbl'; lbl.textContent = pair[0];
+      col.appendChild(lbl);
+      host.appendChild(col);
+    });
+  }
+
+  function renderDash(empty){
+    renderHeatmap(empty);
+    renderTrend(empty);
+    renderBuckets(empty);
+    renderAuthors(empty);
+    renderDonut(empty);
+    renderStorage(empty);
+    renderLens(empty);
+  }
+
+  /* ═══ 作者页 ═══ */
+  /* ═══ 事件绑定 ═══ */
+  $('#demoState').addEventListener('change', function(ev){
+    state.demo = ev.target.value;
+    if (state.demo === 'empty' && state.page === 'dashboard') renderDash(true);
+    if (state.demo === 'normal' && state.page === 'dashboard') renderDash(false);
+    applyState();
+  });
+  $$('.demo-bar [data-page]').forEach(function(b){
+    b.addEventListener('click', function(){ showPage(b.getAttribute('data-page')); });
+  });
+  $$('[data-tier]').forEach(function(b){
+    b.addEventListener('click', function(){ manualTier = true; setTier(b.getAttribute('data-tier')); });
+  });
+
+  /* C-29 刷新概览：加载中文案 + 禁用 + 完成后复位（对应契约 click 行） */
+  var refreshBtn = $('[data-od-id="C-29"]');
+  if (refreshBtn){
+    refreshBtn.addEventListener('click', function(){
+      if (refreshBtn.disabled) return;
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = '正在刷新…';
+      window.setTimeout(function(){
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = '刷新概览';
+        renderDash(state.demo === 'empty');
+        toast('概览已刷新');
+      }, 600);
+    });
+  }
+
+  /* C-15 打开最后一章：清零追更角标（对应契约 click 行） */
+  var CHAPTER_LAST = 412;
+  $$('.side-nav a').forEach(function(a){
+    a.addEventListener('click', function(ev){
+      ev.preventDefault();
+      var nav = a.getAttribute('data-nav');
+      if (nav === 'dashboard' || nav === 'authors'){ showPage(nav); return; }
+      toast('原型演示：将前往「' + a.textContent.replace(/\d+/,'').trim() + '」');
+    });
+  });
+  function bindNav(el){
+    if (el.__navBound) return;
+    el.__navBound = true;
+    el.addEventListener('click', function(ev){
+      ev.preventDefault();
+      var nav = el.getAttribute('data-nav');
+      if (nav === 'authors'){ showPage('authors'); return; }
+      if (nav === 'read'){ toast('原型演示：将进入阅读器'); return; }
+      toast('原型演示：将前往' + (nav === 'series' ? '系列详情' : nav === 'admin' ? '书籍管理页' : nav === 'import' ? '导入管理' : nav === 'shelf' ? '书架' : '目标页'));
+    });
+  }
+  $$('[data-nav]').forEach(function(el){
+    if (el.closest('.side-nav')) return;
+    bindNav(el);
+  });
+  $('#crumbBack').addEventListener('click', function(){ toast('原型演示：回书架并保留原来的位置'); });
+  $('#introToggle').addEventListener('click', function(){ introOpen = !introOpen; renderIntro(); });
+  $$('#ratingRow [data-star]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var n = Number(b.getAttribute('data-star'));
+      var next = n === rating ? 0 : n;
+      rating = next;
+      renderRating();
+      toast(next === 0 ? '已取消评分' : '已评 ' + next + ' 星');
+    });
+  });
+  $$('.vol-jump button').forEach(function(b){
+    b.addEventListener('click', function(){
+      var idx = Number(b.getAttribute('data-jump'));
+      BOOK.open[idx] = true;
+      $$('.vol-jump button').forEach(function(x){ x.classList.toggle('is-active', x === b); });
+      renderVolumes();
+      var sec = document.querySelector('[data-volume="' + idx + '"]');
+      if (sec){
+        var top = sec.getBoundingClientRect().top + window.pageYOffset - 12;
+        window.scrollTo({ top:top, behavior:'smooth' });
+      }
+    });
+  });
+  $$('[data-tag]').forEach(function(b){
+    b.addEventListener('click', function(){
+      toast('原型演示：按标签「' + b.getAttribute('data-tag') + '」筛选书架');
+    });
+  });
+  $('#tocSearch').addEventListener('input', function(ev){ runTocSearch(ev.target.value); });
+  $('#tocClear').addEventListener('click', function(){
+    $('#tocSearch').value = '';
+    $('#tocCount').textContent = '412 章';
+    runTocSearch('');
+    /* 契约 C-12「移除/关闭后」：空态按钮消失后焦点必须回到搜索框，不能落在已隐藏的按钮上 */
+    $('#tocSearch').focus();
+  });
+  $('#openCollection').addEventListener('click', function(){
+    $('#collectionLoading').hidden = false;
+    $('#collectionList').hidden = true;
+    openDialog('#dlgCollection');
+    window.setTimeout(function(){
+      $('#collectionLoading').hidden = true;
+      $('#collectionList').hidden = false;
+    }, 550);
+  });
+  $('#collectionDone').addEventListener('click', function(){
+    closeDialog();
+    toast('书单已更新');
+    /* 契约 C-18「移除/关闭后」：焦点回到触发本面板的「加入书单」按钮 */
+    var trigger = $('[data-od-id="C-04"]');
+    if (trigger) trigger.focus();
+  });
+  $$('#collectionList input[type=checkbox]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      if (cb.disabled) return;
+      toast(cb.checked ? '已加入书单' : '已移出书单');
+    });
+  });
+  $('#deleteEntry').addEventListener('click', function(){ openDialog('#dlgDelete'); });
+  $('#deleteInput').addEventListener('input', function(ev){
+    var ok = ev.target.value.trim() === BOOK.title;
+    $('#deleteConfirm').disabled = !ok;
+    $('#deleteHint').hidden = ok;
+  });
+  $('#deleteConfirm').addEventListener('click', function(){
+    closeDialog();
+    toast('已删除《长夜未明》，回到书架');
+  });
+  $('#deleteCancel').addEventListener('click', closeDialog);
+  $('#authorSort').addEventListener('change', function(ev){
+    var map = { books:'按书籍数排序', words:'按总字数排序', name:'按名字排序' };
+    $('#authorsSub').textContent = map[ev.target.value];
+    toast('原型演示：已' + map[ev.target.value]);
+  });
+  $('#authorPrev').addEventListener('click', function(){ toast('原型演示：上一页'); });
+  $('#authorNext').addEventListener('click', function(){ toast('原型演示：下一页'); });
+  document.addEventListener('click', function(ev){
+    var t = ev.target.closest('[data-toast]');
+    if (t) toast(t.getAttribute('data-toast'));
+  });
+
+  /* ── 初始化 ── */
+  renderVolumes();
+  renderIntro();
+  renderRating();
+  renderDonut(false);
+  renderStorage(false);
+  renderTrend(false);
+  renderBuckets(false);
+  renderAuthors(false);
+  renderLens(false);
+  renderHeatmap(false);
+  /* 跟随浏览器窗口宽度自动切换档位（与真实页面监听 H5_QUERY 一致；点控制条可手动覆盖） */
+  var mq = window.matchMedia(H5_QUERY);
+  var manualTier = false;
+  setTier(mq.matches ? 'h5' : 'pc');
+  mq.addEventListener('change', function(ev){ if (!manualTier) setTier(ev.matches ? 'h5' : 'pc'); });
+})();
+</script>
+</body>
+</html>

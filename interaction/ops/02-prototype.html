@@ -1,0 +1,1808 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>norvels · 运营域交互原型（导入 · 书籍管理 · 单书管理）</title>
+<style>
+:root {
+  --bg: #fbf6ee;
+  --surface: #fffdf8;
+  --surface-warm: #f1e3cf;
+  --fg: #201914;
+  --fg-2: #4c4037;
+  --muted: #7a6d63;
+  --meta: #9b5b32;
+  --border: #ded2c3;
+  --border-soft: #eee4d7;
+  --accent: #9b5b32;
+  --accent-on: #ffffff;
+  --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+  --accent-active: color-mix(in oklab, var(--accent), black 14%);
+  --success: #4f8a4f;
+  --warn: #c9822f;
+  --danger: #b33a3a;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 17px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: 42px;
+  --text-3xl: 64px;
+  --text-4xl: 88px;
+  --leading-body: 1.62;
+  --leading-tight: 1;
+  --tracking-display: -0.025em;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --section-y-desktop: 112px;
+  --section-y-tablet: 80px;
+  --section-y-phone: 56px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 9999px;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 20px 52px rgba(32, 25, 20, 0.12);
+  --focus-ring: 0 0 0 4px rgba(155, 91, 50, 0.24);
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max: 1180px;
+  --container-gutter-desktop: 36px;
+  --container-gutter-tablet: 24px;
+  --container-gutter-phone: 16px;
+  --danger-text: color-mix(in oklab, var(--danger), var(--fg) 28%);
+  --success-text: color-mix(in oklab, var(--success), var(--fg) 30%);
+  --warn-text: color-mix(in oklab, var(--warn), var(--fg) 34%);
+  --scrim: rgba(32, 25, 20, 0.42);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:var(--text-sm);line-height:var(--leading-body);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--font-display);font-weight:400;letter-spacing:var(--tracking-display);margin:0;line-height:var(--leading-tight)}
+h1{font-size:var(--text-xl)}
+h2{font-size:var(--text-lg)}
+h3{font-size:var(--text-base)}
+p{margin:0}
+button{font-family:inherit;font-size:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:0;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ── 演示控制条（只存在于原型） ── */
+.demo-bar{position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center;padding:10px var(--space-4);background:var(--surface-warm);border-bottom:1px solid var(--border)}
+.demo-bar .grp{display:flex;gap:6px;align-items:center;min-width:0}
+.demo-bar .lbl{font-size:var(--text-xs);color:var(--fg-2);font-weight:600}
+.demo-bar .note{margin-left:auto;font-size:var(--text-sm);color:var(--fg-2)}
+.demo-bar .select{min-height:44px;width:auto}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius-pill);overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:7px 12px;min-height:44px;cursor:pointer;font-size:var(--text-sm);color:var(--fg-2)}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.seg button:hover{background:var(--border-soft)}
+
+/* ── 应用外壳 ── */
+.app{display:flex;max-width:1440px;margin:0 auto;min-height:calc(100vh - 46px);align-items:stretch}
+.sidebar{width:220px;flex:0 0 220px;border-right:1px solid var(--border);padding:var(--space-6) var(--space-3);background:var(--surface)}
+.brand{font-family:var(--font-display);font-size:var(--text-base);padding:0 var(--space-3) var(--space-4)}
+.brand span{display:block;font-family:var(--font-body);font-size:var(--text-xs);color:var(--fg-2);letter-spacing:.04em}
+.nav{display:grid;gap:2px}
+.nav a{display:flex;align-items:center;gap:8px;padding:10px 12px;min-height:44px;border-radius:var(--radius-sm);color:var(--fg-2);font-size:var(--text-sm)}
+.nav a:hover{background:var(--border-soft);text-decoration:none}
+.nav a[aria-current="page"]{background:var(--surface-warm);color:var(--fg);font-weight:600}
+.nav .sep{margin:10px 12px 6px;font-size:var(--text-xs);color:var(--muted);letter-spacing:.08em}
+.main{flex:1 1 auto;min-width:0;padding:var(--space-6) var(--container-gutter-desktop) var(--space-12)}
+.page{display:block}
+.crumbs{display:flex;gap:6px;align-items:center;font-size:var(--text-xs);color:var(--fg-2);margin-bottom:var(--space-3)}
+.crumbs a{display:inline-flex;align-items:center;min-height:44px;padding:0 4px}
+.crumbs span[aria-hidden]{color:var(--muted)}
+.page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-4);margin-bottom:var(--space-5)}
+.eyebrow{margin:0 0 4px;font-size:var(--text-xs);letter-spacing:.1em;color:var(--meta);text-transform:uppercase}
+.sub{margin-top:6px;color:var(--fg-2);font-size:var(--text-sm);max-width:62ch}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius-pill);background:var(--surface-warm);color:var(--fg-2);font-size:var(--text-xs);white-space:nowrap}
+.pill.is-live{background:color-mix(in oklab, var(--success) 18%, var(--surface));color:var(--success-text)}
+.pill.is-warn{background:color-mix(in oklab, var(--warn) 18%, var(--surface));color:var(--warn-text)}
+.pill.is-danger{background:color-mix(in oklab, var(--danger) 14%, var(--surface));color:var(--danger-text)}
+
+.cols-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:var(--space-4);align-items:start}
+.cols-book{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:var(--space-4);align-items:start}
+.cols-book>*{min-width:0}
+.cols-2>*{min-width:0}
+.stack{display:grid;gap:var(--space-4);min-width:0}
+.stack>*{min-width:0;overflow-wrap:anywhere}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-5)}
+.card.is-danger{border-color:color-mix(in oklab, var(--danger) 42%, var(--border))}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-3);margin-bottom:var(--space-3)}
+.meta{font-size:var(--text-xs);color:var(--fg-2);line-height:1.55}
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.hint{font-size:var(--text-xs);color:var(--fg-2)}
+.danger-text{color:var(--danger-text)}
+
+/* 勾选框：命中区 32×32，视觉 20×20 */
+input[type=checkbox]{appearance:none;-webkit-appearance:none;width:44px;height:44px;margin:0;padding:0;border:0;background:transparent;position:relative;cursor:pointer;flex:0 0 auto}
+input[type=checkbox]::before{content:"";position:absolute;inset:12px;border:1.5px solid var(--border);border-radius:4px;background:var(--bg);transition:background var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard)}
+input[type=checkbox]:hover::before{border-color:var(--muted)}
+input[type=checkbox]:checked::before{background:var(--accent);border-color:var(--accent)}
+input[type=checkbox]:checked::after{content:"";position:absolute;left:18px;top:15px;width:6px;height:10px;border:solid var(--accent-on);border-width:0 2px 2px 0;transform:rotate(42deg)}
+input[type=checkbox]:disabled{cursor:not-allowed}
+input[type=checkbox]:disabled::before{background:var(--border-soft);border-color:var(--border)}
+
+/* ── 表单 ── */
+.field{display:grid;gap:4px;margin-bottom:var(--space-3);min-width:0}
+.field>label,.field-label{font-size:var(--text-xs);color:var(--fg-2);font-weight:600}
+.input,.select{width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--fg);font-family:inherit;font-size:var(--text-sm)}
+textarea.input{min-height:76px;resize:vertical;line-height:1.6}
+.input:hover,.select:hover{border-color:var(--muted)}
+.input:focus,.select:focus{outline:0;border-color:var(--accent);box-shadow:var(--focus-ring)}
+.input:disabled,.select:disabled{background:var(--border-soft);color:var(--fg-2);cursor:not-allowed}
+.input.is-invalid{border-color:var(--danger)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+.check-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+
+.check-row label{font-size:var(--text-sm);color:var(--fg)}
+.check-row input:disabled+label{color:var(--muted)}
+
+/* ── 按钮 ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--fg);cursor:pointer;font-size:var(--text-sm);white-space:nowrap;transition:background var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard)}
+.btn:hover{background:var(--border-soft)}
+.btn:active{background:var(--border)}
+.btn:disabled{background:var(--border-soft);border-color:var(--border);color:var(--fg-2);cursor:not-allowed}
+.btn-primary:disabled{background:var(--border-soft);border-color:var(--border);color:var(--fg-2)}
+.btn-danger:disabled{background:var(--border-soft);border-color:var(--border);color:var(--fg-2)}
+.btn-sm{min-height:44px;padding:0 12px;font-size:var(--text-sm)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:var(--accent-on)}
+.btn-danger:hover{background:color-mix(in oklab, var(--danger), black 8%)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--fg-2)}
+.btn-ghost:hover{background:var(--border-soft)}
+.btn-ghost.btn-danger{color:var(--danger-text)}
+.btn-ghost.btn-danger:hover{background:color-mix(in oklab, var(--danger) 12%, var(--surface))}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ── 表格 ── */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-sm)}
+.table{width:100%;border-collapse:collapse;font-size:var(--text-sm);background:var(--surface)}
+.table th,.table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border-soft);vertical-align:middle}
+.table th{font-size:var(--text-xs);color:var(--fg-2);font-weight:600;background:var(--surface-warm);position:sticky;top:0;white-space:nowrap}
+.table td{overflow-wrap:anywhere}
+/* 窄栏里的表：表头不折字，内容允许换行，整表在自身容器内横向滚动 */
+.table tbody tr:hover{background:color-mix(in oklab, var(--surface-warm) 55%, var(--surface))}
+.table tbody tr:last-child td{border-bottom:0}
+.table .is-num{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--text-xs)}
+.table .c-check{width:44px;text-align:center;padding:6px}
+
+
+.table .c-actions{text-align:right;white-space:nowrap}
+.table .c-actions .btn{margin-left:4px}
+.chapter-title-cell{min-width:120px}
+.book-cell{display:flex;align-items:center;gap:10px;min-width:0}
+.cover-mini{width:32px;height:44px;flex:0 0 32px;border-radius:var(--radius-sm);background:var(--surface-warm);border:1px solid var(--border);display:grid;place-items:center;font-family:var(--font-display);font-size:var(--text-sm);color:var(--fg-2)}
+.book-title{font-weight:600;display:inline-flex;align-items:center;min-height:44px}
+.row-sub{display:block;font-size:var(--text-xs);color:var(--fg-2)}
+.vol-row td{background:var(--surface-warm);font-size:var(--text-xs);color:var(--fg-2)}
+.table .c-id{white-space:nowrap}
+.table .c-src{min-width:88px;line-height:1.35}
+.table .is-num{white-space:nowrap}
+.table .c-state{white-space:nowrap}
+.vol-head{display:flex;align-items:center;gap:8px}
+
+.vol-title{font-weight:600;color:var(--fg)}
+.more-row td{text-align:center}
+
+/* ── 工具条 / 批量条 ── */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:var(--space-4);padding:var(--space-3);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md)}
+.toolbar .field{margin:0}
+.toolbar .grow{flex:1 1 220px;min-width:180px}
+.toolbar .end{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.batch-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:var(--space-3);padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-warm)}
+.batch-bar .actions{margin-left:auto}
+.inline-note{font-size:var(--text-xs);color:var(--fg-2);line-height:1.5}
+
+/* ── 三态面板 ── */
+.state-panel{display:grid;justify-items:center;gap:10px;text-align:center;padding:var(--space-12) var(--space-6);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md)}
+.state-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:var(--radius-pill);background:var(--surface-warm);color:var(--fg-2);font-size:var(--text-sm)}
+.state-panel h2{font-size:var(--text-base)}
+.state-panel p{max-width:44ch;color:var(--fg-2);font-size:var(--text-sm)}
+.state-panel.is-error .state-mark{background:color-mix(in oklab, var(--danger) 16%, var(--surface));color:var(--danger-text)}
+.spinner{width:16px;height:16px;border-radius:var(--radius-pill);border:2px solid var(--border);border-top-color:var(--accent);animation:spin 800ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── 预检 / 进度 ── */
+.counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:var(--space-2);margin:var(--space-3) 0}
+.counters>div{display:grid;gap:2px}
+.counters strong{font-family:var(--font-mono);font-size:var(--text-lg);font-variant-numeric:tabular-nums}
+.counters span{font-size:var(--text-xs);color:var(--fg-2)}
+.progress{height:8px;border-radius:var(--radius-pill);background:var(--border-soft);overflow:hidden}
+.progress>span{display:block;height:100%;background:var(--accent);transition:width var(--motion-base) var(--ease-standard)}
+.disclose{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);cursor:pointer;font-size:var(--text-sm)}
+.disclose:hover{background:var(--border-soft)}
+.alert{border-left:3px solid var(--warn);background:color-mix(in oklab, var(--warn) 10%, var(--surface));padding:8px 10px;border-radius:var(--radius-sm);font-size:var(--text-xs);color:var(--fg-2);display:grid;gap:4px}
+.alert.is-danger{border-left-color:var(--danger);background:color-mix(in oklab, var(--danger) 10%, var(--surface))}
+.notice{padding:10px 12px;border-radius:var(--radius-sm);background:color-mix(in oklab, var(--success) 12%, var(--surface));color:var(--success-text);font-size:var(--text-sm);margin-bottom:var(--space-3)}
+.notice.is-error{background:color-mix(in oklab, var(--danger) 12%, var(--surface));color:var(--danger-text)}
+.notice.is-warn{background:color-mix(in oklab, var(--warn) 14%, var(--surface));color:var(--warn-text)}
+.rule-list{display:grid;gap:8px}
+.rule-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:8px;align-items:end}
+
+/* ── 上传区 ── */
+.dropzone{display:grid;place-items:center;gap:4px;padding:22px 16px;border:1.5px dashed var(--border);border-radius:var(--radius-md);background:transparent;cursor:pointer;text-align:center;width:100%}
+.dropzone:hover{border-color:var(--muted)}
+.dropzone.is-over{border-color:var(--accent);background:var(--surface-warm)}
+.dropzone strong{font-size:var(--text-sm)}
+
+/* ── 弹层 ── */
+.confirm-backdrop{position:fixed;inset:0;z-index:80;background:var(--scrim);display:grid;place-items:center;padding:var(--space-4)}
+.confirm-dialog{width:min(100%,520px);max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--elev-raised);padding:var(--space-5);display:grid;gap:var(--space-3)}
+.confirm-dialog.is-wide{width:min(100%,880px)}
+.confirm-dialog h2{font-size:var(--text-lg)}
+.confirm-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:var(--space-2)}
+.list-plain{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.list-plain li{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--bg)}
+.vol-move-opt{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--bg)}
+.vol-move-opt:hover{background:var(--surface-warm)}
+.vol-move-opt input{width:16px;height:16px;accent-color:var(--accent)}
+
+/* ── 正文抽屉 ── */
+.ch-editor{position:fixed;top:0;right:0;bottom:0;z-index:75;width:min(620px,100%);background:var(--surface);border-left:1px solid var(--border);box-shadow:var(--elev-raised);display:flex;flex-direction:column;padding:var(--space-4)}
+.ch-editor.is-full{left:0;width:auto;border-left:0}
+.ch-editor-head{display:flex;justify-content:space-between;gap:var(--space-3);align-items:flex-start}
+.ch-editor-notes{display:grid;gap:2px;margin:var(--space-3) 0;font-size:var(--text-xs);color:var(--warn-text)}
+.ch-editor-area{flex:1 1 auto;min-height:220px;width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--fg);font-family:var(--font-display);font-size:15px;line-height:1.9;resize:none}
+.ch-editor-foot{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:var(--space-3)}
+.ch-editor-foot .meta{margin-right:auto}
+.ch-editor-x{width:36px;height:36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer;font-size:var(--text-base)}
+
+/* ── 拆分面板 ── */
+.split-wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:var(--space-4)}
+.split-paras{max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;background:var(--bg)}
+.split-para{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;padding:4px 6px;font-size:var(--text-xs);color:var(--fg-2)}
+.split-para .pno{font-family:var(--font-mono);color:var(--muted)}
+.split-para .ptext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.split-cut-btn{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;margin:2px 0;border:0;background:transparent;cursor:pointer;font-size:var(--text-xs);color:var(--muted)}
+.split-cut-btn .line{flex:1 1 auto;height:1px;background:var(--border)}
+.split-cut-btn:hover{color:var(--accent)}
+.split-cut-btn.is-cut{color:var(--accent);font-weight:600}
+.split-cut-btn.is-cut .line{background:var(--accent);height:2px}
+.split-side{display:grid;gap:10px;align-content:start}
+.split-preview{display:grid;gap:6px;max-height:180px;overflow:auto}
+.split-piece{display:grid;gap:2px;padding:6px 8px;border:1px solid var(--border-soft);border-radius:var(--radius-sm);background:var(--bg);font-size:var(--text-xs)}
+.split-auto{display:flex;gap:8px;align-items:end}
+.split-auto .field{margin:0;flex:1 1 auto}
+
+/* ── 吸底操作条 ── */
+.admin-actions{position:sticky;bottom:0;z-index:40;display:flex;gap:var(--space-3);align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:var(--space-4);padding:12px var(--space-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--elev-raised)}
+.admin-actions .actions{margin-left:auto}
+.admin-actions.is-dirty{border-color:var(--accent)}
+
+/* ── 章节行内编辑 ── */
+.ch-edit{display:flex;gap:6px;align-items:center}
+.ch-edit .input{min-height:32px;padding:4px 8px}
+
+/* ── H5 外壳 ── */
+.h5{max-width:520px;margin:0 auto;padding:0 0 76px;min-height:calc(100vh - 46px);background:var(--bg)}
+.h5-top{position:sticky;top:46px;z-index:30;display:flex;align-items:center;gap:10px;padding:12px var(--container-gutter-phone);background:var(--surface);border-bottom:1px solid var(--border)}
+.h5-top strong{font-family:var(--font-display);font-size:var(--text-base);font-weight:400}
+.h5-top .search{flex:1 1 auto;min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--bg);font-size:var(--text-sm)}
+.h5-body{padding:var(--space-5) var(--container-gutter-phone);display:grid;gap:var(--space-4)}
+.h5-note{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-4);display:grid;gap:10px}
+.h5-note h2{font-size:var(--text-base)}
+.h5-note ul{margin:0;padding-left:18px;display:grid;gap:6px;font-size:var(--text-sm);color:var(--fg-2)}
+.h5-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.h5-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px;display:grid;gap:6px}
+.h5-card .cv{height:96px;border-radius:var(--radius-sm);background:var(--surface-warm);display:grid;place-items:center;font-family:var(--font-display);font-size:var(--text-lg);color:var(--fg-2)}
+.h5-tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;justify-content:space-around;background:var(--surface);border-top:1px solid var(--border);padding:6px 0 env(safe-area-inset-bottom)}
+.h5-tabs button{min-height:56px;min-width:64px;display:grid;place-items:center;gap:2px;border:0;background:transparent;font-size:var(--text-xs);color:var(--fg-2);cursor:pointer}
+.h5-tabs button[aria-current="page"]{color:var(--fg);font-weight:600}
+
+/* ── toast ── */
+.overlays{display:contents}
+.toast-host{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:120;pointer-events:none}
+.toast{background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-pill);font-size:var(--text-sm);box-shadow:var(--elev-raised)}
+.toast.is-error{background:var(--danger)}
+
+/* ── 断点 ── */
+@media (max-width:1440px){
+  .app{max-width:1440px}
+  .main{padding-left:var(--container-gutter-desktop);padding-right:var(--container-gutter-desktop)}
+}
+@media (max-width:1024px){
+  .app{max-width:1024px}
+  .sidebar{width:180px;flex:0 0 180px}
+  .main{padding-left:var(--container-gutter-tablet);padding-right:var(--container-gutter-tablet)}
+  .cols-2,.cols-book{grid-template-columns:minmax(0,1fr)}
+  .toolbar .grow{flex:1 1 160px}
+}
+@media (max-width:768px){
+  .app{max-width:768px}
+  .sidebar{display:none}
+  .main{padding:var(--space-4) var(--container-gutter-phone) var(--space-8)}
+  .page-head{flex-direction:column;gap:10px}
+  .cols-2{grid-template-columns:minmax(0,1fr)}
+  .field-row{grid-template-columns:1fr}
+  .split-wrap{grid-template-columns:1fr}
+  .rule-row{grid-template-columns:1fr}
+  .table-wrap{overflow-x:auto}
+  .admin-actions{flex-wrap:wrap}
+  .admin-actions .actions{width:100%;justify-content:flex-end}
+  .demo-bar .note{display:none}
+}
+@media (max-width:390px){
+  .app{max-width:390px}
+  .main{padding:12px 12px 64px}
+  h1{font-size:var(--text-lg)}
+  .card{padding:var(--space-4)}
+  .demo-bar{padding:8px 10px;gap:6px}
+  .demo-bar .lbl{display:none}
+  .seg button{padding:6px 9px;font-size:var(--text-xs)}
+  .h5-cards{grid-template-columns:1fr}
+  .btn,.btn-sm{min-height:44px}
+  .confirm-actions .btn{flex:1 1 auto}
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<div class="demo-bar" data-od-id="demo-only:bar">
+  <div class="grp" data-od-id="demo-only:page">
+    <span class="lbl">页面</span>
+    <div class="seg" role="group" aria-label="切换页面">
+      <button type="button" data-page="import" aria-pressed="true">导入</button>
+      <button type="button" data-page="admin" aria-pressed="false">书籍管理</button>
+      <button type="button" data-page="book" aria-pressed="false">单书管理</button>
+    </div>
+  </div>
+  <div class="grp" data-od-id="demo-only:state">
+    <span class="lbl">状态</span>
+    <select class="select" id="demoState" aria-label="切换状态" style="min-height:44px;width:auto">
+      <option value="normal">正常</option>
+      <option value="loading">加载中</option>
+      <option value="empty">空</option>
+      <option value="error">错误</option>
+      <option value="conflict">操作冲突</option>
+    </select>
+  </div>
+  <div class="grp" data-od-id="demo-only:tier">
+    <span class="lbl">分档</span>
+    <div class="seg" role="group" aria-label="切换分档">
+      <button type="button" data-tier="pc" aria-pressed="true">PC</button>
+      <button type="button" data-tier="h5" aria-pressed="false">H5</button>
+    </div>
+  </div>
+  <p class="note" data-od-id="demo-only:note">演示控制条只存在于原型，不进产品；H5 档下列表与表单区块会从页面里消失（不是隐藏）。</p>
+</div>
+
+<div class="app" id="pcApp" data-od-id="ops:app">
+  <aside class="sidebar" data-od-id="ops:sidebar" aria-label="侧栏">
+    <div class="brand">norvels<span>本地中文小说库</span></div>
+    <nav class="nav">
+      <a href="#import" data-page-link="import" aria-current="page">导入管理</a>
+      <a href="#admin" data-page-link="admin">书籍管理</a>
+      <a href="#book" data-page-link="book">单书管理</a>
+      <p class="sep">阅读</p>
+      <a href="#shelf">书架</a>
+      <a href="#reader">阅读器</a>
+    </nav>
+  </aside>
+
+  <main class="main" data-od-id="ops:main">
+
+    <!-- ═══════════ 页面 1 · 导入 ═══════════ -->
+    <section class="page" id="page-import" data-od-id="ops:import" aria-labelledby="import-h1">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">导入管理</p>
+          <h1 id="import-h1">把书变成书架</h1>
+          <p class="sub">拖入或选择 txt / epub / zip 直接导入，也可以填目录批量扫描；同一个文件不会重复入库。</p>
+        </div>
+        <span class="pill" id="importPill">1 个进行中的任务</span>
+      </div>
+
+      <div class="notice is-warn" data-od-id="import:conflict" hidden>
+        已经有一个导入任务在跑了（任务 #48），等它结束再开新的。可以先做一次「只预检」，预检不占这次机会。
+      </div>
+
+      <div class="cols-2">
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>新建导入任务</h2></div>
+            <div class="field" data-od-id="import:path">
+              <label for="dirInput">目录或单个文件</label>
+              <input class="input" id="dirInput" placeholder="例如 文稿/小说，或 文稿/小说/长夜未明.epub" data-od-id="C-01">
+              <span class="hint">填目录就整批扫描；填到 .txt / .epub / .zip 就按单文件处理。</span>
+            </div>
+            <div data-od-id="import:scan-opts">
+              <div class="check-row"><input type="checkbox" id="optRec" checked data-od-id="C-02"><label for="optRec">递归扫描子目录</label></div>
+              <div class="check-row"><input type="checkbox" id="optForce" data-od-id="C-03"><label for="optForce">重新导入已入库的文件</label></div>
+              <div class="check-row"><input type="checkbox" id="optUpdate" checked data-od-id="C-04"><label for="optUpdate">追更：同一本书只追加新章节（保留阅读进度）</label></div>
+            </div>
+            <div class="field" data-od-id="import:workers">
+              <label for="workersInput">同时处理的文件数</label>
+              <input class="input" id="workersInput" type="number" min="1" max="8" value="4" style="max-width:120px" data-od-id="C-05">
+            </div>
+            <div class="actions">
+              <button class="btn btn-primary" type="button" id="startImport" data-od-id="C-06">开始导入</button>
+              <button class="btn" type="button" id="dryRunBtn" data-od-id="C-07">只预检</button>
+            </div>
+            <p class="meta" style="margin-top:8px">同一时间只能跑一个导入任务；只预检不建任务、不占锁，随时可点。</p>
+          </div>
+
+          <div class="card" data-od-id="import:upload-zone">
+            <div class="card-head"><h2>上传文件</h2><span class="meta">一次最多 20 个 · 单本 64 MB · 一批 256 MB</span></div>
+            <button class="dropzone" type="button" id="dropzone" aria-label="选择或拖入文件" data-od-id="C-08">
+              <strong>拖文件到这里，或点击选择</strong>
+              <span class="meta">支持 TXT、EPUB、ZIP，可一次选多个</span>
+            </button>
+            <div style="margin-top:10px" data-od-id="import:upload-list">
+              <table class="table">
+                <thead><tr><th>文件</th><th>大小</th><th>结论</th></tr></thead>
+                <tbody>
+                  <tr><td>长夜未明.epub</td><td class="is-num">2.4 MB</td><td><span class="pill">接收</span></td></tr>
+                  <tr><td class="c-src">山雨欲来.txt</td><td class="is-num">1.1 MB</td><td><span class="pill">接收</span></td></tr>
+                  <tr><td>旧巷灯影.zip</td><td class="is-num">48 MB</td><td><span class="pill">接收 · 包内 3 条</span></td></tr>
+                  <tr><td>读我.pdf</td><td class="is-num">0.3 MB</td><td><span class="pill is-danger">暂不支持 .pdf，目前支持 TXT、EPUB、ZIP</span></td></tr>
+                  <tr><td>合集-超清.epub</td><td class="is-num">96 MB</td><td><span class="pill is-danger">超过 64 MB 上限</span></td></tr>
+                </tbody>
+              </table>
+              <p class="meta" style="margin-top:6px">不接受的文件会逐条说明原因，同批里合法的照样上传。</p>
+            </div>
+            <div class="actions" style="margin-top:10px">
+              <button class="btn btn-primary" type="button" data-od-id="C-09" data-toast="已提交 3 个文件，任务 #49 已排队">上传文件（3）</button>
+              <button class="btn btn-ghost" type="button" data-toast="已清空这一批文件">清空</button>
+            </div>
+          </div>
+
+          <div class="card" data-od-id="import:chapter-rules">
+            <div class="card-head"><h2>章节规则</h2><span class="meta">按顺序尝试，第一条命中的作为章节边界</span></div>
+            <p class="meta">都切不开就退回内置规则；最多 20 条，改完保存后下一次导入生效。</p>
+            <div class="rule-list" style="margin-top:10px">
+              <div class="rule-row">
+                <div class="field"><label for="ruleName1">规则 1 · 名称</label><input class="input" id="ruleName1" value="分节符" data-od-id="C-10"></div>
+                <div class="field"><label for="rulePattern1">正则</label><input class="input" id="rulePattern1" value="^===\s*第\d+\s*节\s*===$" data-od-id="C-11"></div>
+                <button class="btn btn-sm btn-ghost btn-danger" type="button" data-toast="已删除这条规则（保存后生效）" data-od-id="C-12">删除</button>
+              </div>
+              <div class="rule-row">
+                <div class="field"><label for="ruleName2">规则 2 · 名称</label><input class="input" id="ruleName2" value="卷首编号"></div>
+                <div class="field"><label for="rulePattern2">正则</label><input class="input" id="rulePattern2" value="^【第[一二三四五六七八九十]+卷】"></div>
+                <button class="btn btn-sm btn-ghost btn-danger" type="button" data-toast="已删除这条规则（保存后生效）">删除</button>
+              </div>
+            </div>
+            <div class="actions" style="margin-top:10px">
+              <button class="btn btn-sm" type="button" data-toast="已新增一条空规则" data-od-id="C-13">新增一条规则</button>
+              <button class="btn btn-sm btn-primary" type="button" id="ruleSave" data-toast="已保存 2 条规则，下次导入生效" data-od-id="C-14">保存规则</button>
+            </div>
+            <p class="meta danger-text" data-od-id="import:rule-validate" id="ruleError" hidden>
+              第 2 条的正则少了一个右括号：正则没通过校验，先补全括号与转义再保存。
+            </p>
+            <div class="field" style="margin-top:10px" data-od-id="import:rule-preview">
+              <label for="ruleSample">试切预览 · 粘一段正文</label>
+              <textarea class="input" id="ruleSample" rows="3" placeholder="把切不开的那本书开头粘进来，看看规则能切出几章" data-od-id="C-15">=== 第 1 节 ===
+雨下到第三天才停。巷口的灯一直亮着。
+=== 第 2 节 ===
+他说那盏灯是留给晚归的人。</textarea>
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm" type="button" id="rulePreviewBtn" data-od-id="C-16">试切预览</button>
+              <span class="meta" id="rulePreviewOut">按「分节符」可切出 2 章。</span>
+            </div>
+          </div>
+
+          <div class="card" data-od-id="import:tag-rules">
+            <div class="card-head"><h2>标签规则</h2><span class="meta">导入时命中关键词就给书打标签，只增不删</span></div>
+            <p class="meta">按「书名 + 作者 + 前三章标题 + 正文前 5000 字」匹配，最多 50 条；同书的手动标签不会被覆盖。</p>
+            <div class="rule-list" style="margin-top:10px">
+              <div class="rule-row">
+                <div class="field"><label for="tagName1">规则 1 · 标签名</label><input class="input" id="tagName1" value="武侠" data-od-id="C-17"></div>
+                <div class="field"><label for="tagKw1">关键词（逗号分隔）</label><input class="input" id="tagKw1" value="江湖，剑，镖局" data-od-id="C-18"></div>
+                <button class="btn btn-sm btn-ghost btn-danger" type="button" data-toast="已删除这条标签规则">删除</button>
+              </div>
+              <div class="rule-row">
+                <div class="field"><label for="tagName2">规则 2 · 标签名</label><input class="input" id="tagName2" value="群像"></div>
+                <div class="field"><label for="tagKw2">关键词（逗号分隔）</label><input class="input" id="tagKw2" value="众人，各自，几路人"></div>
+                <button class="btn btn-sm btn-ghost btn-danger" type="button" data-toast="已删除这条标签规则">删除</button>
+              </div>
+            </div>
+            <div class="actions" style="margin-top:10px">
+              <button class="btn btn-sm" type="button" data-toast="已新增一条空规则">新增词表规则</button>
+              <button class="btn btn-sm btn-primary" type="button" data-toast="已保存 2 条词表规则，下次导入生效" data-od-id="C-19">保存词表</button>
+            </div>
+            <p class="meta">还没有词表规则时这里会给出说明：导入的书一律不带自动标签，加一条就能在下次导入时自动打标。</p>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card" data-od-id="import:dry-report" id="dryReport" hidden>
+            <div class="card-head">
+              <h2>预检结果</h2>
+              <span class="meta">文稿/小说 · 预计约 40 秒</span>
+            </div>
+            <p class="meta">预检不写库、不建任务，也不会挡住正在跑的导入；判定口径与真正导入一致。</p>
+            <div class="counters">
+              <div><strong>12</strong><span>将导入</span></div>
+              <div><strong>3</strong><span>重复</span></div>
+              <div><strong>1</strong><span>不支持</span></div>
+              <div><strong>2</strong><span>解析失败</span></div>
+              <div><strong>18</strong><span>共扫描</span></div>
+            </div>
+            <p class="meta">预计新书 9 本 · 重复 3 本 · 合集拆出 2 本</p>
+            <button class="disclose" type="button" aria-expanded="true" data-toggle="#dryAlerts" data-od-id="C-20">
+              <span>4 条提醒，其中 2 条会让文件进不去</span><span>收起</span>
+            </button>
+            <div id="dryAlerts" class="alert" style="margin-top:8px">
+              <p>旧巷灯影.zip · 包内有 2 条 txt 正文不足 500 字，会被跳过</p>
+              <p>合集-超清.epub · 拆出 2 本，其中 1 本没有章节标题，会整本算一章</p>
+              <p>山雨欲来.txt · 与已入库的同名文件内容一致，按重复跳过</p>
+              <p>读我.pdf · 暂不支持这个格式</p>
+            </div>
+            <div class="actions" style="margin-top:10px">
+              <button class="btn btn-sm" type="button" id="dryCancelBtn" data-od-id="C-21">取消这次预检</button>
+              <span class="meta">预检已经跑了 12 秒，取消不影响正在跑的导入。</span>
+            </div>
+          </div>
+
+          <div class="card" id="dryIdle">
+            <div class="card-head"><h2>预检结果</h2></div>
+            <p class="meta">还没有预检。填好路径点「只预检」，会先告诉你有多少本能进、多少会被挡、大概要花多久，不写库也不占导入名额。</p>
+          </div>
+
+          <div class="card" data-od-id="import:progress" id="progressCard" hidden>
+            <div class="card-head">
+              <span class="pill is-live">处理中</span>
+              <h2>任务 #49</h2>
+              <button class="btn btn-sm btn-ghost btn-danger" type="button" id="cancelJobBtn" data-od-id="C-22">取消任务</button>
+            </div>
+            <div class="progress"><span id="progressBar" style="width:58%"></span></div>
+            <div class="counters">
+              <div><strong>7</strong><span>/ 12 个文件</span></div>
+              <div><strong>6</strong><span>已入库</span></div>
+              <div><strong>1</strong><span>已跳过</span></div>
+              <div><strong>1</strong><span>失败</span></div>
+            </div>
+            <p class="meta">正在处理：旧巷灯影.zip · 包内第 2 条（山雨欲来.txt）</p>
+            <button class="disclose" type="button" aria-expanded="false" data-toggle="#failDetail" data-od-id="C-23">
+              <span>1 个文件未能导入</span><span>查看</span>
+            </button>
+            <div id="failDetail" hidden style="margin-top:8px">
+              <table class="table">
+                <thead><tr><th>文件</th><th>原因</th><th>处理</th></tr></thead>
+                <tbody>
+                  <tr><td>合集-超清.epub</td><td>压缩包内条目超过 1000 条，解压后超上限</td><td><button class="btn btn-sm" type="button" data-od-id="C-24" data-toast="已新建重试任务 #50，处理 1 个失败文件">重试</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="meta" style="margin-top:8px">取消后已入库的书会留在书架；重试会新建一个任务，原任务记录不变。</p>
+          </div>
+
+          <div class="card" data-od-id="import:done-next">
+            <div class="card-head"><h2>导入成功后</h2></div>
+            <p class="meta">任务跑完停在本页，进度卡保留最后一次结果；书架与书籍管理已经是新数据。</p>
+            <div class="actions" style="margin-top:10px">
+              <button class="btn btn-primary btn-sm" type="button" data-page-jump="admin" data-od-id="C-25">去书籍管理</button>
+              <button class="btn btn-sm" type="button" data-toast="已留在本页，可以接着导下一批">留在本页</button>
+            </div>
+          </div>
+
+          <div class="card" data-od-id="import:history">
+            <div class="card-head"><h2>任务历史</h2><span class="meta">只列已结束的任务</span></div>
+            <div class="table-wrap" style="border:0">
+              <table class="table">
+                <thead><tr><th class="c-id">任务</th><th class="c-src">来源</th><th class="is-num">入库</th><th class="is-num">跳过</th><th class="is-num">失败</th><th class="c-state">状态</th></tr></thead>
+                <tbody>
+                  <tr><td class="c-id">#48</td><td class="c-src">文稿/小说</td><td class="is-num">24</td><td class="is-num">2</td><td class="is-num">0</td><td><span class="pill">已完成</span></td></tr>
+                  <tr><td class="c-id">#47</td><td class="c-src">文稿/旧书</td><td class="is-num">9</td><td class="is-num">1</td><td class="is-num">3</td><td><span class="pill is-warn">部分失败</span></td></tr>
+                  <tr><td class="c-id">#46</td><td class="c-src">山雨欲来.txt</td><td class="is-num">0</td><td class="is-num">1</td><td class="is-num">0</td><td><span class="pill is-warn">部分失败</span></td></tr>
+                  <tr><td class="c-id">#45</td><td class="c-src">文稿/小说</td><td class="is-num">5</td><td class="is-num">0</td><td class="is-num">0</td><td><span class="pill is-danger">已取消</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="meta" style="margin-top:8px">还没有结束的任务时，这里给一行说明，不留空白表头。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack" id="importStates" style="margin-top:16px">
+        <div class="state-panel" data-state="loading" hidden><span class="state-mark"><span class="spinner"></span></span><h2>正在读取任务</h2><p>正在取回最近的导入记录。</p></div>
+        <div class="state-panel" data-state="empty" hidden><span class="state-mark">空</span><h2>当前没有进行中的任务</h2><p>拖入文件或填好左边的路径，开始一次导入。</p><div class="state-actions"><button class="btn btn-primary" type="button" id="emptyStart">开始一次导入</button></div></div>
+        <div class="state-panel is-error" data-state="error" hidden><span class="state-mark">!</span><h2>任务列表没能加载</h2><p>读取时出了点问题。可以重试，或者稍后再回来看。</p><div class="state-actions"><button class="btn btn-primary" type="button" data-toast="正在重新读取任务…">重试</button></div></div>
+      </div>
+    </section>
+
+    <!-- ═══════════ 页面 2 · 书籍管理 ═══════════ -->
+    <section class="page" id="page-admin" data-od-id="ops:admin" aria-labelledby="admin-h1" hidden>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">书籍管理 · 128 本</p>
+          <h1 id="admin-h1">全部书籍</h1>
+          <p class="sub">改元信息、传封面、改章节都在这里；阅读页只负责读。</p>
+        </div>
+      </div>
+
+      <div class="toolbar" data-od-id="admin:filters">
+        <div class="field grow" data-od-id="admin:search">
+          <label for="adminSearch">搜索书名或作者</label>
+          <input class="input" id="adminSearch" type="search" placeholder="搜书名或作者" data-od-id="C-26">
+        </div>
+        <div class="field" data-od-id="admin:filter-category">
+          <label for="catL1">大分类</label>
+          <select class="select" id="catL1" data-od-id="C-27"><option>全部</option><option>玄幻</option><option>武侠</option><option>悬疑</option></select>
+        </div>
+        <div class="field">
+          <label for="catL2">小分类</label>
+          <select class="select" id="catL2" data-od-id="C-28"><option>全部</option><option>东方玄幻</option><option>江湖</option></select>
+        </div>
+        <div class="field" data-od-id="admin:filter-author">
+          <label for="authorFilter">作者</label>
+          <select class="select" id="authorFilter" data-od-id="C-29"><option>全部</option><option>佚名（21）</option><option>林砚（8）</option></select>
+        </div>
+        <div class="field" data-od-id="admin:filter-tag">
+          <label for="tagFilter">标签</label>
+          <select class="select" id="tagFilter" data-od-id="C-30"><option>全部</option><option>武侠（12）</option><option>群像（5）</option><option>连载中（31）</option></select>
+        </div>
+        <div class="field" data-od-id="admin:filter-serial">
+          <label for="serialFilter">连载状态</label>
+          <select class="select" id="serialFilter" data-od-id="C-31"><option>全部</option><option>连载中</option><option>已完结</option><option>未知</option></select>
+        </div>
+        <div class="end">
+          <button class="btn btn-sm" type="button" data-dialog="#dlgTagManage" data-od-id="C-34">标签管理…</button>
+          <button class="btn btn-sm btn-primary" type="button" data-toast="已按条件筛选，从第 1 页开始" data-od-id="C-32">搜索</button>
+          <button class="btn btn-sm btn-ghost" type="button" id="filterReset" data-od-id="C-33">重置筛选</button>
+        </div>
+      </div>
+
+      <div class="batch-bar" id="bookBatchBar" data-od-id="admin:batch-bar" hidden>
+        <span class="meta">已选 <strong class="num" id="bookPickedCount">0</strong> 本</span>
+        <div class="actions">
+          <button class="btn btn-sm" type="button" data-batch="author" data-dialog="#dlgBatch" data-od-id="C-38">批量改作者</button>
+          <button class="btn btn-sm" type="button" data-batch="tag" data-dialog="#dlgBatch" data-od-id="C-39">批量加标签</button>
+          <button class="btn btn-sm" type="button" data-batch="serial" data-dialog="#dlgBatch" data-od-id="C-40">批量改连载状态</button>
+          <button class="btn btn-sm btn-danger" type="button" data-dialog="#dlgBatchDelete" data-od-id="C-41">批量删除</button>
+          <button class="btn btn-sm btn-ghost" type="button" id="bookClearPick" data-od-id="C-42">取消选择</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" data-od-id="admin:table">
+          <thead>
+            <tr>
+              <th class="c-check" data-od-id="admin:select-page"><input type="checkbox" id="pickAllBooks" aria-label="全选当前页" data-od-id="C-35"></th>
+              <th style="width:52px">封面</th>
+              <th>书名 / 作者</th>
+              <th class="is-num" style="width:76px">章节</th>
+              <th class="is-num" style="width:92px">字数</th>
+              <th style="width:96px">连载状态</th>
+              <th class="is-num" style="width:104px">更新时间</th>
+            </tr>
+          </thead>
+          <tbody id="bookRows">
+            <tr><td class="c-check"><input type="checkbox" data-pick-book data-od-id="C-36" aria-label="选择《长夜未明》"></td><td><div class="cover-mini">长</div></td><td><a href="#book" class="book-title" data-page-jump="book" data-od-id="C-37">长夜未明</a><span class="row-sub">佚名</span></td><td class="is-num">1,204</td><td class="is-num">268 万</td><td>连载中</td><td class="is-num">10-24</td></tr>
+            <tr><td class="c-check"><input type="checkbox" data-pick-book data-od-id="C-36" aria-label="选择《山雨欲来》"></td><td><div class="cover-mini">山</div></td><td><a href="#book" class="book-title" data-page-jump="book" data-od-id="C-37">山雨欲来</a><span class="row-sub">林砚</span></td><td class="is-num">486</td><td class="is-num">96 万</td><td>已完结</td><td class="is-num">10-21</td></tr>
+            <tr><td class="c-check"><input type="checkbox" data-pick-book data-od-id="C-36" aria-label="选择《旧巷灯影》"></td><td><div class="cover-mini">旧</div></td><td><a href="#book" class="book-title" data-page-jump="book" data-od-id="C-37">旧巷灯影</a><span class="row-sub">佚名</span></td><td class="is-num">2,317</td><td class="is-num">512 万</td><td>连载中</td><td class="is-num">10-19</td></tr>
+            <tr><td class="c-check"><input type="checkbox" data-pick-book data-od-id="C-36" aria-label="选择《白露为霜》"></td><td><div class="cover-mini">白</div></td><td><a href="#book" class="book-title" data-page-jump="book" data-od-id="C-37">白露为霜</a><span class="row-sub">林砚</span></td><td class="is-num">73</td><td class="is-num">18 万</td><td>未知</td><td class="is-num">10-12</td></tr>
+            <tr><td class="c-check"><input type="checkbox" data-pick-book data-od-id="C-36" aria-label="选择《灯下客》"></td><td><div class="cover-mini">灯</div></td><td><a href="#book" class="book-title" data-page-jump="book" data-od-id="C-37">灯下客</a><span class="row-sub">佚名</span></td><td class="is-num">158</td><td class="is-num">34 万</td><td>已完结</td><td class="is-num">10-08</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <nav class="pagination" aria-label="分页" style="display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px" data-od-id="admin:pagination">
+        <button class="btn btn-sm" type="button" disabled>上一页</button>
+        <span class="num">2</span><span class="meta">/ 7</span>
+        <button class="btn btn-sm" type="button" data-toast="已翻到第 3 页，勾选不跨页累计" data-od-id="C-43">下一页</button>
+        <span class="meta">每页 20 本</span>
+      </nav>
+
+      <div class="stack" style="margin-top:16px" id="adminStates">
+        <div class="state-panel" data-state="loading" hidden><span class="state-mark"><span class="spinner"></span></span><h2>正在读取书籍</h2><p>正在取回书名、章节数与更新时间。</p></div>
+        <div class="state-panel" data-state="empty" hidden data-od-id="admin:empty"><span class="state-mark">空</span><h2>书库还没有书</h2><p>先在导入管理里导入一本，之后就能在这里改信息与章节。</p><div class="state-actions"><button class="btn btn-primary" type="button" data-page-jump="import" data-od-id="C-44">去导入</button></div></div>
+        <div class="state-panel" data-state="nomatch" hidden><span class="state-mark">空</span><h2>没有符合条件的书</h2><p>换个关键词，或者把筛选条件清掉看看。</p><div class="state-actions"><button class="btn" type="button" id="nomatchReset">清除筛选</button></div></div>
+        <div class="state-panel is-error" data-state="error" hidden><span class="state-mark">!</span><h2>书籍列表没能载入</h2><p>读取时出了点问题。可以重试，或者稍后再回来看。</p><div class="state-actions"><button class="btn btn-primary" type="button" data-toast="正在重新读取书籍…" data-od-id="C-43">重试</button></div></div>
+      </div>
+    </section>
+
+    <!-- ═══════════ 页面 3 · 单书管理 ═══════════ -->
+    <section class="page" id="page-book" data-od-id="ops:book" aria-labelledby="book-h1" hidden>
+      <nav class="crumbs" aria-label="面包屑">
+        <a href="#admin" data-page-jump="admin" data-od-id="C-45">书籍管理</a><span aria-hidden="true">/</span><span>长夜未明</span>
+      </nav>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">书籍管理 · 单书</p>
+          <h1 id="book-h1">长夜未明</h1>
+          <p class="sub">1,204 章 · 268 万字 · 导入于 10-24</p>
+        </div>
+      </div>
+
+      <div class="notice" id="bookBanner" hidden>已保存，页面上的信息已更新。</div>
+
+      <div class="cols-book">
+        <div class="stack">
+          <div class="card" data-od-id="book:cover">
+            <div class="card-head"><h2>封面</h2></div>
+            <div style="display:flex;gap:14px;align-items:flex-end">
+              <div class="cover-mini" style="width:88px;height:120px;flex:0 0 88px;font-size:var(--text-xl)">长</div>
+              <div class="actions">
+                <button class="btn btn-sm" type="button" data-toast="已打开图片选择，选好后立即生效" data-od-id="C-46">替换封面</button>
+                <button class="btn btn-sm btn-ghost btn-danger" type="button" data-od-id="C-47" data-banner="封面已移除，列表里会回退成书名首字。">移除封面</button>
+              </div>
+            </div>
+            <p class="meta" style="margin-top:10px">JPEG / PNG / WebP / GIF，最大 2 MiB；选到别的格式或超过上限会当场说明，不上传。移除封面即时生效，随时可以再传一张。</p>
+          </div>
+
+          <div class="card" data-od-id="book:meta">
+            <div class="card-head"><h2>书籍信息</h2></div>
+            <div class="field"><label for="mTitle">书名</label><input class="input" id="mTitle" value="长夜未明" data-dirty data-od-id="C-48"></div>
+            <div class="field"><label for="mAuthors">作者</label><input class="input" id="mAuthors" value="佚名" data-dirty data-od-id="C-48"><span class="hint">多位作者用「、」或逗号分隔。</span></div>
+            <div class="field"><label for="mIntro">简介</label><textarea class="input" id="mIntro" rows="3" data-dirty data-od-id="C-48">雨停之后，巷口那盏灯还亮着。</textarea></div>
+            <div class="field"><label for="mTags">标签</label><input class="input" id="mTags" value="武侠, 群像" data-dirty data-od-id="C-48"></div>
+            <div class="field"><label for="mSerial">连载状态</label><select class="select" id="mSerial" data-dirty data-od-id="C-48"><option>未知</option><option selected>连载中</option><option>已完结</option></select></div>
+            <div class="field-row">
+              <div class="field"><label for="mPublisher">出版社</label><input class="input" id="mPublisher" value="南山书局" data-dirty data-od-id="C-48"></div>
+              <div class="field"><label for="mPubDate">出版日期</label><input class="input" id="mPubDate" type="date" value="2024-06-01" data-dirty data-od-id="C-48"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="mIsbn">国际书号</label><input class="input" id="mIsbn" value="978-7-0000-0000-0" data-dirty data-od-id="C-48"></div>
+              <div class="field"><label for="mLanguage">语言</label><input class="input" id="mLanguage" value="zh-CN" data-dirty data-od-id="C-48"></div>
+            </div>
+            <div class="field-row" data-od-id="book:meta-series">
+              <div class="field"><label for="mSeries">系列</label><input class="input" id="mSeries" value="夜行记" data-dirty data-od-id="C-48"></div>
+              <div class="field"><label for="mSeriesIndex">系列序号</label><input class="input" id="mSeriesIndex" type="number" min="0" value="2" data-dirty data-od-id="C-49"></div>
+            </div>
+            <div class="field-row" data-od-id="book:meta-category">
+              <div class="field"><label for="mCatL1">大分类</label><input class="input" id="mCatL1" value="武侠" data-dirty data-od-id="C-48"></div>
+              <div class="field"><label for="mCatL2">小分类</label><input class="input" id="mCatL2" value="江湖" data-dirty data-od-id="C-48"></div>
+            </div>
+            <p class="meta">留空即清空对应项；系列序号只接受 0 或正整数。</p>
+          </div>
+
+          <div class="card is-danger">
+            <div class="card-head"><h2>删除本书</h2></div>
+            <p class="meta">连同 1,204 章正文、封面与阅读进度一起删除，无法恢复。</p>
+            <button class="btn btn-danger" type="button" data-dialog="#dlgDeleteBook" data-od-id="C-50" style="margin-top:10px">删除这本书…</button>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card" data-od-id="book:chapters">
+            <div class="card-head"><h2>章节</h2><span class="meta">1,204 章 · 2 卷 · 未分卷 3 章</span></div>
+            <div class="toolbar" style="margin-bottom:10px" data-od-id="book:ch-search">
+              <div class="field grow"><label for="chSearch">搜索章节标题或章号</label><input class="input" id="chSearch" type="search" placeholder="搜章节标题或章号" data-od-id="C-53"></div>
+            </div>
+            <div class="actions" style="margin-bottom:10px">
+              <button class="btn btn-sm" type="button" data-dialog="#dlgNewChapter" data-od-id="C-54">新建章节…</button>
+              <button class="btn btn-sm" type="button" data-dialog="#dlgRenumber" data-od-id="C-55">按序号重命名…</button>
+              <button class="btn btn-sm" type="button" data-dialog="#dlgVolumes" data-od-id="C-56">卷管理…</button>
+            </div>
+
+            <div class="batch-bar" id="chBatchBar" data-od-id="book:ch-batch">
+              <span class="meta">已选 <strong class="num" id="chPickedCount">0</strong> 章</span>
+              <span class="inline-note" id="chMergeReason" hidden>只能合并同一卷里连续的章节。</span>
+              <span class="inline-note" id="chBatchHint">先勾选章节，才能移动或删除</span>
+              <div class="actions">
+                <button class="btn btn-sm" type="button" data-dialog="#dlgMerge" data-od-id="C-59" id="chMergeBtn" disabled>合并</button>
+                <button class="btn btn-sm" type="button" data-dialog="#dlgMove" data-od-id="C-60" id="chMoveBtn" disabled>移动到卷…</button>
+                <button class="btn btn-sm btn-danger" type="button" data-dialog="#dlgChBatchDelete" data-od-id="C-61" id="chBatchDeleteBtn" disabled>删除所选</button>
+                <button class="btn btn-sm btn-ghost" type="button" id="chClearPick" disabled>取消选择</button>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th class="c-check"><input type="checkbox" id="pickAllCh" aria-label="全选已载入章节" data-od-id="C-57"></th>
+                    <th class="is-num" style="width:52px">序号</th>
+                    <th>标题</th>
+                    <th class="is-num" style="width:80px">字数</th>
+                    <th class="c-actions" style="width:212px">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="vol-row"><td colspan="5"><span class="vol-head"><input type="checkbox" data-pick-volume aria-label="全选「卷一 · 夜雨」已载入章节" data-od-id="C-58"><span class="vol-title">卷一 · 夜雨</span><span class="meta num">3 章 · 第 1–3 章</span></span></td></tr>
+                  <tr data-ch-row><td class="c-check"><input type="checkbox" data-pick-ch data-od-id="C-57" aria-label="选择第 1 章"></td><td class="is-num">1</td><td class="chapter-title-cell"><span class="ch-title">巷口的灯</span></td><td class="is-num">4,860</td><td class="c-actions"><button class="btn btn-sm" type="button" data-act="body" data-od-id="C-62">正文</button><button class="btn btn-sm" type="button" data-act="rename" data-od-id="C-63">改标题</button><button class="btn btn-sm" type="button" data-dialog="#dlgSplit" data-od-id="C-64">拆分</button><button class="btn btn-sm btn-ghost" type="button" data-dialog="#dlgChDelete" data-od-id="C-65">删除</button></td></tr>
+                  <tr data-ch-row><td class="c-check"><input type="checkbox" data-pick-ch data-od-id="C-57" aria-label="选择第 2 章"></td><td class="is-num">2</td><td><span class="ch-title">半张纸</span></td><td class="is-num">3,120</td><td class="c-actions"><button class="btn btn-sm" type="button" data-act="body">正文</button><button class="btn btn-sm" type="button" data-act="rename">改标题</button><button class="btn btn-sm" type="button" data-dialog="#dlgSplit">拆分</button><button class="btn btn-sm btn-ghost" type="button" data-dialog="#dlgChDelete">删除</button></td></tr>
+                  <tr data-ch-row><td class="c-check"><input type="checkbox" data-pick-ch data-od-id="C-57" aria-label="选择第 3 章"></td><td class="is-num">3</td><td><span class="ch-title">守夜人</span></td><td class="is-num">5,502</td><td class="c-actions"><button class="btn btn-sm" type="button" data-act="body">正文</button><button class="btn btn-sm" type="button" data-act="rename">改标题</button><button class="btn btn-sm" type="button" data-dialog="#dlgSplit">拆分</button><button class="btn btn-sm btn-ghost" type="button" data-dialog="#dlgChDelete">删除</button></td></tr>
+                  <tr class="vol-row"><td colspan="5"><span class="vol-head"><input type="checkbox" data-pick-volume aria-label="全选「卷二 · 长街」已载入章节"><span class="vol-title">卷二 · 长街</span><span class="meta num">2 章 · 第 4–5 章</span></span></td></tr>
+                  <tr data-ch-row><td class="c-check"><input type="checkbox" data-pick-ch data-od-id="C-57" aria-label="选择第 4 章"></td><td class="is-num">4</td><td><span class="ch-title">旧账</span></td><td class="is-num">4,118</td><td class="c-actions"><button class="btn btn-sm" type="button" data-act="body">正文</button><button class="btn btn-sm" type="button" data-act="rename">改标题</button><button class="btn btn-sm" type="button" data-dialog="#dlgSplit">拆分</button><button class="btn btn-sm btn-ghost" type="button" data-dialog="#dlgChDelete">删除</button></td></tr>
+                  <tr data-ch-row><td class="c-check"><input type="checkbox" data-pick-ch data-od-id="C-57" aria-label="选择第 5 章"></td><td class="is-num">5</td><td><span class="ch-title">雨里来客</span></td><td class="is-num">3,904</td><td class="c-actions"><button class="btn btn-sm" type="button" data-act="body">正文</button><button class="btn btn-sm" type="button" data-act="rename">改标题</button><button class="btn btn-sm" type="button" data-dialog="#dlgSplit">拆分</button><button class="btn btn-sm btn-ghost" type="button" data-dialog="#dlgChDelete">删除</button></td></tr>
+                  <tr class="more-row" data-od-id="book:ch-load-more"><td colspan="5"><button class="btn btn-sm" type="button" data-toast="已再载入本卷的 20 章" data-od-id="C-66">载入更多</button> <span class="meta">本卷还有 1,199 章</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="meta" style="margin-top:10px">章节结构的改动即时生效，不跟着下面的「保存」走。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack" style="margin-top:16px" id="bookStates">
+        <div class="state-panel" data-state="loading" hidden><span class="state-mark"><span class="spinner"></span></span><h2>正在打开这本书</h2><p>正在取回书名、元信息与目录。</p></div>
+        <div class="state-panel" data-state="empty" hidden data-od-id="book:empty"><span class="state-mark">空</span><h2>没有这本书</h2><p>链接可能过期了，回到书籍管理重新找一本。</p><div class="state-actions"><button class="btn btn-primary" type="button" data-page-jump="admin">回书籍管理</button></div></div>
+        <div class="state-panel is-error" data-state="error" hidden><span class="state-mark">!</span><h2>这本书没能打开</h2><p>读取时出了点问题。可以重试，或者稍后再回来看。</p><div class="state-actions"><button class="btn btn-primary" type="button" data-toast="正在重新打开这本书…">重试</button></div></div>
+      </div>
+
+      <div class="admin-actions" id="bookActions" data-od-id="C-68">
+        <span class="meta" id="bookDirty">全部更改已保存</span>
+        <div class="actions">
+          <button class="btn btn-ghost" type="button" id="discardBtn" disabled data-od-id="C-67">放弃更改</button>
+          <button class="btn btn-primary" type="button" id="saveBtn" disabled data-od-id="C-68">保存</button>
+          <button class="btn" type="button" id="backBtn" data-od-id="C-69">返回列表</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <div class="overlays" id="opsOverlays">
+
+<div class="confirm-backdrop" id="dlgDeleteBook" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="del-book-title">
+    <h2 id="del-book-title">删除《长夜未明》</h2>
+    <p class="meta">这本书的 1,204 章正文、封面与阅读进度会一并删除，删掉之后不能恢复。确认无误请把书名抄进下面。</p>
+    <div class="field">
+      <label for="delBookInput">输入书名「长夜未明」以确认</label>
+      <input class="input" id="delBookInput" autocomplete="off" placeholder="长夜未明" data-od-id="C-51">
+    </div>
+    <p class="meta" id="delBookHint">书名还没对上，确认按钮先不可用。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-danger" type="button" id="delBookConfirm" disabled data-od-id="C-52">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgLeave" hidden data-od-id="book:leave-guard">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="leave-title">
+    <h2 id="leave-title">还有 2 项更改没保存</h2>
+    <p class="meta">离开这个页面会丢掉刚才的改动。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close data-od-id="C-70">留下</button>
+      <button class="btn btn-ghost" type="button" data-close data-banner="已放弃更改，页面回到上次保存的样子。" data-od-id="C-70">放弃更改</button>
+      <button class="btn btn-primary" type="button" id="leaveSave" data-od-id="C-70">保存并离开</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgCancelJob" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-job-title">
+    <h2 id="cancel-job-title">取消任务 #49？</h2>
+    <p class="meta">取消后已入库的 6 本书会留在书架，正在处理的文件不会入库；停下来的任务可以之后重开一次。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close autofocus>继续跑</button>
+      <button class="btn btn-danger" type="button" id="cancelJobConfirm">取消任务</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgChDelete" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="ch-del-title">
+    <h2 id="ch-del-title">删除「巷口的灯」？</h2>
+    <p class="meta">将从《长夜未明》中删除第 1 章及其正文，后面的章节序号自动补上。无法撤销。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close autofocus>取消</button>
+      <button class="btn btn-danger" type="button" data-close data-banner="已删除这一章，后面的章节序号自动补上。">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgChBatchDelete" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="ch-batch-del-title">
+    <h2 id="ch-batch-del-title">删除《长夜未明》的 <span id="chBatchCount">2</span> 章？</h2>
+    <p class="meta" id="chBatchText">将删除 2 章（第 1–2 章，共 7,980 字），后面的章节序号自动补上。无法撤销。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close autofocus>取消</button>
+      <button class="btn btn-danger" type="button" data-close data-banner="已删除所选章节，后面的章节序号自动补上。">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgSplit" hidden>
+  <div class="confirm-dialog is-wide" role="dialog" aria-modal="true" aria-labelledby="split-title">
+    <h2 id="split-title">拆分「巷口的灯」</h2>
+    <p class="meta">这一章 4,860 字 · 5 段。在段落之间点「从这里拆开」，右侧实时给出拆完的结果。</p>
+    <div class="split-wrap">
+      <div class="split-paras" id="splitParas" tabindex="0" aria-label="章节正文段落">
+        <div><div class="split-para"><span class="pno">1</span><span class="ptext">雨下到第三天才停。巷口的灯一直亮着，没有人来关。</span><span class="pwords">1,120 字</span></div><button class="split-cut-btn" type="button" data-cut="1"><span class="line"></span>从这里拆开<span class="line"></span></button></div>
+        <div><div class="split-para"><span class="pno">2</span><span class="ptext">他站在檐下数着灯芯的爆响，数到第七下的时候，街角转出一个撑伞的人。</span><span class="pwords">1,240 字</span></div><button class="split-cut-btn" type="button" data-cut="2"><span class="line"></span>从这里拆开<span class="line"></span></button></div>
+        <div><div class="split-para"><span class="pno">3</span><span class="ptext">伞是旧的，骨上补过两处，雨水顺着补丁往下淌。</span><span class="pwords">860 字</span></div><button class="split-cut-btn" type="button" data-cut="3"><span class="line"></span>从这里拆开<span class="line"></span></button></div>
+        <div><div class="split-para"><span class="pno">4</span><span class="ptext">「等久了。」那人说。声音像是从很远的地方传过来。</span><span class="pwords">720 字</span></div><button class="split-cut-btn" type="button" data-cut="4"><span class="line"></span>从这里拆开<span class="line"></span></button></div>
+        <div><div class="split-para"><span class="pno">5</span><span class="ptext">灯灭的时候，雨还没停。</span><span class="pwords">920 字</span></div></div>
+      </div>
+      <div class="split-side">
+        <div class="split-auto">
+          <div class="field"><label for="splitTarget">每章目标字数</label><input class="input" id="splitTarget" type="number" min="500" step="500" value="8000"></div>
+          <button class="btn btn-sm" type="button" id="splitAuto">按目标切</button>
+        </div>
+        <p class="field-label">拆完是这样</p>
+        <div class="split-preview" id="splitPreview">
+          <div class="split-piece"><b>巷口的灯</b><span class="meta num">4,860 字 · 第 1–5 段</span></div>
+        </div>
+        <p class="meta" id="splitSummary">还没有拆分点：确认后目录不变。</p>
+      </div>
+    </div>
+    <p class="meta">只在段落之间切，正文一个字不改；拆完各章字数之和仍等于 4,860 字。</p>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" type="button" id="splitClear" disabled>清空拆分点</button>
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-primary" type="button" id="splitConfirm" disabled data-banner="已拆分为多章。">拆分为多章</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgMerge" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="merge-title">
+    <h2 id="merge-title">合并章节</h2>
+    <p class="meta">把选中的 2 章合并成 1 章，正文按顺序接在一起。</p>
+    <div class="split-preview" style="max-height:none">
+      <div class="split-piece"><span>第 1 章 · 巷口的灯 · 4,860 字</span></div>
+      <div class="split-piece"><span>第 2 章 · 半张纸 · 3,120 字</span></div>
+    </div>
+    <div class="field"><label for="mergeTitle">合并后的标题</label><input class="input" id="mergeTitle" value="巷口的灯"><span class="hint">默认取首章标题，可以改成新的名字。</span></div>
+    <div class="split-piece"><span>合并后字数 <b class="num">7,980</b></span><span class="meta">2 章字数之和 · 总章数 1,204 → 1,203</span></div>
+    <p class="meta">被合并章节的阅读进度与书签会失效。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-primary" type="button" data-close data-banner="已把 2 章合并为 1 章。">合并为 1 章</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgRenumber" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+    <h2 id="rename-title">按序号重命名</h2>
+    <p class="meta">用章号统一标题前缀，正文不变 · 本次改 3 章</p>
+    <p class="meta"><b>第 N 章 + 原标题（去掉原标题里已有的章节号前缀）</b></p>
+    <div class="field">
+      <span class="field-label">范围</span>
+      <div class="seg" role="group" aria-label="重命名范围">
+        <button type="button" data-scope="volume" aria-pressed="true">当前卷</button>
+        <button type="button" data-scope="book" aria-pressed="false">全书</button>
+      </div>
+      <span class="hint" id="renumberScopeNote">当前卷：卷一 · 夜雨。</span>
+    </div>
+    <p class="field-label">前 3 条预览</p>
+    <div class="split-preview" style="max-height:none" id="renumberPreview">
+      <div class="split-piece"><span class="meta">巷口的灯 → 第 1 章 巷口的灯</span></div>
+      <div class="split-piece"><span class="meta">半张纸 → 第 2 章 半张纸</span></div>
+      <div class="split-piece"><span class="meta">守夜人 → 第 3 章 守夜人</span></div>
+    </div>
+    <p class="meta">只改标题文字，章数、字数与阅读进度都不变。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-primary" type="button" data-close data-banner="已按序号重命名 3 章。">应用重命名</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgVolumes" hidden data-od-id="book:vol-manage-dialog">
+  <div class="confirm-dialog is-wide" role="dialog" aria-modal="true" aria-labelledby="vol-title">
+    <h2 id="vol-title">卷管理</h2>
+    <p class="meta">共 <strong class="num" id="volCount">2</strong> 卷 · 卷名同书唯一，改完即时生效。</p>
+    <ul class="list-plain" id="volList" role="list">
+      <li data-vol><span class="vol-title" data-vol-name>卷一 · 夜雨</span><span class="meta num">3 章 · 第 1–3 章</span><span class="actions" style="margin-left:auto"><button class="btn btn-sm" type="button" data-vol-rename data-od-id="C-74">重命名</button><button class="btn btn-sm" type="button" data-vol-up data-od-id="C-75">上移</button><button class="btn btn-sm" type="button" data-vol-down data-od-id="C-75">下移</button><button class="btn btn-sm btn-ghost btn-danger" type="button" data-dialog="#dlgVolDelete" data-od-id="C-76">删除</button></span></li>
+      <li data-vol><span class="vol-title" data-vol-name>卷二 · 长街</span><span class="meta num">2 章 · 第 4–5 章</span><span class="actions" style="margin-left:auto"><button class="btn btn-sm" type="button" data-vol-rename>重命名</button><button class="btn btn-sm" type="button" data-vol-up>上移</button><button class="btn btn-sm" type="button" data-vol-down>下移</button><button class="btn btn-sm btn-ghost btn-danger" type="button" data-dialog="#dlgVolDelete" data-od-id="C-76">删除</button></span></li>
+    </ul>
+    <div class="field-row" style="align-items:end">
+      <div class="field"><label for="newVolName">新卷名</label><input class="input" id="newVolName" placeholder="例如 卷三 · 归途" data-od-id="C-73"></div>
+      <button class="btn btn-primary" type="button" id="volCreate" data-od-id="C-73">新建卷</button>
+    </div>
+    <p class="meta">新建出来是空卷，章节要在章节表里勾选后用「移动到卷…」移进去；删卷不会删章节，卷内章节会回到「未分卷」。</p>
+    <p class="meta danger-text" id="volError" hidden></p>
+    <div class="confirm-actions"><button class="btn" type="button" data-close>完成</button></div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgVolDelete" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="vol-del-title">
+    <h2 id="vol-del-title">删除「卷二 · 长街」？</h2>
+    <p class="meta">卷内 2 章会回到「未分卷」。章节正文都还在，但卷名与这个卷本身会消失，无法撤销。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close autofocus>取消</button>
+      <button class="btn btn-danger" type="button" data-close data-toast="已删除这一卷，卷内章节回到「未分卷」">删除卷</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgMove" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="move-title">
+    <h2 id="move-title">移动到卷</h2>
+    <p class="meta">把已选的 <span id="moveCount">2</span> 章移到目标卷末尾；全书章号、正文与字数都不变。</p>
+    <div style="display:grid;gap:8px" role="radiogroup" aria-label="目标卷">
+      <label class="vol-move-opt"><input type="radio" name="moveTarget" checked><span>卷一 · 夜雨</span><span class="meta num">3 章 · 第 1–3 章</span></label>
+      <label class="vol-move-opt"><input type="radio" name="moveTarget"><span>卷二 · 长街</span><span class="meta num">2 章 · 第 4–5 章</span></label>
+      <label class="vol-move-opt"><input type="radio" name="moveTarget"><span>未分卷</span><span class="meta num">3 章 · 第 6–8 章</span></label>
+    </div>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close autofocus>取消</button>
+      <button class="btn btn-primary" type="button" data-close data-banner="已移动所选章节到目标卷末尾。">移动到「卷一 · 夜雨」</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgTagManage" hidden data-od-id="book:tag-manage">
+  <div class="confirm-dialog is-wide" role="dialog" aria-modal="true" aria-labelledby="tag-title">
+    <h2 id="tag-title">标签管理</h2>
+    <p class="meta">标签是书的多对多标记：改名只改标记本身，删除只解绑、不删书。导入时的词表规则也会打这些标签。</p>
+    <ul class="list-plain" id="tagList" role="list">
+      <li data-tag><strong>武侠</strong><span class="meta num">12 本</span><span class="actions" style="margin-left:auto"><button class="btn btn-sm" type="button" data-tag-rename data-od-id="C-77">改名</button><button class="btn btn-sm btn-ghost btn-danger" type="button" data-dialog="#dlgTagDelete" data-od-id="C-78">删除</button></span></li>
+      <li data-tag><strong>群像</strong><span class="meta num">5 本</span><span class="actions" style="margin-left:auto"><button class="btn btn-sm" type="button" data-tag-rename>改名</button><button class="btn btn-sm btn-ghost btn-danger" type="button" data-dialog="#dlgTagDelete" data-od-id="C-78">删除</button></span></li>
+      <li data-tag><strong>连载中</strong><span class="meta num">31 本</span><span class="actions" style="margin-left:auto"><button class="btn btn-sm" type="button" data-tag-rename>改名</button><button class="btn btn-sm btn-ghost btn-danger" type="button" data-dialog="#dlgTagDelete" data-od-id="C-78">删除</button></span></li>
+    </ul>
+    <p class="meta danger-text" id="tagError" hidden>已经有同名标签了，换个名字再试。</p>
+    <div class="field-row" style="align-items:end">
+      <div class="field"><label for="newTagName">新建标签</label><input class="input" id="newTagName" placeholder="例如 江湖；同名会直接复用已有的" data-od-id="C-79"></div>
+      <button class="btn btn-primary" type="button" id="tagCreate" data-od-id="C-79">新建</button>
+    </div>
+    <div class="confirm-actions"><button class="btn" type="button" data-close>关闭</button></div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgTagDelete" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-del-title">
+    <h2 id="tag-del-title">删除标签「武侠」？</h2>
+    <p class="meta">会把这个标签从 <strong class="num">12</strong> 本书上解绑，书、正文与阅读进度都不会被删除。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-danger" type="button" data-close data-toast="标签已删除，从 12 本书解绑，书本身都还在">确认删除标签</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgNewChapter" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="new-ch-title">
+    <h2 id="new-ch-title">新建章节</h2>
+    <div class="field"><label for="newChName">章节标题</label><input class="input" id="newChName" placeholder="例如 第一章 开端"></div>
+    <div class="field"><label for="newChAfter">插入位置</label><select class="select" id="newChAfter"><option>追加到末尾</option><option>插在第 1 章「巷口的灯」之后</option><option>插在第 2 章「半张纸」之后</option></select></div>
+    <div class="field"><label for="newChContent">正文</label><textarea class="input" id="newChContent" rows="6" placeholder="空行分段，纯文本；单章最多 1 MiB"></textarea></div>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-primary" type="button" id="newChSave">新建章节</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgBatch" hidden data-od-id="admin:batch-dialog">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-title">
+    <h2 id="batch-title">批量设置<span id="batchKind">作者</span>（<span id="batchCount">2</span> 本）</h2>
+    <p class="meta">已选 <span id="batchNames">《长夜未明》、《山雨欲来》</span></p>
+    <div class="field" id="batchAuthorField"><label for="batchAuthor">作者（多位用「、」或逗号分隔）</label><input class="input" id="batchAuthor" placeholder="至少填一个作者"></div>
+    <div class="field" id="batchTagField" hidden><label for="batchTag">标签（会替换这些书现有的标签）</label><input class="input" id="batchTag" placeholder="例如 武侠, 群像；留空表示清空标签"></div>
+    <div class="field" id="batchSerialField" hidden><label for="batchSerial">连载状态</label><select class="select" id="batchSerial"><option>连载中</option><option>已完结</option></select></div>
+    <p class="meta" id="batchLimitNote">一次最多 200 本，超出会先挡下来并提示分批改。</p>
+    <p class="meta" id="batchProgress" hidden>已完成 <strong class="num" id="batchDone">0</strong> / <span id="batchTotal">2</span> · 1 本失败</p>
+    <div id="batchFailures" data-od-id="admin:batch-failures" hidden>
+      <ul class="list-plain">
+        <li><span>《白露为霜》</span><span class="meta">这本书已经不在了，刷新列表即可</span><button class="btn btn-sm" type="button" data-toast="只重试这一本，成功 1 本">只重试这本</button></li>
+      </ul>
+      <div class="actions" style="margin-top:8px"><button class="btn btn-sm" type="button" data-toast="重试失败的 1 本，成功 1 本">重试失败的 1 本</button></div>
+    </div>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-primary" type="button" id="batchConfirm" data-toast="2 本的作者已改为「佚名」">应用到 2 本</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgBatchDelete" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-del-title">
+    <h2 id="batch-del-title">删除这 <span id="batchDelCount">2</span> 本书？</h2>
+    <p class="meta">这 <span id="batchDelTextCount">2</span> 本书及其全部章节将被永久删除，正文、封面与阅读进度会一起消失，无法恢复。</p>
+    <p class="meta" id="batchDelProgress" hidden>已完成 <strong class="num">1</strong> / 2 · 1 本失败</p>
+    <div id="batchDelFailures" hidden>
+      <ul class="list-plain">
+        <li><span>《白露为霜》</span><span class="meta">这本书正在被导入任务使用，等任务结束再删</span><button class="btn btn-sm" type="button" data-toast="只重试这一本">只重试这本</button></li>
+      </ul>
+    </div>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn btn-danger" type="button" data-close id="batchDelConfirmBtn">永久删除 <span id="batchDelBtnCount">2</span> 本</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="dlgBodyLeave" hidden>
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="body-leave-title">
+    <h2 id="body-leave-title">本章正文还没保存</h2>
+    <p class="meta">关掉正文面板会丢掉刚才改的这一版。</p>
+    <p class="meta">离开后正文回到上次保存的版本，改过的内容不会留在书里。</p>
+    <div class="confirm-actions">
+      <button class="btn" type="button" data-close>继续编辑</button>
+      <button class="btn btn-ghost" type="button" id="bodyLeaveDiscard">放弃修改</button>
+    </div>
+  </div>
+</div>
+
+  </div>
+</div>
+
+<!-- ═══════════ H5 档：管理入口不出现 ═══════════ -->
+<section class="h5" id="h5App" data-od-id="ops:h5" aria-labelledby="h5-h1" hidden>
+  <div class="h5-top">
+    <strong>norvels</strong>
+    <input class="search" type="search" placeholder="搜书名、作者" aria-label="搜索">
+  </div>
+  <div class="h5-body">
+    <div class="h5-note">
+      <p class="eyebrow">H5 阅读器</p>
+      <h1 id="h5-h1" style="font-size:var(--text-lg)">这里是轻量阅读器</h1>
+      <p class="meta">导入管理、书籍管理、单书管理的入口在 H5 下不出现：不是藏起来，页面上根本没有这些区块，地址跳到管理页也会直接回到这里。</p>
+      <ul>
+        <li>导入管理 · 不出现</li>
+        <li>书籍管理（列表 / 批量 / 标签）· 不出现</li>
+        <li>单书管理（元信息 · 封面 · 章节 · 卷）· 不出现</li>
+      </ul>
+      <p class="meta">这里能做的就是读书：书架、搜索、阅读进度与阅读设置。</p>
+    </div>
+    <div class="h5-cards">
+      <div class="h5-card"><div class="cv">长</div><span class="book-title">长夜未明</span><span class="meta">1,204 章 · 连载中</span></div>
+      <div class="h5-card"><div class="cv">山</div><span class="book-title">山雨欲来</span><span class="meta">486 章 · 已完结</span></div>
+      <div class="h5-card"><div class="cv">旧</div><span class="book-title">旧巷灯影</span><span class="meta">2,317 章 · 连载中</span></div>
+      <div class="h5-card"><div class="cv">白</div><span class="book-title">白露为霜</span><span class="meta">73 章 · 未知</span></div>
+    </div>
+  </div>
+  <nav class="h5-tabs" aria-label="底部导航">
+    <button type="button" aria-current="page">书架</button>
+    <button type="button">搜索</button>
+    <button type="button">历史</button>
+    <button type="button">设置</button>
+  </nav>
+</section>
+
+<!-- ═══════════ 弹层 ═══════════ -->
+<div class="toast-host" id="toastHost" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var $ = function(s,r){ return (r||document).querySelector(s); };
+  var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  var H5_QUERY = '(max-width: 768px)';
+  var state = { page:'import', demo:'normal', tier:null, dialogOpen:null, dirty:0, stash:null, cuts:{}, bodyDirty:false };
+
+  /* ── 提示条 ── */
+  function toast(text, tone){
+    var host = $('#toastHost');
+    host.innerHTML = '';
+    var el = document.createElement('div');
+    el.className = 'toast' + (tone === 'error' ? ' is-error' : '');
+    el.textContent = text;
+    host.appendChild(el);
+    window.setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 4000);
+  }
+
+  /* ── 页面切换 ── */
+  function showPage(page){
+    state.page = page;
+    $$('.page').forEach(function(el){ el.hidden = el.id !== 'page-' + page; });
+    $$('.demo-bar [data-page]').forEach(function(b){ b.setAttribute('aria-pressed', String(b.getAttribute('data-page') === page)); });
+    $$('.nav a[data-page-link]').forEach(function(a){ 
+      if (a.getAttribute('data-page-link') === page) a.setAttribute('aria-current','page');
+      else a.removeAttribute('aria-current');
+    });
+    applyState();
+  }
+
+  /* ── 状态演示 ── */
+  function applyState(){
+    var page = state.page;
+    var host = page === 'import' ? $('#importStates') : page === 'admin' ? $('#adminStates') : (page === 'book' ? $('#bookStates') : null);
+    var main = $('.page:not([hidden])');
+    var demo = state.demo;
+    if (host){
+      $$('[data-state]', host).forEach(function(p){ p.hidden = p.getAttribute('data-state') !== demoKey(demo); });
+    }
+    if (main){
+      var hideMain = (demo === 'loading' || demo === 'error');
+      if ((page === 'admin' || page === 'book') && demo === 'empty') hideMain = true;
+      $$('.toolbar, .table-wrap, .batch-bar, .cols-book, .admin-actions, .crumbs', main).forEach(function(el){
+        if (el.id !== 'bookBatchBar') el.hidden = hideMain;
+      });
+    }
+    if (page === 'import'){
+      $('#importPill').textContent = demo === 'conflict' ? '1 个进行中的任务' : '1 个进行中的任务';
+      $$('[data-od-id="import:conflict"]').forEach(function(el){ el.hidden = demo !== 'conflict'; });
+    }
+  }
+  function demoKey(d){
+    if (d === 'loading' || d === 'error') return d;
+    if (d === 'empty') return 'empty';
+    return '';
+  }
+
+  /* ── 分档：H5 下把管理区块从页面里摘掉 ── */
+  function setTier(tier){
+    state.tier = tier;
+    var pc = $('#pcApp'), h5 = $('#h5App');
+    if (tier === 'h5'){
+      if (!state.stash){
+        state.stash = document.createDocumentFragment();
+        while (pc.firstChild) state.stash.appendChild(pc.firstChild);
+      }
+      pc.hidden = true; h5.hidden = false;
+    } else {
+      if (state.stash){ while (state.stash.firstChild) pc.appendChild(state.stash.firstChild); state.stash = null; }
+      pc.hidden = false; h5.hidden = true;
+    }
+    $$('[data-tier]').forEach(function(b){ b.setAttribute('aria-pressed', String(b.getAttribute('data-tier') === tier)); });
+  }
+
+  /* ── 弹层 ── */
+  function openDialog(sel){
+    var d = $(sel); if (!d) return;
+    d.hidden = false; state.dialogOpen = d;
+    var f = d.querySelector('button:not([disabled])');
+    if (f) f.focus();
+  }
+  function closeDialog(){
+    if (state.dialogOpen){ 
+      var d = state.dialogOpen;
+      d.hidden = true; state.dialogOpen = null;
+      if (d.id === 'dlgLeave'){ /* 留在本页 */ }
+    }
+  }
+  document.addEventListener('click', function(ev){
+    var t = ev.target.closest('[data-dialog]');
+    if (t){ ev.preventDefault(); openDialog(t.getAttribute('data-dialog')); return; }
+    if (ev.target.closest('[data-close]')){
+      var b = ev.target.closest('[data-close]');
+      var banner = b.getAttribute('data-banner');
+      var tip = b.getAttribute('data-toast');
+      closeDialog();
+      if (banner) showBanner(banner);
+      if (tip) toast(tip);
+      return;
+    }
+    var bannerBtn = ev.target.closest('[data-banner]');
+    if (bannerBtn){ showBanner(bannerBtn.getAttribute('data-banner')); return; }
+    var toastBtn = ev.target.closest('[data-toast]');
+    if (toastBtn){ toast(toastBtn.getAttribute('data-toast')); }
+    var jump = ev.target.closest('[data-page-jump]');
+    if (jump){ ev.preventDefault(); showPage(jump.getAttribute('data-page-jump')); }
+  });
+  $$('.confirm-backdrop').forEach(function(bd){
+    bd.addEventListener('mousedown', function(ev){ if (ev.target === bd) closeDialog(); });
+  });
+  document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closeDialog(); });
+
+  function showBanner(text, tone){
+    var b = $('#bookBanner');
+    if (state.page !== 'book'){ 
+      if (text) toast(text, tone); 
+      return; 
+    }
+    b.hidden = false;
+    b.className = 'notice' + (tone === 'error' ? ' is-error' : '');
+    b.textContent = text;
+  }
+
+  /* ── 演示控制条 ── */
+  $$('.demo-bar [data-page]').forEach(function(b){
+    b.addEventListener('click', function(){ showPage(b.getAttribute('data-page')); });
+  });
+  $('#demoState').addEventListener('change', function(ev){ state.demo = ev.target.value; applyState(); });
+  $$('[data-tier]').forEach(function(b){
+    b.addEventListener('click', function(){ setTier(b.getAttribute('data-tier') === 'h5' ? 'h5' : 'pc'); });
+  });
+  $$('[data-page-jump]').forEach(function(el){ el.setAttribute('href', '#' + el.getAttribute('data-page-jump')); });
+
+  /* ── 折叠 ── */
+  $$('[data-toggle]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var target = $(btn.getAttribute('data-toggle'));
+      var open = target.hidden;
+      target.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+      var label = btn.querySelector('span:last-child');
+      if (label) label.textContent = open ? '收起' : '查看';
+    });
+  });
+
+  /* ── 导入 ── */
+  $('#startImport').addEventListener('click', function(){
+    if (state.demo === 'conflict'){
+      $('[data-od-id="import:conflict"]').hidden = false;
+      return;
+    }
+    $('[data-od-id="import:conflict"]').hidden = true;
+    $('#progressCard').hidden = false;
+    $('#dryIdle').hidden = true;
+    toast('任务已开始，进度会在下方的进度卡里更新。');
+  });
+  $('#dryRunBtn').addEventListener('click', function(){
+    $('#dryReport').hidden = false;
+    $('#dryIdle').hidden = true;
+  });
+  $('#dryCancelBtn').addEventListener('click', function(){
+    $('#dryReport').hidden = true;
+    $('#dryIdle').hidden = false;
+    toast('这次预检已取消，没有产生任何改动。');
+  });
+  $('#cancelJobBtn').addEventListener('click', function(){ openDialog('#dlgCancelJob'); });
+  $('#cancelJobConfirm').addEventListener('click', function(){
+    closeDialog();
+    $('#progressBar').style.width = '58%';
+    toast('任务 #49 已取消，已入库的 6 本书保留在书架。');
+  });
+  $('#emptyStart').addEventListener('click', function(){ showPage('import'); $('#dirInput').focus(); });
+  function badPattern(v){
+    if (!v) return false;
+    var open = (v.match(/\(/g) || []).length, close = (v.match(/\)/g) || []).length;
+    if (open !== close) return true;
+    return /\[([^\]]*)$/.test(v) || /\{([^\}]*)$/.test(v);
+  }
+  function unbalanced(v){
+    if (!v) return false;
+    var i, round = 0, square = 0, curly = 0;
+    for (i = 0; i < v.length; i++){
+      var c = v.charAt(i);
+      if (c === '(') round++;
+      if (c === ')') round--;
+      if (c === '[') square++;
+      if (c === ']') square--;
+      if (c === '{') curly++;
+      if (c === '}') curly--;
+    }
+    return round !== 0 || square !== 0 || curly !== 0;
+  }
+  $('#ruleSave').addEventListener('click', function(){
+    var err = $('#ruleError');
+    var bad = unbalanced($('#rulePattern1').value) || unbalanced($('#rulePattern2').value);
+    err.hidden = !bad;
+    if (bad) err.textContent = '有一条规则的正则没闭合：括号或方括号少了收尾，先补全再保存。';
+    if (!bad) toast('已保存 2 条规则，下次导入生效。');
+  });
+  $('#rulePreviewBtn').addEventListener('click', function(){
+    var lines = ($('#ruleSample').value || '').split(String.fromCharCode(10));
+    var n = 0;
+    for (var i = 0; i < lines.length; i++){
+      if (lines[i].indexOf('===') === 0 && lines[i].indexOf('节') > -1) n++;
+    }
+    $('#rulePreviewOut').textContent = n > 1 ? '按「分节符」可切出 ' + n + ' 章。' : '当前规则一条都没命中，导入时会退回内置切章规则。';
+  });
+
+  $('#dropzone').addEventListener('click', function(){ toast('已打开文件选择，支持 TXT / EPUB / ZIP，一次最多 20 个'); });
+  ['dragenter','dragover'].forEach(function(t){ $('#dropzone').addEventListener(t, function(e){ e.preventDefault(); $('#dropzone').classList.add('is-over'); }); });
+  ['dragleave','drop'].forEach(function(t){ $('#dropzone').addEventListener(t, function(e){ e.preventDefault(); $('#dropzone').classList.remove('is-over'); }); });
+
+  /* ── 书籍列表多选 ── */
+  function updateBookBatch(){
+    var n = $$('[data-pick-book]:checked').length;
+    $('#bookPickedCount').textContent = String(n);
+    $('#bookBatchBar').hidden = n === 0;
+    var all = $$('[data-pick-book]');
+    var box = $('#pickAllBooks');
+    box.checked = all.length > 0 && n === all.length;
+    box.indeterminate = n > 0 && n < all.length;
+  }
+  document.addEventListener('change', function(ev){
+    if (ev.target.matches('[data-pick-book]')) updateBookBatch();
+    if (ev.target.id === 'pickAllBooks'){
+      $$('[data-pick-book]').forEach(function(c){ c.checked = ev.target.checked; });
+      updateBookBatch();
+    }
+    if (ev.target.matches('[data-pick-ch]')) updateChBatch();
+    if (ev.target.matches('[data-pick-volume]')){
+      var volRow = ev.target.closest('tr');
+      var row = volRow.nextElementSibling;
+      while (row && !row.classList.contains('vol-row')){
+        var cb = row.querySelector('[data-pick-ch]');
+        if (cb) cb.checked = ev.target.checked;
+        row = row.nextElementSibling;
+      }
+      updateChBatch();
+    }
+    if (ev.target.id === 'pickAllCh'){
+      $$('[data-pick-ch]').forEach(function(c){ c.checked = ev.target.checked; });
+      updateChBatch();
+    }
+  });
+  $('#bookClearPick').addEventListener('click', function(){
+    $$('[data-pick-book]').forEach(function(c){ c.checked = false; });
+    updateBookBatch();
+  });
+  $('#filterReset').addEventListener('click', function(){
+    $('#adminSearch').value = ''; 
+    $$('#page-admin select').forEach(function(s){ s.selectedIndex = 0; });
+    toast('筛选条件已清空。');
+  });
+  $('#nomatchReset').addEventListener('click', function(){ state.demo = 'normal'; $('#demoState').value = 'normal'; applyState(); });
+
+  /* ── 批量弹层 ── */
+  $$('[data-batch]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var kind = btn.getAttribute('data-batch');
+      var n = $$('[data-pick-book]:checked').length;
+      $('#batchCount').textContent = String(n);
+      $('#batchTotal').textContent = String(n);
+      $('#batchAuthorField').hidden = kind !== 'author';
+      $('#batchTagField').hidden = kind !== 'tag';
+      $('#batchSerialField').hidden = kind !== 'serial';
+      $('#batchFailures').hidden = n === 0;
+      $('#batchProgress').hidden = n === 0;
+      $('#batchKind').textContent = kind === 'author' ? '作者' : kind === 'tag' ? '标签' : '连载状态';
+      $('#batchCount').textContent = String(n);
+    });
+  });
+  $('#batchConfirm').addEventListener('click', function(){
+    $('#batchFailures').hidden = false;
+    $('#batchProgress').hidden = false;
+    $('#batchDone').textContent = String(Math.max(0, Number($('#batchCount').textContent) - 1));
+  });
+  function syncBatchDelete(){
+    var n = $$('[data-pick-book]:checked').length;
+    $('#batchDelCount').textContent = String(n);
+    $('#batchDelTextCount').textContent = String(n);
+    $('#batchDelBtnCount').textContent = String(n);
+    $('#batchDelConfirmBtn').setAttribute('data-toast', '已删除 ' + n + ' 本书');
+    $('#batchDelProgress').hidden = true;
+    $('#batchDelFailures').hidden = true;
+  }
+  document.addEventListener('click', function(ev){
+    if (ev.target.closest('[data-dialog="#dlgBatchDelete"]')) syncBatchDelete();
+  });
+
+  /* ── 章节多选 ── */
+  function updateChBatch(){
+    var picked = $$('[data-pick-ch]:checked');
+    $('#chPickedCount').textContent = String(picked.length);
+    $('#chBatchBar').hidden = picked.length === 0;
+    var rows = picked.map(function(c){ return c.closest('tr'); });
+    var mergeable = false;
+    if (picked.length >= 2){
+      var tbody = $('#page-book');
+      // 同卷且相邻：取每行的序号，卷分组以 vol-row 分隔
+      var volumes = [];
+      var cur = -1;
+      $$('#page-book tbody tr').forEach(function(tr){
+        if (tr.classList.contains('vol-row')) { cur += 1; return; }
+        if (tr.querySelector('[data-pick-ch]')) tr.setAttribute('data-vol-index', String(cur));
+      });
+      var idxs = picked.map(function(c){ 
+        var tr = c.closest('tr');
+        return { vol: Number(tr.getAttribute('data-vol-index')), idx: Number(tr.children[1].textContent.trim()) };
+      }).sort(function(a,b){ return a.idx - b.idx; });
+      mergeable = idxs.every(function(it, i){ return i === 0 || (it.vol === idxs[i-1].vol && it.idx === idxs[i-1].idx + 1); });
+    }
+    var none = picked.length === 0;
+    $('#chMergeBtn').disabled = !mergeable;
+    $('#chMoveBtn').disabled = none;
+    $('#chBatchDeleteBtn').disabled = none;
+    $('#chClearPick').disabled = none;
+    $('#chBatchHint').hidden = !none;
+    $('#chMergeReason').hidden = mergeable || none;
+    $('#moveCount').textContent = String(picked.length);
+    $('#chBatchCount').textContent = String(picked.length);
+  }
+  $('#chClearPick').addEventListener('click', function(){
+    $$('[data-pick-ch]').forEach(function(c){ c.checked = false; });
+    updateChBatch();
+  });
+
+  /* ── 行内改标题 ── */
+  document.addEventListener('click', function(ev){
+    var btn = ev.target.closest('[data-act="rename"]');
+    if (btn){
+      var row = btn.closest('tr');
+      var cell = row.children[2];
+      if (cell.querySelector('.ch-edit')) return;
+      var title = cell.querySelector('.ch-title').textContent;
+      cell.innerHTML = '<form class="ch-edit"><input class="input" value="' + title + '" aria-label="章节标题"><button class="btn btn-sm btn-primary" type="submit">保存</button><button class="btn btn-sm" type="button" data-cancel-edit>取消</button></form>';
+      var form = cell.querySelector('form');
+      form.querySelector('input').focus();
+      form.addEventListener('submit', function(e){
+        e.preventDefault();
+        var v = form.querySelector('input').value.trim();
+        if (!v){ toast('章节标题不能为空。', 'error'); return; }
+        cell.innerHTML = '<span class="ch-title">' + v + '</span>';
+        toast('章节标题已保存。');
+      });
+      cell.querySelector('[data-cancel-edit]').addEventListener('click', function(){
+        cell.innerHTML = '<span class="ch-title">' + title + '</span>';
+      });
+      return;
+    }
+    var body = ev.target.closest('[data-act="body"]');
+    if (body){
+      var r = body.closest('tr');
+      var t = r.querySelector('.ch-title').textContent;
+      var w = r.children[3].textContent;
+      $('#bodyDrawer .ch-editor-title').textContent = t;
+      $('#bodyDrawer .meta-words').textContent = w;
+      $('#bodyDrawer').hidden = false;
+      state.bodyDirty = false;
+      $('#bodyState').textContent = '和上次保存的一致';
+    }
+  });
+
+  /* ── 正文抽屉 ── */
+  var drawerHtml = function(){
+    var d = document.createElement('aside');
+    d.className = 'ch-editor'; d.id = 'bodyDrawer'; d.hidden = true;
+    d.setAttribute('data-od-id','book:body-drawer'); d.setAttribute('role','dialog'); d.setAttribute('aria-modal','true'); d.setAttribute('aria-labelledby','body-title');
+    d.innerHTML = '<div class="ch-editor-head"><div><p class="eyebrow">正文编辑</p><h2 id="body-title" class="ch-editor-title">巷口的灯</h2><p class="meta">本章 <b class="meta-words">4,860 字</b> · 空行分段 · <span id="bodyState">和上次保存的一致</span></p></div><div class="actions"><button class="btn btn-sm" type="button" id="bodyFull" data-od-id="C-71">全屏</button><button class="ch-editor-x" type="button" id="bodyClose" aria-label="关闭正文编辑">×</button></div></div><div class="ch-editor-notes"><p>保存会替换本章正文，正文长度变化会影响本章字数。</p><p>本章已存的书签位置可能偏移。</p></div><textarea class="ch-editor-area" id="bodyArea" aria-label="本章正文，空行分段" spellcheck="false">雨下到第三天才停。巷口的灯一直亮着，没有人来关。\n\n他站在檐下数着灯芯的爆响，数到第七下的时候，街角转出一个撑伞的人。</textarea><div class="ch-editor-foot"><span class="meta">空行分段 · 纯文本</span><button class="btn" type="button" id="bodyCancel">取消</button><button class="btn btn-primary" type="button" id="bodySave" data-od-id="C-72">保存</button></div>';
+    return d;
+  };
+  document.getElementById('opsOverlays').appendChild(drawerHtml());
+  $('#bodyArea').addEventListener('input', function(){
+    state.bodyDirty = true;
+    $('#bodyState').textContent = '有未保存的改动';
+  });
+  $('#bodyFull').addEventListener('click', function(){
+    var d = $('#bodyDrawer');
+    d.classList.toggle('is-full');
+    this.textContent = d.classList.contains('is-full') ? '退出全屏' : '全屏';
+  });
+  function closeBody(){
+    if (state.bodyDirty){ openDialog('#dlgBodyLeave'); return; }
+    $('#bodyDrawer').hidden = true;
+  }
+  $('#bodyClose').addEventListener('click', closeBody);
+  $('#bodyCancel').addEventListener('click', closeBody);
+  $('#bodyLeaveDiscard').addEventListener('click', function(){
+    closeDialog();
+    state.bodyDirty = false;
+    $('#bodyDrawer').hidden = true;
+    $('#bodyState').textContent = '和上次保存的一致';
+    toast('已放弃修改，正文回到上次保存的版本。');
+  });
+
+  $('#bodySave').addEventListener('click', function(){
+    $('#bodyDrawer').hidden = true;
+    state.bodyDirty = false;
+    toast('正文已保存 · 本章字数已更新');
+  });
+
+  /* ── 拆分面板 ── */
+  var PARA_WORDS = [1120, 1240, 860, 720, 920];
+  function renderSplit(){
+    var cuts = Object.keys(state.cuts).filter(function(k){ return state.cuts[k]; }).map(Number).sort(function(a,b){ return a-b; });
+    var bounds = [0].concat(cuts).concat([PARA_WORDS.length]);
+    var pieces = [];
+    for (var i = 0; i < bounds.length - 1; i++){
+      var from = bounds[i], to = bounds[i+1] - 1;
+      var words = 0;
+      for (var j = from; j <= to; j++) words += PARA_WORDS[j];
+      pieces.push({ from: from, to: to, words: words });
+    }
+    var titles = pieces.map(function(p, i){
+      return pieces.length === 1 ? '巷口的灯' : '巷口的灯（' + (i+1) + '/' + pieces.length + '）';
+    });
+    var box = $('#splitPreview');
+    box.innerHTML = pieces.map(function(p, i){
+      return '<div class="split-piece"><b>' + titles[i] + '</b><span class="meta num">' + p.words.toLocaleString('en-US') + ' 字 · 第 ' + (p.from+1) + '–' + (p.to+1) + ' 段</span></div>';
+    }).join('');
+    $('#splitSummary').textContent = pieces.length > 1
+      ? '将拆成 ' + pieces.length + ' 章，各章字数之和仍是 4,860 字。'
+      : '还没有拆分点：确认后目录不变。';
+    $('#splitConfirm').disabled = pieces.length < 2;
+    $('#splitConfirm').textContent = pieces.length > 1 ? ('拆分为 ' + pieces.length + ' 章') : '拆分为多章';
+    $('#splitClear').disabled = cuts.length === 0;
+  }
+  $$('[data-cut]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.getAttribute('data-cut');
+      state.cuts[key] = !state.cuts[key];
+      btn.classList.toggle('is-cut', !!state.cuts[key]);
+      btn.setAttribute('aria-pressed', String(!!state.cuts[key]));
+      btn.innerHTML = state.cuts[key] ? '<span class="line"></span>拆开处 · 点一下取消<span class="line"></span>' : '<span class="line"></span>从这里拆开<span class="line"></span>';
+      renderSplit();
+    });
+  });
+  $('#splitAuto').addEventListener('click', function(){
+    var target = Number($('#splitTarget').value);
+    if (!isFinite(target) || target < 500){ toast('每章目标字数至少 500 字。', 'error'); return; }
+    state.cuts = {};
+    var acc = 0;
+    PARA_WORDS.forEach(function(w, i){
+      acc += w;
+      if (acc >= target && i < PARA_WORDS.length - 1){ state.cuts[i+1] = true; acc = 0; }
+    });
+    $$('[data-cut]').forEach(function(btn){
+      var on = !!state.cuts[btn.getAttribute('data-cut')];
+      btn.classList.toggle('is-cut', on);
+      btn.innerHTML = on ? '<span class="line"></span>拆开处 · 点一下取消<span class="line"></span>' : '<span class="line"></span>从这里拆开<span class="line"></span>';
+    });
+    renderSplit();
+    if (Object.keys(state.cuts).length === 0) toast('这一章按目标字数切不开：每段都不到目标字数。', 'error');
+  });
+  $('#splitClear').addEventListener('click', function(){
+    state.cuts = {};
+    $$('[data-cut]').forEach(function(btn){
+      btn.classList.remove('is-cut');
+      btn.innerHTML = '<span class="line"></span>从这里拆开<span class="line"></span>';
+    });
+    renderSplit();
+  });
+  $('#splitConfirm').addEventListener('click', function(){
+    var n = $$('#splitPreview .split-piece').length;
+    closeDialog();
+    toast('已拆分为 ' + n + ' 章，总章数增加 ' + (n-1) + '。');
+  });
+  renderSplit();
+
+  /* ── 重命名范围 ── */
+  $$('[data-scope]').forEach(function(b){
+    b.addEventListener('click', function(){
+      $$('[data-scope]').forEach(function(x){ x.setAttribute('aria-pressed', String(x === b)); });
+      var book = b.getAttribute('data-scope') === 'book';
+      $('#renumberScopeNote').textContent = book ? '全书：所有卷的章都按全书序号改名。' : '当前卷：卷一 · 夜雨。';
+      $('#renumberPreview').innerHTML = book
+        ? '<div class="split-piece"><span class="meta">巷口的灯 → 第 1 章 巷口的灯</span></div><div class="split-piece"><span class="meta">半张纸 → 第 2 章 半张纸</span></div><div class="split-piece"><span class="meta">守夜人 → 第 3 章 守夜人</span></div>'
+        : '<div class="split-piece"><span class="meta">巷口的灯 → 第 1 章 巷口的灯</span></div><div class="split-piece"><span class="meta">半张纸 → 第 2 章 半张纸</span></div><div class="split-piece"><span class="meta">守夜人 → 第 3 章 守夜人</span></div>';
+    });
+  });
+
+  /* ── 卷管理 ── */
+  function refreshVolCount(){ $('#volCount').textContent = String($$('#volList [data-vol]').length); }
+  $('#volCreate').addEventListener('click', function(){
+    var name = $('#newVolName').value.trim();
+    if (!name){ $('#volError').hidden = false; $('#volError').textContent = '先填一个卷名。'; return; }
+    var dup = $$('#volList [data-vol-name]').some(function(el){ return el.textContent.trim() === name; });
+    if (dup){ $('#volError').hidden = false; $('#volError').textContent = '同名卷已经有了，换个名字。'; return; }
+    $('#volError').hidden = true;
+    var li = document.createElement('li');
+    li.setAttribute('data-vol','');
+    li.innerHTML = '<span class="vol-title" data-vol-name>' + name + '</span><span class="meta num">0 章 · 空卷</span><span class="actions" style="margin-left:auto"><button class="btn btn-sm" type="button" data-vol-rename>重命名</button><button class="btn btn-sm" type="button" data-vol-up>上移</button><button class="btn btn-sm" type="button" data-vol-down>下移</button><button class="btn btn-sm btn-ghost btn-danger" type="button" data-dialog="#dlgVolDelete" data-od-id="C-76">删除</button></span>';
+    $('#volList').appendChild(li);
+    $('#newVolName').value = '';
+    refreshVolCount();
+    toast('已新建空卷「' + name + '」');
+  });
+  document.addEventListener('click', function(ev){
+    var li = ev.target.closest('#volList [data-vol]');
+    if (!li) return;
+    if (ev.target.closest('[data-vol-up]')){
+      var prev = li.previousElementSibling;
+      if (prev) { li.parentNode.insertBefore(li, prev); toast('已上移'); }
+    }
+    if (ev.target.closest('[data-vol-down]')){
+      var next = li.nextElementSibling;
+      if (next) { li.parentNode.insertBefore(next, li); toast('已下移'); }
+    }
+    var rn = ev.target.closest('[data-vol-rename]');
+    if (rn){
+      var nameEl = li.querySelector('[data-vol-name]');
+      var old = nameEl.textContent;
+      var acts = li.querySelector('.actions');
+      if (li.querySelector('[data-vol-edit]')) return;
+      var wrap = document.createElement('span');
+      wrap.setAttribute('data-vol-edit','');
+      wrap.style.cssText = 'display:flex;gap:6px;align-items:center;flex:1 1 auto';
+      wrap.innerHTML = '<input class="input" style="min-height:32px;padding:4px 8px;max-width:180px" value="' + old + '" aria-label="新卷名"><button class="btn btn-sm btn-primary" type="button" data-vol-save>保存</button><button class="btn btn-sm" type="button" data-vol-cancel>取消</button>';
+      nameEl.hidden = true;
+      li.insertBefore(wrap, nameEl.nextSibling);
+      wrap.querySelector('input').focus();
+      wrap.querySelector('[data-vol-save]').addEventListener('click', function(){
+        var v = wrap.querySelector('input').value.trim();
+        if (!v){ toast('卷名不能为空。', 'error'); return; }
+        nameEl.textContent = v; nameEl.hidden = false; wrap.remove();
+        toast('卷名已改为「' + v + '」');
+      });
+      wrap.querySelector('[data-vol-cancel]').addEventListener('click', function(){
+        nameEl.hidden = false; wrap.remove();
+      });
+    }
+  });
+
+  /* ── 标签管理 ── */
+  document.addEventListener('click', function(ev){
+    var li = ev.target.closest('#tagList [data-tag]');
+    if (!li) return;
+    var rn = ev.target.closest('[data-tag-rename]');
+    if (rn && !li.querySelector('[data-tag-edit]')){
+      var strong = li.querySelector('strong');
+      var old = strong.textContent;
+      var wrap = document.createElement('span');
+      wrap.setAttribute('data-tag-edit','');
+      wrap.style.cssText = 'display:flex;gap:6px;align-items:center;flex:1 1 auto';
+      wrap.innerHTML = '<input class="input" style="min-height:32px;padding:4px 8px;max-width:180px" value="' + old + '" aria-label="新标签名"><button class="btn btn-sm btn-primary" type="button" data-tag-save>保存</button><button class="btn btn-sm" type="button" data-tag-cancel>取消</button>';
+      strong.hidden = true;
+      li.insertBefore(wrap, strong.nextSibling);
+      wrap.querySelector('input').focus();
+      wrap.querySelector('[data-tag-save]').addEventListener('click', function(){
+        var v = wrap.querySelector('input').value.trim();
+        if (!v){ $('#tagError').hidden = false; $('#tagError').textContent = '标签名不能为空。'; return; }
+        $('#tagError').hidden = true;
+        strong.textContent = v; strong.hidden = false; wrap.remove();
+        toast('标签已改名为「' + v + '」');
+      });
+      wrap.querySelector('[data-tag-cancel]').addEventListener('click', function(){
+        strong.hidden = false; wrap.remove();
+      });
+    }
+  });
+  $('#tagCreate').addEventListener('click', function(){
+    var name = $('#newTagName').value.trim();
+    if (!name){ $('#tagError').hidden = false; $('#tagError').textContent = '先填一个标签名。'; return; }
+    var dup = $$('#tagList [data-tag] strong').some(function(el){ return el.textContent.trim() === name; });
+    if (dup){ $('#tagError').hidden = false; $('#tagError').textContent = '已经有同名标签了，换个名字再试。'; return; }
+    $('#tagError').hidden = true;
+    var li = document.createElement('li');
+    li.setAttribute('data-tag','');
+    li.innerHTML = '<strong>' + name + '</strong><span class="meta num">0 本</span><span class="actions" style="margin-left:auto"><button class="btn btn-sm" type="button" data-tag-rename>改名</button><button class="btn btn-sm btn-ghost btn-danger" type="button" data-dialog="#dlgTagDelete" data-od-id="C-78">删除</button></span>';
+    $('#tagList').appendChild(li);
+    $('#newTagName').value = '';
+    toast('标签「' + name + '」已创建。');
+  });
+
+  /* ── 新建章节 ── */
+  $('#newChSave').addEventListener('click', function(){
+    var t = $('#newChName').value.trim();
+    var c = $('#newChContent').value.trim();
+    if (!t){ toast('章节标题不能为空。', 'error'); return; }
+    if (!c){ toast('正文不能为空：空章节没有任何意义，先写点内容。', 'error'); return; }
+    closeDialog();
+    toast('已新建章节「' + t + '」');
+  });
+
+  /* ── 删除本书 ── */
+  $('#delBookInput').addEventListener('input', function(){
+    var ok = this.value.trim() === '长夜未明';
+    $('#delBookConfirm').disabled = !ok;
+    $('#delBookHint').hidden = ok;
+  });
+  $('#delBookConfirm').addEventListener('click', function(){
+    closeDialog();
+    showPage('admin');
+    toast('已删除《长夜未明》。');
+  });
+
+  /* ── 脏数据与离开确认 ── */
+  function recountDirty(){
+    var n = 0;
+    $$('#page-book [data-dirty]').forEach(function(el){ if (el.getAttribute('data-orig') === null) el.setAttribute('data-orig', el.value); if (el.value !== el.getAttribute('data-orig')) n += 1; });
+    state.dirty = n;
+    $('#bookDirty').textContent = n > 0 ? n + ' 项更改还没保存' : '全部更改已保存';
+    $('#saveBtn').disabled = n === 0;
+    $('#discardBtn').disabled = n === 0;
+    $('#bookActions').classList.toggle('is-dirty', n > 0);
+    $('#dlgLeave').querySelector('h2').textContent = '还有 ' + n + ' 项更改没保存';
+  }
+  $$('#page-book [data-dirty]').forEach(function(el){ el.addEventListener('input', recountDirty); el.addEventListener('change', recountDirty); });
+  $('#saveBtn').addEventListener('click', function(){
+    $$('#page-book [data-dirty]').forEach(function(el){ el.setAttribute('data-orig', el.value); });
+    recountDirty();
+    showBanner('已保存，页面上的信息已更新。');
+    toast('已保存，页面上的信息已更新。');
+  });
+  $('#discardBtn').addEventListener('click', function(){
+    $$('#page-book [data-dirty]').forEach(function(el){ el.value = el.getAttribute('data-orig') || el.value; });
+    recountDirty();
+    showBanner('已放弃更改，页面回到上次保存的样子。');
+  });
+  $('#backBtn').addEventListener('click', function(){
+    if (state.dirty > 0){ openDialog('#dlgLeave'); return; }
+    showPage('admin');
+  });
+  $('#leaveSave').addEventListener('click', function(){
+    $$('#page-book [data-dirty]').forEach(function(el){ el.setAttribute('data-orig', el.value); });
+    recountDirty();
+    closeDialog();
+    showPage('admin');
+    toast('已保存并离开。');
+  });
+
+  /* ── 初始化 ── */
+  var mq = window.matchMedia(H5_QUERY);
+  setTier(mq.matches ? 'h5' : 'pc');
+  mq.addEventListener('change', function(e){ setTier(e.matches ? 'h5' : 'pc'); });
+  showPage('import');
+  recountDirty();
+  updateBookBatch();
+  updateChBatch();
+})();
+</script>
+</body>
+</html>

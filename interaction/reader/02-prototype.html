@@ -1,0 +1,1646 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>阅读器 · 交互原型（长夜未明）</title>
+<style>
+:root {
+  --bg: #fbf6ee;
+  --surface: #fffdf8;
+  --surface-warm: #f1e3cf;
+  --fg: #201914;
+  --fg-2: #4c4037;
+  --muted: #7a6d63;
+  --meta: #9b5b32;
+  --border: #ded2c3;
+  --border-soft: #eee4d7;
+  --accent: #9b5b32;
+  --accent-on: #ffffff;
+  --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+  --accent-active: color-mix(in oklab, var(--accent), black 14%);
+  --success: #4f8a4f;
+  --warn: #c9822f;
+  --danger: #b33a3a;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 17px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: 42px;
+  --text-3xl: 64px;
+  --text-4xl: 88px;
+  --leading-body: 1.62;
+  --leading-tight: 1;
+  --tracking-display: -0.025em;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --section-y-desktop: 112px;
+  --section-y-tablet: 80px;
+  --section-y-phone: 56px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 9999px;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 20px 52px rgba(32, 25, 20, 0.12);
+  --focus-ring: 0 0 0 4px rgba(155, 91, 50, 0.24);
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --container-max: 1180px;
+  --container-gutter-desktop: 36px;
+  --container-gutter-tablet: 24px;
+  --container-gutter-phone: 16px;
+  --night-bg: #171514;
+  --night-surface: #211e1b;
+  --night-surface-2: #2a2622;
+  --night-fg: #e8e0d6;
+  --night-fg-2: #d3c9bd;
+  --night-muted: #a89c90;
+  --night-border: #35302b;
+  --night-border-soft: #2c2824;
+  --parch-bg: #f1e3cf;
+  --parch-surface: #f7ecd9;
+  --parch-surface-2: #ebd8bd;
+  --parch-fg: #3a2d22;
+  --parch-fg-2: #55422f;
+  --parch-muted: #7a5f45;
+  --parch-border: #d8c3a4;
+  --parch-border-soft: #e6d5b9;
+  --scrim: rgba(32, 25, 20, 0.42);
+  --reader-font: 19px;
+  --reader-leading: 1.75;
+  --reader-para: 1em;
+  --reader-width: 42rem;
+  --reader-align: justify;
+  --reader-indent: 2em;
+  --reader-family: Georgia, "Times New Roman", serif;
+  --reader-hit: rgba(155, 91, 50, 0.16);
+  --reader-hit-current: rgba(155, 91, 50, 0.34);
+  --tap-min: 44px;
+}
+[data-theme="night"] {
+  --bg: var(--night-bg);
+  --surface: var(--night-surface);
+  --surface-warm: var(--night-surface-2);
+  --fg: var(--night-fg);
+  --fg-2: var(--night-fg-2);
+  --muted: var(--night-muted);
+  --border: var(--night-border);
+  --border-soft: var(--night-border-soft);
+  --scrim: rgba(8, 6, 5, 0.64);
+  --reader-hit: rgba(200, 170, 120, 0.18);
+  --reader-hit-current: rgba(200, 170, 120, 0.36);
+}
+[data-theme="parchment"] {
+  --bg: var(--parch-bg);
+  --surface: var(--parch-surface);
+  --surface-warm: var(--parch-surface-2);
+  --fg: var(--parch-fg);
+  --fg-2: var(--parch-fg-2);
+  --muted: var(--parch-muted);
+  --border: var(--parch-border);
+  --border-soft: var(--parch-border-soft);
+  --reader-hit: rgba(120, 88, 52, 0.18);
+  --reader-hit-current: rgba(120, 88, 52, 0.38);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--surface-warm);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+.demobar {
+  position: sticky; top: 0; z-index: 90;
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 10px; overflow-x: auto;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+.demobar .grp { display: flex; align-items: center; gap: 3px; flex: none; }
+.demobar .grp-label { color: var(--muted); white-space: nowrap; }
+.demobar button {
+  min-height: 44px; min-width: 44px; padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--fg-2); white-space: nowrap;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.demobar button:hover { border-color: var(--muted); }
+.demobar button[aria-pressed="true"] {
+  border-color: var(--accent); color: var(--accent); background: var(--surface);
+}
+.demo-tag { color: var(--muted); white-space: nowrap; }
+.stage-wrap { padding: 16px; display: flex; justify-content: center; align-items: stretch; flex: 1; min-height: 0; }
+.stage {
+  position: relative; width: 100%; max-width: 1440px;
+  height: auto; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  overflow: hidden;
+  overflow: clip;
+}
+.stage.is-h5 { width: 390px; max-width: 390px; height: auto; border-radius: var(--radius-lg); }
+.reader { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: clip; }
+.topbar {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 6px 14px;
+  background: var(--surface); border-bottom: 1px solid var(--border-soft);
+  z-index: 30; flex: none;
+}
+.icon-btn {
+  width: var(--tap-min); height: var(--tap-min); flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: transparent; color: var(--fg-2);
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.icon-btn:hover { background: var(--surface-warm); }
+.topbar-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.topbar-title strong { font-family: var(--font-display); font-size: var(--text-lg); line-height: 1.2; }
+.topbar-title .meta { font-size: var(--text-xs); color: var(--muted); font-family: var(--font-mono); }
+.topbar-actions { display: flex; align-items: center; gap: var(--space-1); flex: none; }
+.btn {
+  min-height: var(--tap-min); min-width: var(--tap-min); padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--fg-2);
+  transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+.btn:hover { border-color: var(--muted); background: var(--surface-warm); }
+.btn[aria-expanded="true"], .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: 0.44; cursor: not-allowed; background: var(--surface); border-color: var(--border-soft); }
+.btn-ghost { border-color: transparent; background: transparent; }
+.btn-ghost:hover { background: var(--surface-warm); }
+.reader-main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: clip; overscroll-behavior: contain; position: relative; }
+.swipe-zone { min-height: 100%; }
+.swipe-layer { min-height: 100%; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.article {
+  max-width: var(--reader-width); margin: 0 auto;
+  padding: var(--space-8) var(--container-gutter-desktop) 64px;
+}
+.article h1 {
+  font-family: var(--font-display); font-size: var(--text-xl);
+  line-height: 1.3; margin: 0 0 var(--space-2); letter-spacing: var(--tracking-display);
+}
+.article .byline { margin: 0 0 var(--space-8); color: var(--muted); font-size: var(--text-sm); text-indent: 0; }
+.paragraphs p {
+  margin: 0 0 var(--reader-para);
+  font-family: var(--reader-family);
+  font-size: var(--reader-font);
+  line-height: var(--reader-leading);
+  text-align: var(--reader-align);
+  text-indent: var(--reader-indent);
+  color: var(--fg);
+  transition: font-size var(--motion-fast) var(--ease-standard), line-height var(--motion-fast) var(--ease-standard);
+}
+.paragraphs mark { background: var(--reader-hit); color: inherit; border-radius: 2px; }
+.paragraphs mark.is-current { background: var(--reader-hit-current); }
+.pager { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-8); }
+.progress-block { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border-soft); }
+.progress-row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--text-xs); color: var(--muted); font-family: var(--font-mono); }
+.progress { margin-top: var(--space-2); height: 4px; border-radius: var(--radius-pill); background: var(--surface-warm); overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--accent); }
+.restore-hint {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin: 8px auto 0; max-width: var(--reader-width);
+  padding: 4px 8px 4px 14px; font-size: var(--text-sm); color: var(--fg-2);
+  background: var(--surface-warm); border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.state {
+  max-width: var(--reader-width); margin: var(--space-8) auto;
+  padding: var(--space-8); text-align: center;
+  background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+}
+.state strong { display: block; font-family: var(--font-display); font-size: var(--text-lg); margin-bottom: var(--space-2); }
+.state p { margin: 0 0 var(--space-4); color: var(--muted); }
+.state .row { display: flex; justify-content: center; gap: var(--space-2); flex-wrap: wrap; }
+.bottombar { display: none; }
+.is-h5 .bottombar {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 25;
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 2px; transition: transform var(--motion-fast) var(--ease-standard);
+}
+.is-h5 .bottombar button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: var(--tap-min); min-width: var(--tap-min); border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--fg-2); font-size: 11px;
+}
+.is-h5 .bottombar button:hover { background: var(--surface-warm); color: var(--fg); }
+.is-h5 .bottombar button[aria-expanded="true"] { color: var(--accent); }
+.is-h5 .bottombar button:disabled { opacity: 0.4; }
+.is-h5 .pc-action { display: none; }
+.is-h5 .topbar {
+  position: absolute; left: 0; right: 0; top: 0;
+  padding: 4px 8px;
+  transform: translateY(0);
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+.is-h5 .topbar-title strong { font-size: var(--text-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.is-h5 .topbar-title .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.is-h5 .topbar.is-hidden, .is-h5 .bottombar.is-hidden { transform: translateY(-130%); pointer-events: none; }
+.is-h5 .bottombar.is-hidden { transform: translateY(130%); }
+.is-h5 .reader-main { padding-top: 62px; padding-bottom: 56px; }
+.is-h5 .article { padding: var(--space-4) var(--container-gutter-phone) 40px; }
+.searchbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 45;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  padding: 8px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.searchbar input[type="search"] {
+  flex: 1; min-width: 120px; min-height: var(--tap-min);
+  padding: 4px 10px; border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; border-radius: 0;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.searchbar input[type="search"]:hover { border-bottom-color: var(--muted); }
+.searchbar input[type="search"]:focus { outline: none; border-bottom-color: var(--accent); }
+.searchbar .count { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.overlay {
+  position: absolute; inset: 0; z-index: 35;
+  border: 0; padding: 0; background: var(--scrim);
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.overlay.is-open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 40;
+  width: 420px; max-width: 100%;
+  display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--border);
+  transform: translateX(101%); visibility: hidden;
+  transition: transform var(--motion-base) var(--ease-standard), visibility var(--motion-base);
+}
+.drawer.is-open { transform: translateX(0); visibility: visible; }
+.drawer-head { display: flex; align-items: center; gap: var(--space-2); padding: 8px 12px; border-bottom: 1px solid var(--border-soft); flex: none; }
+.drawer-head strong { font-family: var(--font-display); font-size: var(--text-lg); }
+.drawer-head .meta { color: var(--muted); font-size: var(--text-xs); font-family: var(--font-mono); margin-right: auto; }
+.drawer-head .btn { margin-left: auto; }
+.toc-tools { display: flex; gap: var(--space-2); padding: 8px 12px; border-bottom: 1px solid var(--border-soft); flex: none; flex-wrap: wrap; }
+.toc-tools input {
+  flex: 1 1 140px; min-height: var(--tap-min); padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg);
+}
+.toc-tools input:hover { border-color: var(--muted); }
+.toc-tools input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+.toc-tools .match { flex-basis: 100%; font-size: var(--text-xs); color: var(--muted); font-family: var(--font-mono); }
+.toc-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px 16px; }
+.toc-vol { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--tap-min); padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font-family: var(--font-display); font-size: var(--text-base); text-align: left; }
+.toc-vol:hover { background: var(--surface-warm); }
+.toc-vol .chev { color: var(--muted); transition: transform var(--motion-fast) var(--ease-standard); flex: none; }
+.toc-vol[aria-expanded="false"] .chev { transform: rotate(-90deg); }
+.toc-vol .n { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.toc-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--tap-min); padding: 6px 10px 6px 22px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg-2); text-align: left; position: relative; }
+.toc-row:hover { background: var(--surface-warm); }
+.toc-row .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toc-row .w { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); flex: none; }
+.toc-row.is-current { background: var(--surface-warm); color: var(--accent); }
+.toc-row.is-current::before {
+  content: ""; position: absolute; left: 8px; top: 10px; bottom: 10px;
+  width: 2px; border-radius: 2px; background: var(--accent);
+}
+.toc-more { margin: 4px 10px 0; width: calc(100% - 20px); }
+.toc-list.is-flat .toc-vol { display: none; }
+.toc-list.is-flat .vol-body { display: block !important; }
+.toc-list.is-flat .toc-row { padding-left: 10px; }
+.drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
+.bookmark-add { width: 100%; margin-bottom: var(--space-3); }
+.bm-row { display: flex; gap: var(--space-2); align-items: stretch; border-bottom: 1px solid var(--border-soft); }
+.bm-row.is-current { background: var(--surface-warm); }
+.bm-jump { flex: 1; display: flex; flex-direction: column; gap: 2px; min-height: var(--tap-min); padding: 8px 6px; border: 0; background: transparent; text-align: left; }
+.bm-jump:hover .l { color: var(--accent); }
+.bm-jump .c { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.bm-jump .l { font-size: var(--text-sm); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color var(--motion-fast) var(--ease-standard); }
+.bm-del { min-width: var(--tap-min); min-height: var(--tap-min); border: 0; background: transparent; color: var(--muted); }
+.bm-del:hover { color: var(--danger); }
+.panel-settings {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 40;
+  width: 392px; max-width: 100%;
+  display: flex; flex-direction: column; overflow-y: auto;
+  padding: 10px 16px 24px;
+  background: var(--surface); border-left: 1px solid var(--border);
+  transform: translateX(101%); visibility: hidden;
+  transition: transform var(--motion-base) var(--ease-standard), visibility var(--motion-base);
+}
+.panel-settings.is-open { transform: translateX(0); visibility: visible; }
+.is-h5 .panel-settings {
+  top: auto; left: 0; right: 0; bottom: 0; width: 100%; height: 74%;
+  border-left: 0; border-top: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  transform: translateY(101%);
+}
+.is-h5 .panel-settings.is-open { transform: translateY(0); }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 6px 0; border-bottom: 1px solid var(--border-soft); font-size: var(--text-sm); flex-wrap: wrap; }
+.setting-row .seg { display: flex; gap: 3px; flex-wrap: wrap; }
+.setting-row .seg button { min-height: var(--tap-min); min-width: var(--tap-min); padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg-2); }
+.setting-row .seg button:hover { border-color: var(--muted); }
+.setting-row .seg button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.setting-row .seg button:disabled { opacity: 0.44; cursor: not-allowed; }
+.stepper { display: flex; align-items: center; gap: var(--space-2); }
+.stepper button { min-width: var(--tap-min); min-height: var(--tap-min); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
+.stepper button:hover { border-color: var(--muted); }
+.stepper button:disabled { opacity: 0.44; cursor: not-allowed; border-color: var(--border-soft); }
+.stepper .num { min-width: 48px; text-align: center; font-family: var(--font-mono); font-size: var(--text-sm); }
+.switch { width: 52px; min-height: var(--tap-min); flex: none; padding: 11px 2px; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-warm); }
+.switch:hover { border-color: var(--muted); }
+.switch span { display: block; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); transition: transform var(--motion-fast) var(--ease-standard); }
+.switch[aria-checked="true"] { border-color: var(--accent); }
+.switch[aria-checked="true"] span { transform: translateX(20px); background: var(--accent); }
+.switch:disabled { opacity: 0.44; cursor: not-allowed; }
+.switch:disabled:hover { border-color: var(--border); }
+.inline-note { display: block; margin-top: 2px; font-size: var(--text-xs); color: var(--muted); }
+.settings-note { margin: 6px 0 0; font-size: var(--text-xs); color: var(--muted); font-family: var(--font-mono); }
+.settings-head { display: flex; align-items: center; gap: var(--space-2); padding-bottom: 6px; }
+.settings-head strong { font-family: var(--font-display); font-size: var(--text-lg); margin-right: auto; }
+.help-backdrop {
+  position: absolute; inset: 0; z-index: 60;
+  display: none; align-items: center; justify-content: center;
+  padding: 20px; background: var(--scrim);
+}
+.help-backdrop.is-open { display: flex; }
+.help { width: min(460px, 100%); max-height: 88%; overflow-y: auto; padding: var(--space-5); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.help h3 { margin: 0 0 var(--space-3); font-family: var(--font-display); font-size: var(--text-lg); }
+.help .sub { margin: var(--space-4) 0 var(--space-1); font-size: var(--text-xs); color: var(--muted); }
+.help-row { display: flex; align-items: baseline; gap: var(--space-3); padding: 6px 0; border-bottom: 1px solid var(--border-soft); }
+.help-row kbd { flex: none; min-width: 96px; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); font-family: var(--font-mono); font-size: var(--text-xs); }
+.help-row span { color: var(--fg-2); font-size: var(--text-sm); }
+.autobar {
+  position: absolute; left: 50%; transform: translateX(-50%); z-index: 28;
+  bottom: 20px; display: flex; align-items: center; gap: var(--space-2);
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface); box-shadow: var(--elev-raised);
+}
+.is-h5 .autobar { bottom: 64px; }
+.autobar .speed { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); white-space: nowrap; }
+.autobar button { min-width: var(--tap-min); min-height: var(--tap-min); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
+.autobar button:hover { border-color: var(--muted); }
+.autobar button.danger:hover { border-color: var(--danger); color: var(--danger); }
+.confirm-backdrop {
+  position: absolute; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: var(--scrim);
+}
+.confirm {
+  width: min(360px, 100%); padding: var(--space-5);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.confirm strong { display: block; font-family: var(--font-display); font-size: var(--text-lg); margin-bottom: var(--space-2); }
+.confirm p { margin: 0 0 var(--space-4); color: var(--muted); font-size: var(--text-sm); }
+.confirm-row { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover { background: var(--danger); color: var(--surface); }
+.toast {
+  position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 70;
+  display: flex; align-items: center; gap: var(--space-2);
+  max-width: 86%; padding: 8px 12px 8px 16px; border-radius: var(--radius-sm);
+  background: var(--fg); color: var(--bg); font-size: var(--text-sm);
+}
+.toast .undo { min-height: var(--tap-min); padding: 0 10px; border: 1px solid var(--bg); border-radius: var(--radius-sm); background: transparent; color: var(--bg); font-weight: 600; }
+.toast .undo:hover { background: var(--bg); color: var(--fg); }
+.is-h5 .toast { bottom: 124px; }
+[hidden] { display: none !important; }
+@media (max-width: 1440px) {
+  .stage-wrap { padding: 12px; }
+}
+@media (max-width: 1024px) {
+  .article { padding-left: var(--container-gutter-tablet); padding-right: var(--container-gutter-tablet); }
+  .drawer { width: 380px; }
+  .panel-settings { width: 360px; }
+  .topbar-title strong { font-size: var(--text-base); }
+}
+@media (max-width: 768px) {
+  .article { padding-left: var(--container-gutter-phone); padding-right: var(--container-gutter-phone); }
+  .drawer, .panel-settings { width: 100%; border-left: 0; }
+  .stage-wrap { padding: 0; }
+  .stage { height: auto; min-height: 0; border-radius: 0; border-left: 0; border-right: 0; }
+  .stage.is-h5 { width: 100%; max-width: 100%; height: auto; border-radius: 0; }
+  .demobar { position: relative; }
+  .demobar .grp-label, .demo-tag { display: none; }
+  .setting-row .seg button { min-height: var(--tap-min); min-width: var(--tap-min); }
+  .stepper button { min-height: var(--tap-min); min-width: var(--tap-min); }
+  .switch { width: 52px; min-height: var(--tap-min); }
+  .switch span { width: 26px; height: 26px; }
+}
+@media (max-width: 390px) {
+  .article { padding-left: 12px; padding-right: 12px; }
+  .stage-wrap { padding: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 1ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="demobar" role="group" aria-label="原型演示控制条">
+  <span class="demo-tag" data-od-id="demo-only:label">演示控制条（仅原型）</span>
+  <div class="grp"><span class="grp-label">断点</span>
+    <button type="button" data-od-id="demo-only:bp" data-bp="pc" aria-pressed="true">PC 1440</button>
+    <button type="button" data-od-id="demo-only:bp" data-bp="h5" aria-pressed="false">H5 390</button>
+  </div>
+  <div class="grp"><span class="grp-label">主题</span>
+    <button type="button" data-od-id="demo-only:theme" data-theme-set="day" aria-pressed="true">日间</button>
+    <button type="button" data-od-id="demo-only:theme" data-theme-set="night" aria-pressed="false">夜间</button>
+    <button type="button" data-od-id="demo-only:theme" data-theme-set="parchment" aria-pressed="false">羊皮纸</button>
+  </div>
+  <div class="grp"><span class="grp-label">正文</span>
+    <button type="button" data-od-id="demo-only:state" data-state="normal" aria-pressed="true">正常</button>
+    <button type="button" data-od-id="demo-only:state" data-state="loading" aria-pressed="false">加载</button>
+    <button type="button" data-od-id="demo-only:state" data-state="empty" aria-pressed="false">空</button>
+    <button type="button" data-od-id="demo-only:state" data-state="error" aria-pressed="false">错误</button>
+  </div>
+  <div class="grp"><span class="grp-label">书签</span>
+    <button type="button" data-od-id="demo-only:bmstate" data-bmstate="list" aria-pressed="true">有</button>
+    <button type="button" data-od-id="demo-only:bmstate" data-bmstate="loading" aria-pressed="false">加载中</button>
+    <button type="button" data-od-id="demo-only:bmstate" data-bmstate="empty" aria-pressed="false">空</button>
+    <button type="button" data-od-id="demo-only:bmstate" data-bmstate="error" aria-pressed="false">失败</button>
+  </div>
+  <div class="grp"><span class="grp-label">目录</span>
+    <button type="button" data-od-id="demo-only:tocstate" data-tocstate="list" aria-pressed="true">正常</button>
+    <button type="button" data-od-id="demo-only:tocstate" data-tocstate="loading" aria-pressed="false">加载中</button>
+    <button type="button" data-od-id="demo-only:tocstate" data-tocstate="empty" aria-pressed="false">空</button>
+    <button type="button" data-od-id="demo-only:tocstate" data-tocstate="error" aria-pressed="false">失败</button>
+  </div>
+</div>
+
+<div class="stage-wrap">
+<div class="stage" id="stage">
+<div class="reader">
+
+  <header class="topbar" id="topbar" data-od-id="demo-only:region-topbar">
+    <button class="icon-btn" type="button" aria-label="返回目录" data-od-id="C-01">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="topbar-title">
+      <strong id="book-title">长夜未明</strong>
+      <span class="meta" id="chapter-meta">第 3 / 128 章 · 约 4,100 字</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn pc-action" type="button" data-od-id="C-03">书架</button>
+      <button class="btn pc-action" type="button" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-04">书签</button>
+      <button class="btn pc-action" type="button" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-05">搜索</button>
+      <button class="btn pc-action" type="button" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-06">目录</button>
+      <button class="btn pc-action" type="button" aria-label="快捷键帮助" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-07">?</button>
+      <button class="btn pc-action" type="button" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-08">设置</button>
+      <button class="icon-btn" type="button" aria-label="全屏阅读" aria-pressed="false" aria-haspopup="true" data-od-id="C-02">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="searchbar" id="searchbar" hidden role="search" aria-label="章内搜索" data-od-id="demo-only:region-search">
+    <input type="search" id="search-input" placeholder="搜索本章" aria-label="搜索本章关键词" data-od-id="C-37">
+    <span class="count" id="search-count" role="status" aria-live="polite">输入关键词，回车看下一处</span>
+    <span class="count" id="search-trunc" hidden>仅显示前 200 处</span>
+    <span class="inline-note" id="search-note" hidden></span>
+    <div class="grp" style="display:flex;gap:4px">
+      <button class="btn" type="button" id="search-prev" aria-label="上一处" disabled data-od-id="C-38">上一处</button>
+      <button class="btn" type="button" id="search-next" aria-label="下一处" disabled data-od-id="C-39">下一处</button>
+      <button class="btn btn-ghost" type="button" aria-label="关闭搜索" data-od-id="C-40">关闭</button>
+    </div>
+  </div>
+
+  <div class="reader-main" id="reader-main">
+    <div class="swipe-zone" id="swipe-zone" tabindex="0" role="region" aria-label="正文" aria-describedby="gesture-hint" data-od-id="C-09">
+      <p id="gesture-hint" class="sr-only">手机上左右滑动可翻章；也可以用底栏的上一章 / 下一章按钮，或键盘左右方向键</p>
+      <div class="swipe-layer" data-od-id="C-10">
+      <div class="restore-hint" id="restore-hint">
+        <span>已回到上次读到的地方</span>
+        <button class="btn btn-ghost" type="button" data-od-id="C-16">知道了</button>
+      </div>
+
+      <div id="state-normal">
+        <article class="article">
+          <h1 id="chapter-title">第三章 · 灯下落雪</h1>
+          <p class="byline">佚名</p>
+          <div class="paragraphs" id="paragraphs">
+            <p>雪是从后半夜开始下的。起初只是风里夹着细碎的沙，守夜人把灯笼挂高了些，想看清水面上是否结了薄冰。到了四更，江岸已经白了一层，灯火照上去，像有人把整条江都撒了一层盐。</p>
+            <p>沈砚在渡口等了半个时辰。他不冷，只是有些困。河上的雾比往日重，对岸的灯一盏也看不见。他数着木板缝里渗进来的水声，数到第七下，听见有人从身后走过来。</p>
+            <p>「船今夜不开了。」来的是个年轻女人，声音很低，像怕惊动水。「上游的桥断了两天，人都挤到这边来，你要走，得等到天亮。」</p>
+            <p>沈砚回过身。她提着一盏旧灯，灯纸糊得不齐，火光从缝里漏出来，落在她的袖口上。他忽然想起自己十岁那年也见过这样一盏灯，那晚同样下着雪，那时他还不知道自己会走这条路。</p>
+            <p>「天亮也不好走。」他说，「桥断了，这里就是唯一的路。」</p>
+            <p>女人没有答话，把灯放在石阶上，从怀里摸出一块干粮掰成两半，一半递过来。沈砚犹豫了一下，接了。干粮很硬，带着一股陈年的麦香，他咬了一口，觉得胃里暖起来。</p>
+            <p>远处有狗叫，叫了两声就停了。雪越下越密，落在灯罩上，化成水，又顺着灯纸往下淌。女人抬手把灯往里挪了挪，火光晃了一下，照见石阶上一行很浅的脚印，从岸边一直走到这里，然后又折了回去。</p>
+            <p>「你在等谁？」沈砚问。</p>
+            <p>「不等谁。」她说，「我在这里看灯。灯灭了，船就不会来；灯亮着，他总会回来。」</p>
+            <p>这句话说得很轻，却像石头落进井里。沈砚低头看那盏灯，火苗很小，风一过就伏下去，风过了又立起来。他忽然明白，有些约定并不需要对方知道。</p>
+            <p>渡口的木棚漏风，两个人便不说话了。雪在棚顶积成一层，偶尔滑落一块，砸出闷闷的声响。沈砚把干粮吃完，拍了拍手上的碎屑，站起来活动了一下腿。</p>
+            <p>天边开始泛出一点灰。女人把灯提起来，火苗在风里挣了一下，居然没有灭。「你走吧。」她说，「沿着石阶往上，第三个路口左转，那里有条小路绕过断桥。」</p>
+            <p>沈砚道了谢，走了几步又停下，回头问：「灯这样烧，能烧到天亮吗？」</p>
+            <p>「不知道。」她笑了一下，这是今夜第一次笑，「烧到灭为止。」</p>
+            <p>他转身走上石阶。雪已经没过脚背，走一步，身后就留下一个很深的坑。走到第三个路口，他忍不住回望，渡口那边的灯还亮着，小小的一团，在整片灰白里像一枚针尖。他忽然觉得，这一夜并不算白等。</p>
+          </div>
+          <nav class="pager" aria-label="章节切换">
+            <button class="btn" type="button" data-od-id="C-11">← 上一章</button>
+            <button class="btn" type="button" data-od-id="C-13">返回目录</button>
+            <button class="btn" type="button" data-od-id="C-12">下一章 →</button>
+            <span class="inline-note" id="chapter-edge-note" hidden></span>
+          </nav>
+          <div class="progress-block">
+            <div class="progress-row"><span>第 <strong id="progress-chapter">3</strong> / 128 章 · 约 4,100 字</span><span>全书进度 <strong id="pct">2</strong>%</span></div>
+            <div class="progress"><span id="pct-bar" style="width:2%"></span></div>
+          </div>
+        </article>
+      </div>
+
+      <div id="state-loading" hidden>
+        <div class="state">
+          <strong>正在载入正文</strong>
+          <p>单章 3000–6000 字，首次打开需要整理分段。</p>
+        </div>
+      </div>
+      <div id="state-empty" hidden>
+        <div class="state">
+          <strong>还没有正文</strong>
+          <p>这一章的内容还没入库，可以先去读下一章。</p>
+          <div class="row"><button class="btn" type="button" data-od-id="C-15">先读下一章</button></div>
+        </div>
+      </div>
+      <div id="state-error" hidden>
+        <div class="state">
+          <strong>正文没能打开</strong>
+          <p>连接中断了，重试一般就好；也可以先读下一章。</p>
+          <div class="row"><button class="btn" type="button" data-od-id="C-14">重试</button></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="bottombar" id="bottombar" aria-label="阅读控制" data-od-id="demo-only:region-bottombar">
+    <button type="button" aria-label="上一章" data-od-id="C-17"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg><span>上一章</span></button>
+    <button type="button" aria-label="章节目录" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-18"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>目录</span></button>
+    <button type="button" aria-label="打开书签" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-19"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z"/></svg><span>书签</span></button>
+    <button type="button" aria-label="搜索本章" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-20"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg><span>搜索</span></button>
+    <button type="button" aria-label="返回书架" data-od-id="C-21"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 5h6v14H4zM14 5h6v14h-6z"/></svg><span>书架</span></button>
+    <button type="button" aria-label="阅读设置" aria-expanded="false" aria-haspopup="dialog" data-od-id="C-22"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span>设置</span></button>
+    <button type="button" aria-label="下一章" data-od-id="C-23"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg><span>下一章</span></button>
+  </nav>
+
+  <button class="overlay" id="overlay" type="button" aria-label="关闭当前面板" tabindex="-1" data-od-id="C-24"></button>
+
+  <aside class="drawer" id="toc-drawer" role="dialog" aria-modal="true" aria-label="章节目录" aria-hidden="true" data-od-id="demo-only:region-toc">
+    <div class="drawer-head">
+      <strong>目录</strong>
+      <span class="meta" id="toc-meta">128 章 · 3 卷</span>
+      <button class="btn btn-ghost" type="button" data-od-id="C-30">关闭</button>
+    </div>
+    <div class="toc-tools" id="toc-filter-wrap">
+      <input type="search" id="toc-search" placeholder="搜章节名或章号" aria-label="搜索章节名或章号" data-od-id="C-25">
+      <button class="btn" type="button" id="toc-current" data-od-id="C-26">跳到当前章</button>
+      <span class="match" id="toc-match" hidden></span>
+    </div>
+    <div class="toc-list" id="toc-list" role="menu" aria-label="章节列表">
+      <div class="toc-vol-group" data-vol="一">
+        <button class="toc-vol" type="button" aria-expanded="true" role="menuitem" data-od-id="C-27">
+          <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          <span>第一卷 · 江雪</span><span class="n">42 章</span>
+        </button>
+        <div class="vol-body">
+          <button class="toc-row is-current" type="button" role="menuitem" data-idx="3" data-od-id="C-28"><span class="t">第三章 · 灯下落雪</span><span class="w">4,100 字</span></button>
+          <button class="toc-row" type="button" role="menuitem" data-idx="4" data-od-id="C-28"><span class="t">第四章 · 断桥</span><span class="w">3,860 字</span></button>
+          <button class="toc-row" type="button" role="menuitem" data-idx="5" data-od-id="C-28"><span class="t">第五章 · 第三个路口</span><span class="w">4,520 字</span></button>
+          <button class="toc-row" type="button" role="menuitem" data-idx="6" data-od-id="C-28"><span class="t">第六章 · 山路</span><span class="w">3,980 字</span></button>
+          <button class="toc-row" type="button" role="menuitem" data-idx="7" data-od-id="C-28"><span class="t">第七章 · 旧灯</span><span class="w">4,240 字</span></button>
+        </div>
+      </div>
+      <div class="toc-vol-group" data-vol="二">
+        <button class="toc-vol" type="button" aria-expanded="true" role="menuitem" data-od-id="C-27">
+          <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          <span>第二卷 · 山雨</span><span class="n">51 章</span>
+        </button>
+        <div class="vol-body">
+          <button class="toc-row" type="button" role="menuitem" data-idx="43" data-od-id="C-28"><span class="t">第四十三章 · 山雨欲来</span><span class="w">4,010 字</span></button>
+          <button class="toc-row" type="button" role="menuitem" data-idx="44" data-od-id="C-28"><span class="t">第四十四章 · 石阶</span><span class="w">3,740 字</span></button>
+          <button class="toc-row" type="button" role="menuitem" data-idx="45" data-od-id="C-28"><span class="t">第四十五章 · 归路</span><span class="w">4,330 字</span></button>
+        </div>
+      </div>
+      <div class="toc-vol-group" data-vol="三">
+        <button class="toc-vol" type="button" aria-expanded="false" role="menuitem" data-od-id="C-27">
+          <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          <span>第三卷 · 归灯</span><span class="n">35 章</span>
+        </button>
+        <div class="vol-body" hidden>
+          <button class="toc-row" type="button" role="menuitem" data-idx="94" data-od-id="C-28"><span class="t">第九十四章 · 江上</span><span class="w">4,180 字</span></button>
+          <button class="toc-row" type="button" role="menuitem" data-idx="95" data-od-id="C-28"><span class="t">第九十五章 · 灯灭</span><span class="w">3,900 字</span></button>
+        </div>
+      </div>
+      <div class="state" id="toc-loading" hidden>
+        <strong>正在读取目录</strong>
+        <p>稍等一下，马上就好。</p>
+      </div>
+      <div class="state" id="toc-err" hidden>
+        <strong>目录没能加载</strong>
+        <p>正文不受影响；可以先按下面的平铺列表找章，或重试。</p>
+        <div class="row"><button class="btn" type="button" id="toc-retry" data-od-id="C-61">重试</button><button class="btn" type="button" id="toc-fallback" data-od-id="C-62">用平铺列表</button></div>
+      </div>
+      <div class="state" id="toc-empty" hidden>
+        <strong>没有匹配的章节</strong>
+        <p>换个关键词试试，或清空后看全部章节。</p>
+        <div class="row"><button class="btn" type="button" id="toc-clear" data-od-id="C-31">清空搜索</button></div>
+      </div>
+      <span class="inline-note" id="toc-more-note" hidden></span>
+      <button class="btn toc-more" type="button" id="toc-more" data-od-id="C-29">再显示 60 章 · 已显示 13 / 128</button>
+    </div>
+  </aside>
+
+  <aside class="drawer" id="bm-drawer" role="dialog" aria-modal="true" aria-label="书签" aria-hidden="true" data-od-id="demo-only:region-bookmarks">
+    <div class="drawer-head">
+      <strong>书签</strong>
+      <span class="meta" id="bm-count">3 条</span>
+      <button class="btn btn-ghost" type="button" data-od-id="C-36">关闭</button>
+    </div>
+    <div class="drawer-body">
+      <button class="btn bookmark-add" type="button" id="bm-add" data-od-id="C-32">在这里加书签</button>
+      <div id="bm-list">
+        <div class="bm-row" data-bm="1">
+          <button class="bm-jump" type="button" data-od-id="C-33"><span class="c">第二章 · 渡口</span><span class="l">他不冷，只是有些困。</span></button>
+          <button class="bm-del" type="button" aria-label="删除第一条书签" data-od-id="C-34">删除</button>
+        </div>
+        <div class="bm-row is-current" data-bm="2">
+          <button class="bm-jump" type="button" data-od-id="C-33"><span class="c">第三章 · 灯下落雪</span><span class="l">沈砚在渡口等了半个时辰。</span></button>
+          <button class="bm-del" type="button" aria-label="删除第二条书签" data-od-id="C-34">删除</button>
+        </div>
+        <div class="bm-row" data-bm="3">
+          <button class="bm-jump" type="button" data-od-id="C-33"><span class="c">第三章 · 灯下落雪</span><span class="l">「烧到灭为止。」</span></button>
+          <button class="bm-del" type="button" aria-label="删除第三条书签" data-od-id="C-34">删除</button>
+        </div>
+      </div>
+      <div class="state" id="bm-loading" hidden>
+        <strong>正在读取书签</strong>
+        <p>稍等一下。</p>
+      </div>
+      <div class="state" id="bm-empty" hidden>
+        <strong>还没有书签</strong>
+        <p>读到想记的地方，点上面的「在这里加书签」，下次回来一眼就能跳回来。</p>
+      </div>
+      <div class="state" id="bm-error" hidden>
+        <strong>书签没能加载</strong>
+        <p>正文不受影响，可以继续往下读。</p>
+        <div class="row"><button class="btn" type="button" id="bm-retry" data-od-id="C-35">重试</button></div>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="panel-settings" id="settings-panel" role="dialog" aria-modal="true" aria-label="阅读设置" aria-hidden="true" data-od-id="demo-only:region-settings">
+    <div class="settings-head">
+      <strong>阅读设置</strong>
+      <button class="btn btn-ghost" type="button" data-od-id="C-54">关闭</button>
+    </div>
+    <div class="setting-row"><span>主题</span>
+      <div class="seg" role="group" aria-label="主题" data-od-id="C-41">
+        <button type="button" data-theme-set="day" aria-pressed="true">日间</button>
+        <button type="button" data-theme-set="night" aria-pressed="false">夜间</button>
+        <button type="button" data-theme-set="parchment" aria-pressed="false">羊皮纸</button>
+        <button type="button" data-theme-set="system" aria-pressed="false">跟随系统</button>
+      </div>
+    </div>
+    <div class="setting-row"><span>字号</span>
+      <div class="stepper" data-od-id="C-42">
+        <button type="button" id="font-minus" aria-label="减小字号">A−</button>
+        <span class="num" id="font-value" aria-live="polite">19</span>
+        <button type="button" id="font-plus" aria-label="增大字号">A+</button>
+      </div>
+    </div>
+    <span class="inline-note" id="font-note" hidden></span>
+    <div class="setting-row"><span>跟随系统字号</span>
+      <button class="switch" type="button" role="switch" aria-checked="false" aria-label="跟随系统字号" data-od-id="C-43"><span></span></button>
+    </div>
+    <div class="setting-row"><span>行距</span>
+      <div class="stepper" data-od-id="C-44">
+        <button type="button" id="lead-minus" aria-label="减小行距">−</button>
+        <span class="num" id="lead-value" aria-live="polite">1.75</span>
+        <button type="button" id="lead-plus" aria-label="增大行距">+</button>
+      </div>
+    </div>
+    <span class="inline-note" id="lead-note" hidden></span>
+    <div class="setting-row"><span>字体</span>
+      <div class="seg" role="group" aria-label="字体" data-od-id="C-45">
+        <button type="button" data-font="serif" aria-pressed="true">衬线</button>
+        <button type="button" data-font="sans" aria-pressed="false">黑体</button>
+        <button type="button" data-font="system" aria-pressed="false">系统</button>
+      </div>
+    </div>
+    <div class="setting-row"><span>段距</span>
+      <div class="seg" role="group" aria-label="段距" data-od-id="C-46">
+        <button type="button" data-para="0.4" aria-pressed="false">紧凑</button>
+        <button type="button" data-para="0.7" aria-pressed="false">偏紧</button>
+        <button type="button" data-para="1" aria-pressed="true">标准</button>
+        <button type="button" data-para="1.6" aria-pressed="false">宽松</button>
+      </div>
+    </div>
+    <div class="setting-row"><span>正文宽度</span>
+      <div class="seg" role="group" aria-label="正文宽度" data-od-id="C-47">
+        <button type="button" data-width="34rem" aria-pressed="false">窄</button>
+        <button type="button" data-width="42rem" aria-pressed="true">标准</button>
+        <button type="button" data-width="52rem" aria-pressed="false">宽</button>
+      </div>
+    </div>
+    <div class="setting-row"><span>对齐</span>
+      <div class="seg" role="group" aria-label="对齐" data-od-id="C-48">
+        <button type="button" data-align="left" aria-pressed="false">左对齐</button>
+        <button type="button" data-align="justify" aria-pressed="true">两端</button>
+      </div>
+    </div>
+    <div class="setting-row"><span>首行缩进</span>
+      <button class="switch" type="button" role="switch" aria-checked="true" aria-label="首行缩进" data-od-id="C-49"><span></span></button>
+    </div>
+    <div class="setting-row"><span>繁体转简体</span>
+      <button class="switch" type="button" role="switch" aria-checked="false" aria-label="繁体转简体" data-od-id="C-50"><span></span></button>
+    </div>
+    <div class="setting-row"><span>自动滚动</span>
+      <button class="switch" type="button" role="switch" aria-checked="false" aria-label="自动滚动" data-od-id="C-51"><span></span></button>
+    </div>
+    <div class="setting-row"><span>滚动速度</span>
+      <div class="stepper" data-od-id="C-52">
+        <button type="button" id="speed-minus" aria-label="减慢自动滚动" disabled>−</button>
+        <span class="num" id="speed-value" aria-live="polite">1.5</span>
+        <button type="button" id="speed-plus" aria-label="加快自动滚动" disabled>+</button>
+      </div>
+    </div>
+    <span class="inline-note" id="speed-edge-note" hidden></span>
+    <p class="settings-note" id="speed-note">0.5–5 档，步进 0.5 · 当前约 42 像素/秒</p>
+    <div class="setting-row"><span>到底自动下一章</span>
+      <button class="switch" type="button" role="switch" aria-checked="false" aria-label="到底自动下一章" data-od-id="C-53" disabled><span></span></button>
+    </div>
+  </aside>
+
+  <div class="autobar" id="autobar" hidden role="group" aria-label="自动滚动控制">
+    <span class="speed" id="autobar-label" aria-live="polite">自动滚动 · 1.5 档</span>
+    <button type="button" id="autobar-toggle" data-od-id="C-55">暂停</button>
+    <button type="button" id="autobar-exit" class="danger" data-od-id="C-56">退出</button>
+  </div>
+
+  <div class="help-backdrop" id="help" role="dialog" aria-modal="true" aria-label="快捷键帮助">
+    <div class="help">
+      <h3>快捷键</h3>
+      <div class="help-row"><kbd>← / →</kbd><span>上一章 / 下一章</span></div>
+      <div class="help-row"><kbd>空格 / PageDown</kbd><span>向下翻 0.85 屏</span></div>
+      <div class="help-row"><kbd>Shift+空格 / PageUp</kbd><span>向上翻 0.85 屏</span></div>
+      <div class="help-row"><kbd>?</kbd><span>打开 / 关闭这份帮助</span></div>
+      <div class="help-row"><kbd>Esc</kbd><span>关闭当前面板或抽屉</span></div>
+      <p class="sub">触摸设备</p>
+      <div class="help-row"><kbd>单击正文</kbd><span>显示 / 隐藏控制栏</span></div>
+      <div class="help-row"><kbd>左右滑动</kbd><span>上一章 / 下一章</span></div>
+      <div style="margin-top:16px;text-align:right"><button class="btn" type="button" id="help-close" data-od-id="C-57">关闭</button></div>
+    </div>
+  </div>
+
+  <div class="confirm-backdrop" id="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title" hidden>
+    <div class="confirm">
+      <strong id="confirm-title">删除这条书签？</strong>
+      <p id="confirm-body">删除后立即移除，不可恢复。</p>
+      <div class="confirm-row">
+        <button class="btn" type="button" id="confirm-cancel" data-od-id="C-59">取消</button>
+        <button class="btn btn-danger" type="button" id="confirm-ok" data-od-id="C-60">删除书签</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden role="status" aria-live="polite" data-od-id="C-58">
+    <span id="toast-text"></span>
+    <button class="undo" type="button" id="toast-undo" hidden>撤销</button>
+  </div>
+</div>
+</div>
+</div>
+<script>
+(function () {
+  "use strict";
+  var q = function (s, root) { return (root || document).querySelector(s); };
+  var qa = function (s, root) { return Array.prototype.slice.call((root || document).querySelectorAll(s)); };
+  var stage = q("#stage"), main = q("#reader-main"), html = document.documentElement;
+
+  var ui = { bp: "pc", theme: "day", article: "normal", bm: "list", toc: "list", flat: false, overlayCount: 0 };
+
+  /* ---------------- toast（C-58）：普通 4s，可撤销 5s ---------------- */
+  var toastTimer = null, undoAction = null;
+  function showToast(text, opts) {
+    var el = q("#toast"), undo = q("#toast-undo");
+    q("#toast-text").textContent = text;
+    var undoable = !!(opts && opts.undo);
+    undo.disabled = !undoable;
+    undo.hidden = !undoable;
+    undoAction = undoable ? opts.undo : null;
+    el.hidden = false;
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(function () {
+      el.hidden = true; undoAction = null;
+    }, undoable ? 5000 : 4000);
+  }
+  q("#toast-undo").addEventListener("click", function () {
+    var fn = undoAction;
+    q("#toast").hidden = true;
+    undoAction = null;
+    if (toastTimer) window.clearTimeout(toastTimer);
+    if (fn) fn();
+  });
+
+  /* ---------------- 演示件 ---------------- */
+  function syncPressed(sel, attr, value) {
+    qa(sel).forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute(attr) === value)); });
+  }
+  function applyBreakpoint(bp) {
+    ui.bp = bp;
+    stage.classList.toggle("is-h5", bp === "h5");
+    syncPressed("[data-bp]", "data-bp", bp);
+    syncPressed("[data-od-id='demo-only:theme']", "data-theme-set", ui.theme);
+    controlsVisible = bp !== "h5";
+    applyWidthAvailability();
+    syncControls();
+  }
+  function applyTheme(theme) {
+    ui.theme = theme;
+    html.setAttribute("data-theme", theme === "system" ? "day" : theme);
+    syncPressed("[data-theme-set]", "data-theme-set", theme);
+    showToast(theme === "system" ? "已跟随系统外观（原型按日间显示）"
+      : "已切换到" + ({ day: "日间", night: "夜间", parchment: "羊皮纸" }[theme]) + "主题");
+  }
+  function applyArticle(state) {
+    ui.article = state;
+    ["normal", "loading", "empty", "error"].forEach(function (k) { q("#state-" + k).hidden = k !== state; });
+    syncPressed("[data-state]", "data-state", state);
+    q("[data-od-id='C-05']").disabled = state !== "normal";
+    q("[data-od-id='C-20']").disabled = state !== "normal";
+    q("[data-od-id='C-32']").disabled = state !== "normal";
+    q("[data-od-id='C-51']").disabled = state !== "normal";
+    main.scrollTop = 0;
+  }
+  function applyToc(state) {
+    ui.toc = state;
+    var list = q("#toc-list");
+    qa(".toc-vol-group", list).forEach(function (g) { g.hidden = state !== "list"; });
+    q("#toc-filter-wrap").hidden = state === "loading";
+    q("#toc-loading").hidden = state !== "loading";
+    q("#toc-empty").hidden = true;
+    q("#toc-err").hidden = state !== "error";
+    q("#toc-more").hidden = state !== "list";
+    if (state === "empty") q("#toc-empty").hidden = false;
+    syncPressed("[data-tocstate]", "data-tocstate", state);
+  }
+  function applyBm(state) {
+    ui.bm = state;
+    q("#bm-list").hidden = state !== "list";
+    q("#bm-loading").hidden = state !== "loading";
+    q("#bm-empty").hidden = state !== "empty";
+    q("#bm-error").hidden = state !== "error";
+    q("#bm-count").textContent = state === "list" ? (qa("#bm-list .bm-row").length || 0) + " 条" : "";
+    syncPressed("[data-bmstate]", "data-bmstate", state);
+  }
+  qa("[data-bp]").forEach(function (b) { b.addEventListener("click", function () { applyBreakpoint(b.getAttribute("data-bp")); }); });
+  qa("[data-od-id='demo-only:theme']").forEach(function (b) { b.addEventListener("click", function () { applyTheme(b.getAttribute("data-theme-set")); }); });
+  qa("[data-state]").forEach(function (b) { b.addEventListener("click", function () { applyArticle(b.getAttribute("data-state")); }); });
+  qa("[data-bmstate]").forEach(function (b) { b.addEventListener("click", function () { applyBm(b.getAttribute("data-bmstate")); }); });
+  qa("[data-tocstate]").forEach(function (b) { b.addEventListener("click", function () { applyToc(b.getAttribute("data-tocstate")); }); });
+
+  /* ---------------- 控制层（C-09 / C-02） ---------------- */
+  var AUTO_HIDE_MS = 3000, TAP_SLOP = 12, TAP_MAX_MS = 700;
+  var controlsVisible = true, autoHideTimer = null;
+
+  function overlayOpen() { return ui.overlayCount > 0; }
+  function syncControls() {
+    var topbar = q("#topbar"), bar = q("#bottombar");
+    var hidden = ui.bp === "h5" && !controlsVisible;
+    topbar.classList.toggle("is-hidden", hidden);
+    bar.classList.toggle("is-hidden", hidden);
+    topbar.setAttribute("aria-hidden", String(hidden));
+    bar.setAttribute("aria-hidden", String(hidden));
+    if (autoHideTimer) { window.clearTimeout(autoHideTimer); autoHideTimer = null; }
+    if (ui.bp === "h5" && controlsVisible && !overlayOpen()) {
+      autoHideTimer = window.setTimeout(function () { controlsVisible = false; syncControls(); }, AUTO_HIDE_MS);
+    }
+  }
+  function toggleControls() { controlsVisible = !controlsVisible; syncControls(); }
+  function revealControls() { controlsVisible = true; syncControls(); }
+
+  var tapStart = null;
+  main.addEventListener("pointerdown", function (e) {
+    if (ui.bp !== "h5") return;
+    if (e.target.closest("a,button,input,select,textarea,label,[role='button']")) { tapStart = null; return; }
+    tapStart = { x: e.clientX || 0, y: e.clientY || 0, t: Date.now() };
+  });
+  main.addEventListener("pointerup", function (e) {
+    if (ui.bp !== "h5" || !tapStart) { tapStart = null; return; }
+    var from = tapStart; tapStart = null;
+    if (Date.now() - from.t > TAP_MAX_MS) return;
+    if (Math.abs((e.clientX || 0) - from.x) > TAP_SLOP) return;
+    if (Math.abs((e.clientY || 0) - from.y) > TAP_SLOP) return;
+    var sel = window.getSelection();
+    if (sel && String(sel).length > 0) return;
+    toggleControls();
+  });
+
+  /* ---------------- 滑动翻章（C-10） ---------------- */
+  var swipeStart = null;
+  main.addEventListener("touchstart", function (e) {
+    if (ui.bp !== "h5" || e.touches.length !== 1) { swipeStart = null; return; }
+    if (e.target.closest("a,button,input,select,textarea,label,[role='button']")) { swipeStart = null; return; }
+    var sel = window.getSelection();
+    if (sel && String(sel).length > 0) { swipeStart = null; return; }
+    swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
+  main.addEventListener("touchend", function (e) {
+    if (!swipeStart) return;
+    var t = (e.changedTouches && e.changedTouches[0]) || null;
+    var from = swipeStart; swipeStart = null;
+    if (!t) return;
+    var dx = t.clientX - from.x, dy = t.clientY - from.y;
+    if (Math.abs(dx) < 60) return;
+    if (Math.abs(dx) <= Math.abs(dy) * 1.2) return;
+    if (dx > 0) goChapter(-1); else goChapter(1);
+  }, { passive: true });
+
+  /* ---------------- 翻章（C-11/C-12/C-17/C-23） ---------------- */
+  var chapterIdx = 3, MAX_CHAPTER = 128;
+  /** 首末章时把翻章按钮置灰（契约 C-11 / C-12 / C-17 / C-23 的边界列） */
+  function syncChapterButtons() {
+    qa("[data-od-id='C-11'],[data-od-id='C-17']").forEach(function (b) { b.disabled = chapterIdx <= 1; });
+    qa("[data-od-id='C-12'],[data-od-id='C-23'],[data-od-id='C-15']").forEach(function (b) { b.disabled = chapterIdx >= MAX_CHAPTER; });
+    var note = q("#chapter-edge-note");
+    if (note) {
+      note.hidden = !(chapterIdx <= 1 || chapterIdx >= MAX_CHAPTER);
+      note.textContent = chapterIdx <= 1 ? "已经是第一章了" : "已经是最后一章了";
+    }
+  }
+  function goChapter(delta) {
+    var next = chapterIdx + delta;
+    if (next < 1) { showToast("已经是第一章了。"); return; }
+    if (next > MAX_CHAPTER) { showToast("已经是最后一章了。"); return; }
+    chapterIdx = next;
+    syncChapterButtons();
+    q("#chapter-meta").textContent = "第 " + chapterIdx + " / " + MAX_CHAPTER + " 章 · 约 4,100 字";
+    q("#progress-chapter").textContent = String(chapterIdx);
+    main.scrollTop = 0;
+    closeAll();
+    revealControls();
+    showToast("已翻到第 " + chapterIdx + " 章");
+    var pct = Math.max(1, Math.round((chapterIdx / MAX_CHAPTER) * 100));
+    q("#pct").textContent = String(pct);
+    q("#pct-bar").style.width = pct + "%";
+  }
+
+  /* ---------------- 键盘 ---------------- */
+  function scrollScreen(dir) { main.scrollBy({ top: main.clientHeight * 0.85 * dir, behavior: "smooth" }); }
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var tag = (e.target && e.target.tagName) || "";
+    if (e.key === "Escape") {
+      if (!q("#help").classList.contains("is-open") && ui.overlayCount === 0 && q("#searchbar").hidden) return;
+      closeAll(); return;
+    }
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.key === "?" || (e.key === "/" && e.shiftKey)) { e.preventDefault(); toggleHelp(); return; }
+    if (q("#help").classList.contains("is-open")) return;
+    if (!q("#searchbar").hidden) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); goChapter(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); goChapter(1); }
+    else if (e.key === " " || e.key === "PageDown") { e.preventDefault(); scrollScreen(e.shiftKey ? -1 : 1); }
+    else if (e.key === "PageUp") { e.preventDefault(); scrollScreen(-1); }
+  });
+
+  /* ---------------- 浮层统一开关（C-24 遮罩） ---------------- */
+  var OPEN_SEL = "[data-od-id='C-04'],[data-od-id='C-06'],[data-od-id='C-08'],[data-od-id='C-19'],[data-od-id='C-18'],[data-od-id='C-22']";
+  var lastTrigger = null;
+  function openOverlay(el, trigger) {
+    el.classList.add("is-open");
+    el.setAttribute("aria-hidden", "false");
+    q("#overlay").classList.add("is-open");
+    q("#overlay").tabIndex = 0;
+    ui.overlayCount = 1;
+    if (trigger) {
+      lastTrigger = trigger;
+      qa(OPEN_SEL).forEach(function (b) { if (b === trigger) b.setAttribute("aria-expanded", "true"); });
+    }
+    syncControls();
+    var focusable = el.querySelector("input,button:not([disabled])");
+    if (focusable) {
+      if (ui.focusTimer) window.clearTimeout(ui.focusTimer);
+      ui.focusTimer = window.setTimeout(function () { focusable.focus(); }, 40);
+    }
+  }
+  function closeOverlay(el) {
+    el.classList.remove("is-open");
+    el.setAttribute("aria-hidden", "true");
+    ui.overlayCount = 0;
+    q("#overlay").classList.remove("is-open");
+    q("#overlay").tabIndex = -1;
+    qa(OPEN_SEL).forEach(function (b) { b.setAttribute("aria-expanded", "false"); });
+    syncControls();
+  }
+  function closeAllButHelp() {
+    closeOverlay(q("#toc-drawer"));
+    closeOverlay(q("#bm-drawer"));
+    closeOverlay(q("#settings-panel"));
+    if (!q("#searchbar").hidden) closeSearch(true);
+  }
+  function closeAll() {
+    closeAllButHelp();
+    q("#help").classList.remove("is-open");
+    qa("[data-od-id='C-07']").forEach(function (b) { b.setAttribute("aria-expanded", "false"); });
+  }
+
+  function togglePanel(el, trigger, onOpen) {
+    if (el.classList.contains("is-open")) { closeOverlay(el); if (lastTrigger) lastTrigger.focus(); return; }
+    closeAllButHelp();
+    if (onOpen) onOpen();
+    openOverlay(el, trigger);
+  }
+  qa("[data-od-id='C-06'],[data-od-id='C-18']").forEach(function (b) {
+    b.addEventListener("click", function () {
+      revealControls();
+      togglePanel(q("#toc-drawer"), b, function () {
+        q("#toc-search").value = ""; q("#toc-match").hidden = true;
+        if (ui.toc && ui.toc !== "list") applyToc(ui.toc); else filterToc("");
+      });
+    });
+  });
+  qa("[data-od-id='C-04'],[data-od-id='C-19']").forEach(function (b) {
+    b.addEventListener("click", function () { revealControls(); togglePanel(q("#bm-drawer"), b); });
+  });
+  qa("[data-od-id='C-08'],[data-od-id='C-22']").forEach(function (b) {
+    b.addEventListener("click", function () { revealControls(); togglePanel(q("#settings-panel"), b); });
+  });
+  qa("[data-od-id='C-30'],[data-od-id='C-36'],[data-od-id='C-54']").forEach(function (b) {
+    b.addEventListener("click", function () { closeAll(); if (lastTrigger) lastTrigger.focus(); });
+  });
+  q("#overlay").addEventListener("click", function () { closeAll(); if (lastTrigger) lastTrigger.focus(); });
+
+  /* ---------------- 目录（C-25…C-31） ---------------- */
+  function filterToc(raw) {
+    // 非「正常」档时列表由状态机接管，筛选不覆盖状态
+    if (ui.toc && ui.toc !== "list") { applyToc(ui.toc); return; }
+    var needle = raw.trim().toLowerCase();
+    var any = false;
+    qa("#toc-list .toc-vol-group").forEach(function (group) {
+      var hit = 0;
+      qa(".toc-row", group).forEach(function (row) {
+        var show = !needle || row.textContent.toLowerCase().indexOf(needle) > -1;
+        row.hidden = !show;
+        if (show) hit += 1;
+      });
+      group.hidden = needle !== "" && hit === 0;
+      if (needle !== "" && hit > 0) {
+        group.querySelector(".vol-body").hidden = false;
+        group.querySelector(".toc-vol").setAttribute("aria-expanded", "true");
+      }
+      if (hit > 0) any = true;
+    });
+    q("#toc-empty").hidden = any;
+    q("#toc-more").hidden = needle !== "";
+    var m = q("#toc-match");
+    if (needle) { m.hidden = false; m.textContent = "匹配 " + countVisibleRows() + " 章"; }
+    else { m.hidden = true; }
+  }
+  function countVisibleRows() { return qa("#toc-list .toc-row").filter(function (r) { return !r.hidden; }).length; }
+  q("#toc-search").addEventListener("input", function (e) { filterToc(e.target.value); });
+  q("#toc-clear").addEventListener("click", function () {
+    q("#toc-search").value = ""; filterToc("");
+    q("#toc-search").focus();
+  });
+  qa("[data-od-id='C-27']").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var open = btn.getAttribute("aria-expanded") === "true";
+      btn.setAttribute("aria-expanded", String(!open));
+      btn.parentNode.querySelector(".vol-body").hidden = open;
+    });
+  });
+  function bindTocRow(row) {
+    row.addEventListener("click", function () {
+      var idx = Number(row.getAttribute("data-idx"));
+      qa("#toc-list .toc-row").forEach(function (r) { r.classList.remove("is-current"); });
+      row.classList.add("is-current");
+      chapterIdx = idx;
+      syncChapterButtons();
+      q("#chapter-meta").textContent = "第 " + idx + " / " + MAX_CHAPTER + " 章 · 约 4,100 字";
+      q("#progress-chapter").textContent = String(idx);
+      main.scrollTop = 0;
+      closeAll();
+      showToast("已跳到第 " + idx + " 章");
+      if (lastTrigger) lastTrigger.focus();
+    });
+  }
+  qa("#toc-list .toc-row").forEach(bindTocRow);
+  q("#toc-retry").addEventListener("click", function () {
+    var btn = q("#toc-retry");
+    btn.disabled = true; btn.textContent = "正在重试…";
+    applyToc("loading");
+    window.setTimeout(function () {
+      btn.disabled = false; btn.textContent = "重试";
+      ui.flat = false;
+      q("#toc-list").classList.remove("is-flat");
+      applyToc("list");
+      showToast("目录已重新载入");
+      var first = q("#toc-list .toc-row:not([hidden])");
+      if (first) first.focus();
+    }, 500);
+  });
+  q("#toc-fallback").addEventListener("click", function () {
+    ui.flat = true;
+    q("#toc-list").classList.add("is-flat");
+    applyToc("list");
+    showToast("已改用平铺列表显示章节");
+    q("#toc-search").value = "";
+    filterToc("");
+    // 契约 C-62：降级后焦点落到列表首行，搜索框保持可用（可 Tab 回到）
+    if (ui.focusTimer) window.clearTimeout(ui.focusTimer);
+    var firstRow = q("#toc-list .toc-row:not([hidden])");
+    if (firstRow) {
+      window.setTimeout(function () {
+        firstRow.focus({ preventScroll: true });
+        var list = q("#toc-list");
+        var box = firstRow.getBoundingClientRect(), host = list.getBoundingClientRect();
+        if (box.top < host.top || box.bottom > host.bottom) list.scrollTop += box.top - host.top;
+      }, 60);
+    }
+  });
+  q("#toc-current").addEventListener("click", function () {
+    q("#toc-search").value = ""; filterToc("");
+    var cur = q("#toc-list .toc-row.is-current");
+    if (!cur) return;
+    var list = q("#toc-list");
+    list.scrollTop = Math.max(0, cur.offsetTop - list.clientHeight / 2);
+    cur.focus();
+  });
+  var tocShown = 13, TOC_STEP = 60;
+  /** 补章节行：真的往第三卷尾部追加，不是只改计数器 */
+  function appendTocRows(count) {
+    var body = q("#toc-list .toc-vol-group[data-vol='三'] .vol-body");
+    if (!body) return 0;
+    var start = tocShown + 1, end = Math.min(MAX_CHAPTER, tocShown + count), added = 0;
+    var frag = document.createDocumentFragment();
+    for (var i = start; i <= end; i += 1) {
+      var row = document.createElement("button");
+      row.className = "toc-row";
+      row.type = "button";
+      row.setAttribute("role", "menuitem");
+      row.setAttribute("data-idx", String(i));
+      row.setAttribute("data-od-id", "C-28");
+      row.innerHTML = '<span class="t">第' + i + '章 · 后续章节</span><span class="w">约 4,000 字</span>';
+      bindTocRow(row);
+      frag.appendChild(row);
+      added += 1;
+    }
+    body.appendChild(frag);
+    return added;
+  }
+  q("#toc-more").addEventListener("click", function () {
+    var btn = q("#toc-more");
+    if (tocShown >= MAX_CHAPTER) return;
+    btn.disabled = true;
+    btn.textContent = "正在加载…";
+    window.setTimeout(function () {
+      appendTocRows(TOC_STEP);
+      tocShown = Math.min(MAX_CHAPTER, tocShown + TOC_STEP);
+      btn.disabled = tocShown >= MAX_CHAPTER;
+      btn.textContent = tocShown >= MAX_CHAPTER ? "已显示全部 128 章" : "再显示 60 章 · 已显示 " + tocShown + " / 128";
+      var mn = q("#toc-more-note");
+      mn.hidden = tocShown < MAX_CHAPTER;
+      mn.textContent = "已经显示全部章节了";
+      q("#toc-meta").textContent = MAX_CHAPTER + " 章 · 3 卷";
+    }, 400);
+  });
+
+  /* ---------------- 书签（C-32…C-36） ---------------- */
+  function updateBmCount() {
+    var n = qa("#bm-list .bm-row").length;
+    q("#bm-count").textContent = n > 0 ? n + " 条" : "";
+    q("#bm-list").hidden = n === 0 || ui.bm !== "list";
+    q("#bm-empty").hidden = !(n === 0 && ui.bm === "list");
+  }
+  function bindBmRow(row) {
+    row.querySelector("[data-od-id='C-33']").addEventListener("click", function () {
+      var target = row.getAttribute("data-bm");
+      closeAll();
+      if (target === "2") { main.scrollTop = 260; showToast("已跳到这个书签的位置"); }
+      else showToast("已跳到书签所在章节");
+      if (lastTrigger) lastTrigger.focus();
+    });
+    row.querySelector("[data-od-id='C-34']").addEventListener("click", function () {
+      openConfirm(row);
+    });
+  }
+  qa("#bm-list .bm-row").forEach(bindBmRow);
+  q("#bm-add").addEventListener("click", function () {
+    var btn = q("#bm-add");
+    if (qa('#bm-list .bm-row[data-bm="2"]').length) { showToast("这个位置已经有书签了。"); return; }
+    btn.disabled = true; btn.textContent = "正在保存…";
+    window.setTimeout(function () {
+      var row = document.createElement("div");
+      row.className = "bm-row is-current";
+      row.setAttribute("data-bm", "2");
+      row.innerHTML = '<button class="bm-jump" type="button" data-od-id="C-33"><span class="c">第三章 · 灯下落雪</span><span class="l">沈砚在渡口等了半个时辰。</span></button><button class="bm-del" type="button" aria-label="删除新加的书签" data-od-id="C-34">删除</button>';
+      q("#bm-list").insertBefore(row, q("#bm-list").firstChild);
+      bindBmRow(row);
+      updateBmCount();
+      btn.disabled = false; btn.textContent = "在这里加书签";
+      showToast("已加到「第三章 · 灯下落雪」");
+    }, 400);
+  });
+  q("#bm-retry").addEventListener("click", function () {
+    var btn = q("#bm-retry");
+    btn.disabled = true; btn.textContent = "正在重试…";
+    window.setTimeout(function () {
+      btn.disabled = false; btn.textContent = "重试";
+      applyBm("list");
+      showToast("书签已重新加载");
+    }, 400);
+  });
+
+  /* ---------------- 删除书签二次确认（C-59 / C-60） ---------------- */
+  var pendingRow = null, confirmReturnFocus = null;
+  function openConfirm(row) {
+    pendingRow = row;
+    confirmReturnFocus = row.querySelector("[data-od-id='C-34']");
+    var box = q("#confirm");
+    box.hidden = false;
+    var label = row.querySelector(".bm-jump .l");
+    q("#confirm-body").textContent = "删除后立即移除，不可恢复。这一条是「" + (label ? label.textContent : "这本书签") + "」。";
+    q("#confirm-cancel").focus();
+  }
+  function closeConfirm() {
+    q("#confirm").hidden = true;
+    pendingRow = null;
+    if (confirmReturnFocus) confirmReturnFocus.focus();
+  }
+  q("#confirm-cancel").addEventListener("click", closeConfirm);
+  q("#confirm").addEventListener("click", function (e) { if (e.target === q("#confirm")) closeConfirm(); });
+  q("#confirm-ok").addEventListener("click", function () {
+    var row = pendingRow, btn = q("#confirm-ok");
+    if (!row) { closeConfirm(); return; }
+    btn.disabled = true;
+    btn.textContent = "正在删除…";
+    window.setTimeout(function () {
+      var parent = row.parentNode, next = row.nextElementSibling;
+      parent.removeChild(row);
+      updateBmCount();
+      q("#confirm").hidden = true;
+      btn.disabled = false;
+      btn.textContent = "删除书签";
+      pendingRow = null;
+      showToast("书签已删除");
+      var focusTarget = next ? next.querySelector("[data-od-id='C-34']")
+        : (parent.lastElementChild && parent.lastElementChild.querySelector("[data-od-id='C-34']"));
+      if (focusTarget) focusTarget.focus();
+    }, 300);
+  });
+
+  /* ---------------- 章内搜索（C-37…C-40） ---------------- */
+  var search = { hits: [], current: 0, query: "" };
+  function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function collectHits(query) {
+    var out = [];
+    if (!query) return out;
+    qa("#paragraphs p").forEach(function (p) {
+      var text = p.textContent, from = 0, at;
+      while ((at = text.indexOf(query, from)) > -1) {
+        out.push({ para: p, start: at, end: at + query.length });
+        from = at + query.length;
+        if (out.length >= 200) return;
+      }
+    });
+    return out;
+  }
+  function paintSearch() {
+    qa("#paragraphs p").forEach(function (p) { p.innerHTML = p.getAttribute("data-raw") || p.textContent; });
+    if (!search.query) { renderCount(); return; }
+    var perPara = new Map();
+    search.hits.forEach(function (hit, index) {
+      if (!perPara.has(hit.para)) perPara.set(hit.para, []);
+      perPara.get(hit.para).push({ index: index, start: hit.start, end: hit.end });
+    });
+    perPara.forEach(function (hits, p) {
+      var raw = p.textContent, out = "", from = 0;
+      hits.forEach(function (h) {
+        out += escapeHtml(raw.slice(from, h.start));
+        out += '<mark data-hit="' + h.index + '"' + (h.index === search.current ? ' class="is-current"' : "") + ">" + escapeHtml(raw.slice(h.start, h.end)) + "</mark>";
+        from = h.end;
+      });
+      out += escapeHtml(raw.slice(from));
+      p.innerHTML = out;
+    });
+    q("#search-trunc").hidden = search.hits.length < 200;
+    renderCount();
+  }
+  function renderCount() {
+    var el = q("#search-count"), n = search.hits.length;
+    if (!search.query) { el.textContent = "输入关键词，回车看下一处"; return; }
+    el.textContent = n === 0 ? "无匹配" : "第 " + (search.current + 1) + " / " + n + " 处";
+    var nEl = q("#search-note");
+    if (nEl) { nEl.hidden = n !== 0; nEl.textContent = "本章没有匹配的内容"; }
+  }
+  function syncSearchButtons() {
+    var none = search.hits.length === 0;
+    q("#search-prev").disabled = none;
+    q("#search-next").disabled = none;
+  }
+  function centerHit(node) {
+    if (!node) return;
+    var box = node.getBoundingClientRect(), host = main.getBoundingClientRect();
+    main.scrollTop += box.top - host.top - main.clientHeight / 2 + box.height / 2;
+  }
+  function stepHit(delta) {
+    var n = search.hits.length;
+    if (n === 0) return;
+    search.current = (search.current + delta + n) % n;
+    paintSearch();
+    centerHit(q('#paragraphs mark[data-hit="' + search.current + '"]'));
+  }
+  function openSearch() {
+    revealControls();
+    q("#searchbar").hidden = false;
+    qa("[data-od-id='C-05'],[data-od-id='C-20']").forEach(function (b) { b.setAttribute("aria-expanded", "true"); });
+    q("#search-input").focus();
+    syncControls();
+  }
+  function closeSearch(silent) {
+    q("#searchbar").hidden = true;
+    q("#search-input").value = "";
+    search = { hits: [], current: 0, query: "" };
+    paintSearch(); syncSearchButtons(); renderCount();
+    q("#search-trunc").hidden = true;
+    qa("[data-od-id='C-05'],[data-od-id='C-20']").forEach(function (b) { b.setAttribute("aria-expanded", "false"); });
+    syncControls();
+    if (!silent) {
+      var t = q("[data-od-id='C-05']");
+      if (t && ui.bp !== "h5") t.focus(); else if (q("#bottombar")) q("[data-od-id='C-20']").focus();
+    }
+  }
+  q("#search-input").addEventListener("input", function (e) {
+    search.query = e.target.value.trim();
+    search.hits = collectHits(search.query);
+    search.current = 0;
+    paintSearch(); syncSearchButtons();
+    centerHit(q('#paragraphs mark[data-hit="0"]'));
+  });
+  q("#search-input").addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    stepHit(e.shiftKey ? -1 : 1);
+  });
+  q("#search-prev").addEventListener("click", function () { stepHit(-1); });
+  q("#search-next").addEventListener("click", function () { stepHit(1); });
+  qa("[data-od-id='C-40']").forEach(function (b) { b.addEventListener("click", function () { closeSearch(); }); });
+  qa("[data-od-id='C-05'],[data-od-id='C-20']").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!q("#searchbar").hidden) { closeSearch(); return; }
+      closeAllButHelp(); openSearch();
+    });
+  });
+
+  /* ---------------- 设置（C-41…C-54） ---------------- */
+  var settings = { font: 19, leading: 1.75, para: 1, width: "42rem", align: "justify", indent: true };
+  function applyTypography() {
+    html.style.setProperty("--reader-font", settings.font + "px");
+    html.style.setProperty("--reader-leading", String(settings.leading));
+    html.style.setProperty("--reader-para", settings.para + "em");
+    html.style.setProperty("--reader-width", settings.width);
+    html.style.setProperty("--reader-align", settings.align);
+    html.style.setProperty("--reader-indent", settings.indent ? "2em" : "0");
+    q("#font-value").textContent = String(settings.font);
+    q("#lead-value").textContent = settings.leading.toFixed(2).replace(/0$/, "");
+    q("#font-minus").disabled = settings.font <= 15;
+    q("#font-plus").disabled = settings.font >= 26;
+    q("#lead-minus").disabled = settings.leading <= 1.3;
+    q("#lead-plus").disabled = settings.leading >= 2.2;
+    var fn = q("#font-note");
+    fn.hidden = !(settings.font <= 15 || settings.font >= 26);
+    fn.textContent = settings.font <= 15 ? "已经是最小字号" : "已经是最大字号";
+    var ln = q("#lead-note");
+    ln.hidden = !(settings.leading <= 1.3 || settings.leading >= 2.2);
+    ln.textContent = settings.leading <= 1.3 ? "已经是最小行距" : "已经是最大行距";
+  }
+  function applyWidthAvailability() {
+    var h5 = ui.bp === "h5";
+    qa("[data-width]").forEach(function (b) { b.disabled = h5; });
+  }
+  q("#font-minus").addEventListener("click", function () { settings.font = Math.max(15, settings.font - 1); applyTypography(); });
+  q("#font-plus").addEventListener("click", function () { settings.font = Math.min(26, settings.font + 1); applyTypography(); });
+  q("#lead-minus").addEventListener("click", function () { settings.leading = Math.max(1.3, Math.round((settings.leading - 0.1) * 100) / 100); applyTypography(); });
+  q("#lead-plus").addEventListener("click", function () { settings.leading = Math.min(2.2, Math.round((settings.leading + 0.1) * 100) / 100); applyTypography(); });
+  qa("[data-font]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var map = { serif: 'Georgia, "Times New Roman", serif', sans: 'Inter, system-ui, sans-serif', system: 'system-ui, -apple-system, sans-serif' };
+      html.style.setProperty("--reader-family", map[b.getAttribute("data-font")]);
+      qa("[data-font]").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+    });
+  });
+  qa("[data-para]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      settings.para = Number(b.getAttribute("data-para"));
+      qa("[data-para]").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+      applyTypography();
+    });
+  });
+  qa("[data-width]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      settings.width = b.getAttribute("data-width");
+      qa("[data-width]").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+      applyTypography();
+    });
+  });
+  qa("[data-align]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      settings.align = b.getAttribute("data-align");
+      qa("[data-align]").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+      applyTypography();
+    });
+  });
+  qa(".switch").forEach(function (sw) {
+    sw.addEventListener("click", function () {
+      if (sw.disabled) return;
+      var on = sw.getAttribute("aria-checked") === "true";
+      sw.setAttribute("aria-checked", String(!on));
+      var label = sw.getAttribute("aria-label");
+      if (label === "首行缩进") { settings.indent = !on; applyTypography(); }
+      if (label === "繁体转简体") showToast(!on ? "已转换为简体，位置不变" : "已显示原文");
+      if (label === "跟随系统字号") {
+        q("#font-minus").disabled = !on;
+        q("#font-plus").disabled = !on;
+        showToast(!on ? "已跟随系统字号" : "已改回手动字号");
+      }
+      if (label === "自动滚动") toggleAutoScroll(!on);
+      if (label === "到底自动下一章") showToast(!on ? "滚到章末会自动进入下一章" : "滚到章末会停下");
+    });
+  });
+
+  /* ---------------- 自动滚动（C-51…C-56） ---------------- */
+  var auto = { on: false, paused: false, speed: 1.5, raf: null };
+  var autoPos = 0, autoSet = 0, SPEED_MIN = 0.5, SPEED_MAX = 5;
+  var speedMinus = q("#speed-minus"), speedPlus = q("#speed-plus"), autoNext = q("[data-od-id='C-53']");
+  function speedToPx(v) { return Math.round(18 * v); }
+  function applySpeed() {
+    q("#speed-value").textContent = auto.speed.toFixed(1);
+    q("#autobar-label").textContent = "自动滚动 · " + auto.speed.toFixed(1) + " 档" + (auto.paused ? " · 已暂停" : "");
+    q("#speed-note").textContent = "0.5–5 档，步进 0.5 · 当前约 " + speedToPx(auto.speed) + " 像素/秒";
+    speedMinus.disabled = !auto.on || auto.speed <= SPEED_MIN;
+    speedPlus.disabled = !auto.on || auto.speed >= SPEED_MAX;
+    autoNext.disabled = !auto.on;
+    var sn = q("#speed-edge-note");
+    if (!auto.on) { sn.hidden = false; sn.textContent = "先打开自动滚动再调速"; }
+    else if (auto.speed <= SPEED_MIN) { sn.hidden = false; sn.textContent = "已经是最慢速度"; }
+    else if (auto.speed >= SPEED_MAX) { sn.hidden = false; sn.textContent = "已经是最快速度"; }
+    else { sn.hidden = true; }
+  }
+  speedMinus.addEventListener("click", function () { auto.speed = Math.max(SPEED_MIN, auto.speed - 0.5); applySpeed(); });
+  speedPlus.addEventListener("click", function () { auto.speed = Math.min(SPEED_MAX, auto.speed + 0.5); applySpeed(); });
+  function startLoop() {
+    if (auto.raf) return;
+    autoPos = main.scrollTop;
+    var last = 0;
+    function step(now) {
+      auto.raf = null;
+      if (!auto.on || auto.paused) return;
+      var dt = last ? Math.min(64, now - last) : 16;
+      last = now;
+      autoPos += (speedToPx(auto.speed) * dt) / 1000;
+      main.scrollTop = autoPos;
+      autoSet = main.scrollTop;
+      if (main.scrollTop + main.clientHeight >= main.scrollHeight - 4) {
+        var nextOn = autoNext.getAttribute("aria-checked") === "true";
+        if (nextOn) { goChapter(1); autoPos = 0; showToast("已自动翻到第 " + chapterIdx + " 章"); }
+        else {
+          auto.paused = true; q("#autobar-toggle").textContent = "继续"; applySpeed();
+          showToast("已滚到章末，自动滚动暂停"); return;
+        }
+      }
+      auto.raf = window.requestAnimationFrame(step);
+    }
+    auto.raf = window.requestAnimationFrame(step);
+  }
+  function stopLoop() { if (auto.raf) { window.cancelAnimationFrame(auto.raf); auto.raf = null; } }
+  function toggleAutoScroll(on) {
+    auto.on = on; auto.paused = false;
+    q("#autobar").hidden = !on;
+    q("#autobar-toggle").textContent = "暂停";
+    q("[data-od-id='C-51']").setAttribute("aria-checked", String(on));
+    if (!on) { autoNext.setAttribute("aria-checked", "false"); stopLoop(); }
+    else startLoop();
+    applySpeed();
+  }
+  q("#autobar-toggle").addEventListener("click", function () {
+    auto.paused = !auto.paused;
+    this.textContent = auto.paused ? "继续" : "暂停";
+    applySpeed();
+    if (auto.paused) stopLoop(); else startLoop();
+  });
+  q("#autobar-exit").addEventListener("click", function () {
+    toggleAutoScroll(false);
+    showToast("已关闭自动滚动");
+    q("[data-od-id='C-08']").focus();
+  });
+
+  /* ---------------- 全屏（C-02） ---------------- */
+  qa("[data-od-id='C-02']").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var on = btn.getAttribute("aria-pressed") === "true";
+      if (!on && document.fullscreenEnabled) {
+        document.documentElement.requestFullscreen().catch(function () {
+          showToast("当前浏览器不支持全屏，已收起控制栏");
+        });
+      }
+      if (on && document.fullscreenElement) document.exitFullscreen().catch(function () {});
+      btn.setAttribute("aria-pressed", String(!on));
+      btn.setAttribute("aria-label", on ? "全屏阅读" : "退出全屏");
+      if (!document.fullscreenEnabled) {
+        showToast("当前浏览器不支持全屏，已收起控制栏");
+        controlsVisible = false; syncControls();
+      } else {
+        showToast(on ? "已退出全屏" : "已进入全屏阅读");
+      }
+    });
+  });
+
+  /* ---------------- 帮助（C-07 / C-57） ---------------- */
+  function toggleHelp() {
+    var help = q("#help");
+    var open = !help.classList.contains("is-open");
+    closeAllButHelp();
+    help.classList.toggle("is-open", open);
+    qa("[data-od-id='C-07']").forEach(function (b) { b.setAttribute("aria-expanded", String(open)); });
+    if (open) q("#help-close").focus();
+  }
+  qa("[data-od-id='C-07']").forEach(function (b) { b.addEventListener("click", function () { revealControls(); toggleHelp(); }); });
+  qa("[data-od-id='C-57']").forEach(function (b) { b.addEventListener("click", function () { toggleHelp(); q("[data-od-id='C-07']").focus(); }); });
+  q("#help").addEventListener("click", function (e) { if (e.target === q("#help")) { toggleHelp(); q("[data-od-id='C-07']").focus(); } });
+
+  /* ---------------- 其余按钮 ---------------- */
+  qa("[data-od-id='C-01']").forEach(function (b) { b.addEventListener("click", function () { showToast("返回上一页"); }); });
+  qa("[data-od-id='C-03'],[data-od-id='C-21']").forEach(function (b) { b.addEventListener("click", function () { showToast("回到书架，并恢复到离开时的位置"); }); });
+  qa("[data-od-id='C-11'],[data-od-id='C-17']").forEach(function (b) { b.addEventListener("click", function () { goChapter(-1); }); });
+  qa("[data-od-id='C-12'],[data-od-id='C-23'],[data-od-id='C-15']").forEach(function (b) { b.addEventListener("click", function () { goChapter(1); }); });
+  qa("[data-od-id='C-13']").forEach(function (b) { b.addEventListener("click", function () { showToast("打开这本书的目录页"); }); });
+  qa("[data-od-id='C-14']").forEach(function (b) {
+    b.addEventListener("click", function () {
+      b.disabled = true;
+      var old = b.textContent;
+      b.textContent = "正在重试…";
+      window.setTimeout(function () {
+        b.disabled = false; b.textContent = old;
+        applyArticle("normal"); showToast("正文已重新载入");
+      }, 600);
+    });
+  });
+  qa("[data-od-id='C-16']").forEach(function (b) { b.addEventListener("click", function () { q("#restore-hint").hidden = true; }); });
+
+  /* ---------------- 滚动同步进度 ---------------- */
+  main.addEventListener("scroll", function () {
+    if (auto.on && Math.abs(main.scrollTop - autoSet) > 4) autoPos = main.scrollTop;
+    if (ui.article !== "normal") return;
+    var ratio = main.scrollTop / Math.max(1, main.scrollHeight - main.clientHeight);
+    var pct = Math.max(1, Math.min(100, Math.round(ratio * 100)));
+    q("#pct").textContent = String(pct);
+    q("#pct-bar").style.width = pct + "%";
+  });
+
+  /* ---------------- 初始化 ---------------- */
+  qa("#paragraphs p").forEach(function (p) { p.setAttribute("data-raw", p.textContent); });
+  syncChapterButtons();
+  applyTypography();
+  applySpeed();
+  applyArticle("normal");
+  applyBm("list");
+  applyToc("list");
+  applyBreakpoint(window.innerWidth <= 768 ? "h5" : "pc");
+  window.addEventListener("resize", function () {
+    var want = window.innerWidth <= 768 ? "h5" : "pc";
+    if (ui.bp !== want) applyBreakpoint(want);
+  });
+})();
+</script>
+</body>
+</html>
