@@ -27,37 +27,39 @@ export function AddToCollectionPanel({
 }) {
   const list = useCollections();
   const [members, setMembers] = useState<Record<number, CollectionMembers>>({});
-  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [loadedKey, setLoadedKey] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [tip, setTip] = useState("");
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const collections = list.data?.items ?? [];
+  /** 这一屏的书单集合：成员回来时按它标记「已取全」，换一批书单会自动重新取。 */
+  const collectionsKey = collections.map((item) => item.id).join(",");
+  const loadingMembers = collections.length > 0 && loadedKey !== collectionsKey;
   /** 成员全部取回之前不渲染勾选框：没取到时勾选框既不能点也会短暂显示成「未加入」。 */
   const membersReady = collections.length > 0 && collections.every((item) => members[item.id] !== undefined);
 
   useEffect(() => {
     if (collections.length === 0) return;
     let active = true;
-    setLoadingMembers(true);
     Promise.all(
       collections.map(async (item) => [item.id, await fetchCollectionMembers(item.id)] as const),
     )
       .then((pairs) => {
         if (!active) return;
         setMembers(Object.fromEntries(pairs));
+        setLoadedKey(collectionsKey);
       })
       .catch(() => {
-        if (active) showToast("书单成员没能读取，稍后再试。", "error");
-      })
-      .finally(() => {
-        if (active) setLoadingMembers(false);
+        if (!active) return;
+        setLoadedKey(collectionsKey);
+        showToast("书单成员没能读取，稍后再试。", "error");
       });
     return () => {
       active = false;
     };
-    // 只在书单列表变化时重取成员（挂载时一次）
+    // 只在书单集合变化时重取成员（挂载时一次）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list.data]);
+  }, [collectionsKey]);
 
   /** 打开期间锁背景滚动（契约 C-04），关闭即还原。 */
   useEffect(() => {

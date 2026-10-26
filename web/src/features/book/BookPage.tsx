@@ -8,7 +8,7 @@ import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
 import { BookAside } from "./BookAside";
-import { BookHeader, serialLabel } from "./BookHeader";
+import { BookHeader } from "./BookHeader";
 import { BookToc } from "./BookToc";
 import { AddToCollectionPanel } from "./AddToCollectionPanel";
 import { useTocColumns } from "./useTocColumns";
@@ -177,6 +177,3 @@ function metaErrorText(error: unknown): string {
   }
   return "保存没能完成，稍后再试。";
 }
-
-/** 导出给测试与其它组件复用的连载文案（旧调用点仍在用）。 */
-export { serialLabel };

@@ -114,7 +114,7 @@ function BookIntro({
 }
 
 /** 连载状态的人话；后端未升级（undefined）按未知处理。 */
-export function serialLabel(status: SerialStatus | undefined): string {
+function serialLabel(status: SerialStatus | undefined): string {
   if (status === "ongoing") return "连载中";
   if (status === "completed") return "已完结";
   return "状态未知";

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { BookDetail, ChapterBrief, ReadStatus } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { formatCount, formatDate } from "../../lib/format";
-import { READ_STATUS_LABELS, READ_STATUS_OPTIONS } from "../../lib/readStatus";
+import { READ_STATUS_OPTIONS } from "../../lib/readStatus";
 import { BookRating } from "./RatingStars";
 
 /**
@@ -160,9 +160,4 @@ function SeriesFact({ series, seriesIndex }: { series: string; seriesIndex?: num
       </dd>
     </div>
   );
-}
-
-/** 阅读状态的人话（保存提示用）；后端值缺失时不编造。 */
-export function readStatusLabel(value: string): string {
-  return READ_STATUS_LABELS[value as ReadStatus] ?? "未标记";
 }

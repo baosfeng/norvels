@@ -255,6 +255,8 @@ function MultiVolumes({
   const openByDefault = resumeVolume?.idx ?? volumes[0].idx;
   const [open, setOpen] = useState<Set<number>>(() => new Set([openByDefault]));
   const [shown, setShown] = useState<Record<number, number>>({});
+  /** 卷跳转最多同时有 4 个算「当前卷」：卷开得再多，高亮也只留最早打开的 4 个（契约 C-13）。 */
+  const activeJumps = new Set([...open].slice(0, 4));
 
   function toggle(idx: number) {
     setOpen((prev) => {
@@ -278,7 +280,7 @@ function MultiVolumes({
             <button
               key={volume.idx}
               type="button"
-              className={open.has(volume.idx) ? "is-active" : undefined}
+              className={activeJumps.has(volume.idx) ? "is-active" : undefined}
               onClick={() => jump(volume)}
             >
               {volumeLabel(volume)}
@@ -383,7 +385,7 @@ function MoreButton({
   );
 }
 
-export function volumeLabel(volume: Volume): string {
+function volumeLabel(volume: Volume): string {
   if (volume.idx < 0) return "未分卷";
   return volume.title || `第 ${volume.idx + 1} 卷`;
 }

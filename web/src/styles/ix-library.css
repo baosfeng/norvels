@@ -65,6 +65,12 @@
   .fact-link {
     min-height: 44px;
   }
+  /* C-32：署名链接的点击区宽度也要到 44（原为 36），左右各补 4px */
+  .byline a {
+    padding-left: 4px;
+    padding-right: 4px;
+    margin-left: -4px;
+  }
 }
 
 /* ── C-07 阅读状态下拉：保存中置灰（原因写在 .inline-note 里） ── */
@@ -87,6 +93,11 @@
 .rating-row .chip.is-preview {
   border-color: color-mix(in oklab, var(--accent), transparent 45%);
   color: color-mix(in oklab, var(--accent), transparent 30%);
+}
+/* 保存中整组星禁用：0.4 透明度（契约 C-08） */
+.rating-row .chip:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ── C-09 标签 chip：从静态 span 变成按钮，hover 与按下态都在这里 ── */
@@ -162,10 +173,18 @@
   margin-top: var(--space-3);
 }
 
-/* ── C-13 卷跳转：当前展开的卷高亮 ── */
+/* ── C-13 卷跳转：当前展开的卷高亮（chip 高 32px，H5 由全局抬到 44px） ── */
+.vol-jump button {
+  min-height: 32px;
+}
 .vol-jump button.is-active {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* ── C-14 卷头：PC 40px / H5 44px ── */
+.vol-head {
+  min-height: 40px;
 }
 
 /* ── C-16 卷内「再显示 60 章」：跨满整行 ── */

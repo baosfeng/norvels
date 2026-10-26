@@ -27,7 +27,7 @@ export async function fetchCollectionMembers(
   const ids: number[] = [];
   const seen = new Set<number>();
   let page = 1;
-  let total = 0;
+  let total: number;
   do {
     const data = await api.books(
       { collection: collectionId, page, size: MEMBER_PAGE_SIZE, sort: "updated" },
