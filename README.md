@@ -58,7 +58,8 @@ norvels/
 │   └── compose.yml         # 服务编排（端口/卷/健康检查/重启策略）
 ├── scripts/
 │   ├── import.sh           # 批量导入（本地 / docker 两种模式）
-│   └── backup.sh           # SQLite 备份 + 保留策略
+│   ├── backup.sh           # SQLite 备份 + 保留策略
+│   └── tidy-pending-collection.py  # 待整理合集包：去重 → 按分类抓取到导入目录
 ├── docs/
 │   ├── architecture.md     # 组件划分与数据模型
 │   ├── api.md              # REST API 契约
