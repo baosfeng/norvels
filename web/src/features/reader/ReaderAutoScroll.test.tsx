@@ -179,6 +179,8 @@ describe("阅读器：自动滚动", () => {
   it("速度 0.5 步进：默认 3 档，加减各半档，到 0.5 后减不动", () => {
     renderReader();
     openSettings();
+    // 契约 C-52：自动滚动关闭时整组置灰，先打开开关再调速
+    fireEvent.click(autoSwitch());
 
     expect(screen.getByTestId("reader-speed-value").textContent).toBe("3");
     fireEvent.click(screen.getByRole("button", { name: "加快自动滚动" }));
@@ -200,6 +202,8 @@ describe("阅读器：自动滚动", () => {
     renderReader();
     openSettings();
 
+    // 契约 C-53：自动滚动关闭时本开关置灰，先打开自动滚动
+    fireEvent.click(autoSwitch());
     const nextSwitch = screen.getByRole("switch", { name: "到底自动下一章" });
     expect(nextSwitch.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(nextSwitch);

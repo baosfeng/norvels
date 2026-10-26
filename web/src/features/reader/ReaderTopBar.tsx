@@ -52,7 +52,7 @@ export function ReaderTopBar({
       className="reader-top"
       data-testid="reader-top"
       data-od-id="reader-top"
-      aria-hidden={hidden || undefined}
+      aria-hidden={hidden ? "true" : "false"}
     >
       <button className="icon-btn" type="button" aria-label="返回目录" data-od-id="C-01" onClick={onBack}>
         <ChevronLeftIcon />

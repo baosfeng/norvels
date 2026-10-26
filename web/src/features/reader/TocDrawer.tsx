@@ -47,16 +47,20 @@ export function TocDrawer({
   const listRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const baseline = useRef<ApiError | null>(null);
+  const positioned = useRef(false);
   useFocusTrap(open, rootRef, onClose);
 
   // 每次打开都清空搜索、展开全部卷、回到第一块：长目录不该从上次停的地方开始
   useEffect(() => {
     if (!open) return;
+    // 抽屉每次打开都重置本地浏览状态（同步到 React 之外的「这次打开」）
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery("");
     setRevealed(TOC_CHUNK);
     setCollapsed(new Set());
     setFlat(false);
     setRetrying(false);
+    positioned.current = false;
     window.setTimeout(() => searchRef.current?.focus(), 0);
   }, [open]);
 
@@ -70,6 +74,22 @@ export function TocDrawer({
       if (listRef.current) listRef.current.scrollTop = 0;
     }
   }, [retrying, error]);
+
+  // 打开抽屉后把当前章滚进视口（C-06）：先确保当前章所在的块已显示，再滚过去
+  useEffect(() => {
+    if (!open || loading || error || positioned.current) return;
+    if (currentChapterId <= 0) return;
+    positioned.current = true;
+    const at = volumes.flatMap((volume) => volume.chapters).findIndex((chapter) => chapter.id === currentChapterId);
+    if (at < 0) return;
+    window.setTimeout(() => {
+      setRevealed((shown) => Math.max(shown, at + 1));
+      window.setTimeout(() => {
+        const row = listRef.current?.querySelector<HTMLElement>("[data-current-chapter='true']");
+        row?.scrollIntoView?.({ block: "center" });
+      }, 20);
+    }, 0);
+  }, [open, loading, error, currentChapterId, volumes]);
 
   const chapters = useMemo(() => volumes.flatMap((volume) => volume.chapters), [volumes]);
   const total = chapters.length;
@@ -107,7 +127,6 @@ export function TocDrawer({
       const row = listRef.current?.querySelector<HTMLElement>("[data-current-chapter='true']");
       if (!row) return;
       row.scrollIntoView?.({ block: "center" });
-      row.focus();
     }, 0);
   }, [currentIndex]);
 
@@ -253,7 +272,7 @@ export function TocDrawer({
       <div className="drawer-body">
         {loading ? (
           <LoadingPanel title="正在读取目录" description="稍等一下，马上就好。" />
-        ) : error ? (
+        ) : error && !flat ? (
           <div className="state-panel is-error" data-testid="toc-error">
             <span className="state-mark" aria-hidden="true">
               !

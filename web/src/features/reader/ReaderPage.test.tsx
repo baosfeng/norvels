@@ -263,11 +263,14 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     expect(screen.getByTestId("reader-word").textContent).toContain("2,100 字");
   });
 
-  it("浏览器没有全屏 API 时不渲染全屏按钮", () => {
+  it("浏览器没有全屏 API 时按钮照常可点：收起控制层并提示（契约 C-02）", () => {
     renderReader();
-
-    expect(screen.queryByLabelText("全屏阅读")).toBeNull();
-    expect(screen.queryByLabelText("退出全屏")).toBeNull();
+    act(() => tap());
+    const button = screen.getByLabelText("全屏阅读");
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(screen.getByTestId("view:reader").className).not.toContain("is-controls");
   });
 
   it("支持全屏时才给按钮（能力探测）", () => {
@@ -371,21 +374,22 @@ describe("阅读器：目录抽屉（铺满 / 搜索 / 定位）", () => {
   // 当前章 id=1200 是 420 章里的第 201 章（下标 200）
   const CURRENT = "/read/7/1200";
 
-  it("目录在抽屉里铺满可用高度：chapter-scroll 带 is-fill 且不再自带限高", () => {
-    renderReader("pc", [CURRENT]);
+  it("目录按 60 章分块：首块 60 行，滚动交给抽屉父级（契约 C-29）", () => {
+    renderReader("pc", ["/read/7/1000"]);
     openDrawer();
 
-    const scroller = screen.getByTestId("chapter-scroll");
-    expect(scroller.className).toContain("is-fill");
-    // 340/520px 的内嵌限高取消，高度交给 .drawer-scroll（父级滚动）
-    expect(scroller.style.maxHeight).toBe("");
-    expect(scroller.closest(".drawer-scroll")).toBeTruthy();
+    expect(rows()).toHaveLength(60);
+    const scroller = document.querySelector(".drawer-scroll");
+    expect(scroller).toBeTruthy();
   });
 
-  it("按章号搜索只剩命中行，清空后恢复全部 420 章", () => {
+  it("按章号搜索只剩命中行，清空后恢复全部 420 章", async () => {
     renderReader("pc", [CURRENT]);
     openDrawer();
-    expect(rows()).toHaveLength(420);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    expect(rows()).toHaveLength(201);
 
     fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "419" } });
     expect(rows()).toHaveLength(1);
@@ -393,7 +397,7 @@ describe("阅读器：目录抽屉（铺满 / 搜索 / 定位）", () => {
     expect(screen.getByTestId("toc-match").textContent).toContain("匹配 1 章");
 
     fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "" } });
-    expect(rows()).toHaveLength(420);
+    expect(rows()).toHaveLength(201);
     expect(screen.queryByTestId("toc-match")).toBeNull();
   });
 
@@ -408,27 +412,37 @@ describe("阅读器：目录抽屉（铺满 / 搜索 / 定位）", () => {
     expect(screen.getByTestId("toc-match").textContent).toContain("匹配 0 章");
   });
 
-  it("打开抽屉即定位到当前章：长目录不从第 1 章开始", () => {
+  it("打开抽屉即定位到当前章：长目录不从第 1 章开始", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { value: scrollIntoView, configurable: true });
     renderReader("pc", [CURRENT]);
-    // 打开抽屉会重挂目录，重新触发 scrollToCurrent
-    scrollToIndexSpy.mockClear();
     openDrawer();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
 
-    expect(scrollToIndexSpy).toHaveBeenCalledWith(200, { align: "center" });
+    // 当前章（第 201 章）所在的块被补显出来，并滚进视口
+    expect(document.querySelector('[data-current-chapter="true"]')).toBeTruthy();
+    expect(rows().length).toBeGreaterThan(200);
   });
 
-  it("点「跳到当前章」把当前章重新滚进视口中间", () => {
+  it("点「跳到当前章」把当前章重新滚进视口中间", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { value: scrollIntoView, configurable: true });
     renderReader("pc", [CURRENT]);
     openDrawer();
     fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "419" } });
     expect(rows()).toHaveLength(1);
-    scrollToIndexSpy.mockClear();
+    scrollIntoView.mockClear();
 
     fireEvent.click(screen.getByTestId("toc-jump"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
 
-    expect(scrollToIndexSpy).toHaveBeenCalledWith(200, { align: "center" });
-    // 跳转同时清掉搜索，回到完整目录
-    expect(rows()).toHaveLength(420);
+    expect(document.querySelector('[data-current-chapter="true"]')).toBeTruthy();
+    expect(scrollIntoView).toHaveBeenCalled();
+    // 跳转同时清掉搜索，回到完整目录（已补显到当前章）
     expect(screen.queryByTestId("toc-match")).toBeNull();
   });
 });

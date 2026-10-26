@@ -232,6 +232,8 @@ describe("阅读器：书签幂等与抽屉", () => {
     fireEvent.click(screen.getByLabelText("打开书签"));
     await waitFor(() => expect(screen.getByTestId("bookmark-99")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("删除书签 巷口的灯还亮着。"));
+    // 契约 C-58：先弹二次确认，确认后才真正删除
+    fireEvent.click(await screen.findByRole("button", { name: "删除书签" }));
     await waitFor(() => expect(deleteBookmark).toHaveBeenCalledWith(99));
     await waitFor(() => expect(screen.getByTestId("bookmark-empty")).toBeTruthy());
   });

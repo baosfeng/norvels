@@ -344,12 +344,16 @@ export function ReaderPage() {
     if (!retryingChapter) return;
     const base = chapterRetryBase.current;
     if (chapter.data === base.data && chapter.error === base.error) return;
+    // 请求完成后同步一次本地重试状态（外部系统的完成回调不在 React 事件里）
     setRetryingChapter(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (chapter.error) setChapterFailures((count) => count + 1);
     else setChapterFailures(0);
   }, [retryingChapter, chapter.data, chapter.error]);
 
   useEffect(() => {
+    // 换章即重置本章的重试计数（跨章状态不串）
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setChapterFailures(0);
     setRetryingChapter(false);
   }, [chapterId]);
@@ -366,7 +370,7 @@ export function ReaderPage() {
   }
 
   const deletedIndex = useRef(0);
-  function cancelDelete() {
+  const cancelDelete = useCallback(() => {
     const target = deleteTarget;
     setDeleteTarget(null);
     if (!target) return;
@@ -374,7 +378,7 @@ export function ReaderPage() {
       const row = document.querySelector<HTMLElement>(`[data-testid="bookmark-delete-${target.id}"]`);
       row?.focus();
     }, 0);
-  }
+  }, [deleteTarget]);
 
   async function confirmDelete() {
     const target = deleteTarget;
@@ -444,7 +448,7 @@ export function ReaderPage() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goChapter, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen, deleteTarget, toggleHelp]);
+  }, [goChapter, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen, deleteTarget, toggleHelp, cancelDelete]);
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined" || paragraphs.length === 0) return;
@@ -490,9 +494,11 @@ export function ReaderPage() {
     restoredChapter.current = chapterId;
     if (pendingJump && pendingJump.chapterId === chapterId) return;
     if (storedParaIndex <= 0) return;
-    setAnchor({ chapterId, para: storedParaIndex });
-    const node = document.getElementById(`para-${storedParaIndex}`);
-    if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
+    window.setTimeout(() => {
+      setAnchor({ chapterId, para: storedParaIndex });
+      const node = document.getElementById(`para-${storedParaIndex}`);
+      if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
+    }, 0);
   }, [chapter.data, chapterId, pendingJump, storedParaIndex, progressList.loading]);
 
   const restoreHintVisible =
