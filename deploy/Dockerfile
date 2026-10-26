@@ -27,7 +27,7 @@ ARG PNPM_VERSION=11
 #   参照：docs/deploy.md §2.2 与 https://docs.docker.com/build/building/multi-platform/
 
 # ---------- 阶段 1：前端构建（React + Vite + Tailwind） ----------
-FROM --platform=$BUILDPLATFORM node:24-alpine AS web
+FROM --platform=$BUILDPLATFORM node:26-alpine AS web
 ARG PNPM_VERSION
 WORKDIR /src/web
 # 固定 pnpm 主版本，避免 corepack 在受限网络下协商版本失败。
