@@ -40,6 +40,8 @@ vi.mock("../../api/hooks", () => ({
     return booksState;
   },
   useTags: () => tagsState,
+  useCategories: () => ({ data: { items: [{ l1: "玄幻", count: 2, items: [{ l2: "东方玄幻", count: 2 }] }], total: 1 }, loading: false, error: null, reload: () => undefined }),
+  useAuthors: () => ({ data: { items: [{ id: 1, name: "示例作者", bookCount: 2, wordCount: 34000 }], total: 1, page: 1, size: 50 }, loading: false, error: null, reload: () => undefined }),
 }));
 
 vi.mock("../../api/client", async () => {

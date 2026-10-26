@@ -90,6 +90,8 @@ export function ChapterTable({
                       aria-label={`全选「${volumeLabel(volume)}」已载入章节`}
                       data-testid={`admin-chapter-pick-vol-${volume.idx}`}
                       checked={rows.length > 0 && hit === rows.length}
+                      disabled={rows.length === 0}
+                      data-od-id="C-58"
                       ref={(node) => {
                         if (node) node.indeterminate = hit > 0 && hit < rows.length;
                       }}
@@ -99,6 +101,11 @@ export function ChapterTable({
                     <span className="meta num" data-testid={`admin-volume-meta-${volume.idx}`}>
                       {volumeMetaText(volume)}
                     </span>
+                    {rows.length === 0 ? (
+                      <span className="inline-note" data-testid={`admin-volume-empty-${volume.idx}`}>
+                        本卷还没有章节
+                      </span>
+                    ) : null}
                   </span>
                 </td>
               </tr>
@@ -109,6 +116,7 @@ export function ChapterTable({
                       type="checkbox"
                       aria-label={`选择第 ${chapter.idx + 1} 章`}
                       data-testid={`admin-chapter-pick-${chapter.id}`}
+                      data-od-id="C-57"
                       checked={picked.has(chapter.id)}
                       onChange={() => actions.onTogglePick(chapter.id)}
                     />
@@ -148,6 +156,7 @@ export function ChapterTable({
                       className="btn btn-sm"
                       type="button"
                       data-testid={`admin-chapter-body-${chapter.id}`}
+                      data-od-id="C-62"
                       onClick={() => actions.onEditBody(chapter)}
                     >
                       正文
@@ -156,6 +165,7 @@ export function ChapterTable({
                       className="btn btn-sm"
                       type="button"
                       data-testid={`admin-chapter-edit-${chapter.id}`}
+                      data-od-id="C-63"
                       onClick={() => actions.onStartEdit(chapter)}
                     >
                       改标题
@@ -164,6 +174,7 @@ export function ChapterTable({
                       className="btn btn-sm"
                       type="button"
                       data-testid={`admin-chapter-split-${chapter.id}`}
+                      data-od-id="C-64"
                       onClick={() => actions.onSplit(chapter)}
                     >
                       拆分
@@ -172,6 +183,7 @@ export function ChapterTable({
                       className="btn btn-sm btn-ghost"
                       type="button"
                       data-testid={`admin-chapter-delete-${chapter.id}`}
+                      data-od-id="C-65"
                       onClick={() => actions.onDelete(chapter)}
                     >
                       删除
@@ -184,7 +196,13 @@ export function ChapterTable({
               {!filtered && rows.length < volume.chapters.length ? (
                 <tr className="more-row">
                   <td colSpan={5}>
-                    <button className="btn btn-sm" type="button" onClick={() => actions.onLoadMore(volume)}>
+                    <button
+                      className="btn btn-sm"
+                      type="button"
+                      data-od-id="C-66"
+                      data-testid={`admin-chapter-more-${volume.idx}`}
+                      onClick={() => actions.onLoadMore(volume)}
+                    >
                       载入更多
                     </button>
                     <span className="meta">本卷还有 {formatCount(volume.chapters.length - rows.length)} 章</span>

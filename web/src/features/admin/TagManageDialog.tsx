@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { TagSummary } from "../../api/types";
 
@@ -32,7 +32,16 @@ export function TagManageDialog({
   const [deleting, setDeleting] = useState<TagSummary | null>(null);
   const [note, setNote] = useState("");
   const [errorText, setErrorText] = useState("");
+  /** 删完 / 取消后要点回去的那一行（契约 C-78：焦点回本行「删除」按钮） */
+  const deleteRefs = useRef(new Map<number, HTMLButtonElement>());
+  const [focusTag, setFocusTag] = useState<number | null>(null);
   const busy = busyWith !== null;
+
+  useEffect(() => {
+    if (focusTag === null) return;
+    deleteRefs.current.get(focusTag)?.focus();
+    setFocusTag(null);
+  }, [focusTag]);
 
   function succeeded(message: string) {
     setNote(message);
@@ -142,14 +151,19 @@ export function TagManageDialog({
                 type="button"
                 disabled={busy}
                 data-testid="tag-delete-cancel"
-                onClick={() => setDeleting(null)}
+                onClick={() => {
+                  const id = deleting?.id;
+                  setDeleting(null);
+                  if (id !== undefined) setFocusTag(id);
+                }}
               >
                 取消
               </button>
             </div>
           </>
-        ) : (
-          <>
+        ) : null}
+        {/* 列表在删除确认期间只隐藏不卸载：取消后焦点要回到那一行的「删除」按钮 */}
+        <div hidden={Boolean(deleting)}>
             <p className="meta">
               标签是书的多对多标记：改名只改标记本身，删除只解绑、不删书。导入时的词表规则也会打这些标签。
             </p>
@@ -222,6 +236,7 @@ export function TagManageDialog({
                           type="button"
                           disabled={busy}
                           data-testid={`tag-rename-${tag.id}`}
+                          data-od-id="C-77"
                           onClick={() => {
                             setRenaming({ id: tag.id, text: tag.name });
                             setErrorText("");
@@ -234,6 +249,11 @@ export function TagManageDialog({
                           type="button"
                           disabled={busy}
                           data-testid={`tag-delete-${tag.id}`}
+                          data-od-id="C-78"
+                          ref={(node) => {
+                            if (node) deleteRefs.current.set(tag.id, node);
+                            else deleteRefs.current.delete(tag.id);
+                          }}
                           onClick={() => {
                             setDeleting(tag);
                             setErrorText("");
@@ -255,6 +275,7 @@ export function TagManageDialog({
                   className="input"
                   id="tag-new"
                   data-testid="tag-new"
+                  data-od-id="C-79"
                   value={name}
                   disabled={busy}
                   placeholder="例如 武侠；同名会直接复用已有的"
@@ -269,6 +290,7 @@ export function TagManageDialog({
                 type="button"
                 disabled={busy}
                 data-testid="tag-create"
+                data-od-id="C-79"
                 onClick={() => void create()}
               >
                 {busyWith === "create" ? "正在新建…" : "新建"}
@@ -280,8 +302,7 @@ export function TagManageDialog({
                 关闭
               </button>
             </div>
-          </>
-        )}
+        </div>
       </div>
     </div>
   );

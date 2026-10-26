@@ -2,6 +2,8 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import type { Volume } from "../../api/types";
 import {
+  VOLUME_NAME_EMPTY_TEXT,
+  VOLUME_NAME_TAKEN_TEXT,
   checkVolumeName,
   realVolumes,
   reorderPreview,
@@ -9,6 +11,22 @@ import {
   volumeErrorText,
   volumeMetaText,
 } from "../../lib/volumeOps";
+
+/** 契约 C-73 / C-74 的原文：新建卷与改卷名的措辞不同，重名共用一个说法。 */
+export const VOLUME_TAKEN_TEXT = "同名卷已经有了，换个名字。";
+export const VOLUME_EMPTY_TEXT = "先填一个卷名。";
+
+/** 新建卷的空名提示与契约对齐（改卷名仍用「卷名不能为空。」）。 */
+function createNameText(message: string): string {
+  if (message === VOLUME_NAME_EMPTY_TEXT) return VOLUME_EMPTY_TEXT;
+  if (message === VOLUME_NAME_TAKEN_TEXT) return VOLUME_TAKEN_TEXT;
+  return message;
+}
+
+/** 改卷名：重名换成契约原话，其它照旧（含「卷名不能为空。」）。 */
+function renameNameText(message: string): string {
+  return message === VOLUME_NAME_TAKEN_TEXT ? VOLUME_TAKEN_TEXT : message;
+}
 import { bumpStatsRevision } from "../../lib/statsRevision";
 
 type Busy = null | "create" | "delete" | "order" | "rename";
@@ -49,7 +67,7 @@ export function VolumeManageDialog({
   async function create() {
     const check = checkVolumeName(volumes, newName);
     if (!check.ok) {
-      setErrorText(check.message);
+      setErrorText(createNameText(check.message));
       return;
     }
     setBusy("create");
@@ -60,7 +78,7 @@ export function VolumeManageDialog({
       setNewName("");
       onSaved(`已新建空卷「${check.name}」`);
     } catch (error) {
-      setErrorText(volumeErrorText(error));
+      setErrorText(createNameText(volumeErrorText(error)));
     } finally {
       setBusy(null);
     }
@@ -69,7 +87,7 @@ export function VolumeManageDialog({
   async function rename(volume: Volume) {
     const check = checkVolumeName(volumes, nameDraft, volume.id);
     if (!check.ok) {
-      setErrorText(check.message);
+      setErrorText(renameNameText(check.message));
       return;
     }
     if (check.name === volume.title) {
@@ -85,7 +103,7 @@ export function VolumeManageDialog({
       setRenamingId(null);
       onSaved(`卷名已改为「${check.name}」`);
     } catch (error) {
-      setErrorText(volumeErrorText(error));
+      setErrorText(renameNameText(volumeErrorText(error)));
     } finally {
       setBusy(null);
     }
@@ -178,11 +196,22 @@ export function VolumeManageDialog({
                       {volume.title || `第 ${volume.idx + 1} 卷`}
                     </span>
                     <span className="meta num" data-testid={`volume-meta-${volume.id}`}>{volumeMetaText(volume)}</span>
+                    {ordered.length > 1 && reorderPreview(volumes, volume.id, -1) === null ? (
+                      <span className="inline-note" data-testid={`volume-first-${volume.id}`}>
+                        已经是第一卷
+                      </span>
+                    ) : null}
+                    {ordered.length > 1 && reorderPreview(volumes, volume.id, 1) === null ? (
+                      <span className="inline-note" data-testid={`volume-last-${volume.id}`}>
+                        已经是最后一卷
+                      </span>
+                    ) : null}
                     <div className="vol-manage-acts">
                       <button
                         className="btn btn-sm"
                         type="button"
                         data-testid={`volume-rename-open-${volume.id}`}
+                        data-od-id="C-74"
                         onClick={() => startRename(volume)}
                       >
                         重命名
@@ -192,6 +221,7 @@ export function VolumeManageDialog({
                         type="button"
                         disabled={busy !== null || reorderPreview(volumes, volume.id, -1) === null}
                         data-testid={`volume-up-${volume.id}`}
+                        data-od-id="C-75"
                         onClick={() => void reorder(volume, -1)}
                       >
                         上移
@@ -201,6 +231,7 @@ export function VolumeManageDialog({
                         type="button"
                         disabled={busy !== null || reorderPreview(volumes, volume.id, 1) === null}
                         data-testid={`volume-down-${volume.id}`}
+                        data-od-id="C-75"
                         onClick={() => void reorder(volume, 1)}
                       >
                         下移
@@ -209,6 +240,7 @@ export function VolumeManageDialog({
                         className="btn btn-sm btn-ghost"
                         type="button"
                         data-testid={`volume-delete-${volume.id}`}
+                        data-od-id="C-76"
                         onClick={() => {
                           setErrorText("");
                           setPendingDelete(volume);
@@ -223,6 +255,7 @@ export function VolumeManageDialog({
             ))}
           </div>
 
+          {/* C-73 新建卷：卷名输入 + 新建卷按钮是同一个控件（原型里两处同锚点） */}
           <div className="vol-new">
             <input
               className="input input-sm"
@@ -230,6 +263,7 @@ export function VolumeManageDialog({
               placeholder="新卷名，如 卷四 · 归途"
               aria-label="新卷名"
               data-testid="volume-new-input"
+              data-od-id="C-73"
               onChange={(event) => setNewName(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") void create();
@@ -240,6 +274,7 @@ export function VolumeManageDialog({
               type="button"
               disabled={busy !== null}
               data-testid="volume-create"
+              data-od-id="C-73"
               onClick={() => void create()}
             >
               {busy === "create" ? "新建中…" : "新建卷"}

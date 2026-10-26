@@ -94,10 +94,10 @@ describe("卷管理弹窗", () => {
   it("新建空卷：空名与重名都在前端挡下，不发请求", () => {
     renderManage();
     fireEvent.click(screen.getByTestId("volume-create"));
-    expect(screen.getByTestId("volume-error").textContent).toBe("卷名不能为空。");
+    expect(screen.getByTestId("volume-error").textContent).toBe("先填一个卷名。");
     fireEvent.change(screen.getByTestId("volume-new-input"), { target: { value: " 卷一 " } });
     fireEvent.click(screen.getByTestId("volume-create"));
-    expect(screen.getByTestId("volume-error").textContent).toBe("这本书已经有同名卷了");
+    expect(screen.getByTestId("volume-error").textContent).toBe("同名卷已经有了，换个名字。");
     expect(createVolume).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ describe("卷管理弹窗", () => {
     expect(input.value).toBe("卷二");
     fireEvent.change(input, { target: { value: "卷一" } });
     fireEvent.click(screen.getByTestId("volume-rename-save"));
-    expect(screen.getByTestId("volume-error").textContent).toBe("这本书已经有同名卷了");
+    expect(screen.getByTestId("volume-error").textContent).toBe("同名卷已经有了，换个名字。");
     expect(renameVolume).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByTestId("volume-rename-input"), { target: { value: "卷二 · 上" } });
@@ -130,12 +130,12 @@ describe("卷管理弹窗", () => {
 
   it("后端 409 重名用同一句文案，弹窗不关闭", async () => {
     const { ApiError } = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-    renameVolume.mockRejectedValue(new ApiError("http", "这本书已经有同名卷了", 409, "volume_name_taken"));
+    renameVolume.mockRejectedValue(new ApiError("http", "同名卷已经有了，换个名字。", 409, "volume_name_taken"));
     renderManage();
     fireEvent.click(screen.getByTestId("volume-rename-open-2"));
     fireEvent.change(screen.getByTestId("volume-rename-input"), { target: { value: "卷二 · 上" } });
     fireEvent.click(screen.getByTestId("volume-rename-save"));
-    await waitFor(() => expect(screen.getByTestId("volume-error").textContent).toBe("这本书已经有同名卷了"));
+    await waitFor(() => expect(screen.getByTestId("volume-error").textContent).toBe("同名卷已经有了，换个名字。"));
     expect(screen.getByTestId("volume-manage-dialog")).toBeTruthy();
     expect(onSaved).not.toHaveBeenCalled();
   });
