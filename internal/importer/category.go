@@ -40,7 +40,9 @@ func normalizeCategoryName(name string) string {
 		return ""
 	}
 	trimmed := strings.TrimLeft(name, "0123456789")
-	if trimmed == "" {
+	// 剥完为空（纯数字名）或以 "." 开头（2.6付费热门 这类带小数编号的名字）
+	// 都按原名保留：数字是名字的一部分，不是排序前缀。
+	if trimmed == "" || strings.HasPrefix(trimmed, ".") {
 		return name
 	}
 	return strings.TrimSpace(trimmed)
