@@ -89,7 +89,7 @@ make build                                                   # 构建前端 + �
 ### Docker（3 条命令）
 
 ```bash
-docker build -f deploy/Dockerfile -t norvels:0.3.1 .          # 1) 构建镜像
+docker build -f deploy/Dockerfile -t norvels:0.5.0 .          # 1) 构建镜像
 NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml \
   run --rm --entrypoint /norvels norvels import --dir /books --db /data/norvels.db   # 2) 先导入
 NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml up -d         # 3) 启动
@@ -123,7 +123,7 @@ time ./bin/norvels import \
 
 ```bash
 # 源目录只读挂载到 /books，数据库写入宿主 ./data（容器内 /data/norvels.db）
-docker build -f deploy/Dockerfile -t norvels:0.1.0 .
+docker build -f deploy/Dockerfile -t norvels:0.5.0 .
 scripts/import.sh --mode docker \
   --dir "/path/to/txt" \
   --db ./data/norvels.db --workers 4
@@ -135,7 +135,7 @@ scripts/import.sh --mode docker \
 docker run --rm --entrypoint /norvels \
   -v "/path/to/txt:/books:ro" \
   -v "$PWD/data:/data" \
-  norvels:0.3.1 \
+  norvels:0.5.0 \
   import --dir /books --db /data/norvels.db --workers 4
 ```
 
