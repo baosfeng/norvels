@@ -123,7 +123,7 @@ export function DashboardPage() {
             <section className="dash-block" data-od-id="dashboard:reading">
               <div className="dash-block-head">
                 <h2>最近在读</h2>
-                <Link className="meta" to="/shelf" data-od-id="C-23">
+                <Link className="meta" to="/shelf" state={{ resetFilters: true }} data-od-id="C-23">
                   全部书架 →
                 </Link>
               </div>

@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { ApiError } from "../../api/client";
 import { useBooks, useReadingProgress } from "../../api/hooks";
@@ -8,6 +8,7 @@ import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount } from "../../lib/format";
 import { showToast } from "../../lib/toastStore";
 import { useNavDrawer } from "../../layouts/navDrawer";
+import { tierFallbackText } from "../../layouts/tierFallback";
 
 /**
  * H5 首屏（≤768）：继续阅读 → 最近在读 → 搜索入口 → 书架列表。
@@ -15,6 +16,7 @@ import { useNavDrawer } from "../../layouts/navDrawer";
  */
 export function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const nav = useNavDrawer();
   const progress = useReadingProgress();
   const recent = useBooks({ sort: "updated", page: 1, size: 5 });
@@ -28,6 +30,15 @@ export function HomePage() {
     queueMicrotask(() => setAwaitRetry(false));
     recentRowsRef.current?.querySelector<HTMLElement>("a")?.focus();
   }, [awaitRetry, recent.loading, recent.error]);
+
+  // 错档落点（C-05 边界）：窄屏访问系列 / 阅读历史等 PC 页会被 TierRoute 送回首页，
+  // 这里把「为什么回来了」用 4 秒提示说清楚，并把一次性 state 清掉，刷新不再重复播报。
+  useEffect(() => {
+    const text = tierFallbackText((location.state as { from?: string } | null)?.from);
+    if (!text) return;
+    showToast(text);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   const resume = progress.data?.items?.[0] ?? null;
   const others = (progress.data?.items ?? []).slice(1, 4);

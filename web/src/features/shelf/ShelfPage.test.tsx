@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ToastHost } from "../../lib/toast";
 import type { BookQuery, RequestOptions } from "../../api/client";
 import type { BookDetail, BookMetaPatch, BookSummary, Page, TagSummary } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
@@ -547,5 +548,88 @@ describe("书架：标签链接（C-09）", () => {
     await waitFor(() =>
       expect(decodeURIComponent(screen.getByTestId("location").textContent ?? "")).toContain("tag=民国"),
     );
+  });
+});
+
+describe("走查修复回归：角标不跳页 / C-40 锚点 / 驾驶舱重置筛选 / 错档提示", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    books.mockReset();
+    updateBook.mockReset();
+    ioCallbacks = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  it("点书卡角标只改阅读状态，不跳详情页（C-31）", async () => {
+    books.mockResolvedValue(pageOf(1, 1, 1));
+    updateBook.mockResolvedValue({} as BookDetail);
+    renderShelf("pc");
+
+    await waitFor(() => expect(cardCount()).toBe(1));
+    fireEvent.click(screen.getByTestId("book-status-1"));
+
+    await waitFor(() => expect(updateBook).toHaveBeenCalled());
+    // 角标在书卡链接内：没有 preventDefault/stopPropagation 时这里会变成 /book/1
+    expect(screen.getByTestId("location").textContent).toBe("/");
+  });
+
+  it("空态主操作按钮自带 C-40 锚点，不再挂在容器上", async () => {
+    books.mockResolvedValue({ items: [], total: 0, page: 1, size: 24 });
+    renderShelf("pc", [`/shelf?tag=${encodeURIComponent("民国")}`]);
+
+    await waitFor(() => expect(screen.getByTestId("shelf-empty")).toBeTruthy());
+    const anchor = document.querySelector<HTMLElement>('[data-od-id="C-40"]');
+    expect(anchor?.tagName).toBe("BUTTON");
+    expect(anchor?.textContent).toContain("清除筛选");
+  });
+
+  it("驾驶舱「全部书架」带着 resetFilters 进来时忽略会话缓存里的筛选（C-23）", async () => {
+    writeShelfCache({
+      sort: "updated",
+      authorId: null,
+      tag: "民国",
+      readStatus: null,
+      rating: null,
+      collection: null,
+      categoryL1: null,
+      categoryL2: null,
+      size: 24,
+      mode: "paged",
+      items: [bookAt(1)],
+      total: 1,
+      page: 1,
+      scrollTop: 0,
+      lastBookId: null,
+    });
+    books.mockResolvedValue(pageOf(1, 1, 1));
+    render(
+      <TierProvider value="pc">
+        <MemoryRouter initialEntries={[{ pathname: "/shelf", state: { resetFilters: true } }]}>
+          <ShelfPage />
+          <LocationProbe />
+        </MemoryRouter>
+      </TierProvider>,
+    );
+
+    await waitFor(() => expect(books).toHaveBeenCalled());
+    expect(books.mock.calls[0][0]).toMatchObject({ page: 1, size: 24 });
+    expect(books.mock.calls[0][0].tag).toBeUndefined();
+    expect(screen.getByTestId("location").textContent).toBe("/shelf");
+  });
+
+  it("宽屏访问首页落回书架时，浮出「首页只在窄屏提供」提示（C-04 边界）", async () => {
+    books.mockResolvedValue(pageOf(1, 1, 1));
+    render(
+      <TierProvider value="pc">
+        <MemoryRouter initialEntries={[{ pathname: "/shelf", state: { from: "/home" } }]}>
+          <ShelfPage />
+          <LocationProbe />
+          <ToastHost />
+        </MemoryRouter>
+      </TierProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("「首页」只在窄屏提供，已回到书架。"));
   });
 });

@@ -19,7 +19,7 @@ export function TierRoute({
     return <Navigate to="/home" replace state={{ from: location.pathname }} />;
   }
   if (minTier === "h5" && tier === "pc") {
-    return <Navigate to="/shelf" replace />;
+    return <Navigate to="/shelf" replace state={{ from: location.pathname }} />;
   }
   return <>{children}</>;
 }

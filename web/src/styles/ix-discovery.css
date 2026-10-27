@@ -52,24 +52,41 @@
   .sidebar {
     transition: transform var(--motion-base) var(--ease-standard);
   }
+  /* 关闭态不占位（契约 C-16 边界）：display:none。关闭时先把遮罩淡出 240ms 再切 none，
+     打开时从 none 进场；allow-discrete 让 display 参与过渡，老浏览器退化为瞬切。 */
   .nav-scrim {
-    display: block;
-    visibility: hidden;
+    display: none;
     opacity: 0;
     pointer-events: none;
     background: color-mix(in oklab, var(--fg) 62%, transparent);
-    transition: opacity var(--motion-base) var(--ease-standard), visibility 0s linear var(--motion-base);
+    transition:
+      opacity var(--motion-base) var(--ease-standard),
+      display var(--motion-base) allow-discrete;
   }
   body.nav-open .nav-scrim {
-    visibility: visible;
+    display: block;
     opacity: 1;
     pointer-events: auto;
-    transition-delay: 0s;
+  }
+  @starting-style {
+    body.nav-open .nav-scrim {
+      opacity: 0;
+    }
   }
   .nav-scrim:active {
     background: color-mix(in oklab, var(--fg) 70%, transparent);
   }
   body.nav-open {
     overflow: hidden;
+  }
+}
+
+/* PC 点击区 ≥32×32（触屏 44px 口径在 globals.css）：书架角标与标签 chip */
+@media (min-width: 769px) {
+  .book-status {
+    min-height: 32px;
+  }
+  .chips .chip {
+    min-height: 32px;
   }
 }

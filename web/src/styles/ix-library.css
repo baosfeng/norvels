@@ -336,6 +336,26 @@
   }
 }
 
+/* PC 点击区 ≥32×32（触屏 44px 口径在 globals.css）：
+   面包屑 / 署名作者 / 标签与评分 chip / 驾驶舱图例。热力图格保持图表语义，不在此列。 */
+@media (min-width: 769px) {
+  .crumbs .crumb-link,
+  .byline a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+  /* 「书架」两字只有 25px 宽：左右各补 4px 到 32，负 margin 保住原来的对齐 */
+  .crumbs .crumb-link {
+    padding: 0 4px;
+    margin-left: -4px;
+  }
+  .chips .chip,
+  .legend-row.legend-btn {
+    min-height: 32px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dir-results,
   .donut-seg,

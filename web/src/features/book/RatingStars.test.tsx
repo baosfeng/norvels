@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, BookMetaPatch } from "../../api/types";
@@ -48,6 +49,19 @@ describe("评分控件", () => {
     expect(onRate).toHaveBeenCalledWith(5);
     fireEvent.click(screen.getByTestId("rating-stars-star-3"));
     expect(onRate).toHaveBeenCalledWith(0);
+  });
+
+  it("清零后不残留悬停预览：星形与「未评分」一致（走查修复）", () => {
+    function Wrap() {
+      const [value, setValue] = useState(4);
+      return <RatingStars value={value} onRate={setValue} />;
+    }
+    render(<Wrap />);
+    const star4 = screen.getByTestId("rating-stars-star-4");
+    fireEvent.mouseEnter(star4);
+    fireEvent.click(star4);
+    expect(screen.getByTestId("rating-stars-label").textContent).toBe("未评分");
+    expect(star4.textContent).toBe("☆");
   });
 
   it("越界与非法值不会渲染出 6 星", () => {
