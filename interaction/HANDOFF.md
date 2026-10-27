@@ -36,14 +36,15 @@ prd parity：`scripts/parity-fixture.sh all`（12 本虚构书 → /tmp，后端
 - 演示件：`web/src` 中 `demo-only` 命中 0。
 - 共享样式：`.inline-note`、按下态、H5 44px 命中区集中在 `globals.css`；四域各一份 `ix-*.css`。
 
-## 4 parity 结果（未达 P0=0，如实记录）
+## 4 parity 结果（未通过，如实记录）
 
-对合并后的 main 逐页跑 `odops parity`（视口固定 1280×577）：
+合并后最终运行 13 页：9 页拿到数据、4 页工具无输出；合计 P0 231 / P1 456。
+P0 分类：color 67 / tap-target 52 / radius 50 / font-size 48 / anchor-missing 45 / background 35。
+- 样式差异（八成以上）：原型与实现的字号 / 颜色 / 圆角 / 底色；tap-target 按触屏 44 判，PC 口径 32。
+- anchor-missing：均为默认夹具未造出的条件控件（分页、批量条、清空按钮）；源码锚点 244/244。
+- 4 页无输出：agent-browser/odops 会话限制，非实现缺失。
 
-- 差异以 **样式翻译差** 为主：字号 14→15、文字色 `--fg-2`→`--fg`、圆角 10→4、PC 按钮 40px（parity 按触屏 44 判）。
-- `anchor-missing` 集中在默认夹具状态未造出的控件（分页、状态抽屉、确认框等），不是源码缺锚点。
-- 结论：P0 非零，**不写「已按设计实现」**；按 DEVELOPER.md 三分法归类为 A（翻译损耗）/ C（状态未造）。
-  后续可逐页造态 + 收口样式，或把 parity 的平台阈值改为 PC 32px。
+结论：**P0≠0，不宣称 parity 通过**；归为 A（翻译损耗）/ C（状态未造）。逐页表与复跑方式见 [PARITY.md](PARITY.md) §8。
 
 ## 5 已知偏差 / 需产品决定
 

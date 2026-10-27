@@ -92,3 +92,34 @@ P1（内边距 / 宽高 / 实现多出的锚点）不阻塞过线，逐条按三
 - 原型与契约有偏差处按契约过滤：原型 PC 下仍显示 C-04、C-39 等仅 H5 控件，子集已剔除。
 - 夹具列表条数与原型示例不同，宽高类 P1 会偏多；判据只认 P0 与缺块。
 - 浏览器 / daemon 偶发不可用：脚本内已 3–4 次重试；仍失败看 `/tmp/norvels-parity/*.log`。
+
+## 8 最终运行（2026-10-27 08:20–08:40，合并后 main）
+
+```bash
+scripts/parity-fixture.sh fixture && scripts/parity-fixture.sh web && scripts/parity-fixture.sh parity
+```
+
+13 页全部 FAIL：9 页拿到对比数据，4 页 odops/浏览器无输出（shelf / series / history / library/book）。
+
+| 页面 | 预期锚点 | 页锚点 | P0 | P1 | 缺块 |
+|---|---|---|---|---|---|
+| discovery/search | 15 | 18 | 28 | 24 | C-50 C-54 C-55 |
+| discovery/series-detail | 13 | 19 | 27 | 28 | — |
+| discovery/notfound | 12 | 17 | 24 | 24 | — |
+| library/authors | 4 | 19 | 6 | 27 | C-20 C-21 |
+| library/dashboard | 8 | 38 | 10 | 56 | — |
+| ops/import | 19 | 21 | 34 | 60 | C-17 C-18 |
+| ops/admin | 18 | 28 | 36 | 47 | C-33 C-38..C-43 |
+| ops/book | 25 | 39 | 44 | 121 | C-47 C-51 C-52 |
+| reader/read | 10 | 40 | 22 | 69 | — |
+| **合计** | — | — | **231** | **456** | — |
+
+P0 分类：color 67 / tap-target 52 / radius 50 / font-size 48 / anchor-missing 45 / background 35。
+
+- **样式类（八成以上）**：原型与实现的字号、颜色、圆角、底色差异；tap-target 是 parity 按触屏 44px 判，而本项目 PC 口径 32px。
+- **anchor-missing**：全部是默认夹具状态未造出的条件控件（分页、批量条、清空按钮等）；源码锚点静态对账 244/244。
+- **4 页无输出**：agent-browser 会话/daemon 限制，不是实现缺失。
+
+**结论：parity 未通过（P0≠0）**。按 DEVELOPER.md 三分法归为 A（翻译损耗）/ C（状态未造），不写「已按设计实现」。
+关闭路径：①逐页造态夹具；②parity 平台阈值按 PC 32px；③设计确认后统一字号/圆角/颜色。
+
