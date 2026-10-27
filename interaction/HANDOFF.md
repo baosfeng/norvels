@@ -14,6 +14,7 @@
 | ops | 79/79 | 6 | 域内全绿 | 已合并 |
 
 全仓前端：**72 文件 / 651 用例通过**；`typecheck` 0 错；`lint` 0 error（8 条既有 react-refresh warning）。
+全量 `make gate`（无并发服务复跑）：**九项全绿**，含隐私扫描、构建一致性与前端 vitest。
 锚点静态对账：`node scripts/check-anchors.mjs` → **244/244 OK**。
 
 ## 2 怎么验

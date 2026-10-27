@@ -181,7 +181,7 @@ start_web() {
   ( cd "$ROOT/web" && NORVELS_API="$API" nohup pnpm dev --port "$WEB_PORT" --strictPort > "$WORK/vite.log" 2>&1 & echo $! > "$WORK/vite.pid" )
   wait_http "http://localhost:$WEB_PORT/" || { say "Vite 启动失败，见 $WORK/vite.log"; exit 1; }
   echo "$WEB_PORT" > "$WORK/web.port"
-  say "Vite 已启动：http://localhost:$WEB_PORT（API 代理 $API）"
+  say "Vite 已启动：http://localhost:${WEB_PORT}（API 代理 ${API}）"
 }
 
 render_pages() {
@@ -301,10 +301,20 @@ async function get(p) { const r = await fetch(API + p); if (!r.ok) throw new Err
     const subset = path.join(WORK, 'spec', 'subsets', domain + '-' + page + '.spec.json');
     const expected = report.find(r => r.domain === domain && r.page === page).expected;
     const url = 'http://localhost:' + WEB + urlPath;
+    // Vite 首次访问要现场编译路由：先 curl 预热，再给 parity 8s 渲染窗口；
+    // impl.anchors=0 说明页面还没挂载，按冷启动重试，不能当实现缺失。
+    spawnSync('curl', ['-s', '-o', '/dev/null', '--max-time', '20', url]);
+    spawnSync('sleep', ['1']);
     let res = null;
-    for (let i = 1; i <= 3; i++) {
-      const r = spawnSync('odops', ['parity', subset, url, '--tol', '3', '--wait', '3500', '--json'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-      try { res = JSON.parse(r.stdout); res.exitCode = r.status; break; } catch (e) { spawnSync('sleep', ['2']); }
+    for (let i = 1; i <= 4; i++) {
+      const r = spawnSync('odops', ['parity', subset, url, '--tol', '3', '--wait', '8000', '--json'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+      try {
+        res = JSON.parse(r.stdout);
+        res.exitCode = r.status;
+        if ((res.impl && res.impl.anchors) > 0) break;
+        res = null;
+        spawnSync('sleep', ['3']);
+      } catch (e) { spawnSync('sleep', ['2']); }
     }
     if (!res) { rows.push({ domain, page, url: urlPath, ok: false, reason: 'parity 无输出' }); continue; }
     const p0 = res.counts.P0, p1 = res.counts.P1;
@@ -383,7 +393,7 @@ case "$MODE" in
     need node; need curl
     mkdir -p "$WORK" "$SPEC" "$SHOTS"
     if [ -f "$DB" ]; then
-      say "复用现有库 $DB（重置：rm -rf $WORK）"
+      say "复用现有库 ${DB}（重置：rm -rf ${WORK}）"
     else
       gen_corpus
       "$ROOT/bin/norvels" import --dir "$TXT" --db "$DB"
