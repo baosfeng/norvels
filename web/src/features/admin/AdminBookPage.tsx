@@ -28,6 +28,21 @@ export function AdminBookPage() {
   if (loading) {
     return <LoadingPanel title="正在打开这本书" description="正在取回书名、元信息与目录。" testId="admin-book-loading" />;
   }
+  // 书不存在（链接过期 / 已删除）不是「读取失败」：给回列表的出口，别只留一个重试
+  if (error instanceof ApiError && error.status === 404) {
+    return (
+      <EmptyPanel
+        title="没有这本书"
+        description="链接可能过期了，回到书籍管理重新找一本。"
+        actions={
+          <Link className="btn btn-primary" to="/admin">
+            回书籍管理
+          </Link>
+        }
+        testId="admin-book-missing"
+      />
+    );
+  }
   if (error) {
     return <ErrorPanel error={error} title="这本书没能打开" onRetry={reload} testId="admin-book-error" />;
   }
@@ -41,6 +56,7 @@ export function AdminBookPage() {
             回书籍管理
           </Link>
         }
+        testId="admin-book-missing"
       />
     );
   }
