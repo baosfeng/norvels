@@ -49,5 +49,5 @@ ops 的 C-12/C-13/C-73/C-79 补【新增】标记；12 条越界行号改指真�
 | 项 | 现状 | 什么时候该还 |
 |---|---|---|
 | `ShelfPage.tsx` | 已从 852 行拆到 **450 行**：页头 / 工具栏 / 排序弹层 / 列表 / 书卡 / 筛选项提示各自独立 | 若还要压到 400 以下，需把「缓存与滚动恢复」提炼成 hook，等再改这段逻辑时做 |
-| `ReaderPage.tsx` | 762 行（已抽出 `useReaderSearchState`）；仍是编排器，进度上报 / 书签 / 自动滚动三组逻辑还在页面里 | 专项做：三组各自抽 hook，再评估能否到 400 |
+| `ReaderPage.tsx` | 771 → **608 行**：已抽出 `useReaderSearchState` / `useReaderPanels` / `useReaderBookmarkActions` / `useReaderProgressSync` / `useChapterRetry` | 再往下要拆自动滚动与键盘两段，收益递减；页面剩 JSX 与滚动编排 |
 | 前端 70 行/文件 400 行口径未生效 | `gate-size.sh` 只统计 Go（`gostats`） | 先定 JSX 计数口径，否则所有组件都判超标 |

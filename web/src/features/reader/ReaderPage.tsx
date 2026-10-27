@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { api } from "../../api/client";
 import { useBook, useBookmarks, useChapter, useRecordReadingSession, useSaveProgress } from "../../api/hooks";
-import type { Bookmark, ChapterBrief } from "../../api/types";
+import type { ChapterBrief } from "../../api/types";
 import { useTheme } from "../../lib/theme";
 import { useIsH5 } from "../../lib/tier";
 import { formatWords } from "../../lib/format";
 import { useReaderControls } from "../../lib/useReaderControls";
 import { useSwipePaging } from "../../lib/useSwipePaging";
 import { prefersReducedMotion } from "../../lib/theme";
-import { bookmarkLabel, findBookmarkAt, isValidPosition } from "../../lib/bookmark";
 import { splitParagraphs } from "../../lib/readerSearch";
 import { showToast } from "../../lib/toastStore";
 import { BookmarksDrawer } from "./BookmarksDrawer";
@@ -23,6 +21,10 @@ import { ReaderHelpPanel } from "./ReaderHelpPanel";
 import { ReaderTopBar } from "./ReaderTopBar";
 import { ReaderStateArea } from "./ReaderStateArea";
 import { useReaderSearchState } from "./useReaderSearchState";
+import { useReaderPanels } from "./useReaderPanels";
+import { useReaderBookmarkActions } from "./useReaderBookmarkActions";
+import { useReaderProgressSync } from "./useReaderProgressSync";
+import { useChapterRetry } from "./useChapterRetry";
 import { ReaderArticle } from "./ReaderArticle";
 import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 import { tradToSimp } from "../../lib/trad2simp";
@@ -31,8 +33,6 @@ import { useReadingSessionReporter } from "../../lib/readingTimer";
 import { createAutoScroll, isAtBottom } from "../../lib/autoScroll";
 
 /** 章内位置的上报防抖：滚动停下 1 秒才发一次；切章 / 隐藏 / 卸载不等防抖。 */
-const PROGRESS_DEBOUNCE_MS = 1000;
-
 /**
  * 阅读器：产品核心，两端能力等价。
  * PC：设置面板浮在右上、目录从右侧抽屉滑出；H5：设置面板变宽、目录全屏抽屉。
@@ -54,26 +54,10 @@ export function ReaderPage() {
   const bookmarks = useBookmarks(Number.isFinite(bookId) ? bookId : null);
   const progressList = useReaderProgress(bookId);
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [bookmarksOpen, setBookmarksOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [autoPaused, setAutoPaused] = useState(false);
   const [windowActive, setWindowActive] = useState(true);
-  const [addingBookmark, setAddingBookmark] = useState(false);
-  const [retryingBookmarks, setRetryingBookmarks] = useState(false);
-  const [retryingChapter, setRetryingChapter] = useState(false);
-  const [chapterFailures, setChapterFailures] = useState(0);
-  const [deleteTarget, setDeleteTarget] = useState<Bookmark | null>(null);
-  const [deletingBookmark, setDeletingBookmark] = useState(false);
   const [hintDismissedFor, setHintDismissedFor] = useState(0);
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
-  const lastSent = useRef({ chapterId: 0, para: -1 });
-  const anchorRef = useRef(anchor);
-  useEffect(() => {
-    anchorRef.current = anchor;
-  });
   const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(() => readReaderSettings());
   const { theme, setTheme, themes } = useTheme();
@@ -81,11 +65,6 @@ export function ReaderPage() {
   const updateSettings = useCallback((patch: Partial<ReaderSettings>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
-
-  const controls = useReaderControls({
-    isH5,
-    paused: settingsOpen || drawerOpen || bookmarksOpen || searchOpen || helpOpen || Boolean(deleteTarget),
-  });
 
   const canFullscreen = typeof document !== "undefined" && document.fullscreenEnabled === true;
   const [fullscreen, setFullscreen] = useState(false);
@@ -120,7 +99,57 @@ export function ReaderPage() {
     stepHit,
     reset: resetSearch,
   } = useReaderSearchState(viewParagraphs);
+
+  const {
+    drawerOpen,
+    settingsOpen,
+    bookmarksOpen,
+    searchOpen,
+    helpOpen,
+    setDrawerOpen,
+    setSettingsOpen,
+    setBookmarksOpen,
+    setHelpOpen,
+    openDirectory,
+    openBookmarks,
+    openSettings,
+    openSearch,
+    closeSearch,
+    toggleHelp,
+  } = useReaderPanels({ canSearch: Boolean(chapter.data), onResetSearch: resetSearch });
+
   const anchorPara = anchor.chapterId === (chapter.data?.id ?? 0) ? anchor.para : 0;
+
+  const {
+    addingBookmark,
+    retryingBookmarks,
+    deleteTarget,
+    deletingBookmark,
+    addBookmark,
+    retryBookmarks,
+    jumpToBookmark,
+    requestDelete,
+    cancelDelete,
+    confirmDelete,
+  } = useReaderBookmarkActions({
+    bookId,
+    chapterId,
+    anchorPara,
+    viewParagraphs,
+    chapterTitle: chapter.data?.title ?? null,
+    navigate,
+    bookmarks,
+    onOpenBookmarks: () => setBookmarksOpen(true),
+    onCloseBookmarks: () => setBookmarksOpen(false),
+    onPendingJump: setPendingJump,
+  });
+
+  const controls = useReaderControls({
+    isH5,
+    paused: settingsOpen || drawerOpen || bookmarksOpen || searchOpen || helpOpen || Boolean(deleteTarget),
+  });
+  const { retryingChapter, chapterFailures, retryChapter } = useChapterRetry({ chapter, chapterId });
+
   const storedParaIndex = useMemo(
     () => pickStoredParaIndex(progressList.data?.items ?? [], bookId, chapterId),
     [progressList.data, bookId, chapterId],
@@ -145,56 +174,16 @@ export function ReaderPage() {
   }, []);
 
   const percent = chapters.length > 0 && index >= 0 ? (index + 1) / chapters.length : 0;
-  const sendProgress = useCallback(
-    (targetChapter: number, paraIndex: number) => {
-      if (!Number.isFinite(bookId)) return;
-      const at = chapters.findIndex((item) => item.id === targetChapter);
-      if (at < 0) return;
-      lastSent.current = { chapterId: targetChapter, para: paraIndex };
-      void saveProgress({ bookId, chapterId: targetChapter, percent: (at + 1) / chapters.length, paraIndex });
-    },
-    [bookId, chapters, saveProgress],
-  );
-
-  useEffect(() => {
-    if (!Number.isFinite(bookId) || !Number.isFinite(chapterId)) return;
-    if (chapters.length === 0 || index < 0) return;
-    if (chapter.data?.id !== chapterId) return;
-    if (lastSent.current.chapterId === chapterId && lastSent.current.para === storedParaIndex) return;
-    sendProgress(chapterId, storedParaIndex);
-  }, [bookId, chapterId, chapter.data?.id, chapters.length, index, storedParaIndex, sendProgress]);
-
-  useEffect(() => {
-    if (anchor.chapterId !== chapterId || !Number.isFinite(bookId)) return;
-    const para = anchor.para;
-    const timer = window.setTimeout(() => {
-      if (lastSent.current.chapterId === chapterId && lastSent.current.para === para) return;
-      sendProgress(chapterId, para);
-    }, PROGRESS_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [anchor, chapterId, bookId, sendProgress]);
-
-  useEffect(() => {
-    const watching = chapterId;
-    return () => {
-      const latest = anchorRef.current;
-      if (latest.chapterId !== watching) return;
-      if (lastSent.current.chapterId === latest.chapterId && lastSent.current.para === latest.para) return;
-      sendProgress(latest.chapterId, latest.para);
-    };
-  }, [chapterId, sendProgress]);
-
-  useEffect(() => {
-    const onHide = () => {
-      if (document.visibilityState !== "hidden") return;
-      const latest = anchorRef.current;
-      if (!latest.chapterId) return;
-      if (lastSent.current.chapterId === latest.chapterId && lastSent.current.para === latest.para) return;
-      sendProgress(latest.chapterId, latest.para);
-    };
-    document.addEventListener("visibilitychange", onHide);
-    return () => document.removeEventListener("visibilitychange", onHide);
-  }, [sendProgress]);
+  useReaderProgressSync({
+    bookId,
+    chapterId,
+    chapters,
+    index,
+    chapterDataId: chapter.data?.id,
+    storedParaIndex,
+    anchor,
+    saveProgress,
+  });
 
   const goShelf = useCallback(() => {
     navigate("/shelf", { state: { restore: true } });
@@ -224,43 +213,6 @@ export function ReaderPage() {
     },
     [goChapter],
   );
-
-  // 搜索打开前的滚动位置：关闭搜索条时正文回到原处（契约 C-05 / C-37 / C-40）
-  const searchOrigin = useRef(0);
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-    resetSearch();
-    window.scrollTo({ top: searchOrigin.current });
-  }, []);
-  const openSearch = useCallback(() => {
-    if (!chapter.data) return;
-    searchOrigin.current = window.scrollY;
-    setSearchOpen(true);
-  }, [chapter.data]);
-
-  const openDirectory = useCallback(() => {
-    setBookmarksOpen(false);
-    setSettingsOpen(false);
-    setDrawerOpen(true);
-  }, []);
-  const openBookmarks = useCallback(() => {
-    setDrawerOpen(false);
-    setSettingsOpen(false);
-    setBookmarksOpen(true);
-  }, []);
-  const openSettings = useCallback(() => {
-    setDrawerOpen(false);
-    setBookmarksOpen(false);
-    closeSearch();
-    setSettingsOpen(true);
-  }, [closeSearch]);
-  const toggleHelp = useCallback(() => {
-    setDrawerOpen(false);
-    setBookmarksOpen(false);
-    setSettingsOpen(false);
-    closeSearch();
-    setHelpOpen((open) => !open);
-  }, [closeSearch]);
 
   /** 设置项联动：繁转简 / 自动滚动开启时给浮条提示（契约 C-50 / C-51）。 */
   const changeSettings = useCallback(
@@ -292,117 +244,6 @@ export function ReaderPage() {
     }
   }
 
-  async function addBookmark() {
-    if (!chapter.data) return;
-    const paraIndex = anchorPara;
-    if (!isValidPosition(chapterId, paraIndex)) {
-      showToast("这个位置记不下来，换个位置再试。");
-      return;
-    }
-    if (findBookmarkAt(bookmarks.data?.bookmarks ?? [], chapterId, paraIndex)) {
-      showToast("这个位置已经有书签了。");
-      return;
-    }
-    setAddingBookmark(true);
-    try {
-      await api.createBookmark(bookId, {
-        chapterId,
-        paraIndex,
-        label: bookmarkLabel(viewParagraphs[paraIndex] ?? ""),
-      });
-      bookmarks.reload();
-      setBookmarksOpen(true);
-      showToast(`已加到「${chapter.data.title}」`);
-    } catch {
-      showToast("书签没能保存，稍后再试。");
-    } finally {
-      setAddingBookmark(false);
-    }
-  }
-
-  const bookmarkRetryBase = useRef<{ data: unknown; error: unknown }>({ data: null, error: null });
-  function retryBookmarks() {
-    if (retryingBookmarks) return;
-    bookmarkRetryBase.current = { data: bookmarks.data, error: bookmarks.error };
-    setRetryingBookmarks(true);
-    bookmarks.reload();
-  }
-  useEffect(() => {
-    if (!retryingBookmarks) return;
-    const base = bookmarkRetryBase.current;
-    if (bookmarks.data === base.data && bookmarks.error === base.error) return;
-    setRetryingBookmarks(false);
-  }, [retryingBookmarks, bookmarks.data, bookmarks.error]);
-
-  const chapterRetryBase = useRef<{ data: unknown; error: unknown }>({ data: null, error: null });
-  function retryChapter() {
-    if (retryingChapter) return;
-    chapterRetryBase.current = { data: chapter.data, error: chapter.error };
-    setRetryingChapter(true);
-    chapter.reload();
-  }
-  useEffect(() => {
-    if (!retryingChapter) return;
-    const base = chapterRetryBase.current;
-    if (chapter.data === base.data && chapter.error === base.error) return;
-    // 请求完成后同步一次本地重试状态（外部系统的完成回调不在 React 事件里）
-    setRetryingChapter(false);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (chapter.error) setChapterFailures((count) => count + 1);
-    else setChapterFailures(0);
-  }, [retryingChapter, chapter.data, chapter.error]);
-
-  useEffect(() => {
-    // 换章即重置本章的重试计数（跨章状态不串）
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setChapterFailures(0);
-    setRetryingChapter(false);
-  }, [chapterId]);
-
-  function jumpToBookmark(bookmark: Bookmark) {
-    setBookmarksOpen(false);
-    setPendingJump({ chapterId: bookmark.chapterId, paraIndex: bookmark.paraIndex });
-    showToast("已跳到这个书签的位置");
-    if (bookmark.chapterId !== chapterId) navigate(`/read/${bookId}/${bookmark.chapterId}`);
-  }
-
-  function requestDelete(bookmark: Bookmark) {
-    setDeleteTarget(bookmark);
-  }
-
-  const deletedIndex = useRef(0);
-  const cancelDelete = useCallback(() => {
-    const target = deleteTarget;
-    setDeleteTarget(null);
-    if (!target) return;
-    window.setTimeout(() => {
-      const row = document.querySelector<HTMLElement>(`[data-testid="bookmark-delete-${target.id}"]`);
-      row?.focus();
-    }, 0);
-  }, [deleteTarget]);
-
-  async function confirmDelete() {
-    const target = deleteTarget;
-    if (!target || deletingBookmark) return;
-    const list = bookmarks.data?.bookmarks ?? [];
-    deletedIndex.current = Math.max(0, list.findIndex((item) => item.id === target.id));
-    setDeletingBookmark(true);
-    try {
-      await api.deleteBookmark(target.id);
-      bookmarks.reload();
-      setDeleteTarget(null);
-      showToast("书签已删除");
-      window.setTimeout(() => {
-        const buttons = Array.from(document.querySelectorAll<HTMLElement>('[data-testid^="bookmark-delete-"]'));
-        if (buttons.length === 0) return;
-        buttons[Math.min(deletedIndex.current, buttons.length - 1)]?.focus();
-      }, 120);
-    } catch {
-      showToast("书签没能删除，稍后再试。");
-    } finally {
-      setDeletingBookmark(false);
-    }
-  }
 
   const scrollByScreen = useCallback((direction: 1 | -1) => {
     window.scrollBy({ top: window.innerHeight * 0.85 * direction, behavior: "smooth" });
