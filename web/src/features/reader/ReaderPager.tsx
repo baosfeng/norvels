@@ -22,7 +22,7 @@ export function ReaderPager({
       </button>
       {!prev ? <span className="inline-note">已经是第一章了</span> : null}
       <Link className="btn" to={bookId ? `/book/${bookId}` : "/shelf"} data-od-id="C-13">
-        返回目录
+        返回书籍详情
       </Link>
       <button className="btn" type="button" disabled={!next} data-od-id="C-12" onClick={onNext}>
         下一章 →

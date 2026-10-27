@@ -669,6 +669,10 @@ button { cursor: pointer; }
         <p>正文不受影响；可以先按下面的平铺列表找章，或重试。</p>
         <div class="row"><button class="btn" type="button" id="toc-retry" data-od-id="C-61">重试</button><button class="btn" type="button" id="toc-fallback" data-od-id="C-62">用平铺列表</button></div>
       </div>
+      <div class="state" id="toc-nodata" hidden>
+        <strong>还没有目录</strong>
+        <p>这本书还没有可读的章节。</p>
+      </div>
       <div class="state" id="toc-empty" hidden>
         <strong>没有匹配的章节</strong>
         <p>换个关键词试试，或清空后看全部章节。</p>
@@ -908,9 +912,9 @@ button { cursor: pointer; }
     q("#toc-filter-wrap").hidden = state === "loading";
     q("#toc-loading").hidden = state !== "loading";
     q("#toc-empty").hidden = true;
+    q("#toc-nodata").hidden = state !== "empty";
     q("#toc-err").hidden = state !== "error";
     q("#toc-more").hidden = state !== "list";
-    if (state === "empty") q("#toc-empty").hidden = false;
     syncPressed("[data-tocstate]", "data-tocstate", state);
   }
   function applyBm(state) {
@@ -1120,6 +1124,7 @@ button { cursor: pointer; }
       }
       if (hit > 0) any = true;
     });
+    q("#toc-nodata").hidden = true;
     q("#toc-empty").hidden = any;
     q("#toc-more").hidden = needle !== "";
     var m = q("#toc-match");
