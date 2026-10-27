@@ -1,12 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookQuery, RequestOptions } from "../../api/client";
-import type { BookDetail, BookMetaPatch, BookSummary, Page } from "../../api/types";
+import type { BookDetail, BookMetaPatch, BookSummary, Page, TagSummary } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 
 const books = vi.fn<(params: BookQuery, opts?: RequestOptions) => Promise<Page<BookSummary>>>();
 const updateBook = vi.fn<(id: number, patch: BookMetaPatch) => Promise<BookDetail>>();
+const tags = vi.fn<(opts?: RequestOptions) => Promise<{ items: TagSummary[] }>>(async () => ({ items: [] }));
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
@@ -17,7 +18,7 @@ vi.mock("../../api/client", async () => {
       books: (params: BookQuery, opts?: RequestOptions) => books(params, opts),
       updateBook: (id: number, patch: BookMetaPatch) => updateBook(id, patch),
       authors: vi.fn(async () => ({ items: [], total: 0, page: 1, size: 20 })),
-      tags: vi.fn(async () => ({ items: [] })),
+      tags: (opts?: RequestOptions) => tags(opts),
     },
   };
 });
@@ -69,11 +70,18 @@ function cardCount(): number {
   return screen.getByTestId("shelf-live").querySelectorAll(".book-card").length;
 }
 
-function renderShelf(tier: "h5" | "pc" = "h5") {
+/** 暴露当前地址：断言 ?tag= 的写入与保留用 */
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname + location.search}</div>;
+}
+
+function renderShelf(tier: "h5" | "pc" = "h5", entries: string[] = ["/"]) {
   return render(
     <TierProvider value={tier}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={entries}>
         <ShelfPage />
+        <LocationProbe />
       </MemoryRouter>
     </TierProvider>,
   );
@@ -503,5 +511,41 @@ describe("书架：长标题与角标布局（样式契约）", () => {
     expect(css).toContain("-webkit-touch-callout: none;");
     expect(css).toContain("\n.cv-row,");
     expect(css).toContain("\n.bookmark-jump,");
+  });
+});
+
+describe("书架：标签链接（C-09）", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    books.mockReset();
+    tags.mockReset().mockResolvedValue({ items: [] });
+    updateBook.mockReset();
+    ioCallbacks = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  it("带 ?tag= 打开时按该标签取数，链接可直接复现筛选", async () => {
+    books.mockResolvedValueOnce(pageOf(1, 1, 1));
+    renderShelf("pc", [`/shelf?tag=${encodeURIComponent("民国")}`]);
+
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(1));
+    expect(books.mock.calls[0][0]).toMatchObject({ tag: "民国", sort: "updated", page: 1, size: 24 });
+    // 地址上的标签就是当前筛选，不被缓存或初始化覆盖
+    expect(decodeURIComponent(screen.getByTestId("location").textContent ?? "")).toContain("tag=民国");
+  });
+
+  it("点标签 chip 后地址带上 tag，复制链接能回到同一筛选", async () => {
+    tags.mockResolvedValueOnce({ items: [{ id: 1, name: "民国", bookCount: 3 }] });
+    books.mockResolvedValueOnce(pageOf(1, 2, 2));
+    books.mockResolvedValueOnce(pageOf(3, 1, 1));
+    renderShelf("pc");
+
+    fireEvent.click(await screen.findByRole("button", { name: "民国" }));
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
+    expect(books.mock.calls[1][0]).toMatchObject({ tag: "民国", page: 1 });
+    await waitFor(() =>
+      expect(decodeURIComponent(screen.getByTestId("location").textContent ?? "")).toContain("tag=民国"),
+    );
   });
 });

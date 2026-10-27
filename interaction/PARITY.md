@@ -8,13 +8,11 @@
 ```bash
 scripts/parity-fixture.sh fixture   # 12 本虚构书 → /tmp/norvels-parity/data.db；后端 :8099
 scripts/parity-fixture.sh web       # Vite :5173（被占则 :5180，端口写入 /tmp/norvels-parity/web.port）
-scripts/parity-fixture.sh spec      # 逐页原型快照 + odops spec + 页面子集
-scripts/parity-fixture.sh parity    # 逐页对账 → parity-report.json
-scripts/parity-fixture.sh shots     # 1440×900 / 390×844 截图 + metrics.jsonl
+scripts/parity-fixture.sh spec|parity|shots   # 原型快照+spec / 逐页对账 / 1440×900+390×844 截图
 scripts/parity-fixture.sh stop      # 停后端 / Vite / 浏览器会话
 ```
 
-`all` = fixture + web + spec + parity + shots。各步幂等：已有库与服务时复用。
+`all` = 以上全部。各步幂等：已有库与服务时复用。
 
 ## 2 夹具
 
@@ -54,10 +52,9 @@ scripts/parity-fixture.sh stop      # 停后端 / Vite / 浏览器会话
 
 ## 4 spec 子集怎么来
 
-原型是「多页合一」的单文件，一份 spec 含全部 view/page 锚点；直接对单页 URL 跑 parity 会整页
-anchor-missing。脚本用 jsdom 执行原型脚本（拿到动态渲染的章节、书卡、图表），按页只保留目标
-view/page、删 demo bar 与 scripts，序列化后再 `odops spec`；最后按 §3 矩阵过滤，写
-`spec/subsets/<域>-<页>.spec.json`。该文件的 `proto.anchors` 即该页锚点数。
+原型是「多页合一」单文件，整份 spec 对单页 URL 会整页 anchor-missing。脚本用 jsdom 跑原型脚本（拿到动态章节 / 书卡 / 图表），
+按页保留目标 view/page、删 demo bar 与 scripts，`odops spec` 后按 §3 矩阵过滤写 `spec/subsets/<域>-<页>.spec.json`，其 `proto.anchors` 即该页锚点数。
+
 
 ## 5 判定口径
 
@@ -66,8 +63,7 @@ odops parity /tmp/norvels-parity/spec/subsets/<域>-<页>.spec.json \
   http://localhost:5173/<页面> --tol 3 --json
 ```
 
-**过线** = 退出码 0（P0=0）且 `diffs` 里没有 `anchor-missing` 且 `proto.anchors` 等于
-§3 的锚点数。
+**过线** = 退出码 0（P0=0）且 `diffs` 里没有 `anchor-missing`、`proto.anchors` 等于 §3 锚点数。
 
 注意：`counts.total` 是**差异条数**（`odops.mjs`：`total: diffs.length`），全一致时
 为 0，不是锚点数；旧稿「counts.total == 锚点数」的写法按此纠正。
@@ -83,14 +79,10 @@ P1（内边距 / 宽高 / 实现多出的锚点）不阻塞过线，逐条按三
 
 ## 7 已知限制
 
-- `odops parity` 不能指定视口，两侧固定 agent-browser 默认 1280×577；1440 / 390 只做截图
-  与锚点存在性，**H5 不做数值 parity**。
-- `/home` 仅 H5，1280 下被重定向到 `/shelf`；只做 390 截图与存在性检查。
+- `odops parity` 不能指定视口（固定 1280×577），1440 / 390 只做截图与锚点存在性，**H5 不做数值 parity**；`/home` 仅 H5，1280 下重定向到 `/shelf`，只做 390 检查。
 - 状态 / 弹层锚点不在主集（空 / 加载 / 错误 / 成功、确认框、抽屉打开态）；要单独造态再比。
-- C-17（提示条，按需渲染）与 C-04（H5 侧栏首页项，原型未渲染）暂不纳入主集，标「待确认」。
-- 外壳锚点只在发现域页面验证；`/book`、`/admin` 等页的外壳不重复计入本页。
-- 原型与契约有偏差处按契约过滤：原型 PC 下仍显示 C-04、C-39 等仅 H5 控件，子集已剔除。
-- 夹具列表条数与原型示例不同，宽高类 P1 会偏多；判据只认 P0 与缺块。
+- C-17（按需渲染）与 C-04（H5 侧栏首页项）未进主集，标「待确认」；原型与契约有偏差处按契约过滤（子集已剔除仅 H5 控件）。
+- 外壳锚点只在发现域页面验证；夹具列表条数与原型示例不同，宽高类 P1 会偏多，判据只认 P0 与缺块。
 - 浏览器 / daemon 偶发不可用：脚本内已 3–4 次重试；仍失败看 `/tmp/norvels-parity/*.log`。
 
 ## 8 最终运行（2026-10-27 08:20–08:40，合并后 main）
@@ -121,5 +113,8 @@ P0 分类：color 67 / tap-target 52 / radius 50 / font-size 48 / anchor-missing
 - **4 页无输出**：agent-browser 会话/daemon 限制，不是实现缺失。
 
 **结论：parity 未通过（P0≠0）**。按 DEVELOPER.md 三分法归为 A（翻译损耗）/ C（状态未造），不写「已按设计实现」。
-关闭路径：①逐页造态夹具；②parity 平台阈值按 PC 32px；③设计确认后统一字号/圆角/颜色。
+
+定位（lead 2026-10-27）：`odops parity` 的点击区按触屏 44px 硬编码、无视口与阈值参数，「改 PC 32px」不可行，
+因此 parity 只作设计评审工具，**不进 CI 门禁**；交付判据 = 锚点静态对账 244/244 + 定向用例 + 全量门禁。
+剩余关闭路径：①设计确认后统一字号 / 圆角 / 颜色；②逐页造态（只剩 anchor-missing，已被静态对账证伪）。
 

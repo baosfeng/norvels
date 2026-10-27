@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useAuthors, useTags } from "../../api/hooks";
 import type { BookSummary, ReadStatus } from "../../api/types";
@@ -53,13 +53,21 @@ const H5_PAGE_SIZE = 30;
 export function ShelfPage() {
   const isH5 = useIsH5();
   const { mode } = useShelfMode();
+  // /shelf?tag=X 是详情页标签 chip 的落地地址：链接要能复制、能直接打开，
+  // 所以地址上的标签优先于会话缓存（缓存里的筛选是「上次看到哪」的上下文，换链接进来不该沿用）。
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 首帧捕获地址上的标签；之后地址跟随 tag 变化（下面的 effect），不回读
+  const [urlTag] = useState<string | null>(() => (isH5 ? null : searchParams.get("tag")));
   // /read 在 AppShell 之外：进阅读器时本页整体卸载，靠会话缓存把列表与滚动位置带回来
-  const cached = useMemo(() => readShelfCache(), []);
+  const cached = useMemo(() => {
+    const snapshot = readShelfCache();
+    return snapshot && urlTag ? null : snapshot;
+  }, [urlTag]);
   const [sort, setSort] = useState<SortValue>(() =>
     SORTS.some((option) => option.value === cached?.sort) ? (cached?.sort as SortValue) : "updated",
   );
   const [authorId, setAuthorId] = useState<number | null>(cached?.authorId ?? null);
-  const [tag, setTag] = useState<string | null>(cached?.tag ?? null);
+  const [tag, setTag] = useState<string | null>(urlTag ?? cached?.tag ?? null);
   const [readStatus, setReadStatus] = useState<Exclude<ReadStatus, ""> | null>(cached?.readStatus ?? null);
   /** 评分筛选 1–5；0 星 = 未评，后端不提供「只有未评」，所以这里没有「未评」档 */
   const [rating, setRating] = useState<number | null>(cached?.rating ?? null);
@@ -258,6 +266,20 @@ export function ShelfPage() {
   useEffect(() => {
     if ((location.state as { focusTitle?: boolean } | null)?.focusTitle) titleRef.current?.focus();
   }, [location.state]);
+
+  // 标签变化写回 ?tag=：复制出去的书架链接能复现同一筛选；replace 不往后退栈里塞历史
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        if ((prev.get("tag") ?? null) === tag) return prev;
+        const next = new URLSearchParams(prev);
+        if (tag) next.set("tag", tag);
+        else next.delete("tag");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [tag, setSearchParams]);
 
   function chooseSort(next: SortValue) {
     setSheetOpen(false);

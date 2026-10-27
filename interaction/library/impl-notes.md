@@ -107,7 +107,7 @@ grep -rn 'demo-only' web/src | wc -l    # → 0
 |---|---|---|---|
 | 1 | C-07「保存中可聚焦但不可改」 | 实现用 `disabled`：置灰、不可展开、防连点，但**不可聚焦** | 原生 `<select>` 的 disabled 与「可聚焦」互斥（ARIA 上 disabled 也不进 Tab 序列）；契约同一行既写「置灰不可展开」又写「焦点环仍在」，实现取前者。若必须可聚焦，需作者改契约为 `aria-disabled` + 拦截 |
 | 2 | C-29 提示条时长 | 实现 4 秒（全局 toast） | 契约写 2 秒；`lib/toastStore.ts` 是共享文件，本轮不动。建议由 lead 统一给 toast 加时长参数，或本域改本地提示条 |
-| 3 | C-09 书架侧按标签筛选 | 详情页写入书架会话状态 + `/shelf?tag=…`；**书架读取 URL 参数属 discovery 域** | `features/shelf/ShelfPage.tsx` 不在本域写域。需要 discovery 域在初始化 tag 时读 `useSearchParams`，否则刷新页面后标签条件丢失 |
+| 3 | C-09 书架侧按标签筛选 | 详情页写入书架会话状态 + `/shelf?tag=…`；书架首帧读地址标签、变化时回写（lead 2026-10-27 修复） | 原缺口是书架不读 URL，刷新/复制链接后条件丢失；现已补 `useSearchParams` 初始化与 replace 回写，`ShelfPage.test.tsx` 加 2 条 |
 | 4 | C-11 命中超过 60 条的后续 | 只显示前 60 条并说明「先显示前 60 章」，没有「继续显示」 | 契约未定义搜索结果的翻页；不自行补。建议作者补一行 |
 | 5 | C-16 按钮的网格定位 | 按钮在目录网格之下、全宽（CSS 带 `grid-column:1/-1` 兜底） | 目录网格由虚拟滚动容器拥有，插入网格内会与虚拟行高度冲突；视觉上仍跨满整行 |
 | 6 | 焦点环规格 | 全部控件用全局 `:focus-visible`（2px `--accent` + 2px offset），未逐控件写「4px rgba(155,91,50,.24) 外环」 | 全站已有统一焦点环口径；逐控件覆写会造成同一页三种焦点环。属 A 类翻译损耗 |
@@ -117,7 +117,7 @@ grep -rn 'demo-only' web/src | wc -l    # → 0
 
 ## 7 需要的共享 / 跨域改动
 
-1. **discovery 域**：`ShelfPage` 初始化时读 `?tag=`（见上表 #3），否则 C-09 只在「点进来这一次」生效。
+1. ~~**discovery 域**：`ShelfPage` 初始化时读 `?tag=`（见上表 #3）~~ —— 已由 lead 在合并后补齐。
 2. **共享文件**：本域未改 `globals.css` / `tokens.css` / `prototype.css` / `api/**`。唯一新增的跨域依赖是：`web/src/routes.tsx` 加了一条 `authors/:authorId` 路由（lead 已授权）；若 lead 希望统一收口路由，可把这条移回主分支处理。
 3. **全局 toast 时长**（见 #2）：若要严格 2 秒，需要 `lib/toastStore.ts` 支持自定义时长。
 
