@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useBook, useBookmarks, useChapter, useRecordReadingSession, useSaveProgress } from "../../api/hooks";
 import type { ChapterBrief } from "../../api/types";
@@ -25,12 +25,15 @@ import { useReaderPanels } from "./useReaderPanels";
 import { useReaderBookmarkActions } from "./useReaderBookmarkActions";
 import { useReaderProgressSync } from "./useReaderProgressSync";
 import { useChapterRetry } from "./useChapterRetry";
+import { useReaderAutoScroll } from "./useReaderAutoScroll";
+import { useReaderKeyboard } from "./useReaderKeyboard";
+import { useReaderVisiblePara } from "./useReaderVisiblePara";
+import { useReaderScrollRestore } from "./useReaderScrollRestore";
 import { ReaderArticle } from "./ReaderArticle";
 import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 import { tradToSimp } from "../../lib/trad2simp";
 import { pickStoredParaIndex, useReaderProgress } from "./readerProgress";
 import { useReadingSessionReporter } from "../../lib/readingTimer";
-import { createAutoScroll, isAtBottom } from "../../lib/autoScroll";
 
 /** 章内位置的上报防抖：滚动停下 1 秒才发一次；切章 / 隐藏 / 卸载不等防抖。 */
 /**
@@ -54,8 +57,6 @@ export function ReaderPage() {
   const bookmarks = useBookmarks(Number.isFinite(bookId) ? bookId : null);
   const progressList = useReaderProgress(bookId);
 
-  const [autoPaused, setAutoPaused] = useState(false);
-  const [windowActive, setWindowActive] = useState(true);
   const [hintDismissedFor, setHintDismissedFor] = useState(0);
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
   const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
@@ -159,20 +160,6 @@ export function ReaderPage() {
     writeReaderSettings(settings);
   }, [settings]);
 
-  useEffect(() => {
-    const onVisibility = () => setWindowActive(document.visibilityState === "visible");
-    const onBlur = () => setWindowActive(false);
-    const onFocus = () => setWindowActive(true);
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("blur", onBlur);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
-
   const percent = chapters.length > 0 && index >= 0 ? (index + 1) / chapters.length : 0;
   useReaderProgressSync({
     bookId,
@@ -245,138 +232,55 @@ export function ReaderPage() {
   }
 
 
-  const scrollByScreen = useCallback((direction: 1 | -1) => {
-    window.scrollBy({ top: window.innerHeight * 0.85 * direction, behavior: "smooth" });
-  }, []);
-
   const overlayOpen = settingsOpen || drawerOpen || bookmarksOpen || searchOpen || helpOpen || Boolean(deleteTarget);
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === "Escape") {
-        if (deleteTarget) {
-          cancelDelete();
-          return;
-        }
-        setDrawerOpen(false);
-        setSettingsOpen(false);
-        setBookmarksOpen(false);
-        setHelpOpen(false);
-        closeSearch();
-        return;
-      }
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-      if (event.key === "?" || (event.key === "/" && event.shiftKey)) {
-        event.preventDefault();
-        toggleHelp();
-        return;
-      }
-      if (helpOpen) return;
-      if (searchOpen) return;
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        goChapterAnnounce(prev);
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        goChapterAnnounce(next);
-      } else if (event.key === " " || event.key === "PageDown") {
-        event.preventDefault();
-        scrollByScreen(event.shiftKey ? -1 : 1);
-      } else if (event.key === "PageUp") {
-        event.preventDefault();
-        scrollByScreen(-1);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [goChapterAnnounce, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen, deleteTarget, toggleHelp, cancelDelete]);
 
-  useEffect(() => {
-    if (typeof IntersectionObserver === "undefined" || paragraphs.length === 0) return;
-    const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-para]"));
-    if (nodes.length === 0) return;
-    const visible = new Set<number>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const paraIndex = Number((entry.target as HTMLElement).dataset.para ?? "0");
-          if (entry.isIntersecting) visible.add(paraIndex);
-          else visible.delete(paraIndex);
-        }
-        if (visible.size > 0) setAnchor({ chapterId: chapter.data?.id ?? 0, para: Math.min(...visible) });
-      },
-      { rootMargin: "-10% 0px -60% 0px" },
-    );
-    nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
-  }, [paragraphs, chapter.data?.id]);
+  const { autoRunning, autoPaused, windowActive, setAutoPaused, exitAutoScroll } = useReaderAutoScroll({
+    settings,
+    updateSettings,
+    overlayOpen,
+    next,
+    index,
+    goChapter,
+    isH5,
+  });
 
-  useEffect(() => {
-    if (!searchOpen || hitCount === 0) return;
-    const node = document.querySelector<HTMLElement>(`[data-hit="${currentHit}"]`);
-    if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "center" });
-  }, [searchOpen, currentHit, hitCount, chapter.data?.id]);
+  const closeAllPanels = useCallback(() => {
+    setDrawerOpen(false);
+    setSettingsOpen(false);
+    setBookmarksOpen(false);
+    setHelpOpen(false);
+  }, [setDrawerOpen, setSettingsOpen, setBookmarksOpen, setHelpOpen]);
 
-  useEffect(() => {
-    if (!pendingJump || chapter.data?.id !== pendingJump.chapterId) return;
-    const node = document.getElementById(`para-${pendingJump.paraIndex}`);
-    if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
-    else {
-      window.scrollTo({ top: 0 });
-      showToast("这本书签的位置变了，先带你到这一章开头");
-    }
-  }, [pendingJump, chapter.data?.id]);
+  useReaderKeyboard({
+    deleteTarget,
+    onCancelDelete: cancelDelete,
+    onClosePanels: closeAllPanels,
+    closeSearch,
+    toggleHelp,
+    helpOpen,
+    searchOpen,
+    prev,
+    next,
+    goChapterAnnounce,
+  });
 
-  const restoredChapter = useRef(0);
-  useEffect(() => {
-    if (!chapter.data || chapter.data.id !== chapterId) return;
-    if (restoredChapter.current === chapterId) return;
-    if (progressList.loading) return;
-    restoredChapter.current = chapterId;
-    if (pendingJump && pendingJump.chapterId === chapterId) return;
-    if (storedParaIndex <= 0) return;
-    window.setTimeout(() => {
-      setAnchor({ chapterId, para: storedParaIndex });
-      const node = document.getElementById(`para-${storedParaIndex}`);
-      if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
-    }, 0);
-  }, [chapter.data, chapterId, pendingJump, storedParaIndex, progressList.loading]);
+  useReaderVisiblePara({ paragraphs, chapterDataId: chapter.data?.id, onAnchor: setAnchor });
+
+
+  useReaderScrollRestore({
+    searchOpen,
+    currentHit,
+    hitCount,
+    chapterId,
+    chapterDataId: chapter.data?.id,
+    pendingJump,
+    storedParaIndex,
+    progressLoading: progressList.loading,
+    onRestoreAnchor: setAnchor,
+  });
 
   const restoreHintVisible =
     Boolean(chapter.data) && storedParaIndex > 0 && !pendingJump && hintDismissedFor !== chapterId;
-
-  const autoRunning = settings.autoScroll && !autoPaused && !overlayOpen && windowActive;
-  const autoBottomRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    autoBottomRef.current = () => {
-      if (settings.autoScrollNext && next) {
-        showToast(`已自动翻到第 ${index + 2} 章`);
-        goChapter(next);
-      } else {
-        updateSettings({ autoScroll: false });
-        showToast("已滚到章末，自动滚动暂停");
-      }
-    };
-  });
-  useEffect(() => {
-    if (!autoRunning) return;
-    const controller = createAutoScroll(
-      {
-        scrollBy: (deltaY) => window.scrollBy({ top: deltaY }),
-        atBottom: () =>
-          isAtBottom({
-            scrollTop: window.scrollY || document.documentElement.scrollTop || 0,
-            clientHeight: window.innerHeight || 0,
-            scrollHeight: document.documentElement.scrollHeight || 0,
-          }),
-        onBottom: () => autoBottomRef.current(),
-      },
-      settings.autoScrollSpeed,
-    );
-    controller.start();
-    return () => controller.stop();
-  }, [autoRunning, settings.autoScrollSpeed]);
 
   const reducedMotion = prefersReducedMotion();
   const articleKey = reducedMotion ? "static" : `chapter-${chapterId}`;
@@ -398,15 +302,6 @@ export function ReaderPage() {
     setHintDismissedFor(chapterId);
     const surface = document.querySelector<HTMLElement>('[data-od-id="C-09"]');
     surface?.focus();
-  }
-
-  function exitAutoScroll() {
-    setAutoPaused(false);
-    updateSettings({ autoScroll: false });
-    showToast("已关闭自动滚动");
-    window.setTimeout(() => {
-      document.querySelector<HTMLElement>(`[data-od-id="${isH5 ? "C-22" : "C-08"}"]`)?.focus();
-    }, 0);
   }
 
   return (
