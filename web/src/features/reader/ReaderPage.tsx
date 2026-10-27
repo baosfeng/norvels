@@ -10,7 +10,7 @@ import { useReaderControls } from "../../lib/useReaderControls";
 import { useSwipePaging } from "../../lib/useSwipePaging";
 import { prefersReducedMotion } from "../../lib/theme";
 import { bookmarkLabel, findBookmarkAt, isValidPosition } from "../../lib/bookmark";
-import { searchParagraphs, splitParagraphs } from "../../lib/readerSearch";
+import { splitParagraphs } from "../../lib/readerSearch";
 import { showToast } from "../../lib/toastStore";
 import { BookmarksDrawer } from "./BookmarksDrawer";
 import { BookmarkConfirmDialog } from "./BookmarkConfirmDialog";
@@ -22,6 +22,7 @@ import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
 import { ReaderHelpPanel } from "./ReaderHelpPanel";
 import { ReaderTopBar } from "./ReaderTopBar";
 import { ReaderStateArea } from "./ReaderStateArea";
+import { useReaderSearchState } from "./useReaderSearchState";
 import { ReaderArticle } from "./ReaderArticle";
 import { readReaderSettings, readerStyleVars, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 import { tradToSimp } from "../../lib/trad2simp";
@@ -58,8 +59,6 @@ export function ReaderPage() {
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [hitState, setHitState] = useState({ query: "", position: 0 });
   const [autoPaused, setAutoPaused] = useState(false);
   const [windowActive, setWindowActive] = useState(true);
   const [addingBookmark, setAddingBookmark] = useState(false);
@@ -111,18 +110,16 @@ export function ReaderPage() {
     () => (settings.script ? paragraphs.map(tradToSimp) : paragraphs),
     [paragraphs, settings.script],
   );
-  const search = useMemo(() => searchParagraphs(viewParagraphs, searchQuery), [viewParagraphs, searchQuery]);
-  const hitCount = search.hits.length;
-  const currentHit = hitState.query === search.query && hitCount > 0 ? Math.min(hitState.position, hitCount - 1) : 0;
-  const hitsByPara = useMemo(() => {
-    const map = new Map<number, import("../../lib/readerSearch").ReaderHit[]>();
-    for (const hit of search.hits) {
-      const bucket = map.get(hit.paraIndex);
-      if (bucket) bucket.push(hit);
-      else map.set(hit.paraIndex, [hit]);
-    }
-    return map;
-  }, [search]);
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    search,
+    hitCount,
+    currentHit,
+    hitsByPara,
+    stepHit,
+    reset: resetSearch,
+  } = useReaderSearchState(viewParagraphs);
   const anchorPara = anchor.chapterId === (chapter.data?.id ?? 0) ? anchor.para : 0;
   const storedParaIndex = useMemo(
     () => pickStoredParaIndex(progressList.data?.items ?? [], bookId, chapterId),
@@ -232,8 +229,7 @@ export function ReaderPage() {
   const searchOrigin = useRef(0);
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
-    setSearchQuery("");
-    setHitState({ query: "", position: 0 });
+    resetSearch();
     window.scrollTo({ top: searchOrigin.current });
   }, []);
   const openSearch = useCallback(() => {
@@ -265,12 +261,6 @@ export function ReaderPage() {
     closeSearch();
     setHelpOpen((open) => !open);
   }, [closeSearch]);
-
-  function stepHit(delta: number) {
-    if (hitCount === 0) return;
-    const base = hitState.query === search.query ? Math.min(hitState.position, hitCount - 1) : 0;
-    setHitState({ query: search.query, position: (base + delta + hitCount) % hitCount });
-  }
 
   /** 设置项联动：繁转简 / 自动滚动开启时给浮条提示（契约 C-50 / C-51）。 */
   const changeSettings = useCallback(
