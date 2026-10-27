@@ -1,46 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useAuthors, useTags } from "../../api/hooks";
 import type { BookSummary, ReadStatus } from "../../api/types";
-import { Cover } from "../../components/Cover";
-import { CardSkeleton, EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { useShelfMode } from "../../layouts/shelfMode";
 import { tierFallbackText } from "../../layouts/tierFallback";
-import { formatCount } from "../../lib/format";
 import {
-  READ_STATUS_FILTERS,
   READ_STATUS_LABELS,
   nextReadStatus,
-  readStatusFilterLabel,
 } from "../../lib/readStatus";
-import { stripTags } from "../../lib/text";
 import { showToast } from "../../lib/toastStore";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
-import { CollectionFilter } from "./CollectionFilter";
-import { CategoryFilter, type CategoryValue } from "./CategoryFilter";
-import { RandomBookButton } from "./RandomBookButton";
+import type { CategoryValue } from "./CategoryFilter";
 import { ResumeCard } from "./ResumeCard";
+import { FilterHints } from "./FilterHints";
+import { ShelfSortSheet } from "./ShelfSortSheet";
+import { ShelfToolbar } from "./ShelfToolbar";
+import { ShelfHead } from "./ShelfHead";
+import { ShelfList } from "./ShelfList";
+import { SORTS, type SortValue } from "./shelfSorts";
 import { useIsH5 } from "../../lib/tier";
 import {
   SHELF_REFRESH_MIN_AGE_MS,
   readShelfCache,
   writeShelfCache,
-  type ShelfFromState,
 } from "../../lib/shelfCache";
 import { useBookFeed, type BookFeedRestore } from "../../lib/useBookFeed";
-
-const SORTS = [
-  { value: "updated", label: "最近更新" },
-  { value: "imported", label: "导入时间" },
-  { value: "title", label: "书名" },
-  { value: "chapters", label: "章节数" },
-  { value: "words", label: "字数" },
-  // 只排已评分的书（0 星 = 未评，后端 sort=rating 不含未评）
-  { value: "rating", label: "评分" },
-] as const;
-
-type SortValue = (typeof SORTS)[number]["value"];
 
 const PAGE_SIZE = 24;
 /** H5 首屏 30 本，之后每次再取 30 本追加；PC 仍按 PAGE_SIZE 分页 */
@@ -368,340 +353,84 @@ export function ShelfPage() {
 
   return (
     <section className="view-shelf" data-testid="view:shelf" data-od-id="shelf">
-      <div className="page-head">
-        <div>
-          <p className="eyebrow">书架 · {loading ? "读取中" : `${formatCount(total)} 本`}</p>
-          <h1 ref={titleRef} tabIndex={-1}>
-            {isH5 ? "书架" : "最近入库"}
-          </h1>
-          {isH5 ? null : (
-            <p className="sub">
-              按{sortLabel}排序 · 共 {formatCount(total)} 本
-              {filtering ? "（已筛选）" : ""}
-            </p>
-          )}
-        </div>
-        <div className="shelf-head-actions">
-          {isH5 ? null : (
-            <RandomBookButton authorId={authorId ?? undefined} tag={tag ?? undefined} collection={collection ?? undefined} />
-          )}
-          <button
-            className="btn"
-            type="button"
-            data-testid="shelf-select-toggle"
-            data-od-id="C-32"
-            aria-pressed={selecting}
-            onClick={toggleSelecting}
-          >
-            {selecting ? "退出选择" : "选择"}
-          </button>
-          {selecting ? (
-            <button
-              className="btn btn-primary"
-              type="button"
-              data-testid="shelf-batch-author"
-              data-od-id="C-33"
-              disabled={selected.size === 0}
-              onClick={() => setBatchOpen(true)}
-            >
-              批量设作者（{selected.size}）
-            </button>
-          ) : null}
-          {selecting && selected.size === 0 ? (
-            <span className="inline-note" data-testid="shelf-batch-hint">
-              勾选至少一本书后可用。
-            </span>
-          ) : null}
-          {isH5 ? (
-            <button
-              className="btn shelf-sort-trigger"
-              type="button"
-              data-testid="shelf-sort-trigger"
-              data-od-id="C-20"
-              aria-haspopup="dialog"
-              aria-expanded={sheetOpen}
-              onClick={() => setSheetOpen(true)}
-            >
-              {readStatus === null ? `排序：${sortLabel}` : `${readStatusFilterLabel(readStatus)} · ${sortLabel}`}
-            </button>
-          ) : null}
-        </div>
-      </div>
+      <ShelfHead
+        isH5={isH5}
+        loading={loading}
+        total={total}
+        titleRef={titleRef}
+        sortLabel={sortLabel}
+        filtering={filtering}
+        authorId={authorId}
+        tag={tag}
+        collection={collection}
+        selecting={selecting}
+        selectedCount={selected.size}
+        sheetOpen={sheetOpen}
+        readStatus={readStatus}
+        onToggleSelecting={toggleSelecting}
+        onOpenBatch={() => setBatchOpen(true)}
+        onOpenSheet={() => setSheetOpen(true)}
+      />
 
       {isH5 ? null : <ResumeCard />}
 
       {isH5 ? null : (
-        <div className="toolbar" data-testid="shelf-toolbar">
-          <label>
-            排序
-            <select
-              ref={sortRef}
-              className="select"
-              value={sort}
-              data-od-id="C-19"
-              onChange={(e) => chooseSortOnPc(e.target.value as SortValue)}
-            >
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            阅读状态
-            <select
-              className="select"
-              value={readStatus ?? ""}
-              data-testid="filter-read-status"
-              data-od-id="C-22"
-              onChange={(e) => chooseReadStatus((e.target.value || null) as Exclude<ReadStatus, ""> | null)}
-            >
-              {READ_STATUS_FILTERS.map((option) => (
-                <option key={option.label} value={option.value ?? ""}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            评分
-            <select
-              className="select"
-              value={rating ?? ""}
-              data-testid="filter-rating"
-              data-od-id="C-23"
-              onChange={(e) => setRating(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">全部评分</option>
-              {[5, 4, 3, 2, 1].map((star) => (
-                <option key={star} value={star}>
-                  {star} 星
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            作者
-            <select
-              className="select"
-              value={authorId ?? ""}
-              onChange={(e) => setAuthorId(e.target.value ? Number(e.target.value) : null)}
-              data-testid="filter-author"
-              data-od-id="C-24"
-            >
-              <option value="">全部作者</option>
-              {(authorOptions.data?.items ?? []).map((author) => (
-                <option key={author.id} value={author.id}>
-                  {author.name || "佚名"}（{author.bookCount}）
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            书单
-            <CollectionFilter value={collection} onChange={setCollection} />
-          </label>
-
-          <CategoryFilter value={category} onChange={setCategory} />
-
-          <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags" data-od-id="C-28">
-            <button type="button" className={`chip${tag === null ? " is-active" : ""}`} onClick={() => setTag(null)}>
-              全部
-            </button>
-            {(tagOptions.data?.items ?? []).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`chip${tag === item.name ? " is-active" : ""}`}
-                onClick={() => setTag(item.name)}
-              >
-                {item.name}
-              </button>
-            ))}
-          </div>
-
-          {filtering ? (
-            <button className="btn btn-ghost" type="button" data-od-id="C-29" onClick={resetFilters}>
-              清除筛选
-            </button>
-          ) : null}
-          {rating !== null ? (
-            <span className="meta" data-testid="rating-filter-hint">
-              只列已评分的书（0 星 = 未评，不参与评分筛选与按评分排序）。
-            </span>
-          ) : null}
-        </div>
+        <ShelfToolbar
+          sortRef={sortRef}
+          sort={sort}
+          onChooseSort={chooseSortOnPc}
+          readStatus={readStatus}
+          onChooseReadStatus={chooseReadStatus}
+          rating={rating}
+          onRatingChange={setRating}
+          authorId={authorId}
+          onAuthorChange={setAuthorId}
+          authors={authorOptions.data?.items ?? []}
+          collection={collection}
+          onCollectionChange={setCollection}
+          category={category}
+          onCategoryChange={setCategory}
+          tag={tag}
+          onTagChange={setTag}
+          tags={tagOptions.data?.items ?? []}
+          filtering={filtering}
+          onResetFilters={resetFilters}
+        />
       )}
 
       {isH5 ? null : <FilterHints authors={authorOptions} tags={tagOptions} />}
 
-      {loading ? (
-        <div data-testid="shelf-loading">
-          <LoadingPanel
-            title="正在读取书架"
-            description={`正在整理本地书目，${formatCount(total || 0) || "全部"} 本大约需要 1–2 秒。`}
-          />
-          <CardSkeleton count={isH5 ? 3 : 4} />
-        </div>
-      ) : error ? (
-        <div data-od-id="C-41">
-          <ErrorPanel error={error} title="书架没能加载" onRetry={reload} testId="shelf-error" />
-        </div>
-      ) : items.length === 0 ? (
-        <div>
-          <EmptyPanel
-            title={filtering ? "没有符合筛选条件的书" : "书架还是空的"}
-            description={
-              filtering
-                ? "换一个作者或标签试试，或者清除筛选看全部书目。"
-                : isH5
-                  ? "先在电脑上把存放 txt 的目录导入，书目会同步到这里。"
-                  : "把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。"
-            }
-            testId="shelf-empty"
-            actions={
-              filtering ? (
-                <button className="btn btn-primary" type="button" data-od-id="C-40" onClick={resetFilters}>
-                  清除筛选
-                </button>
-              ) : isH5 ? null : (
-                <Link className="btn btn-primary" to="/import" data-od-id="C-40">
-                  去导入
-                </Link>
-              )
-            }
-          />
-        </div>
-      ) : (
-        <>
-          <div className={`book-grid ${mode === "list" && !isH5 ? "is-list" : ""}`.trim()} data-testid="shelf-live">
-            {items.map((book) => (
-              <BookCard
-                key={book.id}
-                book={book}
-                compact={isH5}
-                status={statusOverrides[book.id] ?? book.readStatus ?? ""}
-                onCycle={() => void cycleStatus(book)}
-                selecting={selecting}
-                selected={selected.has(book.id)}
-                onSelect={() => toggleSelected(book.id)}
-                onOpen={() => rememberBook(book.id)}
-              />
-            ))}
-          </div>
-
-          {isH5 ? (
-            <div className="shelf-more" data-testid="shelf-more">
-              {feed.loadingMore ? (
-                <p className="meta" role="status" data-testid="shelf-more-loading">
-                  正在加载更多…
-                </p>
-              ) : null}
-              {feed.errorMore ? (
-                <div className="shelf-more-error" data-testid="shelf-more-error">
-                  <p className="meta" role="alert">
-                    后面的书没取回来，检查网络后再试一次。
-                  </p>
-                  <button className="btn" type="button" onClick={feed.loadMore}>
-                    重试
-                  </button>
-                </div>
-              ) : null}
-              {feed.hasMore ? (
-                <>
-                  <div ref={sentinelRef} data-testid="shelf-sentinel" aria-hidden="true" style={{ height: 1 }} />
-                  {canObserve ? null : (
-                    <div data-od-id="C-39">
-                      <button className="btn" type="button" onClick={feed.loadMore} data-testid="shelf-load-more">
-                        加载更多
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="meta" data-testid="shelf-end">
-                  没有更多了 · 共 {formatCount(total)} 本
-                </p>
-              )}
-            </div>
-          ) : pages <= 1 ? null : (
-            <nav className="pagination" aria-label="分页">
-              <button
-                type="button"
-                aria-label="上一页"
-                data-od-id="C-37"
-                disabled={feed.page <= 1}
-                onClick={() => changePage(feed.page - 1)}
-              >
-                ←
-              </button>
-              <span className="is-current num">{feed.page}</span>
-              <span className="meta">/ {pages}</span>
-              <button
-                type="button"
-                aria-label="下一页"
-                data-od-id="C-38"
-                disabled={feed.page >= pages}
-                onClick={() => changePage(feed.page + 1)}
-              >
-                →
-              </button>
-            </nav>
-          )}
-        </>
-      )}
+      <ShelfList
+        isH5={isH5}
+        loading={loading}
+        error={error}
+        items={items}
+        total={total}
+        filtering={filtering}
+        mode={mode}
+        statusOverrides={statusOverrides}
+        selecting={selecting}
+        selected={selected}
+        feed={feed}
+        pages={pages}
+        canObserve={canObserve}
+        sentinelRef={sentinelRef}
+        onRetry={reload}
+        onResetFilters={resetFilters}
+        onCycle={(book) => void cycleStatus(book)}
+        onSelect={toggleSelected}
+        onOpen={rememberBook}
+        onPage={changePage}
+      />
 
       {isH5 && sheetOpen ? (
-        <div className="sheet-backdrop" data-testid="shelf-sort-sheet" data-od-id="C-21" onClick={() => setSheetOpen(false)}>
-          <div
-            className="sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label="排序方式"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="sheet-head">
-              <strong>排序方式</strong>
-              <button className="btn btn-ghost" type="button" onClick={() => setSheetOpen(false)}>
-                关闭
-              </button>
-            </div>
-            <div className="sheet-section" role="group" aria-label="阅读状态筛选">
-              <span className="sheet-section-title">阅读状态</span>
-              {READ_STATUS_FILTERS.map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  className={`sheet-option${option.value === readStatus ? " is-active" : ""}`}
-                  data-testid={`read-status-option-${option.value ?? "all"}`}
-                  aria-pressed={option.value === readStatus}
-                  onClick={() => chooseReadStatus(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <div className="sheet-list">
-              {SORTS.map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  className={`sheet-option${s.value === sort ? " is-active" : ""}`}
-                  data-testid={`sort-option-${s.value}`}
-                  aria-pressed={s.value === sort}
-                  onClick={() => chooseSort(s.value)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ShelfSortSheet
+          sort={sort}
+          readStatus={readStatus}
+          onChooseSort={chooseSort}
+          onChooseReadStatus={chooseReadStatus}
+          onClose={() => setSheetOpen(false)}
+        />
       ) : null}
       {batchOpen ? (
         <BatchAuthorDialog
@@ -717,136 +446,5 @@ export function ShelfPage() {
         />
       ) : null}
     </section>
-  );
-}
-
-/** 筛选项自身的加载/失败/空态：不占主内容区，但也不静默失败。 */
-function FilterHints({
-  authors,
-  tags,
-}: {
-  authors: { loading: boolean; error: unknown; data: { items: unknown[] } | null };
-  tags: { loading: boolean; error: unknown; data: { items: unknown[] } | null };
-}) {
-  const notes: string[] = [];
-  if (tags.loading) notes.push("正在读取标签…");
-  else if (tags.error) notes.push("标签暂时读不到，可以先用作者筛选。");
-  else if ((tags.data?.items.length ?? 0) === 0) notes.push("暂无标签（导入的书还没有标签信息）。");
-
-  if (authors.error) notes.push("作者列表暂时读不到，作者筛选可能不全。");
-
-  if (notes.length === 0) return null;
-  return (
-    <p className="meta filter-hints" data-testid="filter-hints">
-      {notes.join(" ")}
-    </p>
-  );
-}
-
-/**
- * 书卡：角标是独立按钮（不套在链接里，避免交互元素嵌套），点一下循环切换阅读状态。
- * 多选模式下整张卡片变成选择按钮（同样不嵌套链接），右上角显示勾选状态。
- */
-function BookCard({
-  book,
-  compact,
-  status,
-  onCycle,
-  selecting,
-  selected,
-  onSelect,
-  onOpen,
-}: {
-  book: BookSummary;
-  compact: boolean;
-  status: ReadStatus;
-  onCycle: () => void;
-  selecting: boolean;
-  selected: boolean;
-  onSelect: () => void;
-  onOpen: () => void;
-}) {
-  // 角标放在底部元信息行里（静态排布），不再绝对定位压书名
-  const badge = (
-    <button
-      className="book-status"
-      type="button"
-      data-testid={`book-status-${book.id}`}
-      data-od-id="C-31"
-      data-status={status}
-      aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
-      onClick={(event) => {
-        // 角标在书卡链接的内容里：不拦默认与冒泡就会连带跳到详情页（走查 P1）。
-        event.preventDefault();
-        event.stopPropagation();
-        onCycle();
-      }}
-    >
-      {READ_STATUS_LABELS[status]}
-    </button>
-  );
-
-  const content = (
-    <>
-      <Cover
-        title={book.title}
-        bookId={book.id}
-        updatedAt={book.updatedAt}
-        hasCover={book.hasCover}
-        showLabel={!compact}
-      />
-      <div className="book-card-body">
-        <h3 className="book-title">{book.title}</h3>
-        <p className="book-author">{book.authorName || "佚名"}</p>
-        <p className="book-meta">
-          <span className="num">{formatCount(book.chapterCount)} 章</span>
-          <span className="num">{formatCount(book.wordCount)} 字</span>
-          {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
-          {(book.newChapters ?? 0) > 0 ? (
-            <span className="pill is-live" data-testid={`book-new-chapters-${book.id}`}>
-              新章 +{book.newChapters}
-            </span>
-          ) : null}
-          {selecting ? null : badge}
-        </p>
-        {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
-      </div>
-    </>
-  );
-
-  return (
-    <article
-      className={`book-card${selecting ? " is-selecting" : ""}${selected ? " is-selected" : ""}`}
-      data-status={status}
-      data-book-id={book.id}
-      data-od-id="C-30"
-    >
-      {selecting ? (
-        <button
-          className="book-link"
-          type="button"
-          aria-pressed={selected}
-          aria-label={`选择《${book.title}》`}
-          data-testid={`book-select-${book.id}`}
-          onClick={onSelect}
-        >
-          {content}
-        </button>
-      ) : (
-        <Link
-          className="book-link"
-          to={`/book/${book.id}`}
-          state={{ from: "shelf", scrollTop: Math.round(typeof window === "undefined" ? 0 : window.scrollY || 0) } satisfies ShelfFromState}
-          onClick={onOpen}
-        >
-          {content}
-        </Link>
-      )}
-      {selecting ? (
-        <span className="book-check" aria-hidden="true">
-          {selected ? "✓" : ""}
-        </span>
-      ) : null}
-    </article>
   );
 }
