@@ -74,25 +74,19 @@ grep -rc 'demo-only' web/dist/assets/*.js 2>/dev/null | grep -v ':0' || echo 'cl
 
 要保留的调试能力走两层闸：构建层不产出 + 运行层默认关（不显眼手势显式解锁）。
 
-## 6 保真对账（交付必跑）
+## 6 保真对账
 
 ```bash
-# 逐锚点数值对表：缺块 / 字号 / 圆角 / 背景色 / 文字色 / 点击区 <44px 都会被抓
 odops spec interaction/<域>/02-prototype.html --out /tmp/spec-<域>.json --yes
 odops parity /tmp/spec-<域>.json http://127.0.0.1:8080/<页面> --tol 3 --json
 ```
 
-**过线**：`parity` 退出 0（P0=0）**且** `counts.total` == spec 的锚点数——比全了才算过。
-比不了的页面（要登录 / 依赖异步接口 / 分页过滤）先做**固定数据夹具**让页面停在契约写过的状态，再比；
-夹具对不齐就回报「parity 未覆盖 + 原因」，**不写「已按设计实现」**。
+**过线**：退出码 0（P0=0）、`diffs` 无 `anchor-missing`、`proto.anchors` 等于该页锚点数。
+`counts.total` 是**差异条数**（全一致为 0），不是锚点数。比不了的页面先做夹具造态，对不齐就回报
+「未覆盖 + 原因」，**不写「已按设计实现」**。夹具、页面矩阵与三分法见 [PARITY.md](PARITY.md) §3–§7。
 
-对不上按三分法归类，**不要一律改实现**：
-
-| 类别 | 含义 | 处理 |
-|---|---|---|
-| A 翻译损耗 | 换栈导致（字体度量、行高取整） | 容差内放过，超差报备 |
-| B 设计水准 | 原型本身不达标 | 回作者改原型，不放宽实现去凑 |
-| C 原型没画 | 需求存在但原型没覆盖 | 回作者补契约与原型，**不自己补** |
+> 本项目已决策：parity 只作设计评审工具、不进 CI（点击区阈值按触屏 44px 硬编码），
+> 交付判据见 [IMPLEMENTATION-NOTES.md](IMPLEMENTATION-NOTES.md) §4。
 
 ## 7 本项目额外的硬约束
 
@@ -102,7 +96,7 @@ odops parity /tmp/spec-<域>.json http://127.0.0.1:8080/<页面> --tol 3 --json
 | 改解析 / 数据层 / 接口前先读对应文档 | `AGENTS.md` |
 | 前端组件单文件 ≤400 行、函数 ≤70 行、圈复杂度 ≤10 | `docs/quality-gates.md` |
 | 提交前 `make gate` 九项全绿 | `docs/quality-gates.md` |
-| 文案不出现实现词（SQLite / FTS / API / bookId / localStorage / 虚拟滚动 / SHA-256 / 用时 / 端点 / 后端） | `interaction/README.md` |
+| 文案不出现实现词（SQLite / FTS / API / bookId / localStorage / 虚拟滚动 / SHA-256 / 用时 / 端点 / 后端） | `web/src/lib/audit.ts` |
 | 落盘文件路径一律相对，禁止写本机绝对路径 | `scripts/privacy-scan.sh` |
 
 ## 8 阻塞回报格式（一次性列清，不要边做边猜）
@@ -120,7 +114,7 @@ odops parity /tmp/spec-<域>.json http://127.0.0.1:8080/<页面> --tol 3 --json
 |---|---|
 | 契约逐条实现 | 每个 `C-nn` 在代码里可搜到；每个触发有对应处理 |
 | 五问自查 | 焦点 / 滚动 / 计数 / 归属 / 撤销，逐条打勾 |
-| parity 结果 | 退出码 0 + `counts.total` 等于锚点数（或明说未覆盖及原因） |
+| parity 结果 | 退出码 0 + 无 `anchor-missing`（或明说未覆盖及原因） |
 | 演示件隔离 | 发布构建里搜不到 `demo-only` |
 | 门禁 | `make gate` 九项全绿 |
 | 未覆盖项 | 明说哪些没做、为什么 |

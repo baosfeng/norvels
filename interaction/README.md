@@ -2,17 +2,25 @@
 
 > 交互设计的唯一事实源。一个控件一个 `C-xx` 锚点，文档 / 原型 / 实现共用同一个键，可机器对账。
 > 规范：`designing-interactions` 技能（`SKILL.md` + `references/interaction-contract.md`）。
-> 面向读者：**开发 agent 照契约实现，不得改设计**；改动只能进 `04-ledger.md` 并重新评审。
+> 面向读者：**开发 agent 照契约实现，不得改设计**；要改设计先改契约与原型、重跑门禁，
+> 再把新决定写进 [IMPLEMENTATION-NOTES.md](IMPLEMENTATION-NOTES.md)。
 
-## 产物（每域五件）
+## 产物（每域四件）
 
 | 文件 | 是什么 | 谁写 |
 |---|---|---|
-| `00-features.md`（本目录根） | 功能盘点：系统有什么、入口在哪、证据 | 作者 |
+| `00-features.md`（本目录根 + 每域一份） | 功能盘点：系统有什么、入口在哪、证据 | 作者 |
 | `<域>/01-contract.md` | 交互契约：一行 = 一个控件的一种触发 | 作者 |
 | `<域>/02-prototype.html` | 可点原型：控件带 `data-od-id="C-nn"` | 作者 |
-| `<域>/03-review.md` | 评审结论：分级 + 覆盖度 + 证据命令 | 评审 |
-| `<域>/04-ledger.md` | 返工台账：每条意见 → 改了什么 → 状态 | 作者 + 评审 |
+| `<域>/03-review.md` | 评审结论：档位 + 覆盖度 + 复跑命令 | 评审 |
+
+> 实施计划、实现说明、返工台账、评审过程与截图已随交付归档删除；其中仍有长期价值的判断
+> （实现与契约的差异、明确不做的项、技术债）收在 [IMPLEMENTATION-NOTES.md](IMPLEMENTATION-NOTES.md)。
+
+## 现状
+
+四域契约已全部落地并合并进 `main`：锚点 244/244、前端 75 文件 / 678 用例、`make gate` 九项全绿（2026-10-27）。
+改契约前先读 [IMPLEMENTATION-NOTES.md](IMPLEMENTATION-NOTES.md) §2——那些差异是已定决策，不是遗漏。
 
 ## 域划分
 
@@ -28,9 +36,10 @@
 ```bash
 node ~/.agents/skills/designing-interactions/scripts/ixcheck.mjs interaction/<域> --platform web
 odops verify interaction/<域>/02-prototype.html --platform web --browser
+node scripts/check-anchors.mjs          # 契约锚点 ↔ 产品源码
 ```
 
-- `ixcheck` **P0 必须清零**；P1 要么改掉，要么在 `04-ledger.md` 写「保留（理由）」；P2 可留。
+- `ixcheck` **P0 必须清零**；P1 要么改掉，要么在 `03-review.md` 写「保留（理由）」；P2 可留。
 - 锚点契约：`C-01`…`C-nn` 顺序编号，**一经发布不改号**；同一控件的多种触发共用同一锚点（契约里多行）。
 - 演示件（切状态 / 切断点 / 切页）统一 `data-od-id="demo-only:*"`，不计入契约，**产品不得带入**。
 
@@ -62,4 +71,3 @@ odops verify interaction/<域>/02-prototype.html --platform web --browser
 
 本目录的 `01-contract.md` 是**机器读取的对账表**，不受仓库「单文档 ≤120 行」约束
 （同 `docs/quality-gates.md` 的豁免登记口径）。其余文档仍按 120 行控制。
-

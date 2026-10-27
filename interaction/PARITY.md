@@ -1,6 +1,6 @@
 # 保真对账（parity）操作手册
 
-> 一次性夹具 + 逐页机器对账；判据见 §5。实现合并后由 lead 跑最终一版，结果不写「已按设计实现」。
+> 一次性夹具 + 逐页机器对账；判据见 §5，定位与最近结果见 §6。
 > 全部产物落 `/tmp/norvels-parity/`，语料与截图不入仓（隐私红线）。
 
 ## 1 复跑
@@ -52,8 +52,8 @@ scripts/parity-fixture.sh stop      # 停后端 / Vite / 浏览器会话
 ## 4 spec 子集怎么来
 
 原型是「多页合一」单文件，整份 spec 对单页 URL 会整页 anchor-missing。脚本用 jsdom 跑原型脚本（拿到动态章节 / 书卡 / 图表），
-按页保留目标 view/page、删 demo bar 与 scripts，`odops spec` 后按 §3 矩阵过滤写 `spec/subsets/<域>-<页>.spec.json`，其 `proto.anchors` 即该页锚点数。
-
+按页保留目标 view/page、删 demo bar 与 scripts，`odops spec` 后按 §3 矩阵过滤写 `spec/subsets/<域>-<页>.spec.json`，
+其 `proto.anchors` 即该页锚点数。
 
 ## 5 判定口径
 
@@ -64,11 +64,21 @@ odops parity /tmp/norvels-parity/spec/subsets/<域>-<页>.spec.json \
 
 **过线** = 退出码 0（P0=0）且 `diffs` 里没有 `anchor-missing`、`proto.anchors` 等于 §3 锚点数。
 
-注意：`counts.total` 是**差异条数**（`odops.mjs`：`total: diffs.length`），全一致时
-为 0，不是锚点数；旧稿「counts.total == 锚点数」的写法按此纠正。
-P1（内边距 / 宽高 / 实现多出的锚点）不阻塞过线，逐条按三分法处理（§6）。
+注意：`counts.total` 是**差异条数**（`odops.mjs`：`total: diffs.length`），全一致时为 0，不是锚点数；
+旧稿「counts.total == 锚点数」的写法按此纠正。P1（内边距 / 宽高 / 实现多出的锚点）不阻塞过线，逐条按三分法处理。
 
-## 6 三分法
+## 6 定位与最近一次结果（2026-10-27）
+
+13 页全 FAIL：9 页拿到数据，合计 P0 231 / P1 456；4 页工具无输出（会话限制，非实现缺失）。
+P0 构成：color 67 / tap-target 52 / radius 50 / font-size 48 / anchor-missing 45 / background 35。
+- 样式类占八成：原型与实现的字号、颜色、圆角、底色；tap-target 是 parity 按触屏 44px 判，本项目 PC 口径 32px。
+- `anchor-missing` 全是默认夹具没造出的条件控件（分页、批量条、清空按钮）；源码锚点静态对账 244/244，已被证伪。
+
+**结论：P0≠0，不宣称 parity 通过**。`odops parity` 的点击区阈值硬编码、无视口参数，「改 PC 32px」不可行，
+因此它只作设计评审工具、**不进 CI 门禁**；交付判据 = 锚点静态对账 + 定向用例 + 全量门禁。
+剩余关闭路径：①设计确认后统一字号 / 圆角 / 颜色；②逐页造态（只剩 anchor-missing，收益低）。
+
+## 7 三分法
 
 | 类 | 含义 | 处理 |
 |---|---|---|
@@ -76,44 +86,10 @@ P1（内边距 / 宽高 / 实现多出的锚点）不阻塞过线，逐条按三
 | B 设计水准 | 原型本身不达标 | 回作者改原型，不放宽实现 |
 | C 原型没画 | 需求存在但原型没覆盖 | 回作者补契约与原型 |
 
-## 7 已知限制
+## 8 已知限制
 
 - `odops parity` 不能指定视口（固定 1280×577），1440 / 390 只做截图与锚点存在性，**H5 不做数值 parity**；`/home` 仅 H5，1280 下重定向到 `/shelf`，只做 390 检查。
 - 状态 / 弹层锚点不在主集（空 / 加载 / 错误 / 成功、确认框、抽屉打开态）；要单独造态再比。
 - C-17（按需渲染）与 C-04（H5 侧栏首页项）未进主集，标「待确认」；原型与契约有偏差处按契约过滤（子集已剔除仅 H5 控件）。
 - 外壳锚点只在发现域页面验证；夹具列表条数与原型示例不同，宽高类 P1 会偏多，判据只认 P0 与缺块。
 - 浏览器 / daemon 偶发不可用：脚本内已 3–4 次重试；仍失败看 `/tmp/norvels-parity/*.log`。
-
-## 8 最终运行（2026-10-27 08:20–08:40，合并后 main）
-
-```bash
-scripts/parity-fixture.sh fixture && scripts/parity-fixture.sh web && scripts/parity-fixture.sh parity
-```
-
-13 页全部 FAIL：9 页拿到对比数据，4 页 odops/浏览器无输出（shelf / series / history / library/book）。
-
-| 页面 | 预期锚点 | 页锚点 | P0 | P1 | 缺块 |
-|---|---|---|---|---|---|
-| discovery/search | 15 | 18 | 28 | 24 | C-50 C-54 C-55 |
-| discovery/series-detail | 13 | 19 | 27 | 28 | — |
-| discovery/notfound | 12 | 17 | 24 | 24 | — |
-| library/authors | 4 | 19 | 6 | 27 | C-20 C-21 |
-| library/dashboard | 8 | 38 | 10 | 56 | — |
-| ops/import | 19 | 21 | 34 | 60 | C-17 C-18 |
-| ops/admin | 18 | 28 | 36 | 47 | C-33 C-38..C-43 |
-| ops/book | 25 | 39 | 44 | 121 | C-47 C-51 C-52 |
-| reader/read | 10 | 40 | 22 | 69 | — |
-| **合计** | — | — | **231** | **456** | — |
-
-P0 分类：color 67 / tap-target 52 / radius 50 / font-size 48 / anchor-missing 45 / background 35。
-
-- **样式类（八成以上）**：原型与实现的字号、颜色、圆角、底色差异；tap-target 是 parity 按触屏 44px 判，而本项目 PC 口径 32px。
-- **anchor-missing**：全部是默认夹具状态未造出的条件控件（分页、批量条、清空按钮等）；源码锚点静态对账 244/244。
-- **4 页无输出**：agent-browser 会话/daemon 限制，不是实现缺失。
-
-**结论：parity 未通过（P0≠0）**。按 DEVELOPER.md 三分法归为 A（翻译损耗）/ C（状态未造），不写「已按设计实现」。
-
-定位（lead 2026-10-27）：`odops parity` 的点击区按触屏 44px 硬编码、无视口与阈值参数，「改 PC 32px」不可行，
-因此 parity 只作设计评审工具，**不进 CI 门禁**；交付判据 = 锚点静态对账 244/244 + 定向用例 + 全量门禁。
-剩余关闭路径：①设计确认后统一字号 / 圆角 / 颜色；②逐页造态（只剩 anchor-missing，已被静态对账证伪）。
-
