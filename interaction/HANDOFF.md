@@ -88,4 +88,4 @@ parity 定位：`odops parity` 的点击区按触屏 44px 硬编码、无视口�
 
 - `docs/ux/` 已删除（内容并入 `interaction/` 契约与 `03-review.md`）。
 - 临时夹具、截图全部在 `/tmp/norvels-parity/`，不入库。
-- `impl/{discovery,reader,library,ops}` 分支与 `../norvels-wt-*` worktree 已随合并清理；main 保留 28 个未推送提交。
+- `impl/*`、`fix/*` 分支与 `../norvels-wt-*` worktree 均已清理；main 已推送 origin（89f06c5），工作区干净。
