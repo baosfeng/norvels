@@ -1,6 +1,6 @@
 # norvels — 本地中文小说库
 
-> Go 1.26（`CGO_ENABLED=0`）单二进制 + SQLite（正文按 1 MB 块 zstd 压缩）+ React 19 内嵌前端；当前 v0.6.0，生产跑在飞牛 NAS（部署见 [deploy/nas](deploy/nas/README.md)）。
+> Go 1.26（`CGO_ENABLED=0`）单二进制 + SQLite（正文按 1 MB 块 zstd 压缩）+ React 19 内嵌前端；当前 v0.7.0，生产跑在飞牛 NAS（部署见 [deploy/nas](deploy/nas/README.md)）。
 
 ## 先读文档，再动代码
 
