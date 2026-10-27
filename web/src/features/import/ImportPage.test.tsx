@@ -676,6 +676,22 @@ describe("导入页：运行中任务的进度轮询", () => {
     expect(importJob).not.toHaveBeenCalled();
   });
 
+  it("空路径点「开始导入」给出与常驻文案一致的提示，且不发请求", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "开始导入" }));
+    const status = screen.getAllByRole("status").map((node) => node.textContent).join(" ");
+    expect(status).toContain("先填一个目录或 txt 文件路径。");
+    expect(startImport).not.toHaveBeenCalled();
+  });
+
+  it("任务列表加载失败时只显示错误与重试，不再同时显示「还没有结束的任务」", () => {
+    jobState.error = new ApiError("network", "boom");
+    renderPage();
+    expect(screen.getByText("任务列表没能加载")).toBeTruthy();
+    expect(screen.getByText("重试")).toBeTruthy();
+    expect(screen.queryByText("还没有结束的任务。")).toBeNull();
+  });
+
   it("单次轮询失败不中断，下一轮继续把进度补上", async () => {
     vi.useFakeTimers();
     importJob

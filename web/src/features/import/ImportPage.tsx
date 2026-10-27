@@ -326,7 +326,8 @@ export function ImportPage() {
 
           {activeJob ? <FailedFilesPanel key={activeJob.id} job={activeJob} onRetried={() => reload()} /> : null}
 
-          <ImportHistory jobs={finished} />
+          {/* 读取中 / 读取失败时任务历史还是空的：别让「还没有结束的任务」和错误态同时出现 */}
+          {!loading && !error ? <ImportHistory jobs={finished} /> : null}
         </div>
       </div>
     </section>

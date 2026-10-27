@@ -36,6 +36,7 @@ vi.mock("../../api/client", async () => {
 });
 
 const { AdminBookPage } = await import("./AdminBookPage");
+const { ApiError } = await import("../../api/client");
 
 const book: BookDetail = {
   id: 7,
@@ -84,6 +85,8 @@ function renderPage() {
 describe("单书管理页", () => {
   beforeEach(() => {
     bookState.data = book;
+    bookState.error = null;
+    bookState.loading = false;
     updateBook.mockReset();
     deleteChapter.mockReset();
     deleteCover.mockReset();
@@ -150,6 +153,15 @@ describe("单书管理页", () => {
     fireEvent.click(screen.getByTestId("admin-discard"));
     expect((screen.getByTestId("admin-title") as HTMLInputElement).value).toBe("示例书简");
     expect(screen.getByTestId("admin-dirty").textContent).toBe("全部更改已保存");
+  });
+
+  it("不存在的书显示「没有这本书」并给回列表入口，而不是通用错误", () => {
+    bookState.data = null;
+    bookState.error = new ApiError("http", "not found", 404, "not_found");
+    renderPage();
+    expect(screen.getByTestId("admin-book-missing").textContent).toContain("没有这本书");
+    expect(screen.getByRole("link", { name: "回书籍管理" })).toBeTruthy();
+    expect(screen.queryByText("这本书没能打开")).toBeNull();
   });
 
   it("有未保存改动时返回列表先拦一次，选「留下」后焦点回「返回列表」", async () => {
