@@ -60,4 +60,4 @@ P0 分类：color 67 / tap-target 52 / radius 50 / font-size 48 / anchor-missing
 
 - `docs/ux/` 已删除（内容并入 `interaction/` 契约与 `03-review.md`）。
 - 临时夹具、截图全部在 `/tmp/norvels-parity/`，不入库。
-- 分支 `impl/{discovery,reader,library,ops}` 保留作对账，可删。
+- `impl/{discovery,reader,library,ops}` 分支与 `../norvels-wt-*` worktree 已随合并清理；main 保留 28 个未推送提交。

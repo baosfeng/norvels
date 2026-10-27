@@ -17,6 +17,8 @@
 
 ## 2 写域（一域一 worktree，互不越界）
 
+> 下表是夜间分工记录；worktree 与 `impl/*` 分支已在合并后清理，仅留作追溯。
+
 | 域 | worktree | 分支 | 写域 |
 |---|---|---|---|
 | 发现 | `../norvels-wt-discovery` | `impl/discovery` | `web/src/layouts/**`、`features/{start,shelf,search,series,history}/**`、`styles/ix-discovery.css` |
