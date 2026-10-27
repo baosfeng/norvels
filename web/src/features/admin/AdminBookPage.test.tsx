@@ -152,13 +152,17 @@ describe("单书管理页", () => {
     expect(screen.getByTestId("admin-dirty").textContent).toBe("全部更改已保存");
   });
 
-  it("有未保存改动时返回列表先拦一次", () => {
+  it("有未保存改动时返回列表先拦一次，选「留下」后焦点回「返回列表」", async () => {
     renderPage();
     fireEvent.change(screen.getByTestId("admin-title"), { target: { value: "改了一半" } });
     fireEvent.click(screen.getByTestId("admin-back"));
     expect(screen.getByText("还有 1 项更改没保存")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("leave-stay"));
+
+    const stay = screen.getByTestId("leave-stay");
+    expect(stay.textContent).toBe("留下");
+    fireEvent.click(stay);
     expect(screen.queryByText("还有 1 项更改没保存")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("admin-back")));
   });
 
   it("章节删除走即时接口，弹层写明书名与章节名", async () => {

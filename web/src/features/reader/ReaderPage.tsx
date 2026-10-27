@@ -217,6 +217,17 @@ export function ReaderPage() {
     [bookId, navigate],
   );
 
+  /** 用户主动翻章：契约 C-11/C-12 要求浮条提示「已翻到第 n 章」。
+   *  自动滚动到底另有自己的提示，避免叠两条。 */
+  const goChapterAnnounce = useCallback(
+    (target: ChapterBrief | null) => {
+      if (!target) return;
+      showToast(`已翻到第 ${target.idx + 1} 章`);
+      goChapter(target);
+    },
+    [goChapter],
+  );
+
   // 搜索打开前的滚动位置：关闭搜索条时正文回到原处（契约 C-05 / C-37 / C-40）
   const searchOrigin = useRef(0);
   const closeSearch = useCallback(() => {
@@ -434,10 +445,10 @@ export function ReaderPage() {
       if (searchOpen) return;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
-        goChapter(prev);
+        goChapterAnnounce(prev);
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
-        goChapter(next);
+        goChapterAnnounce(next);
       } else if (event.key === " " || event.key === "PageDown") {
         event.preventDefault();
         scrollByScreen(event.shiftKey ? -1 : 1);
@@ -448,7 +459,7 @@ export function ReaderPage() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goChapter, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen, deleteTarget, toggleHelp, cancelDelete]);
+  }, [goChapterAnnounce, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen, deleteTarget, toggleHelp, cancelDelete]);
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined" || paragraphs.length === 0) return;
@@ -540,8 +551,8 @@ export function ReaderPage() {
   const articleKey = reducedMotion ? "static" : `chapter-${chapterId}`;
 
   const swipeHandlers = useMemo(
-    () => ({ enabled: isH5, onPrev: () => goChapter(prev), onNext: () => goChapter(next) }),
-    [isH5, goChapter, prev, next],
+    () => ({ enabled: isH5, onPrev: () => goChapterAnnounce(prev), onNext: () => goChapterAnnounce(next) }),
+    [isH5, goChapterAnnounce, prev, next],
   );
   const swipeRef = useSwipePaging(swipeHandlers);
 
@@ -635,7 +646,7 @@ export function ReaderPage() {
               retryFailures={chapterFailures}
               next={next}
               onRetry={retryChapter}
-              onNext={() => goChapter(next)}
+              onNext={() => goChapterAnnounce(next)}
             />
           ) : (
             <ReaderArticle
@@ -647,8 +658,8 @@ export function ReaderPage() {
               bookId={bookId}
               prev={prev}
               next={next}
-              onPrev={() => goChapter(prev)}
-              onNext={() => goChapter(next)}
+              onPrev={() => goChapterAnnounce(prev)}
+              onNext={() => goChapterAnnounce(next)}
               chapterNumber={index + 1}
               chapterCount={chapters.length}
               wordCount={chapter.data.wordCount}
@@ -668,8 +679,8 @@ export function ReaderPage() {
           prev={prev}
           next={next}
           searchEnabled={Boolean(chapter.data)}
-          onPrev={() => goChapter(prev)}
-          onNext={() => goChapter(next)}
+          onPrev={() => goChapterAnnounce(prev)}
+          onNext={() => goChapterAnnounce(next)}
           onOpenDrawer={openDirectory}
           onGoShelf={goShelf}
           onOpenBookmarks={openBookmarks}

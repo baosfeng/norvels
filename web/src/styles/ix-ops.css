@@ -129,6 +129,56 @@
 .confirm-dialog {
   animation: ix-ops-fade-in var(--motion-base) var(--ease-standard);
 }
+/* 弹层限高 + 内部滚动：标签多时关闭按钮不能被推出视口（C-34 移除列「关闭弹层」前提）。
+   backdrop 是 fixed + place-items:center，弹层不设上限就会整块溢出且不可达。 */
+.ix-ops .confirm-dialog {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@supports (height: 100dvh) {
+  .ix-ops .confirm-dialog {
+    max-height: calc(100dvh - 32px);
+  }
+}
+/* 底部操作条吸底：内容再长，「关闭 / 取消」也不用先滚到底才能点到 */
+.ix-ops .confirm-dialog .confirm-actions {
+  position: sticky;
+  bottom: 0;
+  padding-top: var(--space-2);
+  background: var(--surface);
+}
+
+/* 勾选类控件：让可点区域到 32×32（PC 口径），勾选框本体仍是 16–18px 的小方块 */
+.ix-ops .check-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+}
+.ix-ops .check-hit input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.ix-ops .check-row {
+  min-height: 32px;
+}
+.ix-ops .check-row label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+/* 勾选后的行底色（C-36 / C-57 反馈：该行底色转暖白） */
+.ix-ops .admin-table tr.is-picked td,
+.ix-ops .chapter-table tr.is-picked td {
+  background: var(--surface-warm);
+}
 @keyframes ix-ops-fade-in {
   from {
     opacity: 0;
