@@ -8,6 +8,15 @@ import { formatCount } from "../../lib/format";
 
 const PAGE_SIZE = 24;
 
+/** 系列卡的「最近更新」：契约示例是日期（10 月 24 日），这里固定用日期，不用相对时间。 */
+function updatedDate(iso: string | null | undefined): string {
+  if (!iso) return "还没有章节";
+  const time = Date.parse(iso);
+  if (Number.isNaN(time)) return "还没有章节";
+  const d = new Date(time);
+  return `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
+}
+
 /**
  * 系列列表（P3 发现域，PC 专属）：按系列聚合书目。
  * 数据全部来自 GET /api/series（后端已把书数 / 字数 / 最近更新 / 封面书算好），
@@ -22,6 +31,11 @@ export function SeriesPage() {
   const feed = useSeries({ q: q || undefined, page, size: PAGE_SIZE });
 
   const model = useMemo(() => buildSeriesCards(feed.data?.items ?? []), [feed.data]);
+  // 卡上的「最近更新」按契约示例显示日期（10 月 24 日），不跟随「几分钟前」的相对时间
+  const updatedByName = useMemo(
+    () => new Map((feed.data?.items ?? []).map((item) => [(item.name ?? "").trim(), item.lastUpdatedAt])),
+    [feed.data],
+  );
   const total = feed.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -155,7 +169,7 @@ export function SeriesPage() {
                       {card.bookCountLabel} · {card.wordCountLabel}
                     </p>
                     <p className="book-meta">
-                      <span>最近更新 {card.updatedLabel}</span>
+                      <span>最近更新 {updatedDate(updatedByName.get(card.name))}</span>
                     </p>
                   </div>
                 </Link>

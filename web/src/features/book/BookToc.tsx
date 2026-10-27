@@ -215,6 +215,8 @@ function SingleVolume({
   onNavigate: (chapter: ChapterBrief) => void;
 }) {
   const [shown, setShown] = useState(() => initialShown(volume.chapters.length));
+  // 铺满的那一次点击：按钮随即消失，焦点交给新增的最后一行（C-16 移除后）
+  const [focusToken, setFocusToken] = useState(0);
   const remaining = volume.chapters.length - shown;
   return (
     <div className="vol-body" data-testid="book-single-volume" data-volume={volume.idx}>
@@ -227,9 +229,17 @@ function SingleVolume({
         scrollToCurrent
         onNavigate={onNavigate}
         ariaLabel="章节目录"
+        focusLastRow={focusToken || undefined}
       />
       {remaining > 0 ? (
-        <MoreButton volumeIdx={volume.idx} remaining={remaining} onMore={() => setShown((n) => n + TOC_CHUNK)} />
+        <MoreButton
+          volumeIdx={volume.idx}
+          remaining={remaining}
+          onMore={() => {
+            setShown((n) => n + TOC_CHUNK);
+            if (remaining <= TOC_CHUNK) setFocusToken((n) => n + 1);
+          }}
+        />
       ) : null}
     </div>
   );
@@ -255,6 +265,8 @@ function MultiVolumes({
   const openByDefault = resumeVolume?.idx ?? volumes[0].idx;
   const [open, setOpen] = useState<Set<number>>(() => new Set([openByDefault]));
   const [shown, setShown] = useState<Record<number, number>>({});
+  /** 某卷刚铺满：递增计数驱动该卷把焦点交到新增最后一行（C-16） */
+  const [focusTokens, setFocusTokens] = useState<Record<number, number>>({});
   /** 卷跳转最多同时有 4 个算「当前卷」：卷开得再多，高亮也只留最早打开的 4 个（契约 C-13）。 */
   const activeJumps = new Set([...open].slice(0, 4));
 
@@ -322,17 +334,21 @@ function MultiVolumes({
                     scrollToCurrent
                     onNavigate={onNavigate}
                     ariaLabel={`${volumeLabel(volume)} 目录`}
+                    focusLastRow={focusTokens[volume.idx]}
                   />
                   {remaining > 0 ? (
                     <MoreButton
                       volumeIdx={volume.idx}
                       remaining={remaining}
-                      onMore={() =>
+                      onMore={() => {
                         setShown((prev) => ({
                           ...prev,
                           [volume.idx]: (prev[volume.idx] ?? initialShown(volume.chapters.length)) + TOC_CHUNK,
-                        }))
-                      }
+                        }));
+                        if (remaining <= TOC_CHUNK) {
+                          setFocusTokens((prev) => ({ ...prev, [volume.idx]: (prev[volume.idx] ?? 0) + 1 }));
+                        }
+                      }}
                     />
                   ) : null}
                 </div>
@@ -367,17 +383,9 @@ function MoreButton({
       onClick={(event) => {
         const button = event.currentTarget;
         onMore();
-        if (remaining <= TOC_CHUNK) {
-          // 这一次点完本卷就铺满了：按钮会消失，焦点改落到新增的最后一行
-          requestAnimationFrame(() => {
-            const rows = document.querySelectorAll<HTMLElement>(
-              `[data-volume="${volumeIdx}"] .cv-row`,
-            );
-            rows[rows.length - 1]?.focus();
-          });
-        } else {
-          requestAnimationFrame(() => button.isConnected && button.focus());
-        }
+        // 按钮还在时焦点留在本按钮（可连点）；铺满后按钮消失，焦点由 ChapterList
+        // 滚到末行再交给最后一行（虚拟滚动下直接查 DOM 会拿到中间的行）
+        if (remaining > TOC_CHUNK) requestAnimationFrame(() => button.isConnected && button.focus());
       }}
     >
       {moreChaptersLabel(remaining)}

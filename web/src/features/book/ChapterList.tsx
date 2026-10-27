@@ -46,6 +46,7 @@ export function ChapterList({
   dense = false,
   fill = false,
   scrollToCurrent = false,
+  focusLastRow,
 }: {
   bookId: number;
   chapters: ChapterBrief[];
@@ -64,6 +65,8 @@ export function ChapterList({
   fill?: boolean;
   /** 首次渲染后滚到当前章（长目录打开就能看到读到哪了） */
   scrollToCurrent?: boolean;
+  /** 递增计数：变化时滚到本卷末尾并把焦点交给最后一行（C-16 铺满后按钮消失） */
+  focusLastRow?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cols = Math.max(1, Math.trunc(columns) || 1);
@@ -91,6 +94,29 @@ export function ChapterList({
     virtualizer.scrollToIndex(currentRow, { align: "center" });
     // virtualizer 身份随行数与行高变化，跟着重建时才需要重新定位
   }, [scrollToCurrent, currentRow, virtualizer, rowHeight]);
+
+  // C-16：本卷铺满后按钮消失，焦点落到新增的最后一行。虚拟滚动只挂视口内的行，
+  // 所以先滚到末行，等补渲染后再聚焦；再补一次定时器兜住滚动后的二次渲染。
+  useEffect(() => {
+    if (focusLastRow === undefined) return;
+    const last = rows.length - 1;
+    if (last < 0) return;
+    virtualizer.scrollToIndex(last, { align: "end" });
+    let cancelled = false;
+    const focusLast = () => {
+      if (cancelled) return;
+      const nodes = scrollRef.current?.querySelectorAll<HTMLElement>(".cv-row");
+      nodes?.[nodes.length - 1]?.focus();
+    };
+    const frame = requestAnimationFrame(() => {
+      focusLast();
+      window.setTimeout(focusLast, 60);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [focusLastRow, rows.length, virtualizer]);
 
   return (
     <div

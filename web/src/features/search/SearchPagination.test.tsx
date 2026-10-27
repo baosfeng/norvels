@@ -86,6 +86,8 @@ describe("搜索分页（新增控件 C-54 / C-55）", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input.value).toBe("");
     expect(document.activeElement).toBe(input);
+    // C-49：Esc 不只清输入，结果区与地址栏也回到默认（q 清空、回第 1 页）
+    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("", "all", 1, 8));
   });
 
   it("分栏支持左右方向键切换（C-50）", async () => {

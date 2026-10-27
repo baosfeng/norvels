@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useAuthors, useTags } from "../../api/hooks";
 import type { BookSummary, ReadStatus } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { CardSkeleton, EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { useShelfMode } from "../../layouts/shelfMode";
+import { tierFallbackText } from "../../layouts/tierFallback";
 import { formatCount } from "../../lib/format";
 import {
   READ_STATUS_FILTERS,
@@ -56,13 +57,16 @@ export function ShelfPage() {
   // /shelf?tag=X 是详情页标签 chip 的落地地址：链接要能复制、能直接打开，
   // 所以地址上的标签优先于会话缓存（缓存里的筛选是「上次看到哪」的上下文，换链接进来不该沿用）。
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   // 首帧捕获地址上的标签；之后地址跟随 tag 变化（下面的 effect），不回读
   const [urlTag] = useState<string | null>(() => (isH5 ? null : searchParams.get("tag")));
+  // 驾驶舱「全部书架 →」（C-23）要落到全部书：带上这个 state 就忽略会话缓存里的筛选
+  const resetRequested = (location.state as { resetFilters?: boolean } | null)?.resetFilters === true;
   // /read 在 AppShell 之外：进阅读器时本页整体卸载，靠会话缓存把列表与滚动位置带回来
   const cached = useMemo(() => {
     const snapshot = readShelfCache();
-    return snapshot && urlTag ? null : snapshot;
-  }, [urlTag]);
+    return snapshot && (urlTag || resetRequested) ? null : snapshot;
+  }, [urlTag, resetRequested]);
   const [sort, setSort] = useState<SortValue>(() =>
     SORTS.some((option) => option.value === cached?.sort) ? (cached?.sort as SortValue) : "updated",
   );
@@ -91,10 +95,10 @@ export function ShelfPage() {
   const restoredRef = useRef(false);
   // 记住「最后一次看到的滚动位置」：卸载时 DOM 已换成更短的下一页，再读 window.scrollY 会被夹到 0
   const scrollYRef = useRef(cached?.scrollTop ?? 0);
-  const location = useLocation();
   // 清除筛选后焦点回到排序下拉（C-29）；404 回书架后焦点交给页标题（C-18）
   const sortRef = useRef<HTMLSelectElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const navigate = useNavigate();
 
   // 筛选项的候选：作者与标签都是 PC 专属，H5 不发这两个请求
   const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: !isH5 });
@@ -266,6 +270,14 @@ export function ShelfPage() {
   useEffect(() => {
     if ((location.state as { focusTitle?: boolean } | null)?.focusTitle) titleRef.current?.focus();
   }, [location.state]);
+
+  // 宽屏访问首页会落到书架（C-04 边界）：把「首页只在窄屏提供」说清楚，一次性 state 用完即清
+  useEffect(() => {
+    const text = tierFallbackText((location.state as { from?: string } | null)?.from);
+    if (!text) return;
+    showToast(text);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.state, location.pathname, location.search, navigate]);
 
   // 标签变化写回 ?tag=：复制出去的书架链接能复现同一筛选；replace 不往后退栈里塞历史
   useEffect(() => {
@@ -541,7 +553,7 @@ export function ShelfPage() {
           <ErrorPanel error={error} title="书架没能加载" onRetry={reload} testId="shelf-error" />
         </div>
       ) : items.length === 0 ? (
-        <div data-od-id="C-40">
+        <div>
           <EmptyPanel
             title={filtering ? "没有符合筛选条件的书" : "书架还是空的"}
             description={
@@ -554,11 +566,11 @@ export function ShelfPage() {
             testId="shelf-empty"
             actions={
               filtering ? (
-                <button className="btn btn-primary" type="button" onClick={resetFilters}>
+                <button className="btn btn-primary" type="button" data-od-id="C-40" onClick={resetFilters}>
                   清除筛选
                 </button>
               ) : isH5 ? null : (
-                <Link className="btn btn-primary" to="/import">
+                <Link className="btn btn-primary" to="/import" data-od-id="C-40">
                   去导入
                 </Link>
               )
@@ -763,7 +775,12 @@ function BookCard({
       data-od-id="C-31"
       data-status={status}
       aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
-      onClick={onCycle}
+      onClick={(event) => {
+        // 角标在书卡链接的内容里：不拦默认与冒泡就会连带跳到详情页（走查 P1）。
+        event.preventDefault();
+        event.stopPropagation();
+        onCycle();
+      }}
     >
       {READ_STATUS_LABELS[status]}
     </button>

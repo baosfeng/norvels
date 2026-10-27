@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastHost } from "../../lib/toast";
 
@@ -114,10 +114,34 @@ describe("驾驶舱锚点", () => {
   });
 
   it("概览读不到时给错误态与重试（不渲染数据区）", () => {
+    const saved = state.stats.data;
     state.stats.loading = false;
     state.stats.error = new Error("离线");
     state.stats.data = null as unknown as typeof state.stats.data;
     renderPage();
     expect(screen.getByText("概览没能加载")).toBeTruthy();
+    // 还原全局桩，避免后续用例拿到错误态
+    state.stats.error = null;
+    state.stats.data = saved;
+  });
+});
+
+describe("走查修复：C-23「全部书架」要清掉上次筛选", () => {
+  it("链接带上 resetFilters，落到书架时 state 可读", async () => {
+    function ShelfProbe() {
+      const location = useLocation();
+      return <div data-testid="shelf-state">{JSON.stringify(location.state)}</div>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <Routes>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/shelf" element={<ShelfProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("全部书架 →"));
+    await waitFor(() => expect(screen.getByTestId("shelf-state")).toBeTruthy());
+    expect(screen.getByTestId("shelf-state").textContent).toContain('"resetFilters":true');
   });
 });

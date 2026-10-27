@@ -38,8 +38,11 @@ export function SearchPage() {
 
   function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
+      // C-49 键盘：清空关键词 + 结果区回到默认空态 + 地址栏不再留着旧 q，焦点留在输入框
       event.preventDefault();
       setDraft("");
+      setParams({}, { replace: true });
+      searchBoxRef.current?.focus();
       return;
     }
     if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();

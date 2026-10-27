@@ -144,6 +144,8 @@ describe("卷内再显示 60 章（C-16 新增）", () => {
     await waitFor(() => {
       const all = document.querySelectorAll<HTMLElement>(".cv-row");
       expect(document.activeElement).toBe(all[all.length - 1]);
+      // 虚拟滚动下只查 DOM 会拿到视口内最后一行（曾落到第 96 章）；这里盯住「第 130 章」
+      expect(document.activeElement?.textContent).toContain("第 130 章");
     });
   });
 
