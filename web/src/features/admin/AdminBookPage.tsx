@@ -66,6 +66,8 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
   const [deleting, setDeleting] = useState(false);
   /** 删除确认取消后焦点要回到这里（契约 C-50 的「关闭后焦点去向」）。 */
   const deleteRef = useRef<HTMLButtonElement>(null);
+  /** 离开确认选「留下」后焦点要回到「返回列表」（契约 C-70）。 */
+  const backRef = useRef<HTMLButtonElement>(null);
 
   const changed = pubChangedCount(draft, origin);
   const patch = pubBuildPatch(draft, origin);
@@ -122,6 +124,12 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
       return;
     }
     navigate("/admin");
+  }
+
+  /** 关掉离开确认并回编辑：焦点回「返回列表」，不留在被卸载的弹层里（C-70）。 */
+  function stayOnPage() {
+    setLeaving(false);
+    window.setTimeout(() => backRef.current?.focus(), 0);
   }
 
   return (
@@ -239,7 +247,7 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
           >
             {saving ? "保存中…" : "保存"}
           </button>
-          <button className="btn" type="button" data-testid="admin-back" data-od-id="C-69" onClick={leave}>
+          <button className="btn" type="button" ref={backRef} data-testid="admin-back" data-od-id="C-69" onClick={leave}>
             返回列表
           </button>
         </div>
@@ -247,7 +255,7 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
       </div>
 
       {leaving ? (
-        <div className="confirm-backdrop ix-ops" role="presentation" data-od-id="C-70" onClick={() => setLeaving(false)}>
+        <div className="confirm-backdrop ix-ops" role="presentation" data-od-id="C-70" onClick={stayOnPage}>
           <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="leave-title" onClick={(e) => e.stopPropagation()}>
             <h2 id="leave-title">还有 {changed} 项更改没保存</h2>
             <p className="meta">离开这个页面会丢掉刚才的改动。</p>
@@ -258,8 +266,8 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
               <button className="btn btn-ghost" type="button" data-testid="leave-discard" onClick={() => navigate("/admin")}>
                 放弃更改
               </button>
-              <button className="btn" type="button" autoFocus data-testid="leave-stay" onClick={() => setLeaving(false)}>
-                继续编辑
+              <button className="btn" type="button" autoFocus data-testid="leave-stay" onClick={stayOnPage}>
+                留下
               </button>
             </div>
           </div>

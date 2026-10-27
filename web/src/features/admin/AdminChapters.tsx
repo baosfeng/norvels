@@ -69,6 +69,7 @@ export function AdminChapters({
   const loose = useMemo(() => volumes.find(isLooseVolume) ?? null, [volumes]);
   const total = volumes.reduce((sum, volume) => sum + volume.chapters.length, 0);
   const filtered = query.trim().toLowerCase();
+  const matchCount = countMatches(volumes, filtered);
 
   // 勾选的章一律从当前目录里取：删除/合并后 reload 换掉目录，旧 id 自然消失
   const pickedList = useMemo(
@@ -170,7 +171,7 @@ export function AdminChapters({
         </label>
         {filtered ? (
           <span className="meta" data-testid="admin-chapter-match">
-            匹配 {countMatches(volumes, filtered)} 章
+            匹配 {matchCount} 章
           </span>
         ) : null}
         <button
@@ -205,6 +206,11 @@ export function AdminChapters({
       {total === 0 ? (
         <p className="inline-note" data-testid="admin-chapter-none">
           这本书还没有章节
+        </p>
+      ) : null}
+      {filtered && matchCount === 0 ? (
+        <p className="inline-note" data-testid="admin-chapter-nomatch">
+          没有匹配的章节
         </p>
       ) : null}
 

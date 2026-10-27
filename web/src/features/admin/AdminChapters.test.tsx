@@ -92,6 +92,14 @@ describe("章节勾选与批量条", () => {
     expectBatchIdle();
   });
 
+  it("C-53：章节搜索没有命中时说「没有匹配的章节」，不误报「本卷还没有章节」", () => {
+    renderChapters();
+    fireEvent.change(screen.getByTestId("admin-chapter-search"), { target: { value: "不存在的标题" } });
+    expect(screen.getByTestId("admin-chapter-nomatch").textContent).toContain("没有匹配的章节");
+    expect(screen.queryByText("本卷还没有章节")).toBeNull();
+    expect((screen.getByTestId("admin-chapter-search") as HTMLInputElement).value).toBe("不存在的标题");
+  });
+
   it("勾一行出现「已选 1 章」，取消选择后消失", () => {
     renderChapters();
     fireEvent.click(pick(10));

@@ -54,16 +54,18 @@ export function ChapterTable({
         <thead>
           <tr>
             <th className="c-check" style={{ width: 40 }}>
-              <input
-                type="checkbox"
-                aria-label="全选已载入章节"
-                data-testid="admin-chapter-pick-all"
-                checked={loaded.length > 0 && loadedHit === loaded.length}
-                ref={(node) => {
-                  if (node) node.indeterminate = loadedHit > 0 && loadedHit < loaded.length;
-                }}
-                onChange={(event) => actions.onPickRows(loaded, event.target.checked)}
-              />
+              <label className="check-hit">
+                <input
+                  type="checkbox"
+                  aria-label="全选已载入章节"
+                  data-testid="admin-chapter-pick-all"
+                  checked={loaded.length > 0 && loadedHit === loaded.length}
+                  ref={(node) => {
+                    if (node) node.indeterminate = loadedHit > 0 && loadedHit < loaded.length;
+                  }}
+                  onChange={(event) => actions.onPickRows(loaded, event.target.checked)}
+                />
+              </label>
             </th>
             <th className="is-num" style={{ width: 56 }}>
               序号
@@ -85,23 +87,25 @@ export function ChapterTable({
               <tr className="vol-row">
                 <td colSpan={5}>
                   <span className="vol-head">
-                    <input
-                      type="checkbox"
-                      aria-label={`全选「${volumeLabel(volume)}」已载入章节`}
-                      data-testid={`admin-chapter-pick-vol-${volume.idx}`}
-                      checked={rows.length > 0 && hit === rows.length}
-                      disabled={rows.length === 0}
-                      data-od-id="C-58"
-                      ref={(node) => {
-                        if (node) node.indeterminate = hit > 0 && hit < rows.length;
-                      }}
-                      onChange={(event) => actions.onPickRows(rows, event.target.checked)}
-                    />
+                    <label className="check-hit">
+                      <input
+                        type="checkbox"
+                        aria-label={`全选「${volumeLabel(volume)}」已载入章节`}
+                        data-testid={`admin-chapter-pick-vol-${volume.idx}`}
+                        checked={rows.length > 0 && hit === rows.length}
+                        disabled={rows.length === 0}
+                        data-od-id="C-58"
+                        ref={(node) => {
+                          if (node) node.indeterminate = hit > 0 && hit < rows.length;
+                        }}
+                        onChange={(event) => actions.onPickRows(rows, event.target.checked)}
+                      />
+                    </label>
                     <span className="vol-title">{volumeLabel(volume)}</span>
                     <span className="meta num" data-testid={`admin-volume-meta-${volume.idx}`}>
                       {volumeMetaText(volume)}
                     </span>
-                    {rows.length === 0 ? (
+                    {!filtered && rows.length === 0 ? (
                       <span className="inline-note" data-testid={`admin-volume-empty-${volume.idx}`}>
                         本卷还没有章节
                       </span>
@@ -110,16 +114,18 @@ export function ChapterTable({
                 </td>
               </tr>
               {rows.map((chapter) => (
-                <tr key={chapter.id} className="ch-row" data-testid={`admin-chapter-${chapter.id}`}>
+                <tr key={chapter.id} className={`ch-row${picked.has(chapter.id) ? " is-picked" : ""}`} data-testid={`admin-chapter-${chapter.id}`}>
                   <td className="c-check" onClick={(event) => event.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      aria-label={`选择第 ${chapter.idx + 1} 章`}
-                      data-testid={`admin-chapter-pick-${chapter.id}`}
-                      data-od-id="C-57"
-                      checked={picked.has(chapter.id)}
-                      onChange={() => actions.onTogglePick(chapter.id)}
-                    />
+                    <label className="check-hit">
+                      <input
+                        type="checkbox"
+                        aria-label={`选择第 ${chapter.idx + 1} 章`}
+                        data-testid={`admin-chapter-pick-${chapter.id}`}
+                        data-od-id="C-57"
+                        checked={picked.has(chapter.id)}
+                        onChange={() => actions.onTogglePick(chapter.id)}
+                      />
+                    </label>
                   </td>
                   <td className="is-num">{chapter.idx + 1}</td>
                   <td className="c-title">

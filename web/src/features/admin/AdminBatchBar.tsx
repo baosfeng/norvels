@@ -29,16 +29,16 @@ export function AdminBatchBar({
       {over ? <span className="inline-note">一次最多 {MAX_BATCH} 本，分批再改</span> : null}
       <div className="actions">
         <button className="btn btn-sm" type="button" data-testid="admin-batch-author" data-od-id="C-38" onClick={onAuthor}>
-          设作者
+          批量改作者
         </button>
         <button className="btn btn-sm" type="button" data-testid="admin-batch-tag" data-od-id="C-39" onClick={onTag}>
-          设标签
+          批量改标签
         </button>
         <button className="btn btn-sm" type="button" data-testid="admin-batch-serial" data-od-id="C-40" onClick={onSerial}>
-          设连载状态
+          批量改连载状态
         </button>
         <button className="btn btn-sm btn-danger" type="button" data-testid="admin-batch-delete" data-od-id="C-41" onClick={onDelete}>
-          删除
+          批量删除
         </button>
         <button className="btn btn-sm btn-ghost" type="button" data-testid="admin-batch-clear" data-od-id="C-42" onClick={onClear}>
           取消选择

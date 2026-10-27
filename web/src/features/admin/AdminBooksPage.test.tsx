@@ -213,6 +213,38 @@ describe("书籍管理列表", () => {
     expect(screen.queryByTestId("tag-manage-dialog")).toBeNull();
   });
 
+  it("C-42：取消选择后焦点回到表头全选，不是掉到 body", async () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    expect(screen.getByTestId("admin-batch-bar").textContent).toContain("已选 1 本");
+    fireEvent.click(screen.getByTestId("admin-batch-clear"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("admin-select-page")));
+  });
+
+  it("C-34：关闭标签管理弹层后焦点回入口按钮", async () => {
+    renderPage();
+    const trigger = screen.getByTestId("admin-tag-manage");
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByTestId("tag-manage-close"));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("批量条按钮文案按契约（批量改作者 / 批量改标签 / 批量改连载状态 / 批量删除）", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    const bar = screen.getByTestId("admin-batch-bar").textContent ?? "";
+    expect(bar).toContain("批量改作者");
+    expect(bar).toContain("批量改标签");
+    expect(bar).toContain("批量改连载状态");
+    expect(bar).toContain("批量删除");
+  });
+
+  it("勾选的行带 is-picked 类（行底色反馈）", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-book-pick-7"));
+    expect(screen.getByTestId("admin-book-row-7").className).toContain("is-picked");
+  });
+
   it("空库给出去导入的出口", () => {
     booksState.data = { items: [], total: 0, page: 1, size: 20 } as typeof booksState.data;
     renderPage();

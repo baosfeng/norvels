@@ -118,6 +118,9 @@ vi.mock("../../lib/theme", async () => {
   };
 });
 
+const { showToast } = vi.hoisted(() => ({ showToast: vi.fn() }));
+vi.mock("../../lib/toastStore", () => ({ showToast }));
+
 const { ReaderPage } = await import("./ReaderPage");
 
 /** 书架探针：把收到的 location.state 打出来，验证「书架」出口带了 restore 标记。 */
@@ -229,6 +232,15 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
       vi.advanceTimersByTime(8000);
     });
     expect(headerHidden()).toBe("false");
+  });
+
+  it("C-12：翻章时浮条提示「已翻到第 n 章」", () => {
+    showToast.mockClear();
+    renderReader();
+    act(() => {
+      fireEvent.click(screen.getByLabelText("下一章"));
+    });
+    expect(showToast).toHaveBeenCalledWith("已翻到第 2 章");
   });
 
   it("翻章保持当前显隐状态，进度数字跟着更新", () => {

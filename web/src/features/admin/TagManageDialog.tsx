@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../../api/client";
+import { useFocusTrap } from "../../lib/focusTrap";
 import type { TagSummary } from "../../api/types";
 
 /**
@@ -36,6 +37,11 @@ export function TagManageDialog({
   const deleteRefs = useRef(new Map<number, HTMLButtonElement>());
   const [focusTag, setFocusTag] = useState<number | null>(null);
   const busy = busyWith !== null;
+  /** 弹层根节点：焦点陷阱把焦点送进来、Esc 关闭、关闭后还给触发按钮（C-34 移除列）。 */
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(true, dialogRef, () => {
+    if (!busy) onClose();
+  });
 
   useEffect(() => {
     if (focusTag === null) return;
@@ -109,6 +115,7 @@ export function TagManageDialog({
   return (
     <div className="confirm-backdrop" role="presentation" onClick={() => !busy && onClose()}>
       <div
+        ref={dialogRef}
         className="confirm-dialog is-wide"
         role="dialog"
         aria-modal="true"

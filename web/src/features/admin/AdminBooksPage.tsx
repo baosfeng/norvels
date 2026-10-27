@@ -33,6 +33,8 @@ export function AdminBooksPage() {
   const [managingTags, setManagingTags] = useState(false);
   const notice = useTimedNote();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  /** 表头全选：取消选择 / 清空已选后焦点回到这里（契约 C-42 移除列）。 */
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
   const { data, loading, error, reload } = useBooks({
     q: filters.query,
@@ -105,6 +107,18 @@ export function AdminBooksPage() {
     setPicked(allPicked ? new Set() : new Set(items.slice(0, MAX_BATCH).map((book) => book.id)));
   }
 
+  /** 取消选择后批量条会卸载，焦点必须先在表头全选上再接住（C-42）。 */
+  function clearPicked() {
+    setPicked(new Set());
+    window.setTimeout(() => selectAllRef.current?.focus(), 0);
+  }
+
+  /** 关闭标签弹层后把焦点还给入口按钮（C-34）；弹层里的焦点陷阱在卸载时也会还一次。 */
+  function closeTagManage() {
+    setManagingTags(false);
+    window.setTimeout(() => document.querySelector<HTMLElement>('[data-testid="admin-tag-manage"]')?.focus(), 0);
+  }
+
   return (
     <section className="ix-ops" data-testid="view:admin-books" data-od-id="admin-list">
       <div className="page-head">
@@ -142,7 +156,7 @@ export function AdminBooksPage() {
         onTag={() => setBatch("tag")}
         onSerial={() => setBatch("serial")}
         onDelete={() => setBatch("delete")}
-        onClear={() => setPicked(new Set())}
+        onClear={clearPicked}
       />
 
       <div className="admin-books">
@@ -158,18 +172,21 @@ export function AdminBooksPage() {
               <thead>
                 <tr>
                   <th style={{ width: 44 }}>
-                    <input
-                      type="checkbox"
-                      aria-label="全选当前页"
-                      data-testid="admin-select-page"
-                      data-od-id="C-35"
-                      disabled={items.length === 0}
-                      checked={allPicked}
-                      ref={(node) => {
-                        if (node) node.indeterminate = selected.length > 0 && !allPicked;
-                      }}
-                      onChange={togglePage}
-                    />
+                    <label className="check-hit">
+                      <input
+                        type="checkbox"
+                        aria-label="全选当前页"
+                        data-testid="admin-select-page"
+                        data-od-id="C-35"
+                        disabled={items.length === 0}
+                        checked={allPicked}
+                        ref={(node) => {
+                          selectAllRef.current = node;
+                          if (node) node.indeterminate = selected.length > 0 && !allPicked;
+                        }}
+                        onChange={togglePage}
+                      />
+                    </label>
                   </th>
                   <th style={{ width: 52 }}>
                     <span className="sr-only">封面</span>
@@ -212,7 +229,7 @@ export function AdminBooksPage() {
             reload();
           }}
           onClose={() => {
-            setManagingTags(false);
+            closeTagManage();
             // 刚删掉的正好是筛选用的那个标签：重置为全部并说明原因
             if (filters.tag !== "" && !(tags.data?.items ?? []).some((item) => item.name === filters.tag)) {
               setFilters((prev) => ({ ...prev, tag: "" }));
@@ -312,16 +329,18 @@ function Pagination({ page, pages, onPage }: { page: number; pages: number; onPa
 /** 一行：勾选 / 封面 / 书名 / 章节 / 字数 / 连载状态 / 更新时间（书名可点进单书管理）。 */
 function AdminBookRow({ book, picked, onToggle }: { book: BookSummary; picked: boolean; onToggle: () => void }) {
   return (
-    <tr data-testid={`admin-book-row-${book.id}`}>
+    <tr className={picked ? "is-picked" : undefined} data-testid={`admin-book-row-${book.id}`}>
       <td className="c-check">
-        <input
-          type="checkbox"
-          checked={picked}
-          aria-label={`选择《${book.title}》`}
-          data-testid={`admin-book-pick-${book.id}`}
-          data-od-id="C-36"
-          onChange={onToggle}
-        />
+        <label className="check-hit">
+          <input
+            type="checkbox"
+            checked={picked}
+            aria-label={`选择《${book.title}》`}
+            data-testid={`admin-book-pick-${book.id}`}
+            data-od-id="C-36"
+            onChange={onToggle}
+          />
+        </label>
       </td>
       <td className="c-cover">
         <Cover title={book.title} bookId={book.id} updatedAt={book.updatedAt} hasCover={book.hasCover} className="cover-xs" showLabel={false} />

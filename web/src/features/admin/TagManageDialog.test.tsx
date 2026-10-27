@@ -138,6 +138,27 @@ describe("标签管理弹窗", () => {
     expect(props.onChanged).not.toHaveBeenCalled();
   });
 
+  it("C-34：弹层按 Esc 关闭（焦点陷阱把 Esc 交给 onClose）", () => {
+    const props = renderDialog();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("C-34：打开时焦点进入弹层，卸载后还给触发按钮", () => {
+    const trigger = document.createElement("button");
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { unmount } = render(
+      <TagManageDialog tags={tags} loading={false} error={null} onReload={vi.fn()} onClose={vi.fn()} onChanged={vi.fn()} />,
+    );
+    expect(document.activeElement?.closest('[role="dialog"]')).toBeTruthy();
+
+    unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
   it("标签列表的加载态与错误态各有可读状态", () => {
     renderDialog({ loading: true });
     expect(screen.getByTestId("tag-manage-loading")).toBeTruthy();
