@@ -9,7 +9,7 @@ const discoveryCss = readCss("ix-discovery.css");
 const libraryCss = readCss("ix-library.css");
 
 /**
- * 走查修复的样式口径：PC 点击区 ≥32×32；抽屉关闭态 display:none。
+ * 样式口径：PC 点击区 ≥32×32；抽屉关闭态 display:none。
  * jsdom 不解析样式表、量不到布局，这里直接守源文件规则（改坏会被抓到）。
  */
 describe("PC 点击区 ≥32 与抽屉遮罩关闭态", () => {

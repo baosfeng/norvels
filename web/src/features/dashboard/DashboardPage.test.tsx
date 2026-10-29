@@ -126,7 +126,7 @@ describe("驾驶舱锚点", () => {
   });
 });
 
-describe("走查修复：C-23「全部书架」要清掉上次筛选", () => {
+describe("回归：C-23「全部书架」要清掉上次筛选", () => {
   it("链接带上 resetFilters，落到书架时 state 可读", async () => {
     function ShelfProbe() {
       const location = useLocation();

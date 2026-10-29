@@ -51,7 +51,7 @@ describe("评分控件", () => {
     expect(onRate).toHaveBeenCalledWith(0);
   });
 
-  it("清零后不残留悬停预览：星形与「未评分」一致（走查修复）", () => {
+  it("清零后不残留悬停预览：星形与「未评分」一致", () => {
     function Wrap() {
       const [value, setValue] = useState(4);
       return <RatingStars value={value} onRate={setValue} />;

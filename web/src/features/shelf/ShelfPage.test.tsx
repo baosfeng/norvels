@@ -551,7 +551,7 @@ describe("书架：标签链接（C-09）", () => {
   });
 });
 
-describe("走查修复回归：角标不跳页 / C-40 锚点 / 驾驶舱重置筛选 / 错档提示", () => {
+describe("回归：角标不跳页 / C-40 锚点 / 驾驶舱重置筛选 / 错档提示", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     books.mockReset();

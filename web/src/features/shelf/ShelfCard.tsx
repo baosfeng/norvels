@@ -39,7 +39,7 @@ export function ShelfCard({
       data-status={status}
       aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
       onClick={(event) => {
-        // 角标在书卡链接的内容里：不拦默认与冒泡就会连带跳到详情页（走查 P1）。
+        // 角标在书卡链接的内容里：不拦默认与冒泡就会连带跳到详情页。
         event.preventDefault();
         event.stopPropagation();
         onCycle();

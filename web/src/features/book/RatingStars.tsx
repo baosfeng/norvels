@@ -49,7 +49,7 @@ export function RatingStars({
             onMouseEnter={() => setPreview(disabled ? null : star)}
             onClick={() => {
               // 点完要把 hover 预览清掉：否则「再点同一颗清零」后，鼠标还停在星上，
-              // 预览继续点亮 n 颗，标签写「未评分」而星形仍是实心（走查 P2）。
+              // 预览继续点亮 n 颗，标签写「未评分」而星形仍是实心。
               setPreview(null);
               onRate(star === current ? 0 : star);
             }}
