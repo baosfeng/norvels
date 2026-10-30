@@ -25,7 +25,7 @@
 ### PUT /api/reading/progress
 body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`paraIndex` 缺省 0），upsert，204。
 同事务内若该书 `readStatus = ""` 则置为 `reading`；`want` / `done` 不被覆盖（唯一自动转移）。
-无账号体系：单用户，进度直接挂 book/chapter（见 [ADR-0001](../adr/0001-public-release.md)）。
+进度按 `(user_id, book_id)` 归属当前账号；开放模式下所有请求都归默认账号 `reader`，用法与单用户时一致（见 [api-account](api-account.md)）。
 
 ### GET /api/health/report
 库健康状况（人话指标，供驾驶舱状态卡与直方图）。

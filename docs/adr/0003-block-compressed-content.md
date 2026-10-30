@@ -22,7 +22,7 @@
 
 ## 决定
 
-1. **移除正文检索**（0006）：删除 `title_seg`/`content_seg` 镜像列、`chapters_fts` 与其触发器。检索降级为「书名 / 作者 / 章节标题」的 LIKE 匹配。
+1. **移除正文检索**（0006）：删除 `title_seg`/`content_seg` 镜像列、`chapters_fts` 与其触发器。检索降级为「书名 / 作者」的 LIKE 匹配。
 2. **正文按块压缩**（0007）：`chapters.content` 拆到 `chapter_blocks` 表，每块约 1 MB 原始字节，用 zstd-best 压缩；章节行只留 `block_id`/`block_off`/`block_len`。
 
 ## 为什么是按块，不是按章

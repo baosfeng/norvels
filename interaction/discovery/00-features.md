@@ -2,7 +2,7 @@
 
 > 范围：外壳（侧栏 · 顶栏 · 抽屉 · 提示条）· `/home` · `/shelf` · `/search` · `/series` · `/series/:name` · `/history`。
 > 本文件是**域级摘录**，逐条列本域入口与证据；系统级索引见 [../00-features.md](../00-features.md)（只读）。
-> 证据一律相对路径 `web/src/…:行号`，本轮逐条核对。平台 = web；H5 ≤768 / PC ≥1024（`web/src/lib/tier.ts:20`）。
+> 证据一律相对路径 `web/src/…:行号`，本轮逐条核对。平台 = web；H5 ≤768 / PC ≥1024（`web/src/lib/tier.ts:9`）。
 
 ## 1. 外壳（全局常驻）
 
@@ -12,7 +12,8 @@
 | 书架导航 + 书数 | 侧栏主导航 | `web/src/layouts/Sidebar.tsx:34` | 计数 0 时不显示 |
 | 搜索导航 | 侧栏主导航 | `web/src/layouts/Sidebar.tsx:40` | 两档都有 |
 | 首页导航（仅 H5） | 侧栏主导航 | `web/src/layouts/Sidebar.tsx:30` | PC 不出现 |
-| 系列 / 阅读历史 / 书籍管理 / 驾驶舱 / 作者 / 导入管理 | 侧栏主导航 | `web/src/layouts/Sidebar.tsx:46`–`:72` | PC 专属，H5 不出现（`TierRoute.tsx:18`） |
+| 系列 / 阅读历史 | 侧栏主导航 | `web/src/layouts/Sidebar.tsx:55`–`:60` | 两档都有（H5 走汉堡抽屉） |
+| 书籍管理 / 驾驶舱 / 作者 / 导入管理 | 侧栏主导航 | `web/src/layouts/Sidebar.tsx:63`–`:75` | PC 专属，H5 不出现（`TierRoute.tsx` + `tier.ts` 的 `PC_ONLY_ROUTES`） |
 | 继续阅读卡 | 侧栏中部 | `web/src/layouts/Sidebar.tsx:69` | 无进度时整块不出现 |
 | 库存三项（本书/章节/字数） | 侧栏底部 | `web/src/layouts/Sidebar.tsx:88` | 读取中显示「—」 |
 | 顶栏搜索框 | 顶栏中段 | `web/src/layouts/Topbar.tsx:34` | 首页不出现顶栏（`AppShell.tsx:52`） |
@@ -28,7 +29,7 @@
 | 功能 | 入口 | 证据 | 备注 |
 |---|---|---|---|
 | 书架排序（6 种） | 书架工具栏 | `web/src/features/shelf/ShelfPage.tsx:32` | 最近更新/导入时间/书名/章节数/字数/评分 |
-| 阅读状态 / 评分 / 作者 / 书单 / 大小分类筛选 | 书架工具栏 | `web/src/features/shelf/ShelfPage.tsx:372`–`:425` | PC 专属 |
+| 阅读状态 / 评分 / 作者 / 书单 / 大小分类筛选 | 书架工具栏（PC）/ 底部弹层（H5） | `web/src/features/shelf/ShelfToolbar.tsx:53`、`ShelfFilterSheet.tsx:50` | **两档同一套筛选**，只换承载形态 |
 | 标签 chips | 书架工具栏 | `web/src/features/shelf/ShelfPage.tsx:427` | 单选 |
 | 清除筛选 | 书架工具栏 | `web/src/features/shelf/ShelfPage.tsx:444` | 无筛选时不出现 |
 | 书卡 → 详情 | 书架网格/列表 | `web/src/features/shelf/ShelfPage.tsx:736` | 记住位置，回来高亮 1.5 秒（`:210`） |
@@ -38,16 +39,15 @@
 | 继续阅读卡 | 书架页头下方 | `web/src/features/shelf/ResumeCard.tsx:18` | PC 专属 |
 | 分页（每页 24） | 书架底部 | `web/src/features/shelf/ShelfPage.tsx:542` | PC 专属 |
 | 无限滚动（每页 30） | 书架底部 | `web/src/features/shelf/ShelfPage.tsx:509` | H5 专属 |
-| H5 排序底部弹层 | 书架页头 | `web/src/features/shelf/ShelfPage.tsx:566` | 含阅读状态段 |
+| H5 排序与筛选弹层 | 书架页头 | `web/src/features/shelf/ShelfFilterSheet.tsx:50` | 排序 + 阅读状态 / 评分 / 分类 / 作者 / 书单 / 标签 + 清除筛选 |
 | 书架三态 | 书架主区 | `web/src/features/shelf/ShelfPage.tsx:458`–`:490` | 加载/错误/空（空态 H5 不给「去导入」） |
 | H5 首页继续阅读 + 最近在读 + 最近入库 | `/home` | `web/src/features/start/HomePage.tsx:48`、`:99`、`:127` | 仅 H5 |
 | 首页搜索条 | `/home` | `web/src/features/start/HomePage.tsx:72` | 仅 H5 |
-| 搜索结果两栏 + 分栏 | `/search` | `web/src/features/search/SearchPage.tsx:44`、`:67` | 分栏仅 PC |
-| 书名命中 / 章节命中 | 搜索两栏 | `web/src/features/search/SearchPage.tsx:105`、`:131` | 章节命中直达该章 |
-| 检索范围与片段口径 | 搜索页说明 | `web/src/lib/snippet.tsx:7` | 只检索书名/作者/章节标题；正文不参与，片段恒为空串 |
+| 搜索结果单栏 | `/search` | `web/src/features/search/SearchPage.tsx:121` | 只有「书名和作者」一栏，两档同口径 |
+| 检索范围 | 搜索页说明 | `web/src/features/search/SearchPage.tsx:99` | 只检索书名与作者；章节标题（目录）与正文都不参与，不返回片段、不做加粗 |
 | 关键词 ≥2 字 | 搜索页 | `web/src/api/hooks.ts:80` | 不足 2 字不发请求 |
-| 系列列表 / 系列详情 | `/series`、`/series/:name` | `web/src/features/series/SeriesPage.tsx:44`、`SeriesDetailPage.tsx:23` | PC 专属 |
-| 阅读历史表格 | `/history` | `web/src/features/history/HistoryPage.tsx:52` | PC 专属，每页 20 本（`:7`） |
+| 系列列表 / 系列详情 | `/series`、`/series/:name` | `web/src/features/series/SeriesPage.tsx:44`、`SeriesDetailPage.tsx:23` | 两档都开（H5 复用同一套 book-grid） |
+| 阅读历史 | `/history` | `web/src/features/history/HistoryPage.tsx:19` | 两档都开：PC 表格 / H5 卡片列表，每页 20 本（`:9`） |
 
 ## 3. 本域不覆盖（明确划出去）
 

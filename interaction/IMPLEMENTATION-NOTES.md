@@ -8,9 +8,8 @@
 
 | 项 | 结果 | 怎么复核 |
 |---|---|---|
-| 锚点落地 | 244/244（reader 62 · discovery 71 · library 32 · ops 79） | `node scripts/check-anchors.mjs` |
-| 前端测试 | 75 文件 / 678 用例 | `cd web && pnpm test` |
-| 全量门禁 | `make gate` 九项全绿 | `make gate` |
+| 锚点落地 | 以脚本输出为准（各域 `C-nn` 顺序编号，见 §3） | `node scripts/check-anchors.mjs` |
+| 全量门禁 | `make gate` 9 项全绿 | `scripts/gate-all.sh` |
 | 设计评审 | ops PASS · reader / library PASS-WITH-TODO · discovery 三条 P0 修复后复核通过 | 各域 `03-review.md` |
 | parity | 未通过、不进 CI（见 §4） | [PARITY.md](PARITY.md) |
 

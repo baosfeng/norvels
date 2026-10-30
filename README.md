@@ -10,7 +10,7 @@
 - **编码自适应**：UTF-8 / UTF-8 BOM / GB18030 / UTF-16 / Big5 多候选解码 + CJK 命中率打分，乱码文件也能正常入库。
 - **智能切章**：识别「第X章/节/回/卷/部」「数字行」「Chapter N」「序章/楔子/番外」，支持卷/部嵌套、无标记短篇兜底；单文件多书合集按章号重置自动拆成多本。
 - **幂等导入**：按文件 SHA-256 去重，重复导入自动跳过；支持 `--force`、`--update`（追更只追加新章）、`--dry-run`、`--workers`、`--min-chapters`。
-- **书名/作者/章节标题检索**：SQLite 索引上的 `LIKE`，毫秒级返回（不含正文全文索引，见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)）。
+- **书名/作者检索**：`LIKE` 子串匹配，毫秒级返回；章节标题与正文都不参与找书，不建全文索引（见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)）。
 - **封面与元数据可编辑**：有封面的书在书架与详情页显示真实封面；书名/作者/简介/标签/系列可在详情页直接改。
 - **零运行时依赖**：前端构建产物 `go:embed` 进二进制，容器里只有两个静态可执行文件。
 - **轻量镜像**：distroless/static + 非 root，约 15.5 MiB（实测二进制 11.1 MiB + 健康检查 2.1 MiB + 基镜像约 2 MiB；前端合入后 16–18 MiB，详见 [docs/deploy.md](docs/deploy.md)）。
@@ -206,7 +206,15 @@ docker run --rm --entrypoint /norvels \
 | GET | `/api/stats/reading` | 阅读统计与热力图（`days`/`tz`） |
 | GET | `/api/authors` | 作者列表（`q`、分页） |
 | GET | `/api/authors/{id}` | 作者详情 + 作品 |
-| GET | `/api/search` | 书名 / 作者 / 章节标题检索（`q`、`type=chapter|book|all`） |
+| POST | `/api/auth/register` | 注册账号（注册即登录，下发 `norvels_session`） |
+| POST | `/api/auth/login` | 按账号名登录（无密码；未注册返回 404） |
+| POST | `/api/auth/logout` | 撤销当前会话（幂等 204） |
+| GET | `/api/auth/me` | 当前账号（开放模式返回默认账号 `reader`） |
+| GET | `/api/shelf` | 我的书架（分页，按加入时间倒序） |
+| GET | `/api/shelf/ids` | 我的书架全部 book_id（不分页，供列表打标） |
+| PUT | `/api/shelf/{bookId}` | 加入我的书架（幂等 204） |
+| DELETE | `/api/shelf/{bookId}` | 移出我的书架（幂等 204） |
+| GET | `/api/search` | 书名 / 作者检索（`q`、`type=book|all`） |
 | POST | `/api/import` | 触发导入（202 + jobId；并发导入返回 409） |
 | POST | `/api/import/upload` | 浏览器上传 txt/epub/zip（multipart，逐文件 accepted/rejected） |
 | GET | `/api/import/jobs` | 导入任务列表 |
@@ -265,7 +273,7 @@ scripts/backup.sh --keep 7          # 内部用 sqlite3 .backup 或 VACUUM INTO�
 几条经过实测的取舍：
 
 - **最接近的参考实现是 zreader**：Go 单二进制 + `modernc.org/sqlite` + React SPA `go:embed`，作者自述约 23 MB 镜像，证明「Go + SQLite + 中文 txt」能在 20 MB 量级落地。
-- **正文检索已主动放弃**：早期用「字级分词镜像列 + FTS5」支持 2 字及以上正文检索，但实测它占掉全库 65% 的体积（838 本 14.84 GB 里 9.58 GB 是索引）。用户不需要按正文内容检索，因此移除正文索引，检索收敛为书名 / 作者 / 章节标题的 `LIKE`（5 万本实测 18.4 ms）。决策与后果见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)。
+- **正文检索已主动放弃**：早期用「字级分词镜像列 + FTS5」支持 2 字及以上正文检索，但实测它占掉全库 65% 的体积（838 本 14.84 GB 里 9.58 GB 是索引）。用户不需要按正文内容检索，因此移除正文索引，检索收敛为书名 / 作者的 `LIKE`（5 万本实测 18.4 ms）。决策与后果见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)。
 - **体积不是瓶颈，磁盘与导入耗时才是**：镜像约 15.5–18 MiB，远低于 50 MB；4.4 GB 语料的 `/data` 需要 ≥ 20 GB。
 - 调研与本文都确认：本机没有容器运行时，镜像体积需在装好 Docker 的机器上用 `docker images` 对账（见 [docs/deploy.md](docs/deploy.md#23-已知限制重要)）。
 

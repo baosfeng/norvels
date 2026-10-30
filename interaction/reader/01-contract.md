@@ -2,7 +2,7 @@
 
 > **唯一事实源**：一行 = 一个控件的一种触发；锚点 `C-nn` 与 `02-prototype.html` 的 `data-od-id` 逐字相同，一经发布不改号。
 > 规范见 `designing-interactions`（`SKILL.md` + `references/interaction-contract.md`）；分档口径见 [../README.md](../README.md)。
-> 平台 = web；H5 ≤768px、PC ≥1024px（`web/src/lib/tier.ts:20`）。
+> 平台 = web；H5 ≤768px、PC ≥1024px（`web/src/lib/tier.ts:9`）。
 > `控件` 列末尾即**源码证据**（`文件:行号`）；标【新增】的是产品原形态没有、按本契约补上的能力。
 > 本文件其余小节一律用列表，不用表格——自检脚本会把每一行 `|` 开头的内容当成契约行。
 

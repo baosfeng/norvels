@@ -409,6 +409,9 @@ norvels migrate --db /data/norvels.db && sqlite3 /data/norvels.db 'VACUUM;'
 `VACUUM` 会重建整个库文件，需要额外约一份库大小的临时空间（SQLite 写临时文件再替换）。
 13.83 GB 的库执行前建议确认有 15 GB 以上余量；小库可以忽略。
 
+**启动路径只做迁移，不自动 VACUUM**（含 0016 重建个人数据表那一次）：重写整个库文件且要等效磁盘空间，
+把「启动失败」的风险压在最不该出问题的地方。省下的空间要真拿回来，就按本节在停服窗口手动跑一次。
+
 **顺序建议**：迁移 → `VACUUM` → 跑 `check-content` 自查（§7.2）。
 `VACUUM` 只搬页不改数据，放在自查前后都可以；但放在自查之前能让自查跑得更快（文件更小）。
 
@@ -447,8 +450,19 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 |---|---|---|
 | 1 | `0001_init.sql` | 初始结构（authors / books / volumes / chapters / tags / import_jobs / FTS5） |
 | 3 | `0003_reading_progress.sql` | `reading_progress` 表 + 更新时间索引（阅读进度服务端化） |
+| 4 · 5 | `0004_dashboard_perf.sql` · `0005_fix_store_metrics.sql` | 驾驶舱聚合预计算表 `store_metrics`，0005 修正其早期结构 |
+| 6 · 7 | `0006_drop_fts.sql` · `0007_block_storage.sql` | 删分词镜像列与 FTS；正文改存 `chapter_blocks`（1 MB 块 zstd） |
+| 8 | `0008_book_metadata.sql` | 出版元数据（语言/出版社/书号/日期/系列）+ 封面 |
+| 9 | `0009_books_authors.sql` | 多作者关联表 `books_authors`（position 保序） |
+| 10 | `0010_book_serial_and_settings.sql` | 连载状态 + 全局键值设置表 |
+| 11 | `0011_book_read_status_and_bookmarks.sql` | 阅读状态 `read_status` + 书签 |
+| 12 | `0012_import_job_files_and_tag_source.sql` | 导入文件级终态 + 标签来源 |
+| 13 | `0013_volume_title_unique.sql` | 同书卷名唯一（`TRIM(title)` 表达式索引） |
+| 14 | `0014_p3_reading_and_collections.sql` | 评分/系列/书单/阅读时长与历史 |
+| 15 | `0015_book_category.sql` | 两级分类 `category_l1`/`category_l2` + 存量回填 |
+| 16 | `0016_users_and_shelf.sql` | 账号 `users`/`user_sessions` + 我的书架 `user_shelf`；个人记录改按 `(user_id, …)` 归属，存量归默认账号 `reader` |
 
-> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续。
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **16**。
 
 ### 7.5 鉴权
 
@@ -462,6 +476,10 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 - `/api/health` 免鉴权（容器健康检查依赖它），`/login` 是登录表单页；
 - Cookie 为 HttpOnly + SameSite=Lax + Path=/（30 天），比较令牌用恒定时间比较；
 - 未设置 token = **开放模式**，启动日志会打印 `WARN: 未启用鉴权，请勿暴露到公网`。
+
+**账号与口令是两层**（0016）：口令管「能不能进门」，账号会话（`norvels_session`，30 天）管「个人记录属于谁」。
+配置口令后 Bearer / 旧 `norvels_auth` Cookie 语义完全不变；没配口令时请求归默认账号 `reader`。
+账号只隔离进度 / 书签 / 书单 / 我的书架，**不隔离书库也不做权限分级**，详见 [api-account](api/api-account.md)。
 
 ### 7.6 配置优先级
 

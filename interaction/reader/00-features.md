@@ -1,7 +1,7 @@
 # 阅读域功能盘点（`/read/:bookId/:chapterId`）
 
 > 域级盘点：只覆盖阅读器，供 `ixcheck` 在本目录内取证；系统级盘点见 [../00-features.md](../00-features.md)（**只读，由 lead 维护**）。
-> 证据口径：源码 `路径:行号` / 接口 `METHOD /path`。平台 = web，H5 ≤768px、PC ≥1024px（`web/src/lib/tier.ts:20`）。
+> 证据口径：源码 `路径:行号` / 接口 `METHOD /path`。平台 = web，H5 ≤768px、PC ≥1024px（`web/src/lib/tier.ts:9`）。
 
 ## 1 入口与外壳
 
@@ -10,8 +10,8 @@
 | 阅读器路由 | `/read/:bookId/:chapterId` | `web/src/routes.tsx:78` | 独立外壳，无侧栏 |
 | 从详情页进入 | 「继续阅读」/ 章节行 | `web/src/features/book/BookPage.tsx:111` | 带上次读到的段落 |
 | 从书架继续卡进入 | 侧栏继续阅读卡 | `web/src/layouts/Sidebar.tsx:62` | 无进度时不出现 |
-| 从搜索章节进入 | 搜索结果章节命中 | `web/src/features/search/SearchPage.tsx` | 直达该章 |
-| 分档判定 | `useTier()` → `H5_QUERY` | `web/src/lib/tier.ts:20` | ≤768 走 H5 信息架构 |
+| 从阅读历史进入 | `/history` 的历史行 | `web/src/features/history/HistoryPage.tsx` | 带上次读到的章 |
+| 分档判定 | `useTier()` → `H5_QUERY` | `web/src/lib/tier.ts:9` | ≤768 走 H5 信息架构 |
 
 ## 2 阅读与翻章
 

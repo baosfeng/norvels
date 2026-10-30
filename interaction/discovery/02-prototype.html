@@ -281,23 +281,11 @@ body.h5-sheet-open{overflow:hidden}
 .search-form .input{min-height:40px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 var(--space-3);background:var(--surface)}
 .search-form .input:focus{border-color:var(--meta)}
 .search-summary{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
-.search-tabs{display:flex;gap:var(--space-4);border-bottom:1px solid var(--border)}
-.search-tabs button{min-height:40px;color:var(--muted-text);font-size:var(--text-sm);border-bottom:2px solid transparent}
-.search-tabs button.is-active{color:var(--fg);border-bottom-color:var(--meta);font-weight:600}
-.search-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-6);align-items:start}
+.search-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-6);align-items:start}
 .search-layout h2{font-size:var(--text-base);display:flex;gap:var(--space-2);align-items:baseline;padding-bottom:var(--space-2);border-bottom:1px solid var(--border-soft)}
 .search-books{display:flex;flex-direction:column;gap:var(--space-2);padding-top:var(--space-3)}
 .search-book{border:1px solid var(--border);border-radius:var(--radius-sm);padding:var(--space-2);background:var(--surface)}
 .search-book:hover{border-color:var(--muted-text)}
-.hits{display:flex;flex-direction:column;padding-top:var(--space-2)}
-.hit{padding:var(--space-3) 0;border-bottom:1px solid var(--border-soft)}
-.hit-meta{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;font-size:var(--text-sm)}
-.hit-meta a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 var(--space-1)}
-.hit-meta a:first-child{color:var(--muted-text)}
-.hit-meta a:last-child{font-weight:600;border-bottom:1px solid var(--border)}
-.hit-meta a:hover{color:var(--meta)}
-.hit-snippet{color:var(--fg-2);font-size:var(--text-sm);margin-top:var(--space-1)}
-.hit-snippet b{background:var(--surface-warm);font-weight:600;padding:0 1px}
 
 /* 系列 / 历史 */
 .crumbs{display:flex;gap:var(--space-2);align-items:center;color:var(--muted-text);font-size:var(--text-xs);padding-bottom:var(--space-3)}
@@ -346,8 +334,7 @@ body[data-tier="h5"] .book-card{padding:var(--space-2) var(--space-3)}
 body[data-tier="h5"] .cover{width:40px;font-size:var(--text-sm)}
 body[data-tier="h5"] .book-intro{display:none}
 body[data-tier="h5"] .page-head h1{font-size:var(--text-lg)}
-body[data-tier="h5"] .search-layout{grid-template-columns:minmax(0,1fr);gap:var(--space-5)}
-body[data-tier="h5"] .search-tabs{display:none}
+body[data-tier="h5"] .search-layout{gap:var(--space-5)}
 body[data-tier="h5"] .page-head .sub{display:none}
 body[data-tier="h5"] #shelf-view-toggle{display:none}
 body[data-tier="h5"] .searchbar{padding:0 var(--space-2)}
@@ -386,7 +373,6 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
   .nav-toggle{display:inline-flex}
   .book-grid{grid-template-columns:1fr}
   .search-layout{grid-template-columns:minmax(0,1fr)}
-  .search-tabs{display:none}
   .btn,.select,.chip{min-height:44px}
   .icon-btn{width:44px;height:44px}
   .side-nav a{min-height:44px}
@@ -489,7 +475,7 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
             <span class="searchbar-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
             </span>
-            <input class="input" type="search" name="q" placeholder="搜书名、作者、章节标题…" aria-label="搜索书名、作者、章节标题">
+            <input class="input" type="search" name="q" placeholder="搜书名、作者…" aria-label="搜索书名、作者">
             <button class="btn" type="submit">搜索</button>
           </form>
           <div class="view-toggle" id="shelf-view-toggle" data-od-id="C-13" data-pc-only role="group" aria-label="视图切换">
@@ -682,7 +668,7 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
           </div>
 
           <form class="h5-search" id="home-search" data-od-id="C-43" role="search">
-            <input class="input" type="search" name="q" placeholder="搜书名、作者、章节标题…" aria-label="搜索书名、作者、章节标题">
+            <input class="input" type="search" name="q" placeholder="搜书名、作者…" aria-label="搜索书名、作者">
             <button class="btn" type="submit">搜索</button>
           </form>
 
@@ -728,17 +714,12 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
             <p class="eyebrow">搜索书库</p>
             <h1 id="search-title">搜索</h1>
             <form class="search-form" id="search-form" data-od-id="C-49" role="search">
-              <input class="input" id="search-input" type="search" value="" placeholder="输入书名、作者或章节标题" aria-label="搜索关键词">
+              <input class="input" id="search-input" type="search" value="" placeholder="输入书名或作者" aria-label="搜索关键词">
               <button class="btn btn-primary" type="submit">搜索</button>
             </form>
             <div class="search-summary">
-              <span class="meta" id="search-summary-text">找到 0 本书 · 0 个章节</span>
-              <span class="pill">书名 · 作者 · 章节标题</span>
-            </div>
-            <div class="search-tabs" data-od-id="C-50" role="tablist" aria-label="结果分类">
-              <button type="button" role="tab" class="is-active" data-search-tab="all" aria-selected="true">全部</button>
-              <button type="button" role="tab" data-search-tab="book" aria-selected="false">书名和作者 <span class="num" id="search-book-count">0</span></button>
-              <button type="button" role="tab" data-search-tab="chapter" aria-selected="false">章节标题 <span class="num" id="search-chapter-count">0</span></button>
+              <span class="meta" id="search-summary-text">找到 0 本书</span>
+              <span class="pill">按书名、作者搜索</span>
             </div>
           </div>
 
@@ -746,7 +727,7 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
             <div class="state-panel">
               <span class="state-mark" aria-hidden="true"><span class="spinner"></span></span>
               <h2>正在查找</h2>
-              <p>正在书名、作者和章节标题里一起找。</p>
+              <p>正在书名与作者里查找。</p>
             </div>
           </div>
           <div data-state-block="error">
@@ -761,7 +742,7 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
             <div class="state-panel" id="search-empty">
               <span class="state-mark" aria-hidden="true">空</span>
               <h2 id="search-empty-title">输入关键词开始查找</h2>
-              <p id="search-empty-desc">可以按书名、作者或章节标题查找。</p>
+              <p id="search-empty-desc">可以按书名或作者查找。</p>
             </div>
           </div>
           <div data-state-block="ok">
@@ -770,13 +751,8 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
                 <h2>书名和作者 <span class="meta num" id="search-books-total">0</span></h2>
                 <div class="search-books" id="search-books"></div>
               </aside>
-              <div>
-                <h2>章节标题 <span class="meta num" id="search-chapters-total">0</span></h2>
-                <div class="hits" id="search-hits"></div>
-              </div>
             </div>
-            <p class="meta" id="search-tab-empty" hidden></p>
-            <p class="meta" id="search-hit-snippet-note">结果是书名、作者名与章节标题的匹配列表；正文不参与检索，因此不显示正文片段，也不做关键词加粗。</p>
+            <p class="meta" id="search-hit-note">只检索书名与作者；章节标题（目录）与正文都不参与，不显示片段，也不做关键词加粗。</p>
             <nav class="pagination" id="search-pagination" aria-label="分页">
               <button type="button" id="search-prev" data-od-id="C-54" aria-label="上一页">←</button>
               <span class="is-current num" id="search-page">1</span>
@@ -1037,7 +1013,7 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
     tier: 'pc', view: 'shelf', state: 'ok', mode: 'grid',
     sort: 'updated', author: '', tag: '', status: '', rating: '', collection: '', cat1: '', cat2: '',
     page: 1, shown: H5_PAGE, selecting: false, selected: {}, overrides: {},
-    keyword: '', searchTab: 'all', searchPage: 1, seriesQ: '', seriesPage: 1,
+    keyword: '', searchPage: 1, seriesQ: '', seriesPage: 1,
     historyPage: 1, seriesName: SERIES[0].name, lastBook: null
   };
 
@@ -1500,20 +1476,12 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
   });
 
   /* ── 搜索 ── */
+  // 检索范围只有书名与作者：章节标题（目录）与正文都不参与，所以结果只有书一级。
   function searchable() {
     var q = st.keyword.trim();
-    if (q.length < 2) return { books: [], hits: [], tooShort: q.length > 0, q: q };
+    if (q.length < 2) return { books: [], tooShort: q.length > 0, q: q };
     var bookHits = books.filter(function (b) { return b.title.indexOf(q) >= 0 || b.author.indexOf(q) >= 0; });
-    var hits = [];
-    // 章节标题取自书名（不是关键词），作者命中的书不会凭空长出一堆含作者名的章节
-    var CH_TAIL = ['之前', '之后', '以外', '未尽', '渐深', '初起'];
-    books.forEach(function (b) {
-      for (var c = 1; c <= 6; c++) {
-        var title = '第 ' + c + ' 章 ' + b.title.slice(0, 2) + CH_TAIL[(c - 1) % CH_TAIL.length];
-        if (title.indexOf(q) >= 0) hits.push({ book: b, chapterId: c, title: title });
-      }
-    });
-    return { books: bookHits, hits: hits, tooShort: false, q: q };
+    return { books: bookHits, tooShort: false, q: q };
   }
 
   function renderSearch() {
@@ -1521,13 +1489,11 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
     var q = r.q;
     $('#search-title').textContent = q ? '“' + q + '”' : '搜索';
     $('#search-input').value = q;
-    $('#search-book-count').textContent = String(r.books.length);
-    $('#search-chapter-count').textContent = String(r.hits.length);
-    $('#search-summary-text').textContent = '找到 ' + r.books.length + ' 本书 · ' + r.hits.length + ' 个章节';
+    $('#search-summary-text').textContent = '找到 ' + r.books.length + ' 本书';
 
     if (!q) {
       $('#search-empty-title').textContent = '输入关键词开始查找';
-      $('#search-empty-desc').textContent = '可以按书名、作者或章节标题查找。';
+      $('#search-empty-desc').textContent = '可以按书名或作者查找。';
       applyState('empty');
       $('#search-pagination').hidden = true;
       return;
@@ -1540,65 +1506,32 @@ body[data-tier="h5"] .resume-card{padding:var(--space-3);gap:var(--space-3);max-
       return;
     }
     applyState('ok');
-    if (!r.books.length && !r.hits.length) {
-      $('#search-empty-title').textContent = '没有匹配的书名、作者或章节标题';
-      $('#search-empty-desc').textContent = '试试更短的关键词，或者换一个说法。';
+    if (!r.books.length) {
+      $('#search-empty-title').textContent = '没有匹配的书名或作者';
+      $('#search-empty-desc').textContent = '试试更短的关键词，或者换个书名、作者的写法。';
       applyState('empty');
       $('#search-pagination').hidden = true;
       return;
     }
 
-    var showBooks = st.searchTab !== 'chapter';
-    var showHits = st.searchTab !== 'book';
     var PER = 8;
     var pageBooks = r.books.slice((st.searchPage - 1) * PER, st.searchPage * PER);
-    var pageHits = r.hits.slice((st.searchPage - 1) * PER, st.searchPage * PER);
-    $('#search-books').innerHTML = showBooks ? pageBooks.map(function (b) {
+    $('#search-books').innerHTML = pageBooks.map(function (b) {
       return '<article class="search-book" data-od-id="C-51"><a class="book-link" href="#" data-open-book="' + b.id + '">' +
         '<span class="cover cover-xs" aria-hidden="true">' + esc(b.title.charAt(0)) + '</span>' +
         '<span class="book-card-body"><h3 class="book-title">' + esc(b.title) + '</h3>' +
         '<p class="book-author">' + esc(b.author) + '</p>' +
         '<p class="book-meta"><span class="num">' + b.chapters + ' 章</span><span class="num">' + fmtCount(b.words) + ' 字</span></p></span></a></article>';
-    }).join('') : '';
-    $('#search-hits').innerHTML = showHits ? pageHits.map(function (h) {
-      return '<article class="hit" data-od-id="C-52"><p class="hit-meta">' +
-        '<a href="#" data-open-book="' + h.book.id + '">' + esc(h.book.title) + '</a><span aria-hidden="true">·</span>' +
-        '<a href="#" data-open-book="' + h.book.id + '" data-chapter="' + h.chapterId + '">' + esc(h.title) + '</a></p></article>';
-    }).join('') : '';
+    }).join('');
     $('#search-books-total').textContent = String(r.books.length);
-    $('#search-chapters-total').textContent = String(r.hits.length);
 
-    var maxRows = Math.max(r.books.length, r.hits.length);
-    var pages = Math.max(1, Math.ceil(maxRows / PER));
+    var pages = Math.max(1, Math.ceil(r.books.length / PER));
     $('#search-page').textContent = String(Math.min(st.searchPage, pages));
     $('#search-pages').textContent = '/ ' + pages;
     $('#search-prev').disabled = st.searchPage <= 1;
     $('#search-next').disabled = st.searchPage >= pages;
     $('#search-pagination').hidden = pages <= 1;
-    
-    var tabNote = $('#search-tab-empty');
-    if (st.searchTab === 'book' && r.books.length === 0 && r.hits.length > 0) {
-      tabNote.hidden = false;
-      tabNote.textContent = '这个关键词没有匹配的书名或作者，可以切到「章节标题」看看。';
-    } else if (st.searchTab === 'chapter' && r.hits.length === 0 && r.books.length > 0) {
-      tabNote.hidden = false;
-      tabNote.textContent = '这个关键词没有匹配的章节标题，可以切到「书名和作者」看看。';
-    } else {
-      tabNote.hidden = true;
-    }
   }
-
-  $$('[data-search-tab]').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      st.searchTab = tab.getAttribute('data-search-tab');
-      $$('[data-search-tab]').forEach(function (t) {
-        var on = t === tab;
-        t.classList.toggle('is-active', on);
-        t.setAttribute('aria-selected', String(on));
-      });
-      renderSearch();
-    });
-  });
 
   function submitSearch(form) {
     var input = form.querySelector('input[type="search"]');

@@ -34,20 +34,23 @@
 4. **导入可重复执行**：同一目录重复 `import` 必须幂等（文件 SHA-256 命中则跳过，除非 `--force`）。
 5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=OFF`；聚合口径在导入时同事务预计算进 `store_metrics`，不回填全表。
 
-## 2.1 单用户前提与鉴权边界
+## 2.1 鉴权边界与账号归属
 
-norvels 是**单用户**书库：没有账号体系，不做多租户隔离，不存 `user_id`。
+**书库共享，个人记录按账号隔离**（迁移 0016）：books / authors / chapters / tags 是同一份书库，
+不做多租户；`user_id` 只出现在个人数据上（进度 / 会话 / 书签 / 书单 / 我的书架）。
 
 | 状态 | 谁能访问 | 适用场景 |
 |---|---|---|
-| 默认（`NORVELS_AUTH_TOKEN` 为空） | 能连上端口的所有人 | 本机 / 家庭内网 |
-| 设置 `NORVELS_AUTH_TOKEN` | 持有共享口令的人 | 公网 VPS、共享主机 |
+| 默认（`NORVELS_AUTH_TOKEN` 为空） | 能连上端口的所有人；个人记录归默认账号 `reader` | 本机 / 家庭内网 |
+| 设置 `NORVELS_AUTH_TOKEN` | 持有共享口令的人；个人记录按会话 Cookie 归属 | 公网 VPS、共享主机 |
 
 - 鉴权实现：`Authorization: Bearer <token>` 或登录后下发的 Cookie（HttpOnly + SameSite=Lax + Path=/）；
+- 账号体系是**额外的一层**：`NORVELS_AUTH_TOKEN` 管「能不能进门」，会话 Cookie（`norvels_session`）
+  管「这些记录属于谁」；两者并存，口令的语义未变（详见 [api-account](api/api-account.md)）；
+- 只注册 + 输账号登录，**没有密码**——前提是内网私有部署；暴露公网前先换掉这套鉴权；
 - 令牌比较用 `crypto/subtle.ConstantTimeCompare`；`/api/health` 永远免鉴权（容器健康检查）；
-- 开放模式启动会打印 `WARN: 未启用鉴权，请勿暴露到公网`；
-- 只有一个共享口令，**权限模型等价于全有或全无**：拿到口令即可导入、读取、改进度。
-  需要多用户 / 权限分级时必须先引入账号体系（新开 ADR）。
+- 共享口令仍是**全有或全无**：拿到口令即可导入、读取、管理全部书库。账号只隔离个人记录，
+  不是权限分级；需要真正的权限模型时必须先换掉这套鉴权（新开 ADR）。
 
 ## 2.2 升级模型（版本化迁移）
 
@@ -85,7 +88,7 @@ books(id, title, author_id, source_path UNIQUE, source_name, file_size, file_sha
       encoding, word_count, chapter_count, intro, status, imported_at, updated_at)
 volumes(id, book_id, idx, title)                 -- 卷/部；UNIQUE(book_id, idx)，同书 TRIM(title) 唯一（0013）
 chapters(id, book_id, volume_id, idx, title, content, word_count)
--- 检索范围：books.title / authors.name / chapters.title 的 LIKE（无正文全文索引）
+-- 检索范围：books.title / authors.name 的 LIKE（无正文全文索引，也不按章节标题找书）
 tags(id, name) / book_tags(book_id, tag_id)
 import_jobs(id, source_dir, status, total, imported, skipped, failed, started_at, finished_at, message)
 import_errors(id, job_id, file_path, reason, created_at)
@@ -93,7 +96,7 @@ import_errors(id, job_id, file_path, reason, created_at)
 
 完整 DDL 见 `internal/store/migrations/0001_init.sql`（v1 快照仍保留在 `internal/store/schema.sql` 供阅读，启动不再执行它）；逐版本变更见 [deploy.md](deploy.md) §7.1 的迁移表。
 
-检索范围是**书名 / 作者 / 章节标题**，不含正文全文索引（理由与后果见 [ADR-0002](adr/0002-drop-fulltext-index.md)）。
+检索范围是**书名 / 作者**：章节标题（目录）与正文都不参与，不含全文索引（理由与后果见 [ADR-0002](adr/0002-drop-fulltext-index.md)）。
 几万本的容量与延迟推算见 [data-profile.md §10](data-profile.md#10-容量推算几万本)。
 
 ## 4. 导入流水线

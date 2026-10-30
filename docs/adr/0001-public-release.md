@@ -34,7 +34,7 @@
 
 - 环境变量 `NORVELS_AUTH_TOKEN`：设置后所有 `/api/*` 与页面都要求 Bearer Token 或 Cookie
 - 未设置时 = 开放模式（本地/内网使用），启动日志 **显式警告**「未启用鉴权，请勿暴露到公网」
-- 不做账号体系（单用户），只做「一个共享口令」级别的门禁
+- 门禁只到「一个共享口令」（全有或全无），不做权限分级；账号归属是后加的一层，不改变口令语义（见 [api-account](../api/api-account.md)）
 - 令牌比较用恒定时间比较；Cookie 用 HttpOnly + SameSite=Lax
 - `/api/health` 在鉴权模式下仍免鉴权（供容器健康检查）
 

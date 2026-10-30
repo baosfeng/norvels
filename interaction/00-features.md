@@ -9,10 +9,10 @@
 | 项 | 事实 | 证据 |
 |---|---|---|
 | 产品形态 | 单二进制 + 内嵌 React SPA，浏览器访问 | `README.md` · `internal/webui/` |
-| 目标平台 | **web**（响应式，一套代码两档信息架构） | `web/src/lib/tier.ts:20` |
-| 分档阈值 | H5 ≤768px，PC ≥1024px（768–1024 归 PC） | `web/src/lib/tier.ts:20` `H5_QUERY` |
+| 目标平台 | **web**（响应式，一套代码两档信息架构） | `web/src/lib/tier.ts:9` |
+| 分档阈值 | H5 ≤768px，PC ≥1024px（768–1024 归 PC） | `web/src/lib/tier.ts:9` `H5_QUERY` |
 | 分档方式 | 条件渲染：窄屏节点**不出现**在文档里，不是 CSS 隐藏 | `web/src/layouts/TierRoute.tsx:14` |
-| 窄屏不出现的入口 | 导入 / 作者 / 驾驶舱 / 书籍管理 | `web/src/lib/tier.ts:16` `MANAGEMENT_ROUTES` |
+| 窄屏不出现的入口 | 导入 / 作者 / 驾驶舱 / 书籍管理 | `web/src/lib/tier.ts:26` `PC_ONLY_ROUTES`（路由表据此查表，单一事实源） |
 | 主题 | 日间 / 夜间 / 羊皮纸（阅读器），跟随系统 | `web/src/lib/theme.ts` |
 | 语言 | 简体中文 | `web/index.html` |
 
@@ -23,11 +23,11 @@
 | 书架（首页） | 侧栏「书架」/ 根路径重定向 | `web/src/routes.tsx:31` | H5 无管理入口 |
 | H5 首页 | 侧栏「首页」（仅窄屏） | `web/src/routes.tsx:24` | 继续阅读 + 轻量目录 |
 | 书籍详情 | 点书卡 / 搜索结果 | `web/src/routes.tsx:32` | `/book/:bookId` |
-| 阅读器 | 详情页「继续阅读」/ 侧栏继续卡片 / 搜索章节命中 | `web/src/routes.tsx:78` | 独立外壳，无侧栏 |
-| 搜索 | 侧栏「搜索」/ 顶栏搜索框 | `web/src/routes.tsx:33` | 书名 + 章节两栏 |
-| 系列列表 | 侧栏「系列」 | `web/src/routes.tsx:60` | PC 专属 |
+| 阅读器 | 详情页「继续阅读」/ 侧栏继续卡片 / 阅读历史 | `web/src/routes.tsx:78` | 独立外壳，无侧栏 |
+| 搜索 | 侧栏「搜索」/ 顶栏搜索框 | `web/src/routes.tsx:33` | 只有书名 + 作者一档 |
+| 系列列表 | 侧栏「系列」 | `web/src/routes.tsx:95` | 两档都开（H5 走抽屉） |
 | 系列详情 | 系列列表点某系列 | `web/src/routes.tsx:64` | `/series/:name` |
-| 阅读历史 | 侧栏「阅读历史」 | `web/src/routes.tsx:68` | PC 专属 |
+| 阅读历史 | 侧栏「阅读历史」 | `web/src/routes.tsx:111` | 两档都开（H5 是卡片列表） |
 | 导入管理 | 侧栏「导入管理」 | `web/src/routes.tsx:36` | PC 专属 |
 | 书籍管理（列表） | 侧栏「书籍管理」 | `web/src/routes.tsx:48` | PC 专属 |
 | 单书管理 | 列表点书名 / 详情页编辑入口 | `web/src/routes.tsx:52` | `/admin/books/:bookId` |
@@ -56,7 +56,7 @@
 | 书籍列表与筛选 | `GET /api/books` | `docs/api/api-books.md` | q/authorId/tag/series/rating/collection/sort |
 | 书籍详情 + 目录 | `GET /api/books/{id}` | `docs/api/api-books.md` | 含卷与章 |
 | 章节正文 | `GET /api/books/{id}/chapters/{cid}` | `docs/api/api-books.md` | 含 prevId/nextId |
-| 检索 | `GET /api/search` | `docs/api/README.md` | 书名/作者/章节标题，≥2 字 |
+| 检索 | `GET /api/search` | `docs/api/README.md` | 书名/作者，≥2 字 |
 | 阅读进度 | `PUT /api/reading/progress` | `docs/api/api-p3.md` | 含章内段落下标 |
 | 阅读时长 | `POST /api/reading/sessions` | `docs/api/api-p3.md` | 1–86400 秒 |
 | 书签 | `/api/books/{id}/bookmarks` | `docs/api/api-p3.md` | 按位置幂等 |

@@ -74,10 +74,8 @@ SELECT count(*) AS blocks, sum(raw_bytes) AS raw_bytes,
        printf('%.1f%%', 100.0 * sum(length(packed)) / sum(raw_bytes)) AS ratio
 FROM chapter_blocks;
 
--- 12) 检索冒烟（改成真实存在的词）：书名 / 作者 / 章节标题三类 LIKE，
---     正文不参与检索，因此这里不再查 FTS。
+-- 12) 检索冒烟（改成真实存在的词）：书名 / 作者两类 LIKE——检索范围与
+--     book_filter.go 的 WHERE 一致；正文与章节标题都不参与，因此这里不再查 FTS。
 SELECT '书名命中' AS kind, count(*) AS hits FROM books WHERE title LIKE '%长夜%'
 UNION ALL
-SELECT '作者命中', count(*) FROM authors WHERE name LIKE '%青川%'
-UNION ALL
-SELECT '章节标题命中', count(*) FROM chapters WHERE title LIKE '%第一章%';
+SELECT '作者命中', count(*) FROM authors WHERE name LIKE '%青川%';

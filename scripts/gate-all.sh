@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 质量门禁总入口：逐项跑完 11 项门禁、各打各的结果，最后汇总并如实返回退出码。
+# 质量门禁总入口：逐项跑完 9 项门禁、各打各的结果，最后汇总并如实返回退出码。
 #
 # 为什么不用 && 串起来：门禁未通过时仍要把**其余各项的数字**跑出来，
 # 否则一次只能修一项。所以这里刻意「继续跑完」，但最终退出码 = 是否有任何一项失败，
@@ -107,7 +107,7 @@ acceptance_tests() {
   return $rc
 }
 
-printf '质量门禁（quality-gates 11 项）—— 逐项如实测量，不调阈值、不 skip\n'
+printf '质量门禁（quality-gates 9 项）—— 逐项如实测量，不调阈值、不 skip\n'
 printf '基线 commit：%s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo '（未初始化 git）')"
 
 run_gate "1" "单元测试（gofmt + go vet + go test）" gate_unit
