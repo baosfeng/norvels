@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { api, type BookQuery, type RequestOptions } from "../api/client";
 import type { ReadingSessionInput } from "./types";
 import { useResource } from "../lib/useResource";
+import { subscribeReadingRevision } from "../lib/readingRevision";
 import { subscribeStatsRevision } from "../lib/statsRevision";
 
 /** 各域取数 hook：组件只消费状态，不直接碰 api 模块。 */
@@ -189,15 +190,29 @@ export function useCollections(options: { enabled?: boolean } = {}) {
   return useResource((signal: AbortSignal) => api.collections({ signal }), [], options);
 }
 
-/** 阅读历史（分页，按书聚合）；page/size 进依赖，翻页即重新取。 */
+/**
+ * 阅读历史（分页，按书聚合）；page/size 进依赖，翻页即重新取。
+ * 别处的删除 / 清空成功后由 lib/readingRevision 广播，这里订阅并 reload——
+ * 与 useStats 同一套，用 reload 而不是把版本号塞进 deps，列表不会在重取期间闪骨架。
+ */
 export function useReadingHistory(params: { page?: number; size?: number }) {
   const key = JSON.stringify(params);
-  return useResource((signal: AbortSignal) => api.readingHistory(params, { signal }), [key]);
+  const history = useResource((signal: AbortSignal) => api.readingHistory(params, { signal }), [key]);
+  const { reload } = history;
+  useEffect(() => subscribeReadingRevision(reload), [reload]);
+  return history;
 }
 
-/** 阅读时长统计（今日/本周/累计/连续天数/近 N 天热力图）。 */
+/**
+ * 阅读时长统计（今日/本周/累计/连续天数/近 N 天热力图）。
+ * 订阅同一条广播：删掉阅读记录后，首页「今天已读」与驾驶舱的时长卡片要跟着变，
+ * 否则后端已经不算这段时长了，屏幕上还挂着旧数字。
+ */
 export function useReadingStats(days = 90) {
-  return useResource((signal: AbortSignal) => api.readingStats(days, { signal }), [days]);
+  const stats = useResource((signal: AbortSignal) => api.readingStats(days, { signal }), [days]);
+  const { reload } = stats;
+  useEffect(() => subscribeReadingRevision(reload), [reload]);
+  return stats;
 }
 
 /** 上报一次阅读时长：失败不打断阅读（离线只丢这一次的计数），返回是否落库成功。 */

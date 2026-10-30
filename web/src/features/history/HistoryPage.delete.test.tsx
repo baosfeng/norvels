@@ -68,6 +68,39 @@ beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
+describe("阅读记录变更后的跨组件刷新", () => {
+  // 回归：删掉阅读记录后，后端已经不算这段时间了，首页「今天已读」与驾驶舱时长卡
+  // 却还挂着旧数字——删除只刷新了历史列表自己。
+  it("删除成功后广播一次失效，别处的阅读统计会重取", async () => {
+    const { readingRevision } = await import("../../lib/readingRevision");
+    readingHistory.mockResolvedValue(result(1, 2, 2));
+    deleteReadingHistory.mockResolvedValue(undefined);
+    const before = readingRevision();
+
+    renderHistory();
+    await waitFor(() => expect(screen.getByTestId("history-live")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("history-delete-1"));
+    fireEvent.click(screen.getByTestId("history-confirm-1"));
+
+    await waitFor(() => expect(readingRevision()).toBe(before + 1));
+  });
+
+  it("删除失败不广播（数据没变，别处不该白重取一次）", async () => {
+    const { readingRevision } = await import("../../lib/readingRevision");
+    readingHistory.mockResolvedValue(result(1, 2, 2));
+    deleteReadingHistory.mockRejectedValue(new ApiError("network", "没能连上服务"));
+    const before = readingRevision();
+
+    renderHistory();
+    await waitFor(() => expect(screen.getByTestId("history-live")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("history-delete-1"));
+    fireEvent.click(screen.getByTestId("history-confirm-1"));
+
+    await waitFor(() => expect(showToast.mock.calls[0][1]).toBe("error"));
+    expect(readingRevision()).toBe(before);
+  });
+});
+
 describe("阅读历史：单条删除（H5 卡片）", () => {
   it("删除入口是链接之外的按钮，点开先要二次确认，确认前不发请求", async () => {
     readingHistory.mockResolvedValue(result(1, 2, 2));

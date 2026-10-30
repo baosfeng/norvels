@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { ReadingHistoryResult } from "../../api/types";
+import { bumpReadingRevision } from "../../lib/readingRevision";
 
 /**
  * 历史页的删除交互（单条 + 清空）。
@@ -78,12 +79,16 @@ export function useHistoryDeletion(options: HistoryDeletionOptions): HistoryDele
       if (target === "all") await api.clearReadingHistory();
       else await api.deleteReadingHistory(target);
       settle();
+      // 会话真的少了：让别处（首页「今天已读」、驾驶舱时长卡、另一个标签页的历史）
+      // 重取一次。少了这一步，后端已经不再算这段时间了，屏幕上还挂着旧数字。
+      bumpReadingRevision();
       notify(target === "all" ? "已清空阅读历史。" : "已删除这条阅读记录。");
       return true;
     } catch (error) {
       // 后端说"当前账号没有这条记录"：目标状态已经达成，按成功收尾，只把列表拉回事实
       if (isAlreadyGone(error)) {
         settle();
+        bumpReadingRevision();
         notify(target === "all" ? "已清空阅读历史。" : "这条记录已经不在了。");
         return true;
       }
