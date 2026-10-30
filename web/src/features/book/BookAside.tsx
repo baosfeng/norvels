@@ -55,23 +55,30 @@ export function BookAside({
         </div>
       ) : null}
       <div className="actions">
-        {/* C-02 边界：没有阅读进度时整颗按钮不渲染（不是禁用），改由「从第一章开始」承接。
+        {/* 主操作一次只放一颗：有进度时是「继续阅读」，没有进度时是「从第一章开始」。
+            C-02 边界：没有阅读进度时整颗按钮不渲染（不是禁用），改由「从第一章开始」承接。
             H5 把「开读」整组交给底部吸底条（H5StickyCta）：顶部再放一份，同屏会出现两个主操作。 */}
         {isH5 ? null : resume ? (
           <Link className="btn btn-primary" to={`/read/${book.id}/${resume.chapterId}`} data-od-id="C-02">
             继续阅读 · {resume.chapterTitle}
           </Link>
-        ) : null}
-        {isH5 ? null : first ? (
-          <Link className="btn" to={`/read/${book.id}/${first.id}`} data-od-id="C-03">
+        ) : first ? (
+          <Link className="btn btn-primary" to={`/read/${book.id}/${first.id}`} data-od-id="C-03">
             从第一章开始
           </Link>
         ) : null}
+        {/* 已经有续读时，「从第一章开始」不再是第二颗同权重的主按钮（两颗填色按钮并排，视线没有落点），
+            降成主按钮下的一颗文字入口：锚点与 href 不变，仍是 C-03。 */}
+        {isH5 || !resume || !first ? null : (
+          <Link className="actions-alt" to={`/read/${book.id}/${first.id}`} data-od-id="C-03">
+            从第一章开始
+          </Link>
+        )}
         {/* 「我的书架」两档都渲染：未登录时点了带 ?next= 去登录页（不静默失败，也不藏按钮）。
             H5 上这组按钮由底部吸底条承担（H5StickyCta），这里只留书单，避免同一动作出现两遍。 */}
         {isH5 ? null : (
           <button
-            className={`btn${shelf.onShelf ? " btn-primary" : " btn-ghost"}`}
+            className={`btn${shelf.onShelf ? " is-on" : " btn-ghost"}`}
             type="button"
             data-testid="book-toggle-shelf"
             aria-pressed={shelf.onShelf}

@@ -131,6 +131,33 @@ describe("目录：多列与撑满", () => {
     expect(rows[2].querySelectorAll(".cv-row")).toHaveLength(1);
   });
 
+  it("整页滚动模式放开 overscroll-behavior：手指落在目录上也能翻页", () => {
+    render(
+      <MemoryRouter>
+        <ChapterList bookId={7} chapters={many} ariaLabel="章节目录" />
+      </MemoryRouter>,
+    );
+    // .vol-virtual 自带 overscroll-behavior:contain；不设高度时容器自己不滚，
+    // 若不下调成 auto，触屏上从目录区起手的下滑会被整条吃掉（实测位移 0px）。
+    expect(screen.getByTestId("chapter-scroll").style.overscrollBehavior).toBe("auto");
+  });
+
+  it("限高自滚（行数超 800 / fill）仍保留样式里的 contain：内层滚完不把页面带飞", () => {
+    const huge: ChapterBrief[] = Array.from({ length: 900 }, (_, i) => ({
+      id: 1000 + i,
+      idx: i,
+      title: `第${i + 1}章 标题`,
+      volumeId: 1,
+      wordCount: 1000,
+    }));
+    render(
+      <MemoryRouter>
+        <ChapterList bookId={7} chapters={huge} ariaLabel="章节目录" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("chapter-scroll").style.overscrollBehavior).toBe("");
+  });
+
   it("fill 撑满父容器，不再由组件自己限制高度", () => {
     render(
       <MemoryRouter>

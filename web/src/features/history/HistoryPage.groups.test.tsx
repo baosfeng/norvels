@@ -21,8 +21,24 @@ vi.mock("../../api/client", async () => {
 
 const { HistoryPage } = await import("./HistoryPage");
 
-function hoursAgo(h: number): string {
-  return new Date(Date.now() - h * 3600 * 1000).toISOString();
+/**
+ * 以「本机今天零点」为基准构造时间，而不是「N 小时前」。
+ * 分组口径是日历日（见 historyGroups.ts），所以「1 小时前」在凌晨 0–1 点会落到昨天，
+ * 用相对小时写用例会在跨零点后随机变红——用例要的是「今天的那一条」，不是「一小时内的那一条」。
+ */
+function dayStart(daysAgo = 0): number {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo).getTime();
+}
+
+/** 今天第 h 小时（h 可以大于当前时刻，分组只看日历日，不看是否已过去）。 */
+function todayAt(h: number): string {
+  return new Date(dayStart() + h * 3600 * 1000).toISOString();
+}
+
+/** 昨天 / 更早的第 h 小时。 */
+function daysAgoAt(days: number, h: number): string {
+  return new Date(dayStart(days) + h * 3600 * 1000).toISOString();
 }
 
 function row(over: Partial<ReadingHistoryRow> = {}): ReadingHistoryRow {
@@ -31,7 +47,7 @@ function row(over: Partial<ReadingHistoryRow> = {}): ReadingHistoryRow {
     bookTitle: "示例书",
     chapterId: 11,
     chapterTitle: "第十二章 归途",
-    lastReadAt: hoursAgo(2),
+    lastReadAt: todayAt(2),
     totalSeconds: 4800,
     days: 3,
     ...over,
@@ -46,7 +62,7 @@ function progress(over: Partial<ReadingProgress> = {}): ReadingProgress {
     chapterIdx: 10,
     chapterTitle: "第十二章 归途",
     percent: 0.456,
-    updatedAt: hoursAgo(2),
+    updatedAt: todayAt(2),
     ...over,
   };
 }
@@ -72,9 +88,9 @@ describe("阅读历史：分组 / 单条结构 / 骨架", () => {
   it("H5 按今天 / 昨天 / 更早分组，组头出现在各自组内", async () => {
     readingHistory.mockResolvedValue({
       items: [
-        row({ bookId: 1, bookTitle: "今天读的", lastReadAt: hoursAgo(1) }),
-        row({ bookId: 2, bookTitle: "昨天读的", lastReadAt: hoursAgo(30) }),
-        row({ bookId: 3, bookTitle: "前天读的", lastReadAt: hoursAgo(60) }),
+        row({ bookId: 1, bookTitle: "今天读的", lastReadAt: todayAt(1) }),
+        row({ bookId: 2, bookTitle: "昨天读的", lastReadAt: daysAgoAt(1, 1) }),
+        row({ bookId: 3, bookTitle: "前天读的", lastReadAt: daysAgoAt(2, 1) }),
       ],
       total: 3,
     });
@@ -94,7 +110,7 @@ describe("阅读历史：分组 / 单条结构 / 骨架", () => {
   });
 
   it("只有一组的日期时不渲染空组", async () => {
-    readingHistory.mockResolvedValue({ items: [row({ lastReadAt: hoursAgo(1) })], total: 1 });
+    readingHistory.mockResolvedValue({ items: [row({ lastReadAt: todayAt(1) })], total: 1 });
     renderHistory("h5");
     await waitFor(() => expect(screen.getByTestId("history-live")).toBeTruthy());
     expect(screen.queryByTestId("history-group-yesterday")).toBeNull();
@@ -102,7 +118,12 @@ describe("阅读历史：分组 / 单条结构 / 骨架", () => {
   });
 
   it("单条写清「读到 第 N 章」、三项带标签的时间，不再是三个裸数字并排", async () => {
-    readingHistory.mockResolvedValue({ items: [row()], total: 1 });
+    // 这条验的是「相对时间文案」，所以这里必须真的是 2 小时前——
+    // 用 todayAt(2) 会在凌晨 0–2 点变成未来时刻，页面改显示日期，和用例本意无关。
+    readingHistory.mockResolvedValue({
+      items: [row({ lastReadAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString() })],
+      total: 1,
+    });
     renderHistory("h5");
     const card = await screen.findByTestId("history-row-1");
     expect(card.textContent).toContain("读到 第十二章 归途");
@@ -123,7 +144,7 @@ describe("阅读历史：分组 / 单条结构 / 骨架", () => {
 
   it("PC 表格也分组，五列信息 + 操作列表头 + 每本书一行", async () => {
     readingHistory.mockResolvedValue({
-      items: [row({ bookId: 1, lastReadAt: hoursAgo(1) }), row({ bookId: 2, lastReadAt: hoursAgo(50) })],
+      items: [row({ bookId: 1, lastReadAt: todayAt(1) }), row({ bookId: 2, lastReadAt: daysAgoAt(2, 2) })],
       total: 2,
     });
     renderHistory("pc");

@@ -15,6 +15,7 @@ import { AddToCollectionPanel } from "./AddToCollectionPanel";
 import { useTocColumns } from "./useTocColumns";
 import { H5StickyCta } from "./H5StickyCta";
 import { ackNewChaptersIfLast } from "./newChapters";
+import { chapterLabel } from "./chapterLabel";
 
 /**
  * 书籍详情：PC 双栏（封面侧 + 目录），H5 单列（封面缩为横向头部，简介折叠）。
@@ -153,6 +154,7 @@ export function BookPage() {
             book={book}
             columns={columns}
             dense={dense}
+            isH5={isH5}
             resumeChapterId={resume?.chapterId}
             onNavigate={openChapter}
           />
@@ -174,14 +176,16 @@ export function BookPage() {
   );
 }
 
-/** 最后一章：优先用后端给的 lastChapterTitle/lastChapterIdx，缺省时退回「暂无章节」。 */
+/**
+ * 最后一章：优先用后端给的 lastChapterTitle/lastChapterIdx，缺省时退回「暂无章节」。
+ * 拼装交给 chapterLabel：标题自带「第N章」时不再重复前缀（一行只说一次章号）。
+ */
 function lastChapterLabel(book: BookDetail): string {
   const title = (book.lastChapterTitle ?? "").trim();
   const idx = book.lastChapterIdx;
-  if (title && typeof idx === "number" && idx >= 0) return `第 ${idx + 1} 章 · ${title}`;
-  if (title) return title;
-  if (typeof idx === "number" && idx >= 0) return `第 ${idx + 1} 章`;
-  return "暂无章节";
+  const hasIdx = typeof idx === "number" && idx >= 0;
+  if (!title && !hasIdx) return "暂无章节";
+  return chapterLabel(idx, title);
 }
 
 /** 阅读状态的可读文案（保存成功提示用）。 */

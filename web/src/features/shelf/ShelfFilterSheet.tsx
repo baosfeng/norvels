@@ -1,12 +1,17 @@
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import type { ReadStatus } from "../../api/types";
-import { useFocusTrap } from "../../lib/focusTrap";
+import { FOCUSABLE_SELECTOR, useFocusTrap } from "../../lib/focusTrap";
 import { READ_STATUS_FILTERS } from "../../lib/readStatus";
 import type { CategoryValue } from "./CategoryFilter";
 import { leavesOf, useCategoryOptions } from "./categoryOptions";
 import { SORTS, type SortValue } from "./shelfSorts";
 
+/** 弹层打开时先停在哪一屏：入口「排序」落排序分区，「筛选」落第一个筛选分区 */
+export type ShelfSheetSection = "sort" | "filters";
+
 export interface ShelfFilterSheetProps {
+  /** 从哪个入口打开：决定初始滚动位置与焦点落点 */
+  initialSection: ShelfSheetSection;
   sort: SortValue;
   readStatus: Exclude<ReadStatus, ""> | null;
   rating: number | null;
@@ -44,8 +49,10 @@ const RATINGS = [5, 4, 3, 2, 1] as const;
  *
  * 交互：选中即生效（列表在背后实时更新），弹层保持打开，让用户连续调好几项；
  * 底部「查看 N 本」收工。Esc / 遮罩 / × 关闭，关闭后焦点回到入口按钮（`useFocusTrap`）。
+ * 从哪个入口点开就停在哪一屏（`initialSection`）：点「筛选」直接落在阅读状态，不用先滑过排序。
  */
 export function ShelfFilterSheet({
+  initialSection,
   sort,
   readStatus,
   rating,
@@ -70,6 +77,7 @@ export function ShelfFilterSheet({
 }: ShelfFilterSheetProps) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   useFocusTrap(true, sheetRef, onClose);
+  useInitialSection(sheetRef, initialSection);
   const categories = useCategoryOptions();
   const leaves = leavesOf(categories.nodes, category.l1);
 
@@ -103,7 +111,7 @@ export function ShelfFilterSheet({
         </div>
 
         <div className="sheet-scroll">
-          <SheetSection title="排序">
+          <SheetSection title="排序" anchor="sort">
             <div className="sheet-options is-triple">
               {SORTS.map((option) => (
                 <Chip
@@ -118,7 +126,7 @@ export function ShelfFilterSheet({
             </div>
           </SheetSection>
 
-          <SheetSection title="阅读状态">
+          <SheetSection title="阅读状态" anchor="filters">
             <div className="sheet-options is-wrap">
               {READ_STATUS_FILTERS.map((option) => (
                 <Chip
@@ -272,9 +280,38 @@ export function ShelfFilterSheet({
   );
 }
 
-function SheetSection({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * 打开时把目标分区滚到顶、焦点交给它第一个可点控件。
+ * 焦点陷阱默认停在头部的「清除筛选 / ×」，从那里起步等于让用户自己往下找——入口已经说明了意图，直接跳过去。
+ */
+function useInitialSection(ref: RefObject<HTMLDivElement | null>, section: ShelfSheetSection) {
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const target = root.querySelector<HTMLElement>(`[data-sheet-section="${section}"]`);
+    if (!target) return;
+    target.scrollIntoView?.({ block: "start" });
+    target.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
+  }, [ref, section]);
+}
+
+function SheetSection({
+  title,
+  anchor,
+  children,
+}: {
+  title: string;
+  anchor?: ShelfSheetSection;
+  children: ReactNode;
+}) {
   return (
-    <div className="sheet-section" role="group" aria-label={`${title}筛选`}>
+    <div
+      className="sheet-section"
+      role="group"
+      aria-label={`${title}筛选`}
+      data-sheet-section={anchor}
+      data-testid={anchor ? `sheet-section-${anchor}` : undefined}
+    >
       <span className="sheet-section-title">{title}</span>
       {children}
     </div>

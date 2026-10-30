@@ -223,15 +223,24 @@ describe("H5 书架：页头与底部入口", () => {
     expect(document.querySelector(".shelf-head-sub")?.textContent).toContain("1 本 · 按最近更新");
   });
 
-  it("排序与筛选合并成一个入口：有筛选时按钮带计数", async () => {
+  it("排序与筛选是两个按钮：排序写当前排序名，筛选写已选计数", async () => {
     renderShelf(["/?status=done&rating=4"]);
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
-    const trigger = screen.getByTestId("shelf-sort-trigger");
-    expect(trigger.textContent).toContain("筛选 2");
-    expect(trigger.textContent).toContain("最近更新");
-    // 没有并列的第二个「排序：」按钮
+    const sortTrigger = screen.getByTestId("shelf-sort-trigger");
+    expect(sortTrigger.textContent).toContain("排序");
+    expect(sortTrigger.textContent).toContain("最近更新");
+
+    // 两件事不再塞进同一个按钮：筛选入口直接报已选项数
+    const filterTrigger = screen.getByTestId("shelf-filter-trigger");
+    expect(filterTrigger.textContent).toBe("已选 2 项");
     expect(screen.queryByText(/^排序：/)).toBeNull();
+  });
+
+  it("没有筛选时筛选按钮只写「筛选」", async () => {
+    renderShelf();
+    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
+    expect(screen.getByTestId("shelf-filter-trigger").textContent).toBe("筛选");
   });
 
   it("弹层底部吸底按钮报出当前命中数量，按它收工", async () => {

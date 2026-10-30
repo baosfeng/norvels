@@ -1,14 +1,21 @@
 import type { RefObject } from "react";
-import type { ReadStatus } from "../../api/types";
+import type { Collection, ReadStatus } from "../../api/types";
 import { READ_STATUS_FILTERS } from "../../lib/readStatus";
 import { CategoryFilter, type CategoryValue } from "./CategoryFilter";
-import { CollectionFilter } from "./CollectionFilter";
+import { CollectionFilter, CollectionManageButton } from "./CollectionFilter";
 import { SORTS, type SortValue } from "./shelfSorts";
 
 type AuthorOption = { id: number; name: string; bookCount: number };
 type TagOption = { id: number; name: string };
 
-/** PC 工具栏（C-19/C-22/C-23/C-24/C-28/C-29）：排序、四类筛选、标签 chips、清除筛选。 */
+/**
+ * PC 工具栏（C-19/C-22/C-23/C-24/C-25/C-26/C-28/C-29）：排序、四类筛选、标签 chips。
+ *
+ * 排版口径：每组都是「一行小标题 + 一个控件」，组与组等宽、顶端对齐（样式在 ix-library.css 的
+ * `.shelf-toolbar`，不改 prototype.css 的全局 .toolbar——它还被 AdminFilterBar / AuthorsPage 用）。
+ * 「管理书单」管的是书单本身而不是当前筛选值，放在右侧操作区与「清除筛选」同一处：
+ * 留在「书单」组里会把这个 label 撑成两行，整排筛选的标签都会被 flex-end 顶歪。
+ */
 export function ShelfToolbar({
   sortRef,
   sort,
@@ -20,6 +27,8 @@ export function ShelfToolbar({
   authorId,
   onAuthorChange,
   authors,
+  collections,
+  onCollectionsChanged,
   collection,
   onCollectionChange,
   category,
@@ -40,6 +49,9 @@ export function ShelfToolbar({
   authorId: number | null;
   onAuthorChange: (next: number | null) => void;
   authors: AuthorOption[];
+  /** 书单候选：书架页已为 H5 弹层取过一份，PC 复用同一份（不再单独请求） */
+  collections: Collection[];
+  onCollectionsChanged: () => void;
   collection: number | null;
   onCollectionChange: (next: number | null) => void;
   category: CategoryValue;
@@ -51,7 +63,7 @@ export function ShelfToolbar({
   onResetFilters: () => void;
 }) {
   return (
-    <div className="toolbar" data-testid="shelf-toolbar">
+    <div className="toolbar shelf-toolbar" data-testid="shelf-toolbar">
       <label>
         排序
         <select
@@ -124,10 +136,24 @@ export function ShelfToolbar({
 
       <label>
         书单
-        <CollectionFilter value={collection} onChange={onCollectionChange} />
+        <CollectionFilter value={collection} onChange={onCollectionChange} items={collections} />
       </label>
 
       <CategoryFilter value={category} onChange={onCategoryChange} />
+
+      <div className="shelf-toolbar-actions" data-testid="shelf-toolbar-actions">
+        <CollectionManageButton
+          value={collection}
+          onChange={onCollectionChange}
+          items={collections}
+          onChanged={onCollectionsChanged}
+        />
+        {filtering ? (
+          <button className="btn btn-ghost" type="button" data-od-id="C-29" onClick={onResetFilters}>
+            清除筛选
+          </button>
+        ) : null}
+      </div>
 
       <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags" data-od-id="C-28">
         <button type="button" className={`chip${tag === null ? " is-active" : ""}`} onClick={() => onTagChange(null)}>
@@ -145,13 +171,8 @@ export function ShelfToolbar({
         ))}
       </div>
 
-      {filtering ? (
-        <button className="btn btn-ghost" type="button" data-od-id="C-29" onClick={onResetFilters}>
-          清除筛选
-        </button>
-      ) : null}
       {rating !== null ? (
-        <span className="meta" data-testid="rating-filter-hint">
+        <span className="meta shelf-toolbar-note" data-testid="rating-filter-hint">
           只列已评分的书（0 星 = 未评，不参与评分筛选与按评分排序）。
         </span>
       ) : null}

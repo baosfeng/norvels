@@ -1,31 +1,33 @@
 import { useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { BookDetail, ChapterBrief, Volume } from "../../api/types";
 import { formatCount } from "../../lib/format";
+import { nextReveal, takeRevealed } from "../../lib/tocRows";
+import { chapterLabel } from "./chapterLabel";
 import { ChapterList } from "./ChapterList";
-import {
-  initialShown,
-  moreChaptersLabel,
-  searchSummary,
-  searchToc,
-  TOC_CHUNK,
-  tocCountLabel,
-} from "./tocView";
+import { useAutoLoadMore } from "./useAutoLoadMore";
+import { firstBatch, searchSummary, searchToc, tocCountLabel } from "./tocView";
 
 /**
  * 目录区（详情页右栏下半段）。
- * 锚点：C-11 目录搜索（新增）、C-12 清空搜索、C-13 卷跳转、C-14 卷头、C-15 章节行（在 ChapterList 里）、
- * C-16 卷内再显示 60 章（新增）。
+ * 锚点：C-11 目录搜索、C-12 清空搜索、C-13 卷跳转、C-14 卷头、C-15 章节行（在 ChapterList 里）。
+ *
+ * 两档的加载形态不同：PC 一次铺全（宽屏装得下，也方便扫读与定位），
+ * H5 先给一屏、滚到底自动续载——手机上没有「点按钮看更多」的耐心，只有下滑。
  */
 export function BookToc({
   book,
   columns,
   dense,
+  isH5,
   resumeChapterId,
   onNavigate,
 }: {
   book: BookDetail;
   columns: number;
   dense: boolean;
+  /** 窄屏档位：决定「一次铺全」还是「滚到底续载」 */
+  isH5: boolean;
   resumeChapterId?: number;
   onNavigate: (chapter: ChapterBrief) => void;
 }) {
@@ -38,14 +40,6 @@ export function BookToc({
   const searching = query.trim().length > 0;
   // 倒序只换展示顺序，不换数据：卷内章节与卷顺序同时反转，读起来才是「从最新往回」
   const [reversed, setReversed] = useState(false);
-  /**
-   * 目录默认只给一屏预览，点「查看全部目录」才铺开。
-   *
-   * 动因：几百章的书一次性铺开，详情页会被撑到两三千像素高，
-   * 「简介 → 目录 → 页脚」之间的信息全被目录盖住，读者想找的不是第一章而是「有没有目录」。
-   * 搜索命中时不受影响：那时用户已经明确在找具体章节。
-   */
-  const [preview, setPreview] = useState(true);
   const orderedVolumes = useMemo(
     () => (reversed ? [...volumes].reverse().map((v) => ({ ...v, chapters: [...v.chapters].reverse() })) : volumes),
     [volumes, reversed],
@@ -124,15 +118,16 @@ export function BookToc({
           onClear={clearSearch}
         />
       ) : volumes.length === 1 ? (
-        <SingleVolume
+        <VolumeBody
           bookId={book.id}
           volume={orderedVolumes[0]}
           columns={columns}
           dense={dense}
+          isH5={isH5}
           resumeChapterId={resumeChapterId}
           onNavigate={onNavigate}
-          collapsed={preview}
-          onExpandAll={() => setPreview(false)}
+          ariaLabel="章节目录"
+          testId="book-single-volume"
         />
       ) : (
         <MultiVolumes
@@ -140,6 +135,7 @@ export function BookToc({
           volumes={orderedVolumes}
           columns={columns}
           dense={dense}
+          isH5={isH5}
           resumeChapterId={resumeChapterId}
           onNavigate={onNavigate}
         />
@@ -205,19 +201,19 @@ function ResumeJump({
   const index = flat.findIndex((chapter) => chapter.id === chapterId);
   if (index < 0) return null;
   const chapter = flat[index];
+  // 用链接而不是按钮：目录里跳章本来就是导航（章节行也是 Link），
+  // 按钮只能挂 onNavigate 的「清角标」回调，点了不会离开详情页。
   return (
-    <button
+    <Link
       className="toc-resume"
-      type="button"
+      to={`/read/${book.id}/${chapter.id}`}
       data-testid="book-toc-resume"
       onClick={() => onNavigate(chapter)}
     >
       <span className="meta">继续阅读</span>
-      <span className="toc-resume-main">
-        第 {index + 1} 章 · {chapter.title}
-      </span>
+      <span className="toc-resume-main">{chapterLabel(index, chapter.title)}</span>
       <span aria-hidden="true">›</span>
-    </button>
+    </Link>
   );
 }
 
@@ -277,70 +273,63 @@ function SearchResults({
 }
 
 /**
- * 单卷书：不渲染卷跳转与卷头，章节直接铺开，但同样按 60 章分块。
+ * 一卷的章节列表：PC 一次铺全，H5 先给一屏、滚到底自动续载。
  *
- * collapsed 时只给一屏预览（PREVIEW_COUNT 章）+「查看全部目录」，
- * 避免几百章的书把详情页撑成两三千像素高。
+ * 「铺开」指的是数据都在列表里，不是把几千行塞进 DOM——ChapterList 的虚拟滚动一直开着。
  */
-const PREVIEW_COUNT = 8;
-
-function SingleVolume({
+function VolumeBody({
   bookId,
   volume,
   columns,
   dense,
+  isH5,
   resumeChapterId,
   onNavigate,
-  collapsed = false,
-  onExpandAll,
+  ariaLabel,
+  testId,
 }: {
   bookId: number;
   volume: Volume;
   columns: number;
   dense: boolean;
+  isH5: boolean;
   resumeChapterId?: number;
   onNavigate: (chapter: ChapterBrief) => void;
-  collapsed?: boolean;
-  onExpandAll?: () => void;
+  ariaLabel: string;
+  testId?: string;
 }) {
-  const [shown, setShown] = useState(() => initialShown(volume.chapters.length));
-  // 铺满的那一次点击：按钮随即消失，焦点交给新增的最后一行（C-16 移除后）
-  const [focusToken, setFocusToken] = useState(0);
-  const remaining = volume.chapters.length - shown;
-  const limit = collapsed ? Math.min(PREVIEW_COUNT, volume.chapters.length) : shown;
-  const hidden = volume.chapters.length - limit;
+  const total = volume.chapters.length;
+  const [shown, setShown] = useState(() => firstBatch(total));
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  // PC 不受首屏批次约束；H5 按已续载的批数截断。
+  // 在 PC 档位挂载的实例记下「本来就要全量」：窗口拉窄成 H5 时，读者已经看过
+  // 全部章节，不该又把它们藏回去；H5 里续载只增不减。
+  const [allFromStart] = useState(() => !isH5);
+  const limit = isH5 && !allFromStart ? Math.min(shown, total) : total;
+  const hasMore = limit < total;
+  useAutoLoadMore({
+    enabled: isH5,
+    hasMore,
+    rootRef: bodyRef,
+    onMore: () => setShown((n) => nextReveal(n, total)),
+  });
   return (
-    <div className="vol-body" data-testid="book-single-volume" data-volume={volume.idx}>
+    <div className="vol-body" ref={bodyRef} data-testid={testId} data-volume={volume.idx}>
       <ChapterList
         bookId={bookId}
-        chapters={volume.chapters.slice(0, limit)}
+        chapters={takeRevealed(volume.chapters, limit)}
         currentChapterId={resumeChapterId}
         readUpToId={resumeChapterId}
         columns={columns}
         dense={dense}
         scrollToCurrent
         onNavigate={onNavigate}
-        ariaLabel="章节目录"
-        focusLastRow={focusToken || undefined}
+        ariaLabel={ariaLabel}
       />
-      {collapsed && hidden > 0 && onExpandAll ? (
-        <button
-          className="toc-expand"
-          type="button"
-          data-testid="book-toc-expand"
-          onClick={onExpandAll}
-        >
-          查看全部 {volume.chapters.length} 章 ›
-        </button>
-      ) : remaining > 0 ? (
-        <MoreButton
-          volumeIdx={volume.idx}
-          remaining={remaining}
-          onMore={() => {
-            setShown((n) => n + TOC_CHUNK);
-            if (remaining <= TOC_CHUNK) setFocusToken((n) => n + 1);
-          }}
-        />
+      {hasMore ? (
+        <p className="meta" data-testid="book-toc-autoload-hint">
+          继续下滑，自动加载下一批
+        </p>
       ) : null}
     </div>
   );
@@ -352,6 +341,7 @@ function MultiVolumes({
   volumes,
   columns,
   dense,
+  isH5,
   resumeChapterId,
   onNavigate,
 }: {
@@ -359,17 +349,13 @@ function MultiVolumes({
   volumes: Volume[];
   columns: number;
   dense: boolean;
+  isH5: boolean;
   resumeChapterId?: number;
   onNavigate: (chapter: ChapterBrief) => void;
 }) {
   const resumeVolume = volumes.find((v) => v.chapters.some((c) => c.id === resumeChapterId));
   const openByDefault = resumeVolume?.idx ?? volumes[0].idx;
   const [open, setOpen] = useState<Set<number>>(() => new Set([openByDefault]));
-  const [shown, setShown] = useState<Record<number, number>>({});
-  /** 与单卷同一口径：展开的那卷先给 PREVIEW_COUNT 章预览，点「查看全部目录」才铺开 */
-  const [preview, setPreview] = useState(true);
-  /** 某卷刚铺满：递增计数驱动该卷把焦点交到新增最后一行（C-16） */
-  const [focusTokens, setFocusTokens] = useState<Record<number, number>>({});
   /** 卷跳转最多同时有 4 个算「当前卷」：卷开得再多，高亮也只留最早打开的 4 个（契约 C-13）。 */
   const activeJumps = new Set([...open].slice(0, 4));
 
@@ -404,107 +390,41 @@ function MultiVolumes({
         </div>
       </div>
       <div className="volumes">
-        {volumes.map((volume) => {
-          const full = shown[volume.idx] ?? initialShown(volume.chapters.length);
-          const limit = preview ? Math.min(PREVIEW_COUNT, volume.chapters.length) : full;
-          const remaining = volume.chapters.length - full;
-          const hiddenByPreview = volume.chapters.length - limit;
-          return (
-            <section
-              className={`volume${open.has(volume.idx) ? " is-open" : ""}`}
-              key={volume.idx}
-              data-volume={volume.idx}
+        {volumes.map((volume) => (
+          <section
+            className={`volume${open.has(volume.idx) ? " is-open" : ""}`}
+            key={volume.idx}
+            data-volume={volume.idx}
+          >
+            <button
+              className="vol-head"
+              type="button"
+              aria-expanded={open.has(volume.idx)}
+              data-od-id="C-14"
+              onClick={() => toggle(volume.idx)}
             >
-              <button
-                className="vol-head"
-                type="button"
-                aria-expanded={open.has(volume.idx)}
-                data-od-id="C-14"
-                onClick={() => toggle(volume.idx)}
-              >
-                <span className="vol-title">{volumeLabel(volume)}</span>
-                <span className="meta num">{chapterRange(volume)}</span>
-                <span className="vol-chevron" aria-hidden="true">
-                  {open.has(volume.idx) ? "−" : "+"}
-                </span>
-              </button>
-              {open.has(volume.idx) ? (
-                <div className="vol-body">
-                  <ChapterList
-                    bookId={bookId}
-                    chapters={volume.chapters.slice(0, limit)}
-                    currentChapterId={resumeChapterId}
-                    readUpToId={resumeChapterId}
-                    columns={columns}
-                    dense={dense}
-                    scrollToCurrent
-                    onNavigate={onNavigate}
-                    ariaLabel={`${volumeLabel(volume)} 目录`}
-                    focusLastRow={focusTokens[volume.idx]}
-                  />
-                  {preview && hiddenByPreview > 0 ? (
-                    <button
-                      className="toc-expand"
-                      type="button"
-                      data-testid="book-toc-expand"
-                      onClick={() => setPreview(false)}
-                    >
-                      查看全部 {volume.chapters.length} 章 ›
-                    </button>
-                  ) : remaining > 0 ? (
-                    <MoreButton
-                      volumeIdx={volume.idx}
-                      remaining={remaining}
-                      onMore={() => {
-                        setShown((prev) => ({
-                          ...prev,
-                          [volume.idx]: (prev[volume.idx] ?? initialShown(volume.chapters.length)) + TOC_CHUNK,
-                        }));
-                        if (remaining <= TOC_CHUNK) {
-                          setFocusTokens((prev) => ({ ...prev, [volume.idx]: (prev[volume.idx] ?? 0) + 1 }));
-                        }
-                      }}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-            </section>
-          );
-        })}
+              <span className="vol-title">{volumeLabel(volume)}</span>
+              <span className="meta num">{chapterRange(volume)}</span>
+              <span className="vol-chevron" aria-hidden="true">
+                {open.has(volume.idx) ? "−" : "+"}
+              </span>
+            </button>
+            {open.has(volume.idx) ? (
+              <VolumeBody
+                bookId={bookId}
+                volume={volume}
+                columns={columns}
+                dense={dense}
+                isH5={isH5}
+                resumeChapterId={resumeChapterId}
+                onNavigate={onNavigate}
+                ariaLabel={`${volumeLabel(volume)} 目录`}
+              />
+            ) : null}
+          </section>
+        ))}
       </div>
     </>
-  );
-}
-
-/**
- * 卷内「再显示 60 章」。按钮仍在时焦点留在本按钮（可连点）；
- * 全部显示后按钮消失，焦点落到本卷新出现的最后一行。
- */
-function MoreButton({
-  volumeIdx,
-  remaining,
-  onMore,
-}: {
-  volumeIdx: number;
-  remaining: number;
-  onMore: () => void;
-}) {
-  return (
-    <button
-      className="btn vol-more"
-      type="button"
-      data-od-id="C-16"
-      data-testid={`book-more-${volumeIdx}`}
-      onClick={(event) => {
-        const button = event.currentTarget;
-        onMore();
-        // 按钮还在时焦点留在本按钮（可连点）；铺满后按钮消失，焦点由 ChapterList
-        // 滚到末行再交给最后一行（虚拟滚动下直接查 DOM 会拿到中间的行）
-        if (remaining > TOC_CHUNK) requestAnimationFrame(() => button.isConnected && button.focus());
-      }}
-    >
-      {moreChaptersLabel(remaining)}
-    </button>
   );
 }
 

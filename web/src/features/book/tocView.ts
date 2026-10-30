@@ -1,12 +1,23 @@
 import type { ChapterBrief } from "../../api/types";
 
 /**
- * 目录搜索与卷内分块（纯函数，契约 C-11 / C-12 / C-16）。
+ * 目录搜索与分块（纯函数，契约 C-11 / C-12）。
  *
  * 两处口径一起放这里，是因为它们回答同一个问题：「目录这一屏到底显示哪些章」。
- * 搜索命中先给 TOC_CHUNK 条，卷内也按 TOC_CHUNK 步进，两个数都是 60。
+ * 搜索命中先给 TOC_CHUNK 条；H5 卷内先给 TOC_FIRST_BATCH 章，之后每次下滑补 TOC_CHUNK 章。
  */
 export const TOC_CHUNK = 60;
+
+/**
+ * H5 首屏先给这么多章：手机上一屏目录就够，剩下的随下滑续载（不点按钮）。
+ * PC 不用这个数——PC 一次铺全，虚拟滚动只画视口内的行。
+ */
+export const TOC_FIRST_BATCH = 20;
+
+/** 首屏显示的章数（本卷不足时全给）。 */
+export function firstBatch(total: number): number {
+  return Math.min(TOC_FIRST_BATCH, Math.max(0, Math.trunc(total)));
+}
 
 export interface TocMatch {
   /** 这一屏要渲染的命中章节（最多 TOC_CHUNK 条） */
@@ -41,15 +52,4 @@ export function searchSummary(total: number): string {
 export function tocCountLabel(total: number, match: number | null): string {
   if (match === null) return `${total} 章`;
   return `${match} 章匹配`;
-}
-
-/** 卷内按钮文案：一次补 60 行，剩余数同步减少。 */
-export function moreChaptersLabel(remaining: number): string {
-  const step = Math.min(TOC_CHUNK, remaining);
-  return `在本卷再显示 ${step} 章（本卷还有 ${remaining} 章）`;
-}
-
-/** 卷内第一次渲染显示多少章（本卷不足 60 章时全铺开，按钮不出现）。 */
-export function initialShown(total: number): number {
-  return Math.min(TOC_CHUNK, total);
 }

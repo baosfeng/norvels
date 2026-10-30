@@ -1,12 +1,15 @@
 import type { RefObject } from "react";
 import { formatCount } from "../../lib/format";
 import { RandomBookButton } from "./RandomBookButton";
+import type { ShelfSheetSection } from "./ShelfFilterSheet";
 
 /**
  * 书架页头：标题 + 一行操作。
  *
- * H5 不再重复「书架 · N 本 / 书架」两行字：标题只出现一次，数量与排序状态并进下方操作行；
- * 「排序：xx」与「筛选」合并成一个按钮（有筛选时带计数），每次打开弹层只换一个入口。
+ * H5 不再重复「书架 · N 本 / 书架」两行字：标题只出现一次，数量与排序状态并进下方操作行。
+ * 入口拆成两个：**排序**（文案带当前排序名）与**筛选**（无筛选写「筛选」，有筛选写「已选 N 项」），
+ * 各自打开同一个底部弹层、直接停在对应分区——一个「筛选 n · 排序名」按钮读起来只是排序，
+ * 高级筛选就藏在里面没人发现。
  * PC 保留「最近入库」标题与副标题——宽屏有位置写清排序与总量，不必压缩。
  */
 export function ShelfHead({
@@ -44,7 +47,8 @@ export function ShelfHead({
   filterCount: number;
   onToggleSelecting: () => void;
   onOpenBatch: () => void;
-  onOpenSheet: () => void;
+  /** 打开底部弹层：告诉它先停在哪个分区（排序 / 筛选） */
+  onOpenSheet: (section: ShelfSheetSection) => void;
   /** 当前是「我的书架」：标题与副标题换一套，避免把个人书架说成"最近入库" */
   mine: boolean;
 }) {
@@ -115,12 +119,23 @@ export function ShelfHead({
             data-od-id="C-20"
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
-            aria-label={
-              filterCount > 0 ? `排序与筛选，已启用 ${filterCount} 项筛选` : "排序与筛选"
-            }
-            onClick={onOpenSheet}
+            aria-label={`排序，当前按${sortLabel}`}
+            onClick={() => onOpenSheet("sort")}
           >
-            筛选{filterCount > 0 ? ` ${filterCount}` : ""} · {sortLabel}
+            排序 · {sortLabel}
+          </button>
+        ) : null}
+        {isH5 && !mine ? (
+          <button
+            className={`btn shelf-filter-trigger${filterCount > 0 ? " has-filters" : ""}`}
+            type="button"
+            data-testid="shelf-filter-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            aria-label={filterCount > 0 ? `筛选，已选 ${filterCount} 项` : "筛选"}
+            onClick={() => onOpenSheet("filters")}
+          >
+            {filterCount > 0 ? `已选 ${filterCount} 项` : "筛选"}
           </button>
         ) : null}
       </div>

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, BookMetaPatch, ReadingProgress } from "../../api/types";
 import { ToastHost } from "../../lib/toast";
 import { TierProvider } from "../../lib/tier";
+import { TOC_CHUNK, TOC_FIRST_BATCH } from "./tocView";
 
 const book: BookDetail = {
   id: 7,
@@ -183,6 +184,16 @@ describe("书籍详情：只读展示", () => {
     expect(screen.getByTestId("book-last-chapter").textContent).toContain("第 2 章 · 第二章");
   });
 
+  it("最新章节标题自带「第N章」时不再重复拼章号（一行只说一次）", () => {
+    bookState.data = { ...book, lastChapterIdx: 149, lastChapterTitle: "第150章 灯影未归人" };
+    renderPage();
+    const text = screen.getByTestId("book-last-chapter").textContent ?? "";
+    expect(text).toContain("第 150 章 · 灯影未归人");
+    // 「第 150 章」只出现一次，标题里那份「第150章」被剥掉了
+    expect(text.match(/第\s*150\s*章/g)).toHaveLength(1);
+    expect(text).not.toMatch(/第150章/);
+  });
+
   it("还没有章节时元信息行说清「暂无章节」", () => {
     bookState.data = { ...book, volumes: [], lastChapterIdx: -1, lastChapterTitle: "" };
     renderPage();
@@ -346,5 +357,77 @@ describe("书籍详情：目录列数与行高", () => {
     renderPage();
     // 2 章、3 列 → 当前章（下标 1）在第 0 行
     expect(scrollToIndexSpy).toHaveBeenCalledWith(0, { align: "center" });
+  });
+});
+
+/** 150 章单卷样书：目录加载形态（PC 一次铺全 / H5 滚到底续载）用它。 */
+const bigBook: BookDetail = {
+  ...book,
+  id: 9,
+  chapterCount: 150,
+  volumeCount: 1,
+  lastChapterTitle: "第 150 章 夜行",
+  lastChapterIdx: 149,
+  volumes: [
+    {
+      id: 1,
+      idx: 0,
+      title: "未分卷",
+      chapters: Array.from({ length: 150 }, (_, i) => ({
+        id: 900 + i,
+        idx: i,
+        title: `第 ${i + 1} 章 夜行`,
+        volumeId: 1,
+        wordCount: 2000,
+      })),
+    },
+  ],
+};
+
+describe("书籍详情：目录加载形态（PC 一次铺全 / H5 滚到底续载）", () => {
+  beforeEach(() => {
+    bookState.data = bigBook;
+    updateBook.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("PC 1440：目录一次铺全 150 章，页面上没有「查看全部」「再显示」按钮", () => {
+    setWidth(1440);
+    renderPage();
+    expect(document.querySelectorAll(".cv-row")).toHaveLength(150);
+    expect(screen.queryByTestId("book-toc-expand")).toBeNull();
+    expect(document.querySelectorAll('[data-testid^="book-more-"]')).toHaveLength(0);
+  });
+
+  it("H5 390：先给首屏一小批，滚到底自动补下一批，全程没有按钮", () => {
+    setWidth(390);
+    let listBottom = 4000;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      () =>
+        ({
+          top: 0,
+          bottom: listBottom,
+          left: 0,
+          right: 0,
+          width: 100,
+          height: listBottom,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    );
+    renderPage("h5");
+    const rows = () => document.querySelectorAll(".cv-row").length;
+    expect(rows()).toBe(TOC_FIRST_BATCH);
+    expect(screen.queryByTestId("book-toc-expand")).toBeNull();
+    expect(document.querySelectorAll('[data-testid^="book-more-"]')).toHaveLength(0);
+
+    // 滚到列表底（不点任何按钮）：自动补一批
+    listBottom = 768 - 40;
+    fireEvent.scroll(window);
+    expect(rows()).toBe(TOC_FIRST_BATCH + TOC_CHUNK);
   });
 });

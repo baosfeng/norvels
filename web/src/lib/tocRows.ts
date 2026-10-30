@@ -76,3 +76,36 @@ export function takeRevealed<T>(items: readonly T[], revealed: number): T[] {
 export function nextReveal(revealed: number, total: number): number {
   return Math.min(total, Math.max(0, Math.trunc(revealed)) + TOC_CHUNK);
 }
+
+/**
+ * 距底部还剩这么多像素就开始补下一批：留出「手指还在滑」的余量，
+ * 让下一批在读者滑到底之前就接上，不出现「滑到底再等加载」的停顿。
+ */
+export const TOC_AUTO_LOAD_GAP = 240;
+
+/** 滚动容器量出来的三个数：当前偏移、可视高度、内容总高。 */
+export interface TocScrollMetrics {
+  scrollTop: number;
+  clientHeight: number;
+  scrollHeight: number;
+}
+
+/**
+ * 滚到底自动续载的判定（纯函数，便于单测）：
+ * - 已经全部显示 / 没有章节 → 不用补；
+ * - scrollHeight ≤ 0 = 还没排版（或测试环境没有布局）→ 不补，交给真正的滚动事件；
+ * - 一屏都装不满（内容比可视区短，永远滚不到底）→ 直接补下一批，避免按钮卡在屏幕外；
+ * - 其余按「距底部 ≤ gap」判定。
+ */
+export function shouldAutoReveal(
+  metrics: TocScrollMetrics,
+  revealed: number,
+  total: number,
+  gap: number = TOC_AUTO_LOAD_GAP,
+): boolean {
+  if (total <= 0 || revealed >= total) return false;
+  if (metrics.scrollHeight <= 0) return false;
+  const slack = Math.max(0, gap);
+  if (metrics.scrollHeight <= metrics.clientHeight + slack) return true;
+  return metrics.scrollTop + metrics.clientHeight + slack >= metrics.scrollHeight;
+}

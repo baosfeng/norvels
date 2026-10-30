@@ -1,41 +1,62 @@
 import { useState } from "react";
 import { api, ApiError } from "../../api/client";
-import { useCollections } from "../../api/hooks";
 import type { Collection } from "../../api/types";
 import { showToast } from "../../lib/toastStore";
 
 /**
- * 书架筛选区的「书单」筛选 + 管理入口（新建 / 改名 / 删除）。
- * 书单是扁平收藏夹：一本书可属多个书单，这里只管书单本身，不管成员（成员在详情页加）。
- * 所有写操作成功后 reload 列表；删除的正好是当前筛选值时通知父级清空选中，避免筛出空页。
+ * 书架筛选区的「书单」下拉。
+ *
+ * 候选由调用方传进来：书架页已经为 H5 弹层取过同一份 `/api/collections`，
+ * 这里再自己取一次就是把同一份列表发两遍请求（而且弹层改完名不跟着刷新）。
+ * 书单是扁平收藏夹：一本书可属多个书单，这里只管筛选，不管成员（成员在详情页加）。
  */
 export function CollectionFilter({
   value,
   onChange,
+  items,
 }: {
   value: number | null;
   onChange: (id: number | null) => void;
+  items: Collection[];
 }) {
-  const list = useCollections();
+  return (
+    <select
+      className="select"
+      value={value ?? ""}
+      data-testid="filter-collection-select"
+      data-od-id="C-25"
+      onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
+    >
+      <option value="">全部书单</option>
+      {items.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.name}（{item.bookCount}）
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * 「管理书单」：新建 / 改名 / 删除，改的是书单本身而不是当前列表的筛选值，
+ * 所以它是工具栏右侧的独立操作，不占筛选组（占进去会把「书单」那组撑成两行、整排错位）。
+ * 所有写操作成功后由父级刷新候选；删除的正好是当前筛选值时清空选中，避免筛出空页。
+ */
+export function CollectionManageButton({
+  value,
+  onChange,
+  items,
+  onChanged,
+}: {
+  value: number | null;
+  onChange: (id: number | null) => void;
+  items: Collection[];
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
-  const items = list.data?.items ?? [];
 
   return (
-    <div className="chips" role="group" aria-label="书单筛选" data-testid="filter-collection">
-      <select
-        className="select"
-        value={value ?? ""}
-        data-testid="filter-collection-select"
-        data-od-id="C-25"
-        onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
-      >
-        <option value="">全部书单</option>
-        {items.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}（{item.bookCount}）
-          </option>
-        ))}
-      </select>
+    <>
       <button
         className="btn btn-ghost"
         type="button"
@@ -48,14 +69,14 @@ export function CollectionFilter({
         <CollectionManagerDialog
           items={items}
           onClose={() => setOpen(false)}
-          onChanged={() => list.reload()}
+          onChanged={onChanged}
           onDeleted={(id) => {
             if (value === id) onChange(null);
-            list.reload();
+            onChanged();
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 

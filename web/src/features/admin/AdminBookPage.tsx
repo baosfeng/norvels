@@ -159,16 +159,6 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
         <span className="meta">{book.title}</span>
       </nav>
 
-      <div className="page-head">
-        <div>
-          <p className="eyebrow">书籍管理 · 单书</p>
-          <h1 data-testid="admin-book-title">{book.title}</h1>
-          <p className="sub">
-            {formatCount(book.chapterCount)} 章 · {formatCount(book.wordCount)} 字 · 导入于 {formatDate(book.importedAt)}
-          </p>
-        </div>
-      </div>
-
       {banner ? (
         <p
           className={`notice${banner.tone === "error" ? " is-error" : ""}`}
@@ -181,6 +171,18 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
 
       <div className="book-admin">
         <div className="book-col">
+          {/* 页头放在左栏里而不是跨满整页：右栏（章节表）才能与它同 top 起步。
+              曾经页头独占一行 110px、右半幅完全空白（实测 x664–1412 × y112–222 无任何内容）。 */}
+          <div className="page-head">
+            <div>
+              <p className="eyebrow">书籍管理 · 单书</p>
+              <h1 data-testid="admin-book-title">{book.title}</h1>
+              <p className="sub">
+                {formatCount(book.chapterCount)} 章 · {formatCount(book.wordCount)} 字 · 导入于{" "}
+                {formatDate(book.importedAt)}
+              </p>
+            </div>
+          </div>
           <div className="card">
             <div className="card-head">
               <h2>封面</h2>

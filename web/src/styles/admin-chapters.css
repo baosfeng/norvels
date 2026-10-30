@@ -29,10 +29,24 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /* 卷行此前是 81px（prototype.css 的 .vol-head 自带 14px 上下内边距 + 40px 最小高），
+     而它只是「未分卷 + 150 章」一行字：去掉内边距、按 32px 的热区高度收敛到 52px，
+     与章节行同高，卷与章之间的那段空白就没有了。 */
+  min-height: 32px;
+  padding: 0;
 }
 .chapter-table .vol-row .vol-head .meta {
   margin-left: auto;
 }
+/* 行内 4 颗操作键：一行排齐（不折行）。折成两行时每行 101px，
+   一屏只装 3 章；排齐后行高 52px，一屏 11 章。 */
+.ch-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .ch-batch {
   display: flex;
   flex-wrap: wrap;

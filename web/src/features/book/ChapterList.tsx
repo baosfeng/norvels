@@ -46,7 +46,6 @@ export function ChapterList({
   dense = false,
   fill = false,
   scrollToCurrent = false,
-  focusLastRow,
   readUpToId,
 }: {
   bookId: number;
@@ -66,8 +65,6 @@ export function ChapterList({
   fill?: boolean;
   /** 首次渲染后滚到当前章（长目录打开就能看到读到哪了） */
   scrollToCurrent?: boolean;
-  /** 递增计数：变化时滚到本卷末尾并把焦点交给最后一行（C-16 铺满后按钮消失） */
-  focusLastRow?: number;
   /**
    * 读到的那一章：排在它前面的章按「已读」弱化。
    * 只按章序判断，不看阅读时长——读者要的是「哪些翻过了」，不是「哪些读够了」。
@@ -87,6 +84,14 @@ export function ChapterList({
       : unbounded && rows.length > UNBOUNDED_ROW_LIMIT
         ? { maxHeight: UNBOUNDED_MAX_HEIGHT }
         : undefined;
+  /**
+   * 不设高度的「整页滚动」模式：容器自己不滚，可 .vol-virtual 的 overscroll-behavior:contain
+   * 会把「手指落在目录上」的滑动整条吃掉（实测 H5 390×844 触屏：从目录区起手的下滑位移 0px，
+   * 从简介区起手才有 854px）。详情页目录占满一屏，手指几乎必然落在目录上，
+   * 所以这里显式放开，把滚动交回整页；限高自滚（fill / maxHeight / 行数超限）仍保留 contain。
+   */
+  const pageScroll = unbounded && heightStyle === undefined;
+  const scrollStyle = pageScroll ? { overscrollBehavior: "auto" as const } : heightStyle;
   // react-hooks/incompatible-library：TanStack Virtual 的返回值本就不可 memo，
   // 它只在本组件内消费、不外传给其它 memo 化的 hook，编译器的跳过是安全的。
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -106,34 +111,11 @@ export function ChapterList({
     // virtualizer 身份随行数与行高变化，跟着重建时才需要重新定位
   }, [scrollToCurrent, currentRow, virtualizer, rowHeight]);
 
-  // C-16：本卷铺满后按钮消失，焦点落到新增的最后一行。虚拟滚动只挂视口内的行，
-  // 所以先滚到末行，等补渲染后再聚焦；再补一次定时器兜住滚动后的二次渲染。
-  useEffect(() => {
-    if (focusLastRow === undefined) return;
-    const last = rows.length - 1;
-    if (last < 0) return;
-    virtualizer.scrollToIndex(last, { align: "end" });
-    let cancelled = false;
-    const focusLast = () => {
-      if (cancelled) return;
-      const nodes = scrollRef.current?.querySelectorAll<HTMLElement>(".cv-row");
-      nodes?.[nodes.length - 1]?.focus();
-    };
-    const frame = requestAnimationFrame(() => {
-      focusLast();
-      window.setTimeout(focusLast, 60);
-    });
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-    };
-  }, [focusLastRow, rows.length, virtualizer]);
-
   return (
     <div
       ref={scrollRef}
       className={`vol-virtual${fill ? " is-fill" : ""}${dense ? " is-dense" : ""}`}
-      style={heightStyle}
+      style={scrollStyle}
       tabIndex={0}
       aria-label={ariaLabel ?? "章节目录"}
       data-testid="chapter-scroll"

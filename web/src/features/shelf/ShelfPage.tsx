@@ -17,7 +17,7 @@ import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { FilterHints } from "./FilterHints";
 import { ResumeCard } from "./ResumeCard";
 import { FilterChipsRow } from "./FilterChipsRow";
-import { ShelfFilterSheet } from "./ShelfFilterSheet";
+import { ShelfFilterSheet, type ShelfSheetSection } from "./ShelfFilterSheet";
 import { ShelfHead } from "./ShelfHead";
 import { ShelfList } from "./ShelfList";
 import { useShelfChipFilters } from "./useShelfChipFilters";
@@ -69,6 +69,8 @@ export function ShelfPage() {
 
   const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 从哪个入口点开的弹层：排序 → 排序分区，筛选 → 第一个筛选分区（默认按筛选算）
+  const [sheetSection, setSheetSection] = useState<ShelfSheetSection>("filters");
   // 多选模式：右上角「选择」进入；选中后批量设作者（循环 PATCH，纯前端）
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -183,6 +185,12 @@ export function ShelfPage() {
     }
   }
 
+  /** 打开 H5 弹层并指定落点分区：两个入口各自直达自己要调的那一组。 */
+  function openSheet(section: ShelfSheetSection) {
+    setSheetSection(section);
+    setSheetOpen(true);
+  }
+
   /** 弹层里的排序：选中即生效，弹层不关（用户还要接着调筛选），底部「查看 N 本」收工。 */
   function chooseSort(next: SortValue) {
     if (next === sort) return;
@@ -278,7 +286,7 @@ export function ShelfPage() {
         filterCount={filterCount}
         onToggleSelecting={toggleSelecting}
         onOpenBatch={() => setBatchOpen(true)}
-        onOpenSheet={() => setSheetOpen(true)}
+        onOpenSheet={openSheet}
         mine={mine}
       />
 
@@ -303,6 +311,8 @@ export function ShelfPage() {
           authorId={filters.authorId}
           onAuthorChange={filters.setAuthorId}
           authors={authorOptions.data?.items ?? []}
+          collections={collectionOptions.data?.items ?? []}
+          onCollectionsChanged={collectionOptions.reload}
           collection={filters.collection}
           onCollectionChange={filters.setCollection}
           category={category}
@@ -351,6 +361,8 @@ export function ShelfPage() {
 
       {isH5 && sheetOpen ? (
         <ShelfFilterSheet
+          key={sheetSection}
+          initialSection={sheetSection}
           sort={sort}
           readStatus={filters.readStatus}
           rating={filters.rating}

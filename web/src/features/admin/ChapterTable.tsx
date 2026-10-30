@@ -158,42 +158,44 @@ export function ChapterTable({
                   </td>
                   <td className="c-words is-num">{formatCount(chapter.wordCount)}</td>
                   <td className="c-actions">
-                    <button
-                      className="btn btn-sm"
-                      type="button"
-                      data-testid={`admin-chapter-body-${chapter.id}`}
-                      data-od-id="C-62"
-                      onClick={() => actions.onEditBody(chapter)}
-                    >
-                      正文
-                    </button>
-                    <button
-                      className="btn btn-sm"
-                      type="button"
-                      data-testid={`admin-chapter-edit-${chapter.id}`}
-                      data-od-id="C-63"
-                      onClick={() => actions.onStartEdit(chapter)}
-                    >
-                      改标题
-                    </button>
-                    <button
-                      className="btn btn-sm"
-                      type="button"
-                      data-testid={`admin-chapter-split-${chapter.id}`}
-                      data-od-id="C-64"
-                      onClick={() => actions.onSplit(chapter)}
-                    >
-                      拆分
-                    </button>
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      type="button"
-                      data-testid={`admin-chapter-delete-${chapter.id}`}
-                      data-od-id="C-65"
-                      onClick={() => actions.onDelete(chapter)}
-                    >
-                      删除
-                    </button>
+                    <span className="ch-actions">
+                      <button
+                        className="btn btn-sm"
+                        type="button"
+                        data-testid={`admin-chapter-body-${chapter.id}`}
+                        data-od-id="C-62"
+                        onClick={() => actions.onEditBody(chapter)}
+                      >
+                        正文
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        type="button"
+                        data-testid={`admin-chapter-edit-${chapter.id}`}
+                        data-od-id="C-63"
+                        onClick={() => actions.onStartEdit(chapter)}
+                      >
+                        改标题
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        type="button"
+                        data-testid={`admin-chapter-split-${chapter.id}`}
+                        data-od-id="C-64"
+                        onClick={() => actions.onSplit(chapter)}
+                      >
+                        拆分
+                      </button>
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        type="button"
+                        data-testid={`admin-chapter-delete-${chapter.id}`}
+                        data-od-id="C-65"
+                        onClick={() => actions.onDelete(chapter)}
+                      >
+                        删除
+                      </button>
+                    </span>
                   </td>
                 </tr>
               ))}

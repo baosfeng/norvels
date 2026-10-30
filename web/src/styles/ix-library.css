@@ -22,6 +22,79 @@
   border-color: var(--border);
 }
 
+/* ── C-02 / C-03 左栏操作组（PC）：一颗主操作 + 三颗等宽次操作 ──
+   prototype.css 的 .actions 是「自动换行的一排按钮」：实测 5 颗按钮宽度 221/118/90/90/104、
+   排布 1+2+2，每行宽度都不一样，整体看着像散件。这里换成 3 列等宽网格——
+   主操作独占整行（视觉权重最高），次操作同组等宽、同一 top、间距一致。
+   H5 档（≤768）的按钮行由 H5StickyCta 承担，所以这一组只在 PC 生效。 */
+@media (min-width: 769px) {
+  .book-aside .actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .book-aside .actions > .btn {
+    min-width: 0;
+    padding: 8px 10px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  /* 主操作：跨满 3 列 = 整栏宽，文字过长时省略，不让它把栅格拉歪 */
+  .book-aside .actions > .btn-primary {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+  /* 「从第一章开始」：已经有续读时它不是第二颗主按钮，降成主按钮下的一颗文字入口，
+     独占一档、左对齐，点击区仍 ≥32。 */
+  .book-aside .actions-alt {
+    grid-column: 1 / -1;
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    min-height: 32px;
+    padding: 0 2px;
+    color: var(--fg-2);
+    font-size: 13px;
+    transition: color var(--motion-fast) var(--ease-standard);
+  }
+  .book-aside .actions-alt:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .book-aside .actions-alt:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--space-1);
+  }
+  /* 三颗次操作是「同一组」：给一层极淡的描边与底色，等宽的排布才看得出来是成组而不是散字 */
+  .book-aside .actions > .btn.btn-ghost {
+    border-color: var(--border-soft);
+    background: var(--surface);
+  }
+  .book-aside .actions > .btn.btn-ghost:hover {
+    border-color: var(--border);
+    background: var(--surface-warm);
+  }
+  /* 「已在书架」是状态而不是主操作：填色会跟主操作抢权重，换成描边强调 */
+  .book-aside .actions .btn.is-on {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--surface-warm);
+  }
+}
+
+/* ── 详情页信息层级：书名 → 署名 → 最后更新 → 分类 chips → 简介 ──
+   实测相邻块垂直间距是 5.7 / 13.7 / 0 / 0：块与块忽紧忽松，读起来像几段互不相关的东西。
+   统一到 12 一档（极差 0），层级交给字号与字重，而不是靠间距忽大忽小。 */
+.book-main > h1,
+.book-main > .byline,
+.book-main > .book-updated,
+.book-main > .chips {
+  margin: 0 0 12px;
+}
+
 /* ── C-05 / C-06 / C-22 / C-23 / C-24 / C-32：文字型入口统一「强调色 + 下划线」 ── */
 .fact-link,
 .byline a,
@@ -81,6 +154,13 @@
   opacity: 0.55;
 }
 .facts .inline-note {
+  grid-column: 1 / -1;
+}
+
+/* 评分一格：5 颗 32px 的星在 140px 的半栏里放不下，会折成 3+2 两行（实测块高 269px）；
+   这一格跨满两列，星星排成一行，右栏与左栏的基线也对齐。 */
+.book-aside .facts > div:has(.rating-row),
+.book-aside .facts .fact-status {
   grid-column: 1 / -1;
 }
 
@@ -613,4 +693,54 @@
   .auth-actions .btn:not(.btn-primary):hover{background:transparent;color:var(--accent)}
   /* 去掉边框后两个按钮之间只剩 4px，主按钮的下边距把点击区分开 */
   .auth-actions .btn-primary{min-height:48px}
+}
+/* ── PC 书架工具栏：筛选组等宽同高、顶端对齐，右侧是独立操作区 ──
+   prototype.css 的 .toolbar 是 AdminFilterBar / AuthorsPage 共用的，只在这里按书架收紧：
+   label 均分一行（同 basis 同 grow）、下拉铺满 label 宽度。「管理书单」不在筛选组里——
+   它管的是书单本身而不是当前筛选值。以前它挤在「书单」label 内，那一组被撑成 232×107，
+   其余是 132×61，align-items:flex-end 就把它的标签顶到整排之上（实测 top 402 vs 448）。 */
+.shelf-toolbar {
+  align-items: flex-end;
+  gap: 12px 14px;
+}
+.shelf-toolbar label {
+  flex: 1 1 124px;
+  min-width: 0;
+}
+.shelf-toolbar label .select {
+  width: 100%;
+  min-width: 0;
+}
+/* 操作区贴右：与筛选组排在同一行，标签 chips 用 100% basis 独占下一行 */
+.shelf-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.shelf-toolbar > .chips,
+.shelf-toolbar-note {
+  flex: 1 1 100%;
+}
+
+/* ── H5 书架：排序与筛选是两个独立入口（44px 热区，390 宽不换行不截断） ──
+   两个按钮开同一个底部弹层，只是落点不同（排序分区 / 第一个筛选分区，见 ShelfFilterSheet）。
+   选择器带上 .shelf-head-actions 是为了压过 ix-discovery.css 里单入口时代的
+   `.shelf-head .shelf-sort-trigger{flex:1 1 auto}`——那条会把排序按钮拉满整行。 */
+@media (max-width: 768px) {
+  .shelf-head .shelf-head-actions .shelf-sort-trigger,
+  .shelf-head .shelf-head-actions .shelf-filter-trigger {
+    flex: 0 1 auto;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  /* 有筛选时筛选按钮带「已选 N 项」并转强调色：它同时是「当前列表被筛过」的指示器 */
+  .shelf-head .shelf-head-actions .shelf-filter-trigger.has-filters {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }

@@ -65,6 +65,51 @@
   margin-left: auto;
 }
 
+/* ── 卡片外壳 ──
+   .card / .card-head 此前**没有任何规则**：封面、书籍信息、删除本书、章节表四块就是浮在
+   页面底色上的一串标题，字段与表格直接铺开、彼此没有边界（用户原话「这里太杂乱」）。
+   这里给它们同一层外壳：白底 + 1px 描边 + 圆角 + 16px 内边距 + 12px 组间距。 */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 20px;
+}
+.card-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.card-head .meta {
+  margin-left: auto;
+}
+.card.is-danger {
+  border-color: color-mix(in oklab, var(--danger) 35%, var(--border));
+}
+
+/* ── 小号按钮 ──
+   .btn-sm 此前没有任何规则，实际按 .btn 的 40px / 16px 内边距渲染：
+   章节表一行 4 颗操作键放不下，折成两行把行高撑到 101px（实测），一屏只装 3 章。 */
+.btn-sm {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+@media (max-width: 768px) {
+  .btn-sm {
+    min-height: 44px;
+  }
+}
+
 /* ── 单书：双栏（左 372 固定，右自适应） ── */
 .book-admin {
   display: grid;
@@ -78,6 +123,14 @@
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+}
+/* 页头在左栏里：跨满整页时的 26px 上内边距交给 .book-col 的 gap，两栏才能同 top 起步 */
+.book-admin .page-head {
+  padding: 0;
+  margin: 0;
+}
+.book-admin .page-head h1 {
+  font-size: 24px;
 }
 .admin-cover {
   display: flex;
@@ -103,6 +156,32 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
+}
+/* 每个字段一组：标签在上、控件在下，组间距统一 12（= .admin-meta 的 gap）。
+   成对字段此前没有任何规则，13 组全按整行堆（实测表单 1116px 高，读起来一片散点）。 */
+.admin-meta .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-meta .field label {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.admin-meta .field-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.admin-meta .field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 768px) {
+  .admin-meta .field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .admin-actions {
   display: flex;
