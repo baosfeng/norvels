@@ -1,11 +1,10 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import type { ApiError } from "../../api/client";
-import { useBooks, useReadingProgress } from "../../api/hooks";
+import { useBooks, useReadingProgress, useReadingStats } from "../../api/hooks";
 import { Cover } from "../../components/Cover";
 import { MenuIcon, SearchIcon } from "../../components/Icons";
-import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
-import { formatCount } from "../../lib/format";
+import { EmptyPanel, ErrorPanel, LoadingPanel, RowSkeleton } from "../../components/StatePanel";
+import { formatCount, formatDuration } from "../../lib/format";
 import { SEARCH_HISTORY_MIN_LEN, readSearchHistory, rememberSearch } from "../../lib/searchHistory";
 import { showToast } from "../../lib/toastStore";
 import { useNavDrawer } from "../../layouts/navDrawer";
@@ -21,6 +20,8 @@ export function HomePage() {
   const nav = useNavDrawer();
   const progress = useReadingProgress();
   const recent = useBooks({ sort: "updated", page: 1, size: 5 });
+  // 「今天读多久」只用已有的 /api/stats/reading，不新增端点；取最少的 7 天即可
+  const stats = useReadingStats(7);
   const [q, setQ] = useState("");
   // 惰性初值：历史只在挂载时读一次；本页没有「清空历史」入口，不需要活状态
   const [history] = useState<string[]>(readSearchHistory);
@@ -43,8 +44,20 @@ export function HomePage() {
     navigate(location.pathname, { replace: true, state: null });
   }, [location.state, location.pathname, navigate]);
 
-  const resume = progress.data?.items?.[0] ?? null;
-  const others = (progress.data?.items ?? []).slice(1, 4);
+  const progressItems = progress.data?.items ?? [];
+  const resume = progressItems[0] ?? null;
+  // 首屏「在读」的完整集合：继续读卡片那本 + 下面「最近在读」两到三本
+  const reading = progressItems.slice(0, 4);
+  const others = reading.slice(1);
+  // 首页两栏原来都取 books?sort=updated，同一批书占两次屏（实测前 3 本完全重合）。
+  // 最近入库只留「在读区没出现过的书」，一本不剩就整区不渲染——留个空标题只会白占一屏。
+  const readingIds = new Set(reading.map((item) => item.bookId));
+  const fresh = (recent.data?.items ?? []).filter((book) => !readingIds.has(book.id));
+  const recentVisible = recent.loading || Boolean(recent.error) || fresh.length > 0;
+
+  // 今天读多久：不足 1 分钟 / 取数失败 / 取值缺失时整行不出现，不给首屏添一条没有信息量的字
+  const todaySeconds = stats.data?.todaySeconds ?? 0;
+  const todayLine = !stats.loading && !stats.error && todaySeconds >= 60;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,6 +110,12 @@ export function HomePage() {
         <div>
           <p className="eyebrow">norvels · 本地书库</p>
           <h1>今晚读点什么</h1>
+          {todayLine ? (
+            <p className="meta h5-today" data-testid="home:today">
+              今天已读 {formatDuration(todaySeconds)}
+              {stats.data && stats.data.streak > 1 ? ` · 连续 ${stats.data.streak} 天` : ""}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -177,7 +196,7 @@ export function HomePage() {
           </Link>
         </div>
         {others.length > 0 ? (
-          <div className="h5-list">
+          <div className="h5-list" data-testid="home:reading">
             {others.map((item) => (
               <Link className="h5-row" key={item.bookId} to={`/read/${item.bookId}/${item.chapterId}`} data-od-id="C-46">
                 <Cover title={item.bookTitle} showLabel={false} />
@@ -194,55 +213,35 @@ export function HomePage() {
         )}
       </div>
 
-      <div className="h5-section">
-        <div className="h5-section-head">
-          <h2>最近入库</h2>
-          <Link className="meta h5-section-link" to="/shelf" data-od-id="C-47">
-            全部 →
-          </Link>
-        </div>
-        {recent.loading ? (
-          <LoadingPanel title="正在读取书目" description="稍等一下，正在取回最近入库的书。" />
-        ) : recent.error ? (
-          <RecentError error={recent.error} onRetry={retryRecent} />
-        ) : (
-          <div className="h5-list" ref={recentRowsRef}>
-            {(recent.data?.items ?? []).map((book) => (
-              <Link className="h5-row" key={book.id} to={`/book/${book.id}`} data-od-id="C-48">
-                <Cover title={book.title} showLabel={false} />
-                <span className="h5-row-text">
-                  <b>{book.title}</b>
-                  <span className="meta">{book.authorName || "佚名"}</span>
-                </span>
-                <span className="h5-row-pct num">{formatCount(book.chapterCount)} 章</span>
-              </Link>
-            ))}
+      {recentVisible ? (
+        <div className="h5-section" data-testid="home:recent-section">
+          <div className="h5-section-head">
+            <h2>最近入库</h2>
+            <Link className="meta h5-section-link" to="/shelf" data-od-id="C-47">
+              全部 →
+            </Link>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-/** 最近入库的错误面板：重试按钮带契约锚点 C-71，文案口径与通用错误面板一致。 */
-function RecentError({ error, onRetry }: { error: ApiError | null; onRetry: () => void }) {
-  const description =
-    error?.kind === "timeout"
-      ? "读取超时了。稍等片刻再试一次，已经导入的书目不会丢失。"
-      : error?.status === 503
-        ? "数据库暂时不可用，请稍后再试。"
-        : "读取时出了点问题。可以重试，或者稍后再回来看。";
-  return (
-    <div className="state-panel is-error">
-      <span className="state-mark" aria-hidden="true">
-        !
-      </span>
-      <h2>书目没能加载</h2>
-      <p>{description}</p>
-      <div className="state-actions">
-        <button className="btn btn-primary" type="button" data-od-id="C-71" onClick={onRetry}>
-          重试
-        </button>
-      </div>
+          {recent.loading ? (
+            // 行骨架而不是转圈面板：形状与真实行一致，取回数据时列表不跳
+            <RowSkeleton count={3} testId="home:recent-skeleton" />
+          ) : recent.error ? (
+            <ErrorPanel error={recent.error} title="书目没能加载" onRetry={retryRecent} testId="home:recent-error" />
+          ) : (
+            <div className="h5-list" ref={recentRowsRef} data-testid="home:recent-books">
+              {fresh.map((book) => (
+                <Link className="h5-row" key={book.id} to={`/book/${book.id}`} data-od-id="C-48">
+                  <Cover title={book.title} showLabel={false} />
+                  <span className="h5-row-text">
+                    <b>{book.title}</b>
+                    <span className="meta">{book.authorName || "佚名"}</span>
+                  </span>
+                  <span className="h5-row-pct num">{formatCount(book.chapterCount)} 章</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

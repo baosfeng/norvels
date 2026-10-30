@@ -96,6 +96,23 @@ export function EmptyPanel({
   );
 }
 
+/** 行骨架：列表行（h5-row 那一类）在加载时占位，行高与真实行一致，不推着下面的内容跳。 */
+export function RowSkeleton({ count = 3, testId = "state:row-skeleton" }: { count?: number; testId?: string }) {
+  return (
+    <div className="sk-rows" aria-hidden="true" data-testid={testId}>
+      {Array.from({ length: count }, (_, i) => (
+        <div className="sk-row" key={i}>
+          <span className="sk sk-row-cover" />
+          <span className="sk-rows-text">
+            <span className="sk sk-line w80" />
+            <span className="sk sk-line w40" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** 骨架屏：与卡片同结构，加载时占位不跳动。 */
 export function CardSkeleton({ count = 4 }: { count?: number }) {
   return (
