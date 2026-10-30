@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChapterBrief } from "../../api/types";
+import { bumpReadingRevision } from "../../lib/readingRevision";
 
 const PROGRESS_DEBOUNCE_MS = 1000;
 
@@ -41,7 +42,12 @@ export function useReaderProgressSync({
       const at = chapters.findIndex((item) => item.id === targetChapter);
       if (at < 0) return;
       lastSent.current = { chapterId: targetChapter, para: paraIndex };
-      void saveProgress({ bookId, chapterId: targetChapter, percent: (at + 1) / chapters.length, paraIndex });
+      // 落库后广播：首页「继续阅读」、书架卡片进度、驾驶舱都在用这份进度，
+      // 不通知的话从阅读器返回时它们还挂着上一章的数字（实测 resume 卡片已是第 12 章，
+      // 下面「最近在读」那行还是第 11 章的百分比）。
+      void Promise.resolve(
+        saveProgress({ bookId, chapterId: targetChapter, percent: (at + 1) / chapters.length, paraIndex }),
+      ).then(bumpReadingRevision, () => undefined);
     },
     [bookId, chapters, saveProgress],
   );

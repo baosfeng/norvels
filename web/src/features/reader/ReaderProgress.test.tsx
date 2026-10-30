@@ -221,6 +221,18 @@ describe("章内位置记忆：进章节恢复 + 上报时机", () => {
     expect(spies.saveProgress).toHaveBeenCalledTimes(1);
   });
 
+  // 回归：阅读器写完进度后没有任何通知，从阅读器返回首页时「继续阅读」卡片
+  // 已经是新章节，下面「最近在读」那几行还挂着旧百分比（实测 resume 是第 12 章 13%，
+  // 列表里同一本仍是 60%）。
+  it("进度落库后广播一次失效，别处用同一份进度的地方会重取", async () => {
+    const { readingRevision } = await import("../../lib/readingRevision");
+    const before = readingRevision();
+    renderReader();
+
+    await waitFor(() => expect(spies.saveProgress).toHaveBeenCalled());
+    await waitFor(() => expect(readingRevision()).toBeGreaterThan(before));
+  });
+
   it("切章时立即补发，不等防抖", async () => {
     renderReader();
     await waitFor(() => expect(spies.saveProgress).toHaveBeenCalled());

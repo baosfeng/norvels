@@ -94,12 +94,23 @@ export function useImportJobs() {
 }
 
 /** 驾驶舱用：最多取 50 条（接口上限），用于按书聚合阅读三态。 */
+/**
+ * 阅读进度（按书的最新位置）。阅读器翻章 / 滚动停下都会写进度，
+ * 写完由 lib/readingRevision 广播，这里订阅并 reload——否则从阅读器返回首页，
+ * 「继续阅读」卡片已经是新章节，下面「最近在读」那几行还挂着旧百分比。
+ */
 export function useReadingProgressAll() {
-  return useResource((signal: AbortSignal) => api.readingProgress({ signal }, 50), []);
+  const progress = useResource((signal: AbortSignal) => api.readingProgress({ signal }, 50), []);
+  const { reload } = progress;
+  useEffect(() => subscribeReadingRevision(reload), [reload]);
+  return progress;
 }
 
 export function useReadingProgress() {
-  return useResource((signal: AbortSignal) => api.readingProgress({ signal }), []);
+  const progress = useResource((signal: AbortSignal) => api.readingProgress({ signal }), []);
+  const { reload } = progress;
+  useEffect(() => subscribeReadingRevision(reload), [reload]);
+  return progress;
 }
 
 /** 字数 Top N 作者（驾驶舱横条图）。 */
