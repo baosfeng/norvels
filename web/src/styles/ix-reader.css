@@ -640,3 +640,96 @@
     transition: none;
   }
 }
+
+/* ── 章末阅读时长（task-5）：字数后面补「约 1 分钟」/「还剩约 3 小时」 ── */
+/* 与 .word 同属弱信息，但不占等宽字体的数字列，跟随当前字色免得在一行里跳出来。 */
+.reader-time {
+  color: var(--r-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+/* 390px 窄屏下「第 N / M 章 · 535 字 · 约 1 分钟」一行放不下：时长整段换行，不截断数字 */
+@media (max-width: 420px) {
+  .reader-progress-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+}
+
+/* ── 阅读态常驻进度：正文下沿 3px 细条（本章）+ 滚动时右下角浮层 ──
+   两者都只表示「本章读到哪」，与章末那行的「全书进度」语义不重叠。
+   fixed 贴在底栏位置之上、不吃指针事件——点击仍归三区手势；菜单唤出（.is-controls）时整组淡出，
+   避免与底栏章节滑条重复。配色只由 --r-fg 派生：五档背景（含纯黑）实测都能看出已读段与底纹的差异。 */
+.reader-scroll-track {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 56px);
+  z-index: 44;
+  height: 3px;
+  pointer-events: none;
+  /* 底纹用 color-mix 压淡而不是 opacity：opacity 会连已读段一起乘掉，两段就分不出来了 */
+  background: color-mix(in oklab, var(--r-fg), transparent 88%);
+  transition: opacity 180ms var(--ease-standard);
+}
+.reader-scroll-fill {
+  height: 100%;
+  width: 0;
+  background: var(--r-fg);
+  opacity: 0.45;
+  border-radius: 0 2px 2px 0;
+}
+.reader-scroll-chip {
+  position: fixed;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(env(safe-area-inset-bottom) + 70px);
+  z-index: 44;
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--r-surface), transparent 12%);
+  color: var(--r-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms var(--ease-standard);
+}
+.reader-scroll-chip.is-shown {
+  opacity: 0.85;
+}
+/* 菜单唤出：细条让位给底栏滑条，浮层也一并收起 */
+.reader-shell.is-controls .reader-scroll-track,
+.reader-shell.is-controls .reader-scroll-chip {
+  opacity: 0;
+}
+/* PC：没有底栏占位，细条贴正文下沿；浮层抬得更高一点避开章末滑条 */
+@media (min-width: 769px) {
+  .reader-scroll-track {
+    bottom: env(safe-area-inset-bottom);
+  }
+  .reader-scroll-chip {
+    bottom: calc(env(safe-area-inset-bottom) + 12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-scroll-track,
+  .reader-scroll-chip {
+    transition: none;
+  }
+}
+
+/* ── 目录当前章：色相 + 字重 + 字号三重编码 ──
+   竖线（.is-current 的 inset 阴影）与底色解决「一眼看到」，但两样都只是颜色——
+   色弱与夜间低对比下会糊掉。字重抬一档 + 字号抬 1px 让当前章在「看不清颜色」时
+   也读得出来；普通章保持原样，字号差控制在 1px，避免行高跳动带乱目录节奏。 */
+.drawer-scroll .cv-row.is-current .cv-title {
+  font-weight: 600;
+  font-size: calc(var(--text-sm) + 1px);
+}
+/* 当前章的字数徽标跟着抬一档，免得标题明显变重而右侧数字仍是一副旁注口吻 */
+.drawer-scroll .cv-row.is-current .cv-word {
+  font-weight: 600;
+}

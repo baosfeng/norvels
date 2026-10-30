@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
-import { resolveTapZone } from "../../lib/useReaderControls";
+import { ZONE_EDGE, resolveTapZone } from "../../lib/useReaderControls";
 
 const chapters: ChapterBrief[] = [
   { id: 10, idx: 0, title: "第一章 起风", volumeId: 1, wordCount: 2000 },
@@ -122,12 +122,22 @@ afterEach(() => {
 });
 
 describe("三区手势：分区判定纯函数", () => {
-  it("左 1/3 上一章、中 1/3 菜单、右 1/3 下一章", () => {
+  // 30/40/30 是主流阅读器的默认分区（边缘可调区间 20%–40%）：边太宽会让读者
+  // 在以为点的是正文时被翻章，边太窄又点不中。300 宽下边界落在 90 与 210。
+  it("边缘 30%、中间 40%（主流默认）：左上一章、中菜单、右下一章", () => {
+    expect(ZONE_EDGE).toBe(0.3);
     expect(resolveTapZone(10, 300)).toBe("prev");
-    expect(resolveTapZone(99, 300)).toBe("prev");
+    expect(resolveTapZone(89, 300)).toBe("prev");
     expect(resolveTapZone(150, 300)).toBe("menu");
     expect(resolveTapZone(250, 300)).toBe("next");
     expect(resolveTapZone(299, 300)).toBe("next");
+  });
+
+  it("边界本身归中区：宁可唤出菜单，也不悄悄翻章", () => {
+    expect(resolveTapZone(90, 300)).toBe("menu");
+    expect(resolveTapZone(210, 300)).toBe("menu");
+    expect(resolveTapZone(89.9, 300)).toBe("prev");
+    expect(resolveTapZone(210.1, 300)).toBe("next");
   });
 
   it("宽度不可用（未布局 / SSR）时一律当中区，绝不悄悄翻章", () => {

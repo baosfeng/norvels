@@ -37,7 +37,7 @@ export function ReaderTapZone({
     >
       <p id="reader-gesture-hint" className="sr-only">
         {isH5
-          ? "单击屏幕左三分之一翻到上一章，右三分之一翻到下一章，中间唤出菜单；也可以左右滑动翻章"
+          ? "单击屏幕左三成翻到上一章，右三成翻到下一章，中间唤出菜单；也可以左右滑动翻章"
           : "键盘左右方向键翻章；正文末尾有「下一章」按钮"}
       </p>
       <div className="reader-swipe-layer" data-od-id="C-10">

@@ -12,6 +12,7 @@ import { ReaderOverlays } from "./ReaderOverlays";
 import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
 import { ReaderTopChrome } from "./ReaderTopChrome";
 import { ReaderBody } from "./ReaderBody";
+import { ReaderScrollProgress } from "./ReaderScrollProgress";
 import { useReaderSearchState } from "./useReaderSearchState";
 import { useReaderPanels } from "./useReaderPanels";
 import { useReaderBookmarkActions } from "./useReaderBookmarkActions";
@@ -21,6 +22,7 @@ import { useReaderAutoScroll } from "./useReaderAutoScroll";
 import { useReaderKeyboard } from "./useReaderKeyboard";
 import { useReaderVisiblePara } from "./useReaderVisiblePara";
 import { useReaderScrollRestore } from "./useReaderScrollRestore";
+import { useReaderRepositionAfterReflow } from "./useReaderRepositionAfterReflow";
 import { useReaderChapterIndex } from "./useReaderChapterIndex";
 import { useReaderFullscreen } from "./useReaderFullscreen";
 import { useReaderZoneNav } from "./useReaderZoneNav";
@@ -207,6 +209,9 @@ export function ReaderPage() {
     onRestoreAnchor: setAnchor,
   });
 
+  // 改字号 / 行距 / 段距 / 字体 / 页宽 / 对齐会让正文重排，像素位置随之失效：按段落锚点回到原处
+  useReaderRepositionAfterReflow({ settings, chapterDataId: chapter.data?.id, anchor });
+
   const restoreHintVisible =
     Boolean(chapter.data) && storedParaIndex > 0 && !pendingJump && hintDismissedFor !== chapterId;
 
@@ -315,6 +320,8 @@ export function ReaderPage() {
         hintVisible={restoreHintVisible}
         onDismissHint={dismissHint}
       />
+
+      <ReaderScrollProgress resetKey={chapterId} />
 
       {isH5 ? (
         <ReaderBottomBar
