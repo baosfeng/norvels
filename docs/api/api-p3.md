@@ -38,3 +38,5 @@
 - `POST /api/reading/sessions` body `{bookId,chapterId,seconds:1–86400,startedAt?}` → **204**；章节不属于该书 → 404；seconds 越界 → 400。
 - `GET /api/reading/history?page=&size=` → 200 `{items:[{bookId,bookTitle,chapterId,chapterTitle,lastReadAt,totalSeconds,days}],total}`（按书聚合，最近阅读在前）。
 - `GET /api/stats/reading?days=1–365&tz=分钟偏移` → 200 `{totalSeconds,todaySeconds,weekSeconds,streak,days:[{date,seconds}]}`；days 默认 90、tz 默认 0（东八区 480），越界 400。
+- `DELETE /api/reading/history/{bookId}` → **204**（只删当前账号在这本书上的会话）；bookId 非法 → 400 `invalid_id`；该账号没有这本书的会话 → 404 `not_found`。
+- `DELETE /api/reading/history` → **204**（清空当前账号的全部会话，空库也 204）；两处都只动 `reading_sessions`，进度 / 书签 / 书架保留。

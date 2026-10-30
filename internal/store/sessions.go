@@ -295,6 +295,42 @@ func (s *Store) countHistoryBooks(ctx context.Context) (int, error) {
 	return total, nil
 }
 
+// DeleteReadingHistory 删掉当前账号在这本书上的全部阅读会话。
+//
+// 不级联：reading_progress（读到哪）/ bookmarks / shelf 一律不动——「删历史」清的是
+// 「读了多久」的明细，不是让阅读进度回退到零；书签与书架更与本功能无关。
+// 当前账号在这本书上没有会话 → ErrNotFound（接口层 404），不当成功静默吞掉。
+func (s *Store) DeleteReadingHistory(ctx context.Context, bookID int64) error {
+	if bookID <= 0 {
+		return fmt.Errorf("%w: book=%d", ErrInvalidArgument, bookID)
+	}
+	res, err := s.db.ExecContext(ctx,
+		"DELETE FROM reading_sessions WHERE book_id = ? AND user_id = ?", bookID, ScopeUserID(ctx))
+	if err != nil {
+		return fmt.Errorf("store: delete reading history %d: %w", bookID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: delete reading history %d rows: %w", bookID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: 书 %d 的阅读历史", ErrNotFound, bookID)
+	}
+	return nil
+}
+
+// ClearReadingHistory 清空当前账号的全部阅读会话；本来就是空的也算成功（幂等）。
+//
+// 只删 reading_sessions，进度 / 书签 / 书架保留（与 DeleteReadingHistory 同一口径）：
+// 前端「清空历史」清的是时长明细，不该顺带把正在读的进度抹掉。
+func (s *Store) ClearReadingHistory(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx,
+		"DELETE FROM reading_sessions WHERE user_id = ?", ScopeUserID(ctx)); err != nil {
+		return fmt.Errorf("store: clear reading history: %w", err)
+	}
+	return nil
+}
+
 // dateUTC 把时间截到 UTC 当天（只保留年月日，便于比较与拼日期串）。
 func dateUTC(t time.Time) time.Time {
 	y, m, d := t.UTC().Date()

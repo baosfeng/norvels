@@ -166,6 +166,81 @@ func TestReadingHistoryDirtyData(t *testing.T) {
 	requireEqual(t, "脏数据行章名", items[0].ChapterTitle, "")
 }
 
+func TestDeleteReadingHistoryOnlyCurrentUser(t *testing.T) {
+	ctx := context.Background()
+	st, first, second, _ := seedHistoryFixture(t, ctx)
+	other := mustRegister(t, st, "读者乙")
+	addSessionFor(t, ctx, st, other.ID, first, 300)
+	saveProgressFor(t, ctx, st, defaultUserID, first)
+
+	requireOK(t, "DeleteReadingHistory", st.DeleteReadingHistory(ctx, first))
+	requireEqual(t, "甲在这本书上的会话清空", mineSessionsOf(t, ctx, st, first), 0)
+	// 别的账号在这本书上的会话仍在：只删 ScopeUserID(ctx) 的行。
+	requireEqual(t, "乙的会话仍在", sessionsOf(t, ctx, st, other.ID), 1)
+	// 甲的另一本书不受影响：按书删，不按账号清空。
+	requireEqual(t, "甲另一本书的会话仍在", mineSessionsOf(t, ctx, st, second), 1)
+	// 不级联：进度保留（删历史是清时长明细，不是让进度回退）。
+	requireEqual(t, "进度行数不变", countRows(t, ctx, st, "reading_progress"), 1)
+}
+
+func TestDeleteReadingHistoryMissing(t *testing.T) {
+	ctx := context.Background()
+	st, first, _, _ := seedHistoryFixture(t, ctx)
+	other := mustRegister(t, st, "读者丙")
+	// 书存在，但丙自己在这本书上没有会话（甲读过）：不能删别人的，也不当成功。
+	requireErr(t, "别人的历史不算我的", st.DeleteReadingHistory(WithUserID(ctx, other.ID), first), ErrNotFound)
+	requireErr(t, "book=0", st.DeleteReadingHistory(ctx, 0), ErrInvalidArgument)
+	requireEqual(t, "失败的删除不动数据", mineSessionsOf(t, ctx, st, first), 2)
+}
+
+func TestClearReadingHistoryOnlyCurrentUser(t *testing.T) {
+	ctx := context.Background()
+	st, first, second, _ := seedHistoryFixture(t, ctx)
+	other := mustRegister(t, st, "读者丁")
+	addSessionFor(t, ctx, st, other.ID, first, 300)
+	saveProgressFor(t, ctx, st, defaultUserID, first)
+
+	requireOK(t, "ClearReadingHistory", st.ClearReadingHistory(ctx))
+	requireEqual(t, "甲的历史清空", mineSessionsOf(t, ctx, st, 0), 0)
+	requireEqual(t, "乙的会话仍在", sessionsOf(t, ctx, st, other.ID), 1)
+	requireEqual(t, "清空后进度保留", countRows(t, ctx, st, "reading_progress"), 1)
+	requireEqual(t, "清空不动书", countRows(t, ctx, st, "books") >= 2, true)
+
+	// 幂等：已经是空的再清一次仍然成功（不返回 ErrNotFound）。
+	requireOK(t, "空库再清一次", st.ClearReadingHistory(ctx))
+	requireOK(t, "乙再清自己的", st.ClearReadingHistory(WithUserID(ctx, other.ID)))
+	requireEqual(t, "乙清空后也无会话", sessionsOf(t, ctx, st, other.ID), 0)
+	requireEqual(t, "清空后第二本书也没了", mineSessionsOf(t, ctx, st, second), 0)
+}
+
+// mineSessionsOf 数「默认账号（甲）在指定书上」的会话行数；bookID=0 表示不按书过滤。
+func mineSessionsOf(t *testing.T, ctx context.Context, st *Store, bookID int64) int {
+	t.Helper()
+	query := "SELECT COUNT(*) FROM reading_sessions WHERE user_id = ?"
+	args := []any{defaultUserID}
+	if bookID != 0 {
+		query += " AND book_id = ?"
+		args = append(args, bookID)
+	}
+	var n int
+	requireOK(t, "数甲的会话行", st.DB().QueryRowContext(ctx, query, args...).Scan(&n))
+	return n
+}
+
+// sessionsOf 数某个账号的阅读会话行数。
+func sessionsOf(t *testing.T, ctx context.Context, st *Store, userID int64) int {
+	t.Helper()
+	query := "SELECT COUNT(*) FROM reading_sessions"
+	args := []any{}
+	if userID != 0 {
+		query += " WHERE user_id = ?"
+		args = append(args, userID)
+	}
+	var n int
+	requireOK(t, "数会话行", st.DB().QueryRowContext(ctx, query, args...).Scan(&n))
+	return n
+}
+
 // seedStatsBook 建一本带 3 章的示例书，返回 store 与书/首章 id。
 func seedStatsBook(t *testing.T, ctx context.Context) (*Store, int64, int64) {
 	t.Helper()

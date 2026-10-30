@@ -219,6 +219,119 @@ func TestReadingStatsTZCrossMidnight(t *testing.T) {
 	}
 }
 
+// sessionHdr 是记会话 / 删历史请求的头；token 为空表示不带账号会话（默认账号）。
+func sessionHdr(token string) map[string]string {
+	hdr := map[string]string{"Content-Type": "application/json"}
+	if token != "" {
+		hdr["Cookie"] = SessionCookieName + "=" + token
+	}
+	return hdr
+}
+
+// plainHdr 返回 nil 头（默认账号、无会话 Cookie）。
+func plainHdr(token string) map[string]string {
+	if token == "" {
+		return nil
+	}
+	return sessionHdr(token)
+}
+
+// recordSession 以指定身份记一次阅读会话（测试辅助）。
+func recordSession(t *testing.T, e *testEnv, token string, bookID, chapterID int64, seconds int) {
+	t.Helper()
+	body := fmt.Sprintf(`{"bookId":%d,"chapterId":%d,"seconds":%d}`, bookID, chapterID, seconds)
+	requireStatus(t, e.do(http.MethodPost, "/api/reading/sessions", strings.NewReader(body), sessionHdr(token)),
+		http.StatusNoContent)
+}
+
+// historyTotal 以指定身份读历史列表的总数。
+func historyTotal(t *testing.T, e *testEnv, token string) int {
+	t.Helper()
+	rr := e.do(http.MethodGet, "/api/reading/history", nil, plainHdr(token))
+	return decodeBody[readingHistoryResponse](t, rr).Total
+}
+
+// deleteHistory 发起单本阅读历史删除。
+func deleteHistory(e *testEnv, token string, bookID int64) *httptest.ResponseRecorder {
+	return e.do(http.MethodDelete, fmt.Sprintf("/api/reading/history/%d", bookID), nil, plainHdr(token))
+}
+
+func TestDeleteReadingHistory(t *testing.T) {
+	e := newEnv(t)
+	bookID := e.seedBook("删除历史之书", "删除作者")
+	chapterID := firstChapterID(t, e, bookID)
+	recordSession(t, e, "", bookID, chapterID, 120)
+	requireStatus(t, e.putJSON("/api/reading/progress", map[string]any{
+		"bookId": bookID, "chapterId": chapterID, "percent": 0.2,
+	}), http.StatusNoContent)
+
+	requireStatus(t, deleteHistory(e, "", bookID), http.StatusNoContent)
+	if total := historyTotal(t, e, ""); total != 0 {
+		t.Fatalf("删除后历史 total = %d，期望 0", total)
+	}
+	// 不级联：进度（读到哪）保留——删历史清的是时长明细，不是让进度回退到零。
+	if items := e.progressItems().Items; len(items) != 1 || items[0].BookID != bookID {
+		t.Fatalf("删除历史后进度 = %+v，期望仍保留这本书", items)
+	}
+	// 没有可删的会话 → 404（幂等口径取「没有就是没有」）。
+	requireError(t, deleteHistory(e, "", bookID), http.StatusNotFound, codeNotFound)
+	// bookId 非法 → 400 invalid_id。
+	requireError(t, e.do(http.MethodDelete, "/api/reading/history/0", nil, nil), http.StatusBadRequest, codeInvalidID)
+	requireError(t, e.do(http.MethodDelete, "/api/reading/history/abc", nil, nil), http.StatusBadRequest, codeInvalidID)
+}
+
+func TestDeleteReadingHistoryAccountIsolation(t *testing.T) {
+	e := newEnv(t)
+	bookID := e.seedBook("隔离之书", "隔离作者")
+	chapterID := firstChapterID(t, e, bookID)
+	tokenA, _ := registerUser(t, e, "读者甲")
+	tokenB, _ := registerUser(t, e, "读者乙")
+	recordSession(t, e, tokenA, bookID, chapterID, 120)
+	recordSession(t, e, tokenB, bookID, chapterID, 300)
+
+	requireStatus(t, deleteHistory(e, tokenA, bookID), http.StatusNoContent)
+	if total := historyTotal(t, e, tokenA); total != 0 {
+		t.Fatalf("甲删除后甲的历史 total = %d，期望 0", total)
+	}
+	if total := historyTotal(t, e, tokenB); total != 1 {
+		t.Fatalf("乙的历史 total = %d，期望 1（不能被甲删掉）", total)
+	}
+	// 乙删自己的：成功。
+	requireStatus(t, deleteHistory(e, tokenB, bookID), http.StatusNoContent)
+	if total := historyTotal(t, e, tokenB); total != 0 {
+		t.Fatalf("乙删除后乙的历史 total = %d，期望 0", total)
+	}
+}
+
+func TestClearReadingHistory(t *testing.T) {
+	e := newEnv(t)
+	// 空库也 204（幂等，不返回 404）。
+	requireStatus(t, e.do(http.MethodDelete, "/api/reading/history", nil, nil), http.StatusNoContent)
+
+	tokenA, _ := registerUser(t, e, "读者丙")
+	first := e.seedBook("清空之书甲", "清空作者")
+	second := e.seedBook("清空之书乙", "清空作者")
+	recordSession(t, e, tokenA, first, firstChapterID(t, e, first), 60)
+	recordSession(t, e, tokenA, second, firstChapterID(t, e, second), 90)
+	hdr := sessionHdr(tokenA)
+	requireStatus(t, e.do(http.MethodPut, "/api/reading/progress", strings.NewReader(
+		fmt.Sprintf(`{"bookId":%d,"chapterId":%d,"percent":0.2}`, first, firstChapterID(t, e, first))), hdr),
+		http.StatusNoContent)
+
+	requireStatus(t, e.do(http.MethodDelete, "/api/reading/history", nil, hdr), http.StatusNoContent)
+	if total := historyTotal(t, e, tokenA); total != 0 {
+		t.Fatalf("清空后历史 total = %d，期望 0", total)
+	}
+	// 只清会话：进度保留。
+	items := decodeBody[progressListResponse](t,
+		e.do(http.MethodGet, "/api/reading/progress", nil, hdr)).Items
+	if len(items) != 1 || items[0].BookID != first {
+		t.Fatalf("清空历史后进度 = %+v，期望仍保留", items)
+	}
+	// 再清一次仍 204。
+	requireStatus(t, e.do(http.MethodDelete, "/api/reading/history", nil, hdr), http.StatusNoContent)
+}
+
 // daySecondsOf 取热力图里某一天的秒数；没有该日返回 0。
 func daySecondsOf(days []store.DaySeconds, date string) int {
 	for _, d := range days {

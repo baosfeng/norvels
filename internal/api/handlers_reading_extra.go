@@ -108,6 +108,36 @@ func (s *Server) handleReadingHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, readingHistoryResponse{Items: items, Total: total})
 }
 
+// handleDeleteReadingHistory 处理 DELETE /api/reading/history/{bookId}：204。
+//
+// 只删当前账号的会话行；reading_progress（读到哪）/ bookmarks / shelf 一律不动——
+// 「删历史」清的是「读了多久」的明细，不是把进度回退到零。该账号下没有会话 → 404，
+// 与「清空」的幂等口径分开：单本删除失败要让前端知道，不静默当成功。
+func (s *Server) handleDeleteReadingHistory(w http.ResponseWriter, r *http.Request) {
+	bookID, err := pathID(r, "bookId")
+	if err != nil {
+		s.badRequest(w, err, codeInvalidID)
+		return
+	}
+	if err := s.st.DeleteReadingHistory(r.Context(), bookID); err != nil {
+		s.fail(w, r, err, "这本书没有阅读历史")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleClearReadingHistory 处理 DELETE /api/reading/history：清空当前账号的全部会话，204。
+//
+// 幂等：本来就没有历史也返回 204（「清空」的目标状态就是空，不该报 404）。
+// 只动 reading_sessions，进度 / 书签 / 书架保留。
+func (s *Server) handleClearReadingHistory(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.ClearReadingHistory(r.Context()); err != nil {
+		s.fail(w, r, err, "阅读历史不可用")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleReadingStats 处理 GET /api/stats/reading?days=&tz=：统计与热力图。
 //
 // days 默认 90（1–365）；tz 是分钟偏移（东八区 480，默认 0）。

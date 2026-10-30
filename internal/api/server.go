@@ -181,6 +181,8 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	// 阅读时长与历史（P3）：会话明细 → 统计/热力图与按书聚合的历史。
 	mux.HandleFunc("POST /api/reading/sessions", s.handleAddReadingSession)
 	mux.HandleFunc("GET /api/reading/history", s.handleReadingHistory)
+	mux.HandleFunc("DELETE /api/reading/history", s.handleClearReadingHistory)
+	mux.HandleFunc("DELETE /api/reading/history/{bookId}", s.handleDeleteReadingHistory)
 	mux.HandleFunc("GET /api/stats/reading", s.handleReadingStats)
 	mux.HandleFunc("GET "+LoginPath, s.handleLoginPage)
 	mux.HandleFunc("POST "+LoginPath, s.handleLoginSubmit)
