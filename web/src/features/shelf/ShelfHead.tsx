@@ -2,7 +2,13 @@ import type { RefObject } from "react";
 import { formatCount } from "../../lib/format";
 import { RandomBookButton } from "./RandomBookButton";
 
-/** 书架页头（C-20/C-32/C-33）：标题、随机一本、选择模式、H5 排序入口。 */
+/**
+ * 书架页头：标题 + 一行操作。
+ *
+ * H5 不再重复「书架 · N 本 / 书架」两行字：标题只出现一次，数量与排序状态并进下方操作行；
+ * 「排序：xx」与「筛选」合并成一个按钮（有筛选时带计数），每次打开弹层只换一个入口。
+ * PC 保留「最近入库」标题与副标题——宽屏有位置写清排序与总量，不必压缩。
+ */
 export function ShelfHead({
   isH5,
   loading,
@@ -42,18 +48,27 @@ export function ShelfHead({
   /** 当前是「我的书架」：标题与副标题换一套，避免把个人书架说成"最近入库" */
   mine: boolean;
 }) {
+  const countText = loading ? "读取中" : `${formatCount(total)} 本`;
+
   return (
-    <div className="page-head">
+    <div className="page-head shelf-head">
       <div>
-        <p className="eyebrow">
-          {mine ? "我的书架" : "书架"} · {loading ? "读取中" : `${formatCount(total)} 本`}
-        </p>
+        {isH5 ? null : (
+          <p className="eyebrow">
+            {mine ? "我的书架" : "书架"} · {countText}
+          </p>
+        )}
         <h1 ref={titleRef} tabIndex={-1}>
           {mine ? "我的书架" : isH5 ? "书架" : "最近入库"}
         </h1>
-        {isH5 ? null : (
+        {isH5 ? (
+          <p className="sub shelf-head-sub">
+            {countText}
+            {filtering ? " · 已筛选" : ` · 按${sortLabel}`}
+          </p>
+        ) : (
           <p className="sub">
-            {mine ? "主动加入书架的书，按加入时间排列" : `按${sortLabel}排序`} · 共 {formatCount(total)} 本
+            {mine ? "主动加入书架的书，按加入时间排列" : `按${sortLabel}排序`} · 共 {countText}
             {filtering ? "（已筛选）" : ""}
           </p>
         )}
@@ -100,10 +115,12 @@ export function ShelfHead({
             data-od-id="C-20"
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
-            aria-label={filterCount > 0 ? `排序与筛选，已启用 ${filterCount} 项筛选` : "排序与筛选"}
+            aria-label={
+              filterCount > 0 ? `排序与筛选，已启用 ${filterCount} 项筛选` : "排序与筛选"
+            }
             onClick={onOpenSheet}
           >
-            {filterCount > 0 ? `筛选 ${filterCount} · ${sortLabel}` : `排序：${sortLabel}`}
+            筛选{filterCount > 0 ? ` ${filterCount}` : ""} · {sortLabel}
           </button>
         ) : null}
       </div>

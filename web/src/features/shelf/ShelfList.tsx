@@ -1,10 +1,11 @@
 import type { ReactNode, RefObject } from "react";
 import { Link } from "react-router-dom";
 import type { ApiError } from "../../api/client";
-import type { BookSummary, ReadStatus } from "../../api/types";
-import { CardSkeleton, EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
+import type { BookSummary, ReadStatus, ReadingProgress } from "../../api/types";
+import { EmptyPanel, ErrorPanel } from "../../components/StatePanel";
 import { formatCount } from "../../lib/format";
 import { ShelfCard } from "./ShelfCard";
+import { ShelfCardSkeleton } from "./ShelfCardSkeleton";
 
 type Feed = {
   page: number;
@@ -14,7 +15,12 @@ type Feed = {
   loadMore: () => void;
 };
 
-/** 书架内容区（C-37/C-38/C-39/C-40/C-41）：加载 / 错误 / 空态 / 列表 + H5 无限滚动或 PC 分页。 */
+/**
+ * 书架内容区（C-37/C-38/C-39/C-40/C-41）：加载 / 错误 / 空态 / 列表 + H5 无限滚动或 PC 分页。
+ *
+ * 加载态用与真实书卡同尺寸的骨架（H5 三张、PC 四张），不用居中转圈——
+ * 骨架先占住版面，数据回来时不跳一下。H5 追加下一页同样给骨架，只是两行。
+ */
 export function ShelfList({
   isH5,
   loading,
@@ -24,6 +30,7 @@ export function ShelfList({
   filtering,
   mode,
   statusOverrides,
+  progress,
   selecting,
   selected,
   feed,
@@ -46,6 +53,8 @@ export function ShelfList({
   filtering: boolean;
   mode: "grid" | "list";
   statusOverrides: Record<number, ReadStatus>;
+  /** H5 的阅读进度索引（bookId → 进度）；PC 传空 Map，卡片不显示进度行 */
+  progress: Map<number, ReadingProgress>;
   selecting: boolean;
   selected: Set<number>;
   feed: Feed;
@@ -64,11 +73,10 @@ export function ShelfList({
   if (loading) {
     return (
       <div data-testid="shelf-loading">
-        <LoadingPanel
-          title="正在读取书架"
-          description={`正在整理本地书目，${formatCount(total || 0) || "全部"} 本大约需要 1–2 秒。`}
-        />
-        <CardSkeleton count={isH5 ? 3 : 4} />
+        <p className="meta shelf-loading-note" role="status">
+          正在读取书目，{formatCount(total || 0) ? `${formatCount(total || 0)} 本` : "全部"}大约需要 1–2 秒。
+        </p>
+        <ShelfCardSkeleton count={isH5 ? 3 : 4} />
       </div>
     );
   }
@@ -111,13 +119,14 @@ export function ShelfList({
 
   return (
     <>
-      <div className={`book-grid ${mode === "list" && !isH5 ? "is-list" : ""}`.trim()} data-testid="shelf-live">
+      <div className={`book-grid${mode === "list" && !isH5 ? " is-list" : ""}`.trim()} data-testid="shelf-live">
         {items.map((book) => (
           <ShelfCard
             key={book.id}
             book={book}
             compact={isH5}
             status={statusOverrides[book.id] ?? book.readStatus ?? ""}
+            progress={progress.get(book.id)}
             onCycle={() => onCycle(book)}
             selecting={selecting}
             selected={selected.has(book.id)}
@@ -130,9 +139,9 @@ export function ShelfList({
       {isH5 ? (
         <div className="shelf-more" data-testid="shelf-more">
           {feed.loadingMore ? (
-            <p className="meta" role="status" data-testid="shelf-more-loading">
-              正在加载更多…
-            </p>
+            <div className="shelf-more-loading" role="status" data-testid="shelf-more-loading">
+              <ShelfCardSkeleton count={2} label="正在加载更多" />
+            </div>
           ) : null}
           {feed.errorMore ? (
             <div className="shelf-more-error" data-testid="shelf-more-error">
@@ -156,8 +165,8 @@ export function ShelfList({
               )}
             </>
           ) : (
-            <p className="meta" data-testid="shelf-end">
-              没有更多了 · 共 {formatCount(total)} 本
+            <p className="meta shelf-end" data-testid="shelf-end">
+              已经到底啦 · 共 {formatCount(total)} 本
             </p>
           )}
         </div>

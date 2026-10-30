@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { useAuthors, useCollections, useTags } from "../../api/hooks";
-import type { BookSummary, ReadStatus } from "../../api/types";
+import type { BookSummary, ReadStatus, ReadingProgress } from "../../api/types";
 import { useShelfMode } from "../../layouts/shelfMode";
 import { tierFallbackText } from "../../layouts/tierFallback";
 import { READ_STATUS_LABELS, nextReadStatus } from "../../lib/readStatus";
@@ -16,9 +16,12 @@ import { ShelfViewSwitch } from "./ShelfViewSwitch";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { FilterHints } from "./FilterHints";
 import { ResumeCard } from "./ResumeCard";
+import { FilterChipsRow } from "./FilterChipsRow";
 import { ShelfFilterSheet } from "./ShelfFilterSheet";
 import { ShelfHead } from "./ShelfHead";
 import { ShelfList } from "./ShelfList";
+import { useShelfChipFilters } from "./useShelfChipFilters";
+import { useShelfProgress } from "./useShelfProgress";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { SORTS, type SortValue } from "./shelfSorts";
 import { useShelfFilters } from "./useShelfFilters";
@@ -27,6 +30,8 @@ import { useBookFeed, type BookFeedRestore } from "../../lib/useBookFeed";
 
 /** 我的书架不支持多选：给列表一个稳定空集合，避免每次渲染新建引用 */
 const EMPTY_SELECTION: Set<number> = new Set();
+/** PC 书卡不显示阅读进度：给一个稳定空索引，避免每帧新建 Map */
+const EMPTY_PROGRESS: Map<number, ReadingProgress> = new Map();
 
 const PAGE_SIZE = 24;
 /** H5 首屏 30 本，之后每次再取 30 本追加；PC 仍按 PAGE_SIZE 分页 */
@@ -73,11 +78,16 @@ export function ShelfPage() {
   const sortRef = useRef<HTMLSelectElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
 
-  // 筛选项的候选：PC 常驻在工具栏里，H5 只在弹层打开时才去取（首屏不多发三个请求）
-  const optionsEnabled = !isH5 || sheetOpen;
+  // 筛选项的候选：PC 常驻在工具栏里，H5 只在弹层打开时才去取（首屏不多发三个请求）。
+  // 有筛选条件时也要取：列表顶部的回显 chip 要靠候选表把 id 翻成名字，否则只能写「指定作者」。
+  const optionsEnabled = !isH5 || sheetOpen || filtering;
   const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: optionsEnabled });
   const tagOptions = useTags({ enabled: optionsEnabled });
   const collectionOptions = useCollections({ enabled: optionsEnabled });
+
+  // H5 书卡要显示「读到哪」：与「继续阅读」同一份进度接口，PC 不取（有继续阅读卡）
+  const progressIndex = useShelfProgress(isH5);
+  const progress = isH5 ? progressIndex : EMPTY_PROGRESS;
 
   const pageSize = isH5 ? H5_PAGE_SIZE : PAGE_SIZE;
   const [now] = useState(() => Date.now());
@@ -173,8 +183,8 @@ export function ShelfPage() {
     }
   }
 
+  /** 弹层里的排序：选中即生效，弹层不关（用户还要接着调筛选），底部「查看 N 本」收工。 */
   function chooseSort(next: SortValue) {
-    setSheetOpen(false);
     if (next === sort) return;
     setSort(next);
     scrollToTopOfList();
@@ -200,14 +210,12 @@ export function ShelfPage() {
   }
 
   function chooseReadStatus(next: Exclude<ReadStatus, ""> | null) {
-    setSheetOpen(false);
     filters.setReadStatus(next);
     scrollToTopOfList();
   }
 
-  /** 弹层里的其余筛选（评分 / 作者 / 书单 / 分类 / 标签）：选中即生效并收起弹层。 */
+  /** 弹层里的其余筛选（评分 / 作者 / 书单 / 分类 / 标签）：选中即生效，弹层保持打开（连续调几项）。 */
   function chooseInSheet(apply: () => void) {
-    setSheetOpen(false);
     apply();
     scrollToTopOfList();
   }
@@ -243,6 +251,14 @@ export function ShelfPage() {
   }
 
   const selectedBooks = items.filter((book) => selected.has(book.id));
+
+  // 列表顶部的筛选回显（H5）：每个条件一个 chip，单独清 / 一键清全部
+  const filterChips = useShelfChipFilters({
+    filters,
+    authorName: authorOptions.data?.items.find((item) => item.id === filters.authorId)?.name ?? null,
+    collectionName: collectionOptions.data?.items.find((item) => item.id === filters.collection)?.name ?? null,
+    onAfterClear: scrollToTopOfList,
+  });
 
   return (
     <section className="view-shelf" data-testid="view:shelf" data-od-id="shelf">
@@ -301,6 +317,9 @@ export function ShelfPage() {
 
       {isH5 || mine ? null : <FilterHints authors={authorOptions} tags={tagOptions} />}
 
+      {/* 筛选回显：只在 H5 且有筛选时出现，解释"为什么只剩这几本" */}
+      {isH5 && !mine ? <FilterChipsRow chips={filterChips} onClearAll={clearFilters} /> : null}
+
       {mine && !shelfView.loggedIn ? (
         <ShelfMineLoginPrompt next={location.pathname + location.search} />
       ) : (
@@ -313,6 +332,7 @@ export function ShelfPage() {
           filtering={feedFiltering}
           mode={mode}
           statusOverrides={statusOverrides}
+          progress={progress}
           selecting={mine ? false : selecting}
           selected={mine ? EMPTY_SELECTION : selected}
           feed={feed}
@@ -342,6 +362,7 @@ export function ShelfPage() {
           tag={filters.tag}
           tags={tagOptions.data?.items ?? []}
           filtering={filtering}
+          resultCount={loading ? null : total}
           onChooseSort={chooseSort}
           onChooseReadStatus={chooseReadStatus}
           onChooseRating={(next) => chooseInSheet(() => filters.setRating(next))}

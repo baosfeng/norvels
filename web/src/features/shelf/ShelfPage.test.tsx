@@ -121,7 +121,7 @@ describe("书架：H5 无限滚动与排序", () => {
     expect(screen.queryByTestId("shelf-toolbar")).toBeNull();
   });
 
-  it("滚到底自动追加下一页，取完显示「没有更多了」", async () => {
+  it("滚到底自动追加下一页，取完显示「已经到底啦」", async () => {
     books.mockResolvedValueOnce(pageOf(1, 30, 45));
     books.mockResolvedValueOnce(pageOf(31, 15, 45));
     renderShelf();
@@ -132,7 +132,7 @@ describe("书架：H5 无限滚动与排序", () => {
     expect(books.mock.calls[1][0]).toMatchObject({ page: 2, size: 30 });
 
     await waitFor(() => expect(cardCount()).toBe(45));
-    expect(screen.getByTestId("shelf-end").textContent).toContain("没有更多了");
+    expect(screen.getByTestId("shelf-end").textContent).toContain("已经到底啦");
     expect(screen.queryByTestId("shelf-sentinel")).toBeNull();
   });
 
@@ -144,14 +144,16 @@ describe("书架：H5 无限滚动与排序", () => {
 
     fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
     expect(within(screen.getByTestId("shelf-sort-sheet")).getByRole("dialog")).toBeTruthy();
-    // 弹层打开时锁住页面滚动，选完即解锁
+    // 弹层打开时锁住页面滚动；选排序只换排序，弹层继续开着（锁不解除）
     expect(document.body.classList.contains("h5-sheet-open")).toBe(true);
     fireEvent.click(screen.getByTestId("sort-option-title"));
-    expect(document.body.classList.contains("h5-sheet-open")).toBe(false);
+    expect(document.body.classList.contains("h5-sheet-open")).toBe(true);
 
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
     expect(books.mock.calls[1][0]).toMatchObject({ sort: "title", page: 1, size: 30 });
     await waitFor(() => expect(cardCount()).toBe(5));
+    // 选排序不收起弹层（还要接着调筛选），由「查看 N 本」收工
+    fireEvent.click(screen.getByTestId("sheet-done"));
     expect(screen.queryByTestId("shelf-sort-sheet")).toBeNull();
     expect(window.scrollTo).toHaveBeenCalled();
   });
@@ -222,7 +224,8 @@ describe("书架：阅读状态筛选与书卡角标", () => {
     fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
     fireEvent.click(screen.getByTestId("read-status-option-done"));
 
-    expect(screen.queryByTestId("shelf-sort-sheet")).toBeNull();
+    // 选中即生效；弹层留在原地，等用户调完再收工
+    expect(screen.getByTestId("shelf-sort-sheet")).toBeTruthy();
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
     expect(books.mock.calls[1][0]).toMatchObject({ readStatus: "done", page: 1, size: 30 });
   });

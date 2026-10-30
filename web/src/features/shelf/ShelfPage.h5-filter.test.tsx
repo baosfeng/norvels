@@ -113,7 +113,9 @@ describe("H5 书架：分类等筛选在底部弹层里（C-21）", () => {
 
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
     expect(books.mock.calls[1][0]).toMatchObject({ categoryL1: "玄幻", page: 1, size: 30 });
-    // 弹层选完即收起
+    // 选中即刻生效，弹层保持打开让用户接着调下一项；「查看 N 本」才收起
+    expect(screen.getByTestId("shelf-sort-sheet")).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("sheet-done"));
     expect(screen.queryByTestId("shelf-sort-sheet")).toBeNull();
     await waitFor(() => expect(currentQuery()).toContain("l1=玄幻"));
   });

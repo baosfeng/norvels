@@ -1,19 +1,24 @@
 import { Link } from "react-router-dom";
-import type { BookSummary, ReadStatus } from "../../api/types";
+import type { BookSummary, ReadStatus, ReadingProgress } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { formatCount } from "../../lib/format";
 import { READ_STATUS_LABELS } from "../../lib/readStatus";
 import type { ShelfFromState } from "../../lib/shelfCache";
 import { stripTags } from "../../lib/text";
+import { CardProgress } from "./CardProgress";
 
 /**
- * 书卡：角标是独立按钮（不套在链接里，避免交互元素嵌套），点一下循环切换阅读状态。
+ * 书卡：阅读状态是标题行右侧的小 chip（点击区仍 44px，视觉只占一行），点一下循环切换。
+ * 角标不套在链接里会破坏"整卡可点"，所以仍放在链接内容里，用 preventDefault 拦住跳转。
  * 多选模式下整张卡片变成选择按钮（同样不嵌套链接），右上角显示勾选状态。
+ *
+ * 阅读进度只在调用方给了 progress 时出现（H5）：没读过（percent=0）或读不到都不占位。
  */
 export function ShelfCard({
   book,
   compact,
   status,
+  progress,
   onCycle,
   selecting,
   selected,
@@ -23,13 +28,14 @@ export function ShelfCard({
   book: BookSummary;
   compact: boolean;
   status: ReadStatus;
+  /** 本书的阅读进度（H5 才有）；没有就不显示进度行 */
+  progress?: ReadingProgress;
   onCycle: () => void;
   selecting: boolean;
   selected: boolean;
   onSelect: () => void;
   onOpen: () => void;
 }) {
-  // 角标放在底部元信息行里（静态排布），不再绝对定位压书名
   const badge = (
     <button
       className="book-status"
@@ -45,7 +51,7 @@ export function ShelfCard({
         onCycle();
       }}
     >
-      {READ_STATUS_LABELS[status]}
+      <span className="book-status-chip">{READ_STATUS_LABELS[status]}</span>
     </button>
   );
 
@@ -59,7 +65,10 @@ export function ShelfCard({
         showLabel={!compact}
       />
       <div className="book-card-body">
-        <h3 className="book-title">{book.title}</h3>
+        <div className="book-title-row">
+          <h3 className="book-title">{book.title}</h3>
+          {selecting ? null : badge}
+        </div>
         <p className="book-author">{book.authorName || "佚名"}</p>
         <p className="book-meta">
           <span className="num">{formatCount(book.chapterCount)} 章</span>
@@ -70,8 +79,8 @@ export function ShelfCard({
               新章 +{book.newChapters}
             </span>
           ) : null}
-          {selecting ? null : badge}
         </p>
+        {progress && progress.percent > 0 ? <CardProgress progress={progress} /> : null}
         {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
       </div>
     </>

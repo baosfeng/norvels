@@ -90,7 +90,37 @@
     min-height: 32px;
   }
 }
-/* ── H5 阅读历史：卡片列表（PC 是表格，两档条件渲染，不靠 display:none） ── */
+/* ── 阅读历史：分组 + 卡片列表（PC 是表格，两档条件渲染，不靠 display:none） ── */
+.history-groups {
+  display: grid;
+  gap: 18px;
+}
+.history-group-head {
+  position: sticky;
+  top: var(--history-sticky-top, 0px);
+  z-index: 4;
+  margin: 0 0 8px;
+  padding: 6px 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
+}
+/* PC 表格里的分组行：字小一号、底色压平，读起来像分隔不像数据 */
+.history-group-row th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-align: left;
+  background: var(--surface-warm);
+}
 .history-cards {
   display: grid;
   gap: 10px;
@@ -99,6 +129,10 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.history-card:hover {
+  border-color: var(--muted);
 }
 .history-card .history-link {
   display: flex;
@@ -111,6 +145,7 @@
 }
 .history-card .history-link:active {
   background: var(--surface-warm);
+  border-radius: var(--radius);
 }
 .history-card .cover {
   width: 44px;
@@ -119,24 +154,610 @@
 }
 .history-body {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
+  flex: 1;
 }
 .history-body .book-title {
   font-size: 15px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+.history-chapter {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* 进度：一条细条 + 百分比；百分比与条同高排一行，窄屏也不会换成两行 */
+.history-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.history-bar {
+  display: block;
+  flex: 1;
+  min-width: 24px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent), transparent 86%);
+  overflow: hidden;
+}
+.history-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
 .history-body .meta {
   font-size: 12.5px;
   overflow-wrap: anywhere;
 }
+/* 三项时间带标签：量纲不同（时长 / 天数 / 时间点），不能并排成同一串数字 */
 .history-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin: 0;
+  gap: 4px 12px;
+  margin: 2px 0 0;
   font-size: 12px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+.history-meta .num {
+  color: var(--fg-2);
+}
+/* 骨架：与真实卡片同高，数据到达时不跳 */
+.history-card.is-skeleton .history-link {
+  align-items: center;
+}
+.history-sk-cover {
+  width: 44px;
+  aspect-ratio: 3 / 4;
+}
+.history-sk-lines {
+  gap: 7px;
+}
+
+/* ── 搜索：历史 chips · 建议 · 结果高亮 · 骨架 ── */
+.search-empty-wrap {
+  display: grid;
+  gap: 16px;
+}
+.search-history {
+  display: grid;
+  gap: 8px;
+}
+.search-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.search-history-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+/* 清空是两步操作，按钮保持小体量：它不是这一屏的主行动 */
+.search-history-btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.search-history-confirm {
+  display: inline-flex;
+  gap: 6px;
+}
+.search-history .chips {
+  margin: 0;
+}
+/* chips 里的词可能很长：单条最长占满一行，超出部分省略，不横向滚动 */
+.search-history .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-tips {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.search-tips li {
+  overflow-wrap: anywhere;
+}
+/* 结果里的命中词：底色用暖色一档，文字保持正文色（高亮不是错误，不用红/黄荧光） */
+.search-book mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--accent), var(--surface) 78%);
+  color: var(--fg);
+  font-weight: 600;
+}
+/* 结果卡按下 / 悬停反馈：底色与描边都动，触屏点下去有确认感 */
+.search-book {
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.search-book:hover {
+  border-color: var(--muted);
+  background: var(--surface-warm);
+}
+.search-book .book-link:active {
+  background: var(--surface-warm);
+}
+.search-sk-cover {
+  width: 66px;
+  aspect-ratio: 3 / 4;
+}
+.search-sk-lines {
+  gap: 8px;
+  min-width: 0;
+}
+.search-book.is-skeleton {
+  pointer-events: none;
+}
+
+/* ══ H5 书架（≤768）：页头 · 书卡 · 进度 · 骨架 · 筛选回显 · 底部弹层 ══
+   只在窄屏生效：PC 的书卡与工具栏保持 prototype.css 的既有排版，
+   这里改的每一条都为「单列、拇指可达、一屏能读完」服务。 */
+
+/* 页头：标题只出现一次，操作并入标题下方一行；数量与排序状态写进副标题 */
+@media (max-width: 768px) {
+  .shelf-head {
+    gap: 10px;
+    padding: 16px 0 10px;
+    align-items: stretch;
+  }
+  .shelf-head h1 {
+    font-size: 26px;
+  }
+  .shelf-head-sub {
+    margin-top: 2px;
+    font-size: 12.5px;
+  }
+  /* 操作行：选择 / 筛选并排，主入口（筛选）占剩余宽度、贴右拇指 */
+  .shelf-head .shelf-head-actions {
+    gap: 8px;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+  }
+  .shelf-head .shelf-head-actions .btn {
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .shelf-head .shelf-sort-trigger {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+  }
+}
+
+/* 书卡：封面 3:4、整卡按下反馈 150ms。封面尺寸由这里的容器宽度决定，
+   Cover 组件本身不自带尺寸（它按父级 width + aspect-ratio 铺） */
+.book-card .book-link {
+  border-radius: inherit;
+  transition:
+    transform var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+.book-card .book-link:active {
+  transform: scale(0.98);
+  opacity: 0.92;
+}
+/* 标题行：书名与状态角标同一行，角标不吃书名宽度（书名可换行，角标不换行） */
+.book-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.book-title-row .book-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+/* 角标容器由 .book-title-row 摆到标题右端；视觉外壳交给 .book-status-chip，
+   两档共用一套 DOM，只有外壳分档：PC 沿用 prototype.css 的 pill，H5 换成小 chip。 */
+.book-status-chip {
+  display: inline;
+}
+@media (max-width: 768px) {
+  .book-card .book-status {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    cursor: pointer;
+  }
+  /* 热区靠伪元素撑到 48×48，视觉上仍是贴着标题右端的小 chip。
+     向左只探出 2px，避免把书名末尾的点击也吃掉；向右探进卡片内边距，那里没有可点内容。 */
+  .book-card .book-status::after {
+    content: "";
+    position: absolute;
+    inset: -14px -8px -14px -2px;
+  }
+  /* H5：小 chip（20px 高、下划线式描边），不再是一个抢镜头的独立大圆钮 */
+  .book-status-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .book-card .book-status[data-status="want"] .book-status-chip {
+    border-style: dashed;
+  }
+  .book-card .book-status[data-status="reading"] .book-status-chip {
+    border-color: var(--accent);
+    background: color-mix(in oklab, var(--accent), var(--surface) 90%);
+    color: var(--meta);
+    font-weight: 600;
+  }
+  .book-card .book-status[data-status="done"] .book-status-chip {
+    border-color: color-mix(in oklab, var(--success-text), var(--border) 45%);
+    color: var(--success-text);
+  }
+  .book-card .book-link {
+    gap: 12px;
+    align-items: flex-start;
+  }
+  /* 封面：3:4、统一圆角，48px 宽在 390 屏上刚好留出两行书名 */
+  .book-card .cover {
+    width: 48px;
+    border-radius: var(--radius-sm);
+  }
+  .book-card {
+    padding: 12px;
+    border-radius: var(--radius-md);
+  }
+  .book-card h3.book-title {
+    font-size: 15px;
+    line-height: 1.3;
+  }
+  .book-card .book-author {
+    font-size: 12px;
+  }
+  .book-card .book-meta {
+    font-size: 11.5px;
+    gap: 4px 8px;
+  }
+}
+
+/* 阅读进度：细进度条 + 一行文字。只在读过（percent > 0）时渲染 */
+.book-progress {
+  display: grid;
+  gap: 3px;
+  margin-top: 2px;
+}
+.book-progress-bar {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--surface-warm);
+  overflow: hidden;
+}
+.book-progress-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+.book-progress-text {
+  font-size: 11.5px;
+  color: var(--meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 骨架屏：与真实书卡同尺寸，加载中不跳版；追加下一页时只铺两行 */
+.shelf-skeleton {
+  display: grid;
+  gap: 22px;
+}
+.shelf-skel-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.shelf-skel-card .sk-cover {
+  width: 48px;
+}
+.shelf-skel-card .sk-lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+.shelf-loading-note {
+  margin: 0 0 10px;
+}
+.shelf-more-loading {
+  width: 100%;
+}
+@media (max-width: 768px) {
+  .shelf-skeleton {
+    gap: 14px;
+  }
+}
+
+/* 筛选回显：一行可横滑的 chip，每个带 ×；行尾「清除全部」常驻可见 */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 0 10px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklab, var(--accent), var(--border) 55%);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent), var(--surface) 92%);
+  color: var(--fg);
+  font-size: 12.5px;
+  line-height: 1;
+  max-width: 100%;
+}
+.filter-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-chip-x {
+  color: var(--meta);
+  font-size: 14px;
+  line-height: 1;
+}
+.filter-chips-clear {
+  border-style: dashed;
+  color: var(--muted);
+}
+@media (max-width: 768px) {
+  .filter-chip,
+  .filter-chips .filter-chips-clear {
+    min-height: 44px;
+  }
+}
+
+/* 底部弹层：分区横排 chip。排序 / 状态 / 评分单行横滑，作者 / 书单 / 标签换行铺满，
+   七类筛选不再堆成一条要滚过六十多行的长列表 */
+.sheet .sheet-section {
+  display: grid;
+  /* 单列定宽：横排 chip 行是 nowrap + 横向滚动，不定宽会把整列撑出弹层右边缘 */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+}
+.sheet .sheet-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+.sheet .sheet-section-title {
+  padding: 0 2px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.sheet-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2px;
+}
+/* 固定集合（排序 / 状态 / 评分）折行铺满：没有"还有更多"的暗示，不该露出半个被裁的 chip */
+.sheet-options.is-wrap {
+  flex-wrap: wrap;
+}
+/* 排序是 6 个等宽项：均分三列正好两行，不留一行只有两个孤项 */
+.sheet-options.is-triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+/* 评分是 6 个等宽短项（全部 + 1–5 星）：等分六列正好一行，不留一个孤零零的尾项 */
+.sheet-options.is-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+.sheet-options.is-grid .sheet-option {
+  padding: 0 4px;
+}
+/* 不定长集合（作者 / 书单 / 标签）单行横滑：区高固定，不随条目数增长 */
+.sheet-options.is-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.sheet-options.is-row::-webkit-scrollbar {
+  display: none;
+}
+.sheet .sheet-option {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  text-align: center;
+}
+.sheet .sheet-option.is-active {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), var(--surface) 88%);
+  color: var(--fg);
+  font-weight: 600;
+}
+/* 横排 chip 用底色 + 描边表示选中，对勾会撑开宽度、破坏单行 */
+.sheet .sheet-option.is-active::after {
+  content: none;
+}
+.sheet-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 2px;
+}
+.sheet-pair .sheet-label {
+  padding: 0;
+  min-width: 0;
+}
+.sheet-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 内容比可视区高时，最后一行不要让吸底按钮贴住：留一段空白提示"还能往下滚" */
+.sheet .sheet-scroll {
+  padding-bottom: 10px;
+}
+.sheet-close {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+}
+.sheet .sheet-foot {
+  display: flex;
+  padding: 8px 2px 0;
+}
+.sheet .sheet-done {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+}
+@media (max-width: 768px) {
+  .sheet .sheet-option {
+    min-height: 44px;
+  }
+  .sheet-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── H5 搜索（≤768）：输入与按钮同行、结果区上移、历史 chips 抬到 44 ──
+   顶栏在窄屏已有搜索框，这里不再重复一个整宽实心按钮：
+   输入框吃掉剩余宽度，按钮收成图标尺寸，标题与摘要各让一档行距。 */
+@media (max-width: 768px) {
+  .search-head {
+    padding: 14px 0 0;
+  }
+  .search-head h1 {
+    margin: 2px 0 8px;
+    font-size: 24px;
+  }
+  .search-form {
+    flex-direction: row;
+    gap: 8px;
+    max-width: none;
+  }
+  .search-form .input {
+    flex: 1;
+    min-width: 0;
+    font-size: 16px;
+  }
+  .search-form .search-submit {
+    flex: none;
+    min-width: 64px;
+    min-height: 44px;
+    padding: 0 14px;
+  }
+  .search-summary {
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .search-layout {
+    padding: 14px 0 24px;
+  }
+  .search-layout h2 {
+    font-size: 14px;
+  }
+  .search-empty-wrap {
+    padding-top: 4px;
+  }
+  .search-history .chip,
+  .search-history-btn {
+    min-height: 44px;
+  }
+  .search-book .book-link {
+    min-height: 64px;
+  }
+  /* 骨架封面跟着真实封面走：窄屏是 44，别停在 66 把行高撑开 */
+  .search-sk-cover {
+    width: 44px;
+  }
+  /* 顶栏在窄屏是 sticky：组头要压在它下面，否则滚到一半被盖住 */
+  .history-group-head {
+    --history-sticky-top: 56px;
+  }
+}
+
+/* 首页搜索框下方的一行「最近搜过」：与搜索页历史同一份数据，只做入口不做管理。
+   折行而不是横滑 —— 横滑在触屏上会跟「下拉刷新 / 侧滑返回」抢手势。 */
+.h5-search-history {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.h5-search-history > .meta {
+  font-size: 12px;
+}
+.h5-search-history .chips {
+  min-width: 0;
+}
+.h5-search-history .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
