@@ -31,6 +31,19 @@ export function AppShell() {
   const pathRef = useRef(location.pathname);
   useFocusTrap(navOpen, sidebarRef, () => setNavOpen(false));
 
+  /**
+   * H5 的侧栏是用 translateX(-248px) 移出屏幕的抽屉，**不是** display:none——
+   * 元素仍在渲染树里，8 个可聚焦项照样能被 Tab 选中，焦点会跳到屏幕外看不见的地方。
+   * 收起时给侧栏打 inert：既退出焦点顺序，也退出读屏的浏览顺序；PC 档侧栏常驻，不加。
+   * （实测：不加 inert 时 sidebar 里 8 个 a/button 的 x 全是 -232，仍可 focus。）
+   */
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar || tier !== "h5") return;
+    if (navOpen) sidebar.removeAttribute("inert");
+    else sidebar.setAttribute("inert", "");
+  }, [navOpen, tier]);
+
   useEffect(() => {
     document.body.classList.toggle("nav-open", navOpen);
     return () => document.body.classList.remove("nav-open");

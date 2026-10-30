@@ -51,3 +51,21 @@ describe("外壳顶栏的视图切换", () => {
     expect(screen.queryByRole("group", { name: "视图切换" })).toBeNull();
   });
 });
+
+// 回归：H5 的侧栏是用 translateX(-248px) 移出屏幕的抽屉，不是 display:none。
+// 收起时那 8 个可聚焦项仍在渲染树里，Tab 会把焦点送到屏幕外看不见的地方
+// （实测 sidebar 里 a/button 的 x 全是 -232，且 first.focus() 能成功）。
+describe("侧栏抽屉收起时不进焦点顺序", () => {
+  it("H5 收起态给侧栏打 inert，打开后移除", () => {
+    renderShell("h5");
+    expect(screen.getByTestId("sidebar").hasAttribute("inert")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开导航" }));
+    expect(screen.getByTestId("sidebar").hasAttribute("inert")).toBe(false);
+  });
+
+  it("PC 侧栏常驻，任何时候都不加 inert", () => {
+    renderShell("pc");
+    expect(screen.getByTestId("sidebar").hasAttribute("inert")).toBe(false);
+  });
+});
