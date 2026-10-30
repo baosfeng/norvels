@@ -73,6 +73,19 @@ export function formatDuration(seconds: number): string {
   return `${hours} 小时 ${rest} 分`;
 }
 
+/**
+ * 本章阅读时长（章末信息行）：字数先按 readingMinutes 折算成分钟，再交给 formatDuration 说人话。
+ * 只在这里拼「约」，取整口径不另写一套——500 字/分钟是全书唯一口径。
+ */
+export function formatReadingTime(words: number): string {
+  return `约 ${formatDuration(readingMinutes(words) * 60)}`;
+}
+
+/** 全书剩余阅读时长（章末，按剩余字数）：与 formatReadingTime 同一套折算，只是措辞换成「还剩约」。 */
+export function formatRemainingTime(words: number): string {
+  return `还剩约 ${formatDuration(readingMinutes(words) * 60)}`;
+}
+
 /** 秒数 → 「2 小时 5 分」的短口径（卡片数值用），与 formatDuration 同一套取整。 */
 export function formatDurationShort(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0 分";

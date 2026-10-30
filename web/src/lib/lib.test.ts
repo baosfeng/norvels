@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatCount, formatDate, percentOf, readingMinutes } from "./format";
+import {
+  formatBytes,
+  formatCount,
+  formatDate,
+  formatReadingTime,
+  formatRemainingTime,
+  percentOf,
+  readingMinutes,
+} from "./format";
 import { isManagementRoute, tierOf } from "./tier";
 import { isTheme, readStoredTheme } from "./theme";
 import { splitSnippet } from "./snippet";
@@ -48,6 +56,23 @@ describe("format", () => {
   it("阅读时长至少 1 分钟", () => {
     expect(readingMinutes(0)).toBe(1);
     expect(readingMinutes(3210)).toBe(6);
+  });
+
+  it("章末时长说人话：500 字/分钟折算后再按 formatDuration 取整", () => {
+    expect(formatReadingTime(535)).toBe("约 1 分钟");
+    expect(formatReadingTime(2500)).toBe("约 5 分钟");
+    // 60 分钟整不带「0 分」，与阅读历史同一口径
+    expect(formatReadingTime(30_000)).toBe("约 1 小时");
+    expect(formatReadingTime(36_000)).toBe("约 1 小时 12 分");
+    // 非法值按「至少 1 分钟」兜底，不显示 0 / NaN
+    expect(formatReadingTime(0)).toBe("约 1 分钟");
+    expect(formatReadingTime(Number.NaN)).toBe("约 1 分钟");
+  });
+
+  it("全书剩余时长措辞换成「还剩约」，取整与本章同源", () => {
+    expect(formatRemainingTime(0)).toBe("还剩约 1 分钟");
+    expect(formatRemainingTime(120_000)).toBe("还剩约 4 小时");
+    expect(formatRemainingTime(Number.NaN)).toBe("还剩约 1 分钟");
   });
 });
 

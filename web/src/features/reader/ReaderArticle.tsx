@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ChapterBrief } from "../../api/types";
 import type { ReaderHit } from "../../lib/readerSearch";
-import { formatWords } from "../../lib/format";
+import { formatReadingTime, formatRemainingTime, formatWords } from "../../lib/format";
 import { ReaderChapterSlider } from "./ReaderChapterSlider";
 import { ReaderPager } from "./ReaderPager";
 import { ReaderRestoreHint } from "./ReaderRestoreHint";
@@ -9,6 +9,7 @@ import { ReaderRestoreHint } from "./ReaderRestoreHint";
 /**
  * 正文文章区：标题 + 段落（搜索命中包 <mark>）+ 章末翻章条 + 全书进度。
  * 段落 id 与段落下标一一对应——书签、进度恢复、搜索定位都按它对齐。
+ * 章末信息行除了字数再给阅读时长：字数没有直觉，「约几分钟 / 还剩几小时」有。
  */
 export function ReaderArticle({
   title,
@@ -60,6 +61,15 @@ export function ReaderArticle({
   hintVisible: boolean;
   onDismissHint: () => void;
 }) {
+  // 全书剩余字数按目录里各章字数累加（目录未就绪、或已经没有下一章时为 null）：
+  // 比「平均字数 × 剩余章数」精确，也省得把 book.wordCount 一路传进正文层。
+  // 0 字也按 null 处理——末章不该编一条「还剩约 1 分钟」。
+  const remainingWords = (() => {
+    if (index < 0 || chapters.length === 0) return null;
+    const rest = chapters.slice(index + 1).reduce((sum, chapter) => sum + (chapter.wordCount || 0), 0);
+    return rest > 0 ? rest : null;
+  })();
+
   return (
     <article key={enterKey} className={`reader-content reader-article${reducedMotion ? "" : " is-entering"}`}>
       <ReaderRestoreHint visible={hintVisible} onDismiss={onDismissHint} />
@@ -90,9 +100,19 @@ export function ReaderArticle({
               {" "}
               · {formatWords(wordCount)}
             </span>
+            <span className="reader-time" data-testid="reader-chapter-time">
+              {" "}
+              · {formatReadingTime(wordCount)}
+            </span>
           </span>
           <span>
             全书进度 <strong className="num">{Math.round(percent * 100)}</strong>%
+            {remainingWords === null ? null : (
+              <span className="reader-time" data-testid="reader-remaining-time">
+                {" "}
+                · {formatRemainingTime(remainingWords)}
+              </span>
+            )}
           </span>
         </div>
         <ReaderChapterSlider

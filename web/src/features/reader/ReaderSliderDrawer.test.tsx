@@ -294,4 +294,49 @@ describe("章末引导：下一章是主按钮，末章给出口", () => {
     fireEvent.click(within(end).getByRole("button", { name: "回书架" }));
     expect(screen.getByText("书架页 restore")).toBeTruthy();
   });
+
+  it("首章：上一章按钮禁用并写明原因，按钮本身还在（位置不跳）", () => {
+    renderReader(["/read/7/10"]);
+    const prev = screen.getByRole("button", { name: "← 上一章" });
+    expect(prev.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("已经是第一章了")).toBeTruthy();
+    // 末章时同一颗按钮换到可点态——说明它没被隐藏，只是禁用
+    fireEvent.click(screen.getByRole("button", { name: /下一章/ }));
+    expect(screen.getByRole("button", { name: "← 上一章" }).hasAttribute("disabled")).toBe(false);
+  });
+});
+
+describe("章末信息行：字数换算成阅读时长", () => {
+  beforeEach(() => {
+    store = [];
+    vi.clearAllMocks();
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  it("本章时长复用 500 字/分钟口径，与字数同一行", () => {
+    renderReader(["/read/7/10"]);
+    // 2000 字 / 500 = 4 分钟
+    expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
+    expect(screen.getByTestId("reader-word").textContent).toContain("2,000 字");
+    fireEvent.click(screen.getByRole("button", { name: /下一章/ }));
+    // 2100 字 → 4.2 → 4 分钟
+    expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
+  });
+
+  it("全书剩余时长按目录剩余章字数求和，翻章后跟着变小", () => {
+    renderReader(["/read/7/10"]);
+    // 第 1 章时剩第 2 + 3 章 = 2100 + 2200 = 4300 字 → 9 分钟
+    expect(screen.getByTestId("reader-remaining-time").textContent).toContain("还剩约 9 分钟");
+    fireEvent.click(screen.getByRole("button", { name: /下一章/ }));
+    // 第 2 章时只剩第 3 章 = 2200 字 → 4 分钟
+    expect(screen.getByTestId("reader-remaining-time").textContent).toContain("还剩约 4 分钟");
+  });
+
+  it("末章没有剩余章节：不显示全书剩余时长，只留本章时长", () => {
+    renderReader(["/read/7/12"]);
+    expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
+    // 剩余字数 0 也不编一条「还剩约 1 分钟」
+    expect(screen.queryByTestId("reader-remaining-time")).toBeNull();
+    expect(screen.getByTestId("reader-pager-end").textContent).toContain("已经是最后一章");
+  });
 });
