@@ -5,9 +5,12 @@ import {
   READER_DEFAULTS,
   READER_KEYS,
   WIDTH_VALUES,
+  FONT_LEVELS,
+  formatFontLevel,
   readReaderSettings,
   readerFontCss,
   readerStyleVars,
+  snapFontLevel,
   snapParaLevel,
   stepFont,
   stepLeading,
@@ -33,7 +36,7 @@ describe("阅读设置：默认值与键名", () => {
     expect(READER_DEFAULTS.autoScroll).toBe(false);
     expect(READER_DEFAULTS.autoScrollNext).toBe(false);
     expect(READER_DEFAULTS.script).toBe(false);
-    expect(READER_DEFAULTS.font).toBe(19);
+    expect(READER_DEFAULTS.font).toBe(20);
   });
 
   it("键名全部落在 norvels.reader.* 命名空间", () => {
@@ -44,7 +47,7 @@ describe("阅读设置：默认值与键名", () => {
     const storage = memoryStorage();
     const custom: ReaderSettings = {
       ...READER_DEFAULTS,
-      font: 22,
+      font: 24,
       leading: 2.1,
       fontFamily: "sans",
       para: 0.4,
@@ -78,7 +81,7 @@ describe("阅读设置：默认值与键名", () => {
       [READER_KEYS.autoScrollSpeed]: "0",
     });
     const settings = readReaderSettings(storage);
-    expect(settings.font).toBe(28); // 夹到上限
+    expect(settings.font).toBe(32); // 夹到上限后吸附到最大档
     expect(settings.leading).toBe(READER_DEFAULTS.leading);
     expect(settings.fontFamily).toBe("serif");
     expect(settings.para).toBe(1); // 0.95 吸附到标准档
@@ -107,10 +110,26 @@ describe("阅读设置：默认值与键名", () => {
 });
 
 describe("阅读设置：字号 / 行距 / 段距步进", () => {
-  it("字号 14–28 之间步进，两端夹住", () => {
-    expect(stepFont(19, 1)).toBe(20);
-    expect(stepFont(28, 1)).toBe(28);
-    expect(stepFont(14, -1)).toBe(14);
+  it("字号在五档之间一次跳一档，两端停住", () => {
+    expect(FONT_LEVELS).toEqual([16, 20, 24, 28, 32]);
+    expect(stepFont(20, 1)).toBe(24);
+    expect(stepFont(20, -1)).toBe(16);
+    expect(stepFont(32, 1)).toBe(32);
+    expect(stepFont(16, -1)).toBe(16);
+  });
+
+  it("老用户存过的连续字号吸附到最近一档，不会变成更小的字", () => {
+    expect(snapFontLevel(14)).toBe(16);
+    expect(snapFontLevel(17)).toBe(16);
+    expect(snapFontLevel(19)).toBe(20);
+    expect(snapFontLevel(22)).toBe(24);
+    expect(snapFontLevel(25)).toBe(24);
+    expect(snapFontLevel(26)).toBe(28);
+    expect(snapFontLevel(28)).toBe(28);
+    // 正中间取较大档：19 不会因为分档落到 16
+    expect(snapFontLevel(18)).toBe(20);
+    expect(formatFontLevel(20)).toBe("标准 · 2/5");
+    expect(formatFontLevel(32)).toBe("特大 · 5/5");
   });
 
   it("行距 1.4–2.4 之间按 0.1 步进，保留一位小数", () => {
@@ -135,14 +154,17 @@ describe("阅读设置：字号 / 行距 / 段距步进", () => {
 });
 
 describe("阅读设置：CSS 变量映射", () => {
-  it("默认 px 口径保持 19px 观感", () => {
-    expect(readerFontCss(19, false)).toBe("19px");
-    expect(readerFontCss(30, false)).toBe("28px");
+  it("默认 px 口径保持 20px 观感（与改造前 19px 最接近）", () => {
+    expect(readerFontCss(20, false)).toBe("20px");
+    expect(readerFontCss(30, false)).toBe("32px");
+    expect(readerFontCss(8, false)).toBe("16px");
+    // 任何来源的字号都先吸附到五档：30 → 32、8 → 16
   });
 
   it("跟随系统字号时折算成 rem（按浏览器默认 16px 折算）", () => {
-    expect(readerFontCss(19, true)).toBe("1.1875rem");
+    expect(readerFontCss(20, true)).toBe("1.25rem");
     expect(readerFontCss(16, true)).toBe("1rem");
+    expect(readerFontCss(32, true)).toBe("2rem");
   });
 
   it("样式变量覆盖字号 / 行距 / 字体族 / 段距 / 页宽 / 对齐 / 缩进", () => {

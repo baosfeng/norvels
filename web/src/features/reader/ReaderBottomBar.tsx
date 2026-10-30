@@ -1,4 +1,5 @@
 import type { ChapterBrief } from "../../api/types";
+import { ReaderChapterSlider } from "./ReaderChapterSlider";
 
 const ICON = { width: 20, height: 20, fill: "none", stroke: "currentColor", strokeWidth: 1.7, "aria-hidden": true } as const;
 
@@ -57,54 +58,69 @@ function IconSearch() {
 
 /**
  * H5 底部控制栏：与顶部 header 同属控制层，一起显隐。
- * 上一章 / 目录 / 书签 / 搜索 / 书架 / 设置 / 下一章，每个可点区域 ≥48px；
- * 首末章与正文未载入时按钮置灰，原因文案常驻在按钮内第二行。
+ * 顶部一条全书进度滑块（可拖动跳章），下面一行按钮——目录与书签合成一个入口
+ * （同一个抽屉的两个页签），每个可点区域 ≥48px；首末章与正文未载入时按钮置灰，
+ * 原因文案常驻在按钮内第二行。
  */
 export function ReaderBottomBar({
   hidden,
+  chapters,
+  index,
   prev,
   next,
   searchEnabled,
   onPrev,
   onNext,
+  onJumpChapter,
   onOpenDrawer,
   onGoShelf,
-  onOpenBookmarks,
   onToggleSearch,
   onToggleSettings,
   settingsOpen,
   drawerOpen,
-  bookmarksOpen,
+  drawerTab,
   searchOpen,
 }: {
   hidden: boolean;
+  chapters: ChapterBrief[];
+  index: number;
   prev: ChapterBrief | null;
   next: ChapterBrief | null;
   searchEnabled: boolean;
   onPrev: () => void;
   onNext: () => void;
-  onOpenDrawer: () => void;
+  onJumpChapter: (index: number) => void;
+  onOpenDrawer: (tab: "toc" | "bookmarks") => void;
   onGoShelf: () => void;
-  onOpenBookmarks: () => void;
   onToggleSearch: () => void;
   onToggleSettings: () => void;
   settingsOpen: boolean;
   drawerOpen: boolean;
-  bookmarksOpen: boolean;
+  drawerTab: "toc" | "bookmarks";
   searchOpen: boolean;
 }) {
   return (
     <nav className="h5-reader-bar" data-testid="reader-bar" aria-label="阅读控制" aria-hidden={hidden}>
+      <div className="h5-reader-bar-slider">
+        <ReaderChapterSlider
+          chapters={chapters}
+          index={index}
+          disabled={chapters.length === 0}
+          testId="reader-bar-slider"
+          onCommit={onJumpChapter}
+        />
+      </div>
+      <div className="h5-reader-bar-actions">
       <button type="button" aria-label="上一章" disabled={!prev} data-od-id="C-17" onClick={onPrev}>
         <IconPrev />
         <span>上一章</span>
-        {!prev ? <span className="inline-note">已经是第一章了</span> : null}
+        {!prev ? <span className="inline-note">已是首章</span> : null}
       </button>
-      <button type="button" aria-label="章节目录" aria-expanded={drawerOpen} data-od-id="C-18" onClick={onOpenDrawer}>
+      <button type="button" aria-label="章节目录" aria-expanded={drawerOpen && drawerTab === "toc"} data-od-id="C-18" onClick={() => onOpenDrawer("toc")}>
         <IconMenu />
         <span>目录</span>
       </button>
-      <button type="button" aria-label="打开书签" aria-expanded={bookmarksOpen} data-od-id="C-19" onClick={onOpenBookmarks}>
+      <button type="button" aria-label="打开书签" aria-expanded={drawerOpen && drawerTab === "bookmarks"} data-od-id="C-19" onClick={() => onOpenDrawer("bookmarks")}>
         <IconBookmark />
         <span>书签</span>
       </button>
@@ -131,8 +147,9 @@ export function ReaderBottomBar({
       <button type="button" aria-label="下一章" disabled={!next} data-od-id="C-23" onClick={onNext}>
         <IconNext />
         <span>下一章</span>
-        {!next ? <span className="inline-note">已经是最后一章了</span> : null}
+        {!next ? <span className="inline-note">已是末章</span> : null}
       </button>
+      </div>
     </nav>
   );
 }

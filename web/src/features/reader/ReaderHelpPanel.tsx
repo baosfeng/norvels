@@ -1,20 +1,6 @@
 import { useRef } from "react";
 import { useFocusTrap } from "../../lib/focusTrap";
-
-/** 键盘快捷键：帮助面板与键盘处理共用同一份口径，避免「帮助里写了但没实现」。 */
-export const READER_SHORTCUTS: { keys: string[]; desc: string }[] = [
-  { keys: ["←", "→"], desc: "上一章 / 下一章" },
-  { keys: ["空格", "PageDown"], desc: "向下翻 0.85 屏" },
-  { keys: ["Shift+空格", "PageUp"], desc: "向上翻 0.85 屏" },
-  { keys: ["?"], desc: "打开 / 关闭这份快捷键帮助" },
-  { keys: ["Esc"], desc: "关闭当前面板或抽屉" },
-];
-
-/** 触摸端手势：H5 没有键盘，同样列在这里（正文末尾那行提示已经删掉）。 */
-export const READER_TOUCH_HINTS: { keys: string[]; desc: string }[] = [
-  { keys: ["单击正文"], desc: "显示 / 隐藏控制栏" },
-  { keys: ["左右滑动"], desc: "上一章 / 下一章" },
-];
+import { READER_SHORTCUTS, READER_TOUCH_HINTS } from "./readerConstants";
 
 /**
  * 快捷键帮助面板（role=dialog）：列出阅读器全部快捷键与触摸手势。

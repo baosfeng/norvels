@@ -215,3 +215,428 @@
     padding: 16px;
   }
 }
+
+/* ── 三区手势：左右页边 24px 渐隐提示（H5 专有，不吃点击） ── */
+.reader-edge-hints {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  pointer-events: none;
+  display: none;
+}
+.reader-shell.is-h5 .reader-edge-hints {
+  display: block;
+}
+.reader-edge-hint {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 88px;
+  margin-top: -44px;
+  border-radius: var(--radius-pill);
+  opacity: 0;
+  transition: opacity 180ms var(--ease-standard);
+}
+.reader-edge-hint.is-prev {
+  left: 0;
+  background: linear-gradient(to right, color-mix(in oklab, var(--r-fg), transparent 82%), transparent);
+}
+.reader-edge-hint.is-next {
+  right: 0;
+  background: linear-gradient(to left, color-mix(in oklab, var(--r-fg), transparent 82%), transparent);
+}
+/* 只在控制层收起（纯阅读态）亮出来：菜单开着时读者已经知道自己在哪 */
+.reader-shell.is-h5:not(.is-controls) .reader-edge-hint {
+  opacity: 1;
+}
+
+/* ── 合并抽屉：目录 / 书签页签 ── */
+.reader-drawer .drawer-head {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 12px 16px;
+}
+.drawer-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--r-fg), transparent 94%);
+}
+.drawer-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--r-muted);
+  font-size: 14px;
+  transition: background-color 150ms var(--ease-standard), color 150ms var(--ease-standard);
+}
+.drawer-tab.is-active {
+  background: var(--r-surface);
+  color: var(--r-fg);
+  font-weight: 600;
+}
+.drawer-tab-count {
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--r-fg), transparent 88%);
+  color: var(--r-fg);
+  font-size: 10.5px;
+  line-height: 16px;
+}
+.reader-drawer .drawer-head .meta {
+  margin-left: auto;
+  color: var(--r-muted);
+  font-size: 11.5px;
+}
+/* 隐藏页签的面板不占位也不参与焦点顺序 */
+.reader-drawer [role="tabpanel"][hidden] {
+  display: none;
+}
+
+/* ── 底部进度滑块：拖动跳章 + 浮出章节名气泡 ── */
+.chapter-slider {
+  position: relative;
+  width: 100%;
+  /* 视觉 4px，热区 44px：input 自己撑高热区，轨道用背景画 */
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.chapter-slider-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.chapter-slider-input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--r-fg) 0%,
+    var(--r-fg) var(--slider-pct, 0%),
+    color-mix(in oklab, var(--r-fg), transparent 86%) var(--slider-pct, 0%),
+    color-mix(in oklab, var(--r-fg), transparent 86%) 100%
+  );
+}
+.chapter-slider-input::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--r-fg), transparent 86%);
+}
+.chapter-slider-input::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--r-fg);
+}
+.chapter-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
+  border: 2px solid var(--r-surface);
+  border-radius: 50%;
+  background: var(--r-fg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  transition: transform 150ms var(--ease-standard);
+}
+.chapter-slider-input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--r-surface);
+  border-radius: 50%;
+  background: var(--r-fg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+.chapter-slider-input:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.chapter-slider-input:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.chapter-slider-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: min(240px, 70vw);
+  padding: 6px 10px;
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius-sm);
+  background: var(--r-raised);
+  color: var(--r-fg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: hintFadeIn 150ms var(--ease-standard) both;
+}
+.chapter-slider-bubble .num {
+  color: var(--r-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.chapter-slider-name {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+/* 标题自带章号时气泡只有一行，字号按正文规格给足可读性 */
+.chapter-slider-name.is-numbered {
+  font-size: 13px;
+  font-weight: 600;
+}
+.reader-progress-hint {
+  margin: 0;
+  color: var(--r-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+/* ── 字号五档：当前档位 + 可点档位（两端 A− / A+ 每档 ±1） ── */
+.font-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.font-stepper .btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+}
+.font-stepper-value {
+  min-width: 84px;
+  text-align: center;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.font-levels {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 6px;
+}
+.font-levels button {
+  min-height: 44px;
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--r-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 150ms var(--ease-standard), color 150ms var(--ease-standard);
+}
+.font-levels button.is-active {
+  background: var(--r-fg);
+  border-color: var(--r-fg);
+  color: var(--r-bg);
+  font-weight: 600;
+}
+
+/* ── 背景五档 + 跟随系统：色板选择器 ── */
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+.theme-swatches button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 1px solid var(--r-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--r-muted);
+  font-size: 12px;
+  text-align: left;
+  transition: border-color 150ms var(--ease-standard), color 150ms var(--ease-standard);
+}
+.theme-swatches button.is-active {
+  border-color: var(--r-fg);
+  color: var(--r-fg);
+  font-weight: 600;
+}
+.theme-dot {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--r-border);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--r-raised);
+}
+.theme-dot-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── 章末引导：明显的「下一章」主按钮 / 末章出口 ── */
+.reader-pager {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 32px 0 0;
+}
+.reader-pager-next {
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 18px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.reader-pager-next-label {
+  font-size: 17px;
+}
+.reader-pager-next-title {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.82;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reader-pager-end {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px dashed var(--r-border);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--r-fg), transparent 95%);
+}
+.reader-pager-end strong {
+  font-size: 16px;
+}
+.reader-pager-end-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.reader-pager-end-actions .btn {
+  min-height: 44px;
+}
+.reader-pager-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.reader-pager-side .btn {
+  min-height: 44px;
+}
+
+/* ── 底部控制栏：进度滑块独占一行，按钮行是 6 个入口 ── */
+/* 全局 .h5-reader-bar 是「7 个按钮平铺」的网格，这里改成两行的纵向排布。 */
+.h5-reader-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.h5-reader-bar-slider {
+  padding: 0 10px 2px;
+}
+.h5-reader-bar-slider .chapter-slider {
+  min-height: 44px;
+}
+.h5-reader-bar-slider .chapter-slider-bubble {
+  bottom: calc(100% + 4px);
+}
+/* 7 个入口各占一格：上一章 / 目录 / 书签 / 搜索 / 书架 / 设置 / 下一章 */
+.h5-reader-bar-actions {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+.h5-reader-bar-actions button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 48px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--r-fg);
+  font-size: 11px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.h5-reader-bar-actions button:active {
+  background: color-mix(in oklab, var(--r-fg), transparent 92%);
+  border-radius: var(--radius-sm);
+}
+.h5-reader-bar-actions button[disabled] {
+  opacity: 0.38;
+}
+/* 禁用原因逐格只有 ~52px 宽：单行放不下就整行挤成一团，这里只留最短的理由 */
+.h5-reader-bar-actions .inline-note {
+  display: block;
+  max-width: 100%;
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--r-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+.chapter-slider-input:disabled::-webkit-slider-thumb {
+  background: var(--r-muted);
+}
+
+@media (max-width: 390px) {
+  .font-levels {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+  }
+  .font-levels button {
+    font-size: 11px;
+  }
+  .theme-swatches {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .h5-reader-bar-actions button {
+    font-size: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chapter-slider-input::-webkit-slider-thumb,
+  .reader-edge-hint,
+  .drawer-tab,
+  .font-levels button,
+  .theme-swatches button {
+    transition: none;
+  }
+}

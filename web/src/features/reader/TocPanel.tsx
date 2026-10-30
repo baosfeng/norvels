@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ApiError } from "../../api/client";
 import type { Volume } from "../../api/types";
-import { useFocusTrap } from "../../lib/focusTrap";
 import { filterChapters, nextReveal, TOC_CHUNK, takeRevealed } from "../../lib/tocRows";
 import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { showToast } from "../../lib/toastStore";
@@ -13,56 +12,49 @@ function errorText(error: ApiError | null): string {
 }
 
 /**
- * 阅读器目录抽屉：卷分组折叠（C-27）+ 分块续显（C-29）+ 搜索（C-25）
+ * 目录页签内容：卷分组折叠（C-27）+ 分块续显（C-29）+ 搜索（C-25）
  * + 空态清空搜索（C-31）+ 失败态两出口（C-61 / C-62）。
- *
- * 失败态重试与降级都在抽屉内完成；抽屉本身照常打开，正文不受影响。
+ * 抽屉外壳（页签与焦点陷阱）在 ReaderDrawer 里，这里只管这一页的内容。
  */
-export function TocDrawer({
-  open,
+export function TocPanel({
+  active,
   loading,
   error,
   volumes,
   bookId,
   currentChapterId,
-  onClose,
+  onNavigate,
   onRetry,
 }: {
-  open: boolean;
+  /** 本次打开且停在目录页签：只为它做「重置浏览状态 + 定位当前章」。 */
+  active: boolean;
   loading: boolean;
   error: ApiError | null;
   volumes: Volume[];
   bookId: number;
   currentChapterId: number;
-  onClose: () => void;
+  onNavigate: () => void;
   onRetry: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const [revealed, setRevealed] = useState(TOC_CHUNK);
+  const [revealed, setRevealed] = useState<number>(TOC_CHUNK);
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
   const [flat, setFlat] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const rootRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const baseline = useRef<ApiError | null>(null);
   const positioned = useRef(false);
-  useFocusTrap(open, rootRef, onClose);
 
-  // 每次打开都清空搜索、展开全部卷、回到第一块：长目录不该从上次停的地方开始
+  // 每次打开抽屉本组件都重新挂载（ReaderDrawer 只在 open 时渲染内容），
+  // 所以搜索 / 折叠 / 分块等浏览状态天然从干净状态开始，不需要在 effect 里重置。
+  // 切到目录页签时只把焦点交给搜索框：读者刚点过来，光标不该留在别的控件上。
   useEffect(() => {
-    if (!open) return;
-    // 抽屉每次打开都重置本地浏览状态（同步到 React 之外的「这次打开」）
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQuery("");
-    setRevealed(TOC_CHUNK);
-    setCollapsed(new Set());
-    setFlat(false);
-    setRetrying(false);
-    positioned.current = false;
-    window.setTimeout(() => searchRef.current?.focus(), 0);
-  }, [open]);
+    if (!active) return;
+    const timer = window.setTimeout(() => searchRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [active]);
 
   // 重试结束：错误消失 → 焦点回搜索框、列表回顶部；错误还在 → 按钮恢复可点
   useEffect(() => {
@@ -75,9 +67,9 @@ export function TocDrawer({
     }
   }, [retrying, error]);
 
-  // 打开抽屉后把当前章滚进视口（C-06）：先确保当前章所在的块已显示，再滚过去
+  // 打开后把当前章滚进视口（C-06）：先确保当前章所在的块已显示，再滚过去
   useEffect(() => {
-    if (!open || loading || error || positioned.current) return;
+    if (!active || loading || error || positioned.current) return;
     if (currentChapterId <= 0) return;
     positioned.current = true;
     const at = volumes.flatMap((volume) => volume.chapters).findIndex((chapter) => chapter.id === currentChapterId);
@@ -89,7 +81,7 @@ export function TocDrawer({
         row?.scrollIntoView?.({ block: "center" });
       }, 20);
     }, 0);
-  }, [open, loading, error, currentChapterId, volumes]);
+  }, [active, loading, error, currentChapterId, volumes]);
 
   const chapters = useMemo(() => volumes.flatMap((volume) => volume.chapters), [volumes]);
   const total = chapters.length;
@@ -188,7 +180,7 @@ export function TocDrawer({
                   bookId={bookId}
                   chapter={chapter}
                   current={chapter.id === currentChapterId}
-                  onNavigate={onClose}
+                  onNavigate={onNavigate}
                 />
               ))}
             </div>
@@ -219,23 +211,7 @@ export function TocDrawer({
   );
 
   return (
-    <aside
-      ref={rootRef}
-      className={`drawer${open ? " is-open" : ""}`}
-      aria-label="章节目录"
-      aria-hidden={!open}
-      data-od-id="reader-drawer"
-    >
-      <div className="drawer-head">
-        <strong>目录</strong>
-        <span className="meta">
-          {total} 章 · {volumes.length} 卷
-        </span>
-        <button className="btn btn-ghost" type="button" data-od-id="C-30" onClick={onClose}>
-          关闭
-        </button>
-      </div>
-
+    <>
       {!loading && !error && total > 0 ? (
         <div className="drawer-search">
           <input
@@ -269,7 +245,7 @@ export function TocDrawer({
         </div>
       ) : null}
 
-      <div className="drawer-body">
+      <div className="drawer-scroll" ref={listRef} onKeyDown={onListKeyDown}>
         {loading ? (
           <LoadingPanel title="正在读取目录" description="稍等一下，马上就好。" />
         ) : error && !flat ? (
@@ -290,53 +266,49 @@ export function TocDrawer({
           </div>
         ) : total === 0 ? (
           <EmptyPanel title="还没有目录" description="这本书尚未拆出章节。" />
-        ) : (
-          <div className="drawer-scroll" ref={listRef} onKeyDown={onListKeyDown}>
-            {filtering && matches.length === 0 ? (
-              <div className="state-panel" data-testid="toc-empty">
-                <span className="state-mark" aria-hidden="true">
-                  空
-                </span>
-                <h2>没有匹配的章节</h2>
-                <p>换个关键词试试，或清空后看全部章节。</p>
-                <div className="state-actions">
-                  <button className="btn" type="button" data-od-id="C-31" onClick={clearSearch}>
-                    清空搜索
-                  </button>
-                </div>
-              </div>
-            ) : filtering ? (
-              matches.map((chapter) => (
-                <TocChapterRow
-                  key={chapter.id}
-                  bookId={bookId}
-                  chapter={chapter}
-                  current={chapter.id === currentChapterId}
-                  onNavigate={onClose}
-                />
-              ))
-            ) : flat ? (
-              <>
-                {shownFlat.map((chapter) => (
-                  <TocChapterRow
-                    key={chapter.id}
-                    bookId={bookId}
-                    chapter={chapter}
-                    current={chapter.id === currentChapterId}
-                    onNavigate={onClose}
-                  />
-                ))}
-                {showMoreButton}
-              </>
-            ) : (
-              <>
-                {normalBody()}
-                {showMoreButton}
-              </>
-            )}
+        ) : filtering && matches.length === 0 ? (
+          <div className="state-panel" data-testid="toc-empty">
+            <span className="state-mark" aria-hidden="true">
+              空
+            </span>
+            <h2>没有匹配的章节</h2>
+            <p>换个关键词试试，或清空后看全部章节。</p>
+            <div className="state-actions">
+              <button className="btn" type="button" data-od-id="C-31" onClick={clearSearch}>
+                清空搜索
+              </button>
+            </div>
           </div>
+        ) : filtering ? (
+          matches.map((chapter) => (
+            <TocChapterRow
+              key={chapter.id}
+              bookId={bookId}
+              chapter={chapter}
+              current={chapter.id === currentChapterId}
+              onNavigate={onNavigate}
+            />
+          ))
+        ) : flat ? (
+          <>
+            {shownFlat.map((chapter) => (
+              <TocChapterRow
+                key={chapter.id}
+                bookId={bookId}
+                chapter={chapter}
+                current={chapter.id === currentChapterId}
+                onNavigate={onNavigate}
+              />
+            ))}
+            {showMoreButton}
+          </>
+        ) : (
+          <>
+            {normalBody()}
+            {showMoreButton}
+          </>
         )}
       </div>
-    </aside>
+    </>
   );
 }

@@ -10,6 +10,24 @@ const TAP_SLOP = 12;
 /** 按住超过这个时长不算单击（长按多半是在选词）。 */
 const TAP_MAX_MS = 700;
 
+/** 单击分区的边界（占宽比例）：左 1/3 上一章、中 1/3 唤出菜单、右 1/3 下一章。 */
+export const ZONE_EDGE = 1 / 3;
+
+/** 一次短按落在哪个区：`prev` 左、`menu` 中、`next` 右。 */
+export type TapZone = "prev" | "menu" | "next";
+
+/**
+ * 按横坐标把一次点击分到三区。宽度为非正数时一律当「中区」（改菜单，不翻章），
+ * 因为无法判断左右就不该悄悄换掉读者的位置。
+ */
+export function resolveTapZone(clientX: number, width: number): TapZone {
+  if (!(width > 0) || !Number.isFinite(clientX)) return "menu";
+  const ratio = clientX / width;
+  if (ratio < ZONE_EDGE) return "prev";
+  if (ratio > 1 - ZONE_EDGE) return "next";
+  return "menu";
+}
+
 interface TapStart {
   x: number;
   y: number;
@@ -32,12 +50,20 @@ export interface ReaderControlsApi {
 }
 
 /**
- * 阅读器控制层显隐：H5 默认收起，单击正文唤出，3 秒无操作自动收起，
- * 再点立即收起；设置面板或目录打开（paused）期间暂停自动收起。
+ * 阅读器控制层与三区手势：H5 默认收起，单击正文唤出，3 秒无操作自动收起，
+ * 再点中区立即收起；设置面板或抽屉打开（paused）期间暂停自动收起、也不分区翻章。
  * 只认「短按 + 位移很小」的一次点击，左右滑动翻章与选字不会被当成唤出。
  */
-export function useReaderControls(options: { isH5: boolean; paused: boolean; autoHideMs?: number }): ReaderControlsApi {
-  const { isH5, paused, autoHideMs = AUTO_HIDE_MS } = options;
+export function useReaderControls(options: {
+  isH5: boolean;
+  paused: boolean;
+  autoHideMs?: number;
+  /** 左 / 右区短按的落点；不传就退回「全屏都是菜单键」的老行为。 */
+  onZoneTap?: (zone: Exclude<TapZone, "menu">) => void;
+  /** 分区宽度的取值点：默认取正文区自身宽度，测试可注入。 */
+  zoneWidth?: (event: ReactPointerEvent) => number;
+}): ReaderControlsApi {
+  const { isH5, paused, autoHideMs = AUTO_HIDE_MS, onZoneTap, zoneWidth } = options;
   const [visible, setVisible] = useState(false);
   // 任何一次有效交互都重置自动收起计时
   const [activity, setActivity] = useState(0);
@@ -64,6 +90,25 @@ export function useReaderControls(options: { isH5: boolean; paused: boolean; aut
     setActivity((n) => n + 1);
   }, []);
 
+  /**
+   * 面板打开时短按既不分区翻章、也不切换控制层：读者的注意力在面板上，
+   * 翻章会让他丢掉刚看的位置，收起控制层又会连带收起面板的入口。
+   */
+  const handleTap = useCallback(
+    (event: ReactPointerEvent) => {
+      if (paused) return;
+      if (!onZoneTap) {
+        toggle();
+        return;
+      }
+      const width = zoneWidth ? zoneWidth(event) : event.currentTarget.clientWidth;
+      const zone = resolveTapZone(event.clientX ?? 0, width);
+      if (zone === "menu") toggle();
+      else onZoneTap(zone);
+    },
+    [onZoneTap, paused, toggle, zoneWidth],
+  );
+
   const surfaceProps = useMemo(
     () => ({
       onPointerDown(event: ReactPointerEvent) {
@@ -85,13 +130,13 @@ export function useReaderControls(options: { isH5: boolean; paused: boolean; aut
         const dy = (event.clientY ?? 0) - from.y;
         // 滑动翻章交给 useSwipePaging：位移大就不在这里处理
         if (Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP) return;
-        toggle();
+        handleTap(event);
       },
       onPointerCancel() {
         start.current = null;
       },
     }),
-    [isH5, toggle],
+    [isH5, handleTap],
   );
 
   return { visible: isH5 ? visible : true, toggle, reveal, hide, surfaceProps };

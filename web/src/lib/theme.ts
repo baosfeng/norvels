@@ -2,15 +2,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * 阅读器与整站共用的主题。
- * 三档显式主题（日间 / 夜间 / 羊皮纸）+ 一档「跟随系统」：跟随系统时按 prefers-color-scheme
- * 在日间与夜间之间自动切换，并持续监听系统外观变化。
+ * 五档显式主题（日间 / 夜间 / 羊皮纸 / 护眼绿 / 纯黑 OLED）+ 一档「跟随系统」：
+ * 跟随系统时按 prefers-color-scheme 在日间与夜间之间自动切换，并持续监听系统外观变化。
  */
-export type Theme = "day" | "night" | "parchment" | "system";
+export type Theme = "day" | "night" | "parchment" | "green" | "black" | "system";
 /** 真正落到 data-theme 上的主题（system 已解析成 day / night）。 */
 export type ResolvedTheme = Exclude<Theme, "system">;
 
 const KEY = "norvels.theme";
-const ORDER: Theme[] = ["day", "night", "parchment", "system"];
+/** 面板里的展示顺序：由浅到深，跟随系统收在最后。 */
+const ORDER: Theme[] = ["day", "night", "parchment", "green", "black", "system"];
+/** 深色外观的档位：color-scheme 与浏览器原生控件（滚动条 / 输入框）跟着走。 */
+const DARK_THEMES: readonly ResolvedTheme[] = ["night", "black"];
+
+/** 这一档是不是深色外观（决定 color-scheme，避免纯黑档里出现白底输入框）。 */
+export function isDarkTheme(theme: ResolvedTheme): boolean {
+  return DARK_THEMES.includes(theme);
+}
 
 export function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (ORDER as string[]).includes(value);
@@ -38,7 +46,7 @@ export function resolveTheme(theme: Theme, dark: boolean = prefersDark()): Resol
 }
 
 /**
- * 把主题写到根节点：data-theme 只放解析后的具体主题（样式表只认三档），
+ * 把主题写到根节点：data-theme 只放解析后的具体主题（样式表只认具体档位），
  * 读者的「跟随系统」选择单独记在 data-theme-preference 上，便于排查与样式分支。
  */
 export function applyTheme(
@@ -50,7 +58,7 @@ export function applyTheme(
   const resolved = resolveTheme(theme, dark);
   root.dataset.theme = resolved;
   root.dataset.themePreference = theme;
-  root.style.colorScheme = resolved === "night" ? "dark" : "light";
+  root.style.colorScheme = isDarkTheme(resolved) ? "dark" : "light";
 }
 
 /** 主题切换的过渡时长，与 motion.css 里的 --motion-theme 保持一致。 */

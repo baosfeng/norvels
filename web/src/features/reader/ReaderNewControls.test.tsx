@@ -6,7 +6,7 @@ import type { Bookmark, ChapterBrief, Volume } from "../../api/types";
 import { BookmarkConfirmDialog } from "./BookmarkConfirmDialog";
 import { ReaderRestoreHint } from "./ReaderRestoreHint";
 import { ReaderStateArea } from "./ReaderStateArea";
-import { TocDrawer } from "./TocDrawer";
+import { TocPanel } from "./TocPanel";
 
 const chapter = (id: number, idx: number, title = `第${idx + 1}章 示例`): ChapterBrief => ({
   id,
@@ -23,17 +23,18 @@ const volume = (id: number, title: string, start: number, count: number): Volume
   chapters: Array.from({ length: count }, (_, i) => chapter(start + i, start + i)),
 });
 
-function toc(volumes: Volume[], overrides: Partial<Parameters<typeof TocDrawer>[0]> = {}) {
+/** 目录页签内容：外壳（页签 / 关闭）由 ReaderDrawer 负责，这里只测内容本身。 */
+function toc(volumes: Volume[], overrides: Partial<Parameters<typeof TocPanel>[0]> = {}) {
   return render(
     <MemoryRouter>
-      <TocDrawer
-        open
+      <TocPanel
+        active
         loading={false}
         error={null}
         volumes={volumes}
         bookId={7}
         currentChapterId={volumes[0]?.chapters[0]?.id ?? 0}
-        onClose={vi.fn()}
+        onNavigate={vi.fn()}
         onRetry={vi.fn()}
         {...overrides}
       />
@@ -154,7 +155,7 @@ describe("新增控件：目录失败态两出口（C-61 / C-62）", () => {
     const volumes = [volume(1, "正文", 1000, 2)];
     const view = (err: ApiError | null, vols: Volume[]) => (
       <MemoryRouter>
-        <TocDrawer open loading={false} error={err} volumes={vols} bookId={7} currentChapterId={1000} onClose={vi.fn()} onRetry={onRetry} />
+        <TocPanel active loading={false} error={err} volumes={vols} bookId={7} currentChapterId={1000} onNavigate={vi.fn()} onRetry={onRetry} />
       </MemoryRouter>
     );
     const { rerender } = render(view(error, []));
@@ -178,7 +179,7 @@ describe("新增控件：目录失败态两出口（C-61 / C-62）", () => {
     const volumes = [volume(1, "第一卷", 1000, 2), volume(2, "第二卷", 1100, 2)];
     render(
       <MemoryRouter>
-        <TocDrawer open loading={false} error={error} volumes={volumes} bookId={7} currentChapterId={1000} onClose={vi.fn()} onRetry={vi.fn()} />
+        <TocPanel active loading={false} error={error} volumes={volumes} bookId={7} currentChapterId={1000} onNavigate={vi.fn()} onRetry={vi.fn()} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "用平铺列表" }));

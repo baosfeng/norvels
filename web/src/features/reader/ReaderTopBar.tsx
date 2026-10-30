@@ -12,7 +12,6 @@ export function ReaderTopBar({
   fullscreen,
   canFullscreen,
   searchEnabled,
-  bookmarksOpen,
   searchOpen,
   drawerOpen,
   helpOpen,
@@ -33,7 +32,6 @@ export function ReaderTopBar({
   fullscreen: boolean;
   canFullscreen: boolean;
   searchEnabled: boolean;
-  bookmarksOpen: boolean;
   searchOpen: boolean;
   drawerOpen: boolean;
   helpOpen: boolean;
@@ -85,7 +83,7 @@ export function ReaderTopBar({
               className="btn"
               type="button"
               onClick={onOpenBookmarks}
-              aria-expanded={bookmarksOpen}
+              aria-expanded={drawerOpen}
               aria-label="打开书签"
               data-od-id="C-04"
             >

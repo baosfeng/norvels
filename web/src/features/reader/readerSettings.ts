@@ -46,8 +46,12 @@ export const FONT_FAMILY_STACK: Record<ReaderFontFamily, string> = {
   system: "var(--reader-system, system-ui, sans-serif)",
 };
 
-export const FONT_MIN = 14;
-export const FONT_MAX = 28;
+/** 正文字号五档预设（px）：A−/A+ 每次跳一档，不再连续调节。 */
+export const FONT_LEVELS = [16, 20, 24, 28, 32] as const;
+/** 五档的人话名字：默认 20px 落在「标准」，与改造前 19px 观感最接近。 */
+export const FONT_LEVEL_NAMES = ["小", "标准", "较大", "大", "特大"] as const;
+export const FONT_MIN = FONT_LEVELS[0];
+export const FONT_MAX = FONT_LEVELS[FONT_LEVELS.length - 1];
 export const LEADING_MIN = 1.4;
 export const LEADING_MAX = 2.4;
 /** 自动滚动速度：0.5–5，步进 0.5（慢档更适合中文长文）。 */
@@ -78,7 +82,7 @@ export interface ReaderSettings {
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
-  font: 19,
+  font: 20,
   leading: 1.9,
   fontFamily: "serif",
   para: 1,
@@ -134,7 +138,7 @@ export function snapParaLevel(value: number): number {
 
 export function readReaderSettings(storage: ReadStorage = typeof window === "undefined" ? undefined : window.localStorage): ReaderSettings {
   return {
-    font: Math.round(readNumber(storage, READER_KEYS.font, READER_DEFAULTS.font, FONT_MIN, FONT_MAX)),
+    font: snapFontLevel(readNumber(storage, READER_KEYS.font, READER_DEFAULTS.font, FONT_MIN, FONT_MAX)),
     leading: Number(readNumber(storage, READER_KEYS.leading, READER_DEFAULTS.leading, LEADING_MIN, LEADING_MAX).toFixed(1)),
     fontFamily: readEnum(storage, READER_KEYS.fontFamily, ["serif", "sans", "system"], READER_DEFAULTS.fontFamily),
     para: snapParaLevel(readNumber(storage, READER_KEYS.para, READER_DEFAULTS.para, PARA_LEVELS[0], PARA_LEVELS[PARA_LEVELS.length - 1])),
@@ -175,11 +179,11 @@ export function writeReaderSettings(settings: ReaderSettings, storage: WriteStor
 }
 
 /**
- * 正文字号：默认 px（19px 观感不变）；「跟随系统字号」开启时折算成 rem，
- * 由浏览器默认字号（设置里改的那种）统一缩放整篇正文。
+ * 正文字号：先吸附到五档之一（任何来源的脏值都落回预设），默认 px；
+ * 「跟随系统字号」开启时折算成 rem，由浏览器默认字号统一缩放整篇正文。
  */
 export function readerFontCss(font: number, followSystemFont: boolean): string {
-  const size = Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(font)));
+  const size = snapFontLevel(font);
   if (!followSystemFont) return `${size}px`;
   return `${Number((size / 16).toFixed(4))}rem`;
 }
@@ -197,9 +201,32 @@ export function readerStyleVars(settings: ReaderSettings): Record<string, string
   };
 }
 
-/** 字号步进（±1px，夹在 14–28）。 */
+/**
+ * 把任意字号吸附到最近的一档：老用户存过的 14–28 连续值（如 19、23）落到最近的预设，
+ * 同距时取较大档（与四舍五入同向），不会因为分档把字变小。
+ */
+export function snapFontLevel(value: number): number {
+  let best: number = FONT_LEVELS[0];
+  for (const level of FONT_LEVELS) if (Math.abs(level - value) <= Math.abs(best - value)) best = level;
+  return best;
+}
+
+/** 当前字号所在档位下标（0 起）；脏值先吸附再取。 */
+export function fontLevelIndex(font: number): number {
+  const at = FONT_LEVELS.indexOf(snapFontLevel(font) as (typeof FONT_LEVELS)[number]);
+  return at < 0 ? 0 : at;
+}
+
+/** 字号档位显示：「标准 · 2/5」，让读者知道还有几档可调。 */
+export function formatFontLevel(font: number): string {
+  const at = fontLevelIndex(font);
+  return `${FONT_LEVEL_NAMES[at]} · ${at + 1}/${FONT_LEVELS.length}`;
+}
+
+/** 字号步进：在五档之间前后移动一步，到头停住。 */
 export function stepFont(current: number, delta: number): number {
-  return Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(current) + delta));
+  const at = Math.min(FONT_LEVELS.length - 1, Math.max(0, fontLevelIndex(current) + delta));
+  return FONT_LEVELS[at];
 }
 
 /** 行距步进（±0.1，夹在 1.4–2.4，保留一位小数）。 */

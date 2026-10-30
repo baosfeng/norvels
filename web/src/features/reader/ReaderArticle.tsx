@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { ChapterBrief } from "../../api/types";
 import type { ReaderHit } from "../../lib/readerSearch";
 import { formatWords } from "../../lib/format";
+import { ReaderChapterSlider } from "./ReaderChapterSlider";
 import { ReaderPager } from "./ReaderPager";
 import { ReaderRestoreHint } from "./ReaderRestoreHint";
 
@@ -16,10 +17,14 @@ export function ReaderArticle({
   currentHit,
   searching,
   bookId,
+  chapters,
+  index,
   prev,
   next,
   onPrev,
   onNext,
+  onJumpChapter,
+  onShelf,
   chapterNumber,
   chapterCount,
   wordCount,
@@ -35,10 +40,17 @@ export function ReaderArticle({
   currentHit: number;
   searching: boolean;
   bookId: number;
+  /** 全书章节（进度滑块的数据源）；目录未就绪时为空数组。 */
+  chapters: ChapterBrief[];
+  /** 当前章在 chapters 里的下标；-1 表示未就绪。 */
+  index: number;
   prev: ChapterBrief | null;
   next: ChapterBrief | null;
   onPrev: () => void;
   onNext: () => void;
+  /** 进度滑块松手后跳到第 N 章（下标）。 */
+  onJumpChapter: (index: number) => void;
+  onShelf: () => void;
   chapterNumber: number;
   chapterCount: number;
   wordCount: number;
@@ -61,7 +73,15 @@ export function ReaderArticle({
           ) : null,
         )}
       </div>
-      <ReaderPager bookId={bookId} prev={prev} next={next} onPrev={onPrev} onNext={onNext} />
+      <ReaderPager
+        bookId={bookId}
+        prev={prev}
+        next={next}
+        nextTitle={next?.title ?? null}
+        onPrev={onPrev}
+        onNext={onNext}
+        onShelf={onShelf}
+      />
       <div className="reader-progress" data-od-id="reader-progress">
         <div className="reader-progress-row">
           <span>
@@ -75,9 +95,13 @@ export function ReaderArticle({
             全书进度 <strong className="num">{Math.round(percent * 100)}</strong>%
           </span>
         </div>
-        <div className="progress">
-          <span style={{ width: `${Math.round(percent * 100)}%` }} />
-        </div>
+        <ReaderChapterSlider
+          chapters={chapters}
+          index={index}
+          disabled={chapterCount === 0}
+          onCommit={onJumpChapter}
+        />
+        <p className="reader-progress-hint">拖动滑块可以跳到任意一章</p>
       </div>
     </article>
   );

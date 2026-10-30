@@ -32,7 +32,7 @@ function stubMatchMedia(initialDark: boolean) {
   };
 }
 
-describe("主题：四档与跟随系统", () => {
+describe("主题：五档与跟随系统", () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
@@ -101,9 +101,9 @@ describe("主题：四档与跟随系统", () => {
     expect(document.documentElement.dataset.theme).toBe("day");
   });
 
-  it("四档主题都在切换列表里，顺序为 日间/夜间/羊皮纸/跟随系统", () => {
+  it("五档主题都在切换列表里，顺序为 日间/夜间/羊皮纸/护眼绿/纯黑/跟随系统", () => {
     stubMatchMedia(false);
     const { result } = renderHook(() => useTheme());
-    expect(result.current.themes).toEqual(["day", "night", "parchment", "system"]);
+    expect(result.current.themes).toEqual(["day", "night", "parchment", "green", "black", "system"]);
   });
 });

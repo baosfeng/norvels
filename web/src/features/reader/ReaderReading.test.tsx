@@ -99,7 +99,11 @@ vi.mock("../../lib/theme", async () => {
   const actual = await vi.importActual<typeof import("../../lib/theme")>("../../lib/theme");
   return {
     ...actual,
-    useTheme: () => ({ theme: "day", setTheme: vi.fn(), themes: ["day", "night", "parchment"] }),
+    useTheme: () => ({
+      theme: "day",
+      setTheme: vi.fn(),
+      themes: ["day", "night", "parchment", "green", "black", "system"],
+    }),
     prefersReducedMotion: () => false,
   };
 });
@@ -191,7 +195,7 @@ describe("阅读器：书签幂等与抽屉", () => {
     await openReader();
 
     fireEvent.click(screen.getByLabelText("打开书签"));
-    expect(screen.getByTestId("bookmark-drawer").getAttribute("aria-hidden")).toBe("false");
+    expect(screen.getByTestId("reader-drawer").getAttribute("aria-hidden")).toBe("false");
     expect(screen.getByTestId("bookmark-empty")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("bookmark-add"));

@@ -74,7 +74,12 @@ vi.mock("../../lib/theme", async () => {
   const actual = await vi.importActual<typeof import("../../lib/theme")>("../../lib/theme");
   return {
     ...actual,
-    useTheme: () => ({ theme: "day", resolvedTheme: "day", setTheme, themes: ["day", "night", "parchment", "system"] }),
+    useTheme: () => ({
+      theme: "day",
+      resolvedTheme: "day",
+      setTheme,
+      themes: ["day", "night", "parchment", "green", "black", "system"],
+    }),
     prefersReducedMotion: () => false,
   };
 });
@@ -122,9 +127,9 @@ describe("阅读器：排版设置面板", () => {
     vi.restoreAllMocks();
   });
 
-  it("默认值落到外壳变量上：19px / 1.9 行距 / 标准页宽 / 左对齐 / 2em 缩进", () => {
+  it("默认值落到外壳变量上：20px / 1.9 行距 / 标准页宽 / 左对齐 / 2em 缩进", () => {
     renderReader();
-    expect(shellVar("--reader-font")).toBe("19px");
+    expect(shellVar("--reader-font")).toBe("20px");
     expect(shellVar("--reader-leading")).toBe("1.9");
     expect(shellVar("--reader-width")).toBe("42rem");
     expect(shellVar("--reader-align")).toBe("left");
@@ -188,26 +193,58 @@ describe("阅读器：排版设置面板", () => {
     expect(localStorage.getItem(READER_KEYS.indent)).toBe("false");
   });
 
-  it("字号跟随系统：开启后字号改用 rem 折算（默认关闭保持 19px）", () => {
+  it("字号跟随系统：开启后字号改用 rem 折算（默认关闭保持 20px）", () => {
     renderReader();
     openSettings();
 
     expect(screen.getByRole("switch", { name: "跟随系统字号" }).getAttribute("aria-checked")).toBe("false");
-    expect(shellVar("--reader-font")).toBe("19px");
+    expect(shellVar("--reader-font")).toBe("20px");
 
     fireEvent.click(screen.getByRole("switch", { name: "跟随系统字号" }));
     expect(screen.getByRole("switch", { name: "跟随系统字号" }).getAttribute("aria-checked")).toBe("true");
-    expect(shellVar("--reader-font")).toBe("1.1875rem");
+    expect(shellVar("--reader-font")).toBe("1.25rem");
     expect(localStorage.getItem(READER_KEYS.followSystemFont)).toBe("true");
   });
 
-  it("主题四档：含「跟随系统」，点了交给 setTheme", () => {
+  it("背景五档 + 跟随系统：每档都在，点了交给 setTheme", () => {
     renderReader();
     openSettings();
 
-    expect(groupButton("主题", "跟随系统")).toBeTruthy();
-    fireEvent.click(groupButton("主题", "跟随系统"));
+    const group = screen.getByRole("group", { name: "背景" });
+    for (const label of ["日间", "夜间", "羊皮纸", "护眼绿", "纯黑", "跟随系统"]) {
+      expect(within(group).getByRole("button", { name: new RegExp(label) })).toBeTruthy();
+    }
+    fireEvent.click(within(group).getByRole("button", { name: /跟随系统/ }));
     expect(setTheme).toHaveBeenCalledWith("system");
+    fireEvent.click(within(group).getByRole("button", { name: /纯黑/ }));
+    expect(setTheme).toHaveBeenCalledWith("black");
+    fireEvent.click(within(group).getByRole("button", { name: /护眼绿/ }));
+    expect(setTheme).toHaveBeenCalledWith("green");
+  });
+
+  it("字号五档：显示当前档位，A+ / A− 每点一次跳一档，档位按钮可直接选", () => {
+    renderReader();
+    openSettings();
+
+    expect(screen.getByTestId("reader-font-value").textContent).toBe("标准 · 2/5");
+    fireEvent.click(screen.getByRole("button", { name: "增大字号" }));
+    expect(shellVar("--reader-font")).toBe("24px");
+    expect(screen.getByTestId("reader-font-value").textContent).toBe("较大 · 3/5");
+    fireEvent.click(screen.getByRole("button", { name: "减小字号" }));
+    expect(shellVar("--reader-font")).toBe("20px");
+
+    fireEvent.click(screen.getByTestId("reader-font-level-32"));
+    expect(shellVar("--reader-font")).toBe("32px");
+    expect(screen.getByTestId("reader-font-value").textContent).toBe("特大 · 5/5");
+    // 到顶后 A+ 置灰，A− 仍可点
+    expect((screen.getByRole("button", { name: "增大字号" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(localStorage.getItem(READER_KEYS.font)).toBe("32");
+  });
+
+  it("老用户存过 19px：打开后落到最近一档 20px，不是别的字号", () => {
+    localStorage.setItem(READER_KEYS.font, "19");
+    renderReader();
+    expect(shellVar("--reader-font")).toBe("20px");
   });
 
   it("繁体转简体：默认关闭显示原文，打开后正文变简体（段落下标不变）", () => {

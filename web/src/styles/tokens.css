@@ -61,6 +61,10 @@
   --day-bg: #fbf6ee; --day-surface: #fffdf8; --day-raised: #fffdf8; --day-fg: #201914; --day-muted: #7a6d63; --day-border: #ded2c3;
   --night-bg: #171514; --night-surface: #211e1b; --night-raised: #2a2622; --night-fg: #e8e0d6; --night-muted: #a89c90; --night-border: #3a342e;
   --parch-bg: #f1e3cf; --parch-surface: #f7ecd9; --parch-raised: #faf1e2; --parch-fg: #3a2d22; --parch-muted: #7a5f45; --parch-border: #d8c3a4;
+  /* 护眼绿：低饱和豆沙绿底，白天长读不刺眼（与日间同为浅色外观） */
+  --green-bg: #e3ede1; --green-surface: #eef4ec; --green-raised: #f4f8f2; --green-fg: #24301f; --green-muted: #5d6b56; --green-border: #cbd9c6;
+  /* 纯黑 OLED：真黑底省电且不发光，正文压到 #d6d6d6 避免高对比拖影 */
+  --black-bg: #000000; --black-surface: #0b0b0b; --black-raised: #161616; --black-fg: #d6d6d6; --black-muted: #8e8e8e; --black-border: #262626;
   --success-text: color-mix(in oklab, var(--success), var(--fg) 55%);
   --warn-text: color-mix(in oklab, var(--warn), var(--fg) 62%);
   --danger-text: color-mix(in oklab, var(--danger), var(--fg) 20%);
@@ -102,4 +106,21 @@ html[data-theme="parchment"] {
   --bg: var(--parch-bg); --surface: var(--parch-surface); --surface-warm: #e9d7bb;
   --fg: var(--parch-fg); --fg-2: color-mix(in oklab, var(--parch-fg), var(--parch-bg) 22%);
   --muted: var(--parch-muted); --border: var(--parch-border); --border-soft: var(--parch-raised);
+}
+html[data-theme="green"] {
+  --r-bg: var(--green-bg); --r-surface: var(--green-surface); --r-fg: var(--green-fg);
+  --r-muted: var(--green-muted); --r-border: var(--green-border); --r-raised: var(--green-raised);
+  /* 应用外壳跟随（与羊皮纸同口径：派生自同一组值，不新增品牌色） */
+  --bg: var(--green-bg); --surface: var(--green-surface); --surface-warm: var(--green-border);
+  --fg: var(--green-fg); --fg-2: color-mix(in oklab, var(--green-fg), var(--green-bg) 22%);
+  --muted: var(--green-muted); --border: var(--green-border); --border-soft: var(--green-raised);
+}
+html[data-theme="black"] {
+  --r-bg: var(--black-bg); --r-surface: var(--black-surface); --r-fg: var(--black-fg);
+  --r-muted: var(--black-muted); --r-border: var(--black-border); --r-raised: var(--black-raised);
+  --bg: var(--black-bg); --surface: var(--black-surface); --surface-warm: var(--black-raised);
+  --fg: var(--black-fg); --fg-2: color-mix(in oklab, var(--black-fg), var(--black-bg) 22%);
+  --muted: var(--black-muted); --border: var(--black-border); --border-soft: var(--black-raised);
+  /* 纯黑底上原强调色偏暗，提亮一档保证按钮文字对比度 */
+  --accent: #c07f4f; --meta: #c07f4f;
 }

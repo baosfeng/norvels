@@ -4,6 +4,7 @@ import type { Theme } from "../../lib/theme";
 import {
   ALIGN_LABELS,
   FONT_FAMILY_LABELS,
+  FONT_LEVELS,
   FONT_MAX,
   FONT_MIN,
   LEADING_MAX,
@@ -12,6 +13,8 @@ import {
   SPEED_MAX,
   SPEED_MIN,
   WIDTH_LABELS,
+  fontLevelIndex,
+  formatFontLevel,
   formatSpeed,
   stepFont,
   stepLeading,
@@ -24,16 +27,7 @@ import {
 } from "./readerSettings";
 import { speedToPxPerSec } from "../../lib/autoScroll";
 
-/** 段距四档的人话名字：与 PARA_LEVELS 一一对应。 */
-export const PARA_LABELS: Record<number, string> = { 0.4: "紧凑", 0.7: "偏紧", 1: "标准", 1.6: "宽松" };
-
-/** 主题四档：多出来的一档是「跟随系统」。 */
-export const THEME_LABELS: Record<Theme, string> = {
-  day: "日间",
-  night: "夜间",
-  parchment: "羊皮纸",
-  system: "跟随系统",
-};
+import { PARA_LABELS, THEME_DOTS, THEME_LABELS } from "./readerConstants";
 
 const FONT_FAMILIES: ReaderFontFamily[] = ["serif", "sans", "system"];
 const WIDTHS: ReaderWidth[] = ["narrow", "normal", "wide"];
@@ -173,8 +167,9 @@ export function ReaderSettingsPanel({
       </div>
 
       <Row label="字号">
-        <div className="stepper" data-od-id="C-42">
+        <div className="font-stepper" data-od-id="C-42">
           <button
+            className="btn"
             type="button"
             aria-label="减小字号"
             disabled={fontLocked || settings.font <= FONT_MIN}
@@ -182,10 +177,11 @@ export function ReaderSettingsPanel({
           >
             A−
           </button>
-          <span className="num" data-testid="reader-font-value">
-            {settings.font}
+          <span className="font-stepper-value" data-testid="reader-font-value">
+            {formatFontLevel(settings.font)}
           </span>
           <button
+            className="btn"
             type="button"
             aria-label="增大字号"
             disabled={fontLocked || settings.font >= FONT_MAX}
@@ -195,6 +191,21 @@ export function ReaderSettingsPanel({
           </button>
         </div>
       </Row>
+      <div className="font-levels" role="group" aria-label="字号档位">
+        {FONT_LEVELS.map((level) => (
+          <button
+            key={level}
+            type="button"
+            className={fontLevelIndex(settings.font) === FONT_LEVELS.indexOf(level) ? "is-active" : ""}
+            aria-pressed={fontLevelIndex(settings.font) === FONT_LEVELS.indexOf(level)}
+            disabled={fontLocked}
+            data-testid={`reader-font-level-${level}`}
+            onClick={() => onChange({ font: level })}
+          >
+            {level}
+          </button>
+        ))}
+      </div>
       {fontLocked ? <span className="inline-note">正在跟随系统字号，先关掉它再调</span> : null}
       {!fontLocked && settings.font <= FONT_MIN ? <span className="inline-note">已经是最小字号</span> : null}
       {!fontLocked && settings.font >= FONT_MAX ? <span className="inline-note">已经是最大字号</span> : null}
@@ -357,17 +368,24 @@ export function ReaderSettingsPanel({
         </span>
       </Row>
 
-      <Row label="主题">
-        <div data-od-id="C-41">
-          <SegGroup
-          label="主题"
-          values={themes}
-          current={theme}
-          labelOf={(value) => THEME_LABELS[value]}
-          onChange={(value) => setTheme(value)}
-        />
+      <Row label="背景">
+        <div className="theme-swatches" role="group" aria-label="背景" data-od-id="C-41">
+          {themes.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={theme === value ? "is-active" : ""}
+              aria-pressed={theme === value}
+              data-testid={`reader-theme-${value}`}
+              onClick={() => setTheme(value)}
+            >
+              <span className="theme-dot" style={{ background: THEME_DOTS[value] }} aria-hidden="true" />
+              <span className="theme-dot-label">{THEME_LABELS[value]}</span>
+            </button>
+          ))}
         </div>
       </Row>
+      <p className="settings-note">护眼绿适合白天长读；纯黑适合 OLED 屏，夜间最省电。</p>
     </aside>
   );
 }
