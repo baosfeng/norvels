@@ -5,9 +5,11 @@ import { useReadingProgress } from "../api/hooks";
 import { Cover } from "../components/Cover";
 import { formatCount } from "../lib/format";
 import { useIsH5 } from "../lib/tier";
+import { SideAccount } from "./SideAccount";
 
 /**
- * PC 侧栏（H5 下作为汉堡抽屉内容渲染）。
+ * 侧栏（PC 常驻 / H5 作为汉堡抽屉内容）。
+ * 两档都开：首页（仅 H5）/ 书架 / 搜索 / **系列** / **阅读历史**。
  * 管理入口（书籍管理 / 驾驶舱 / 作者 / 导入管理）只在 PC 出现——H5 是条件渲染，不是隐藏。
  */
 export function Sidebar({
@@ -37,6 +39,8 @@ export function Sidebar({
         <span>本地中文小说库</span>
       </NavLink>
 
+      {/* 导航项与路由档位同源：两档都开的能力（首页 / 书架 / 搜索 / 系列 / 阅读历史）两档都出现，
+          PC 专属的管理四项才按档位不渲染。不引入底部 tab bar——外壳重排风险大，抽屉已够用。 */}
       <nav className="side-nav" aria-label="主导航">
         {isH5 ? (
           <NavLink to="/home" onClick={onNavigate} data-od-id="C-04">
@@ -50,14 +54,14 @@ export function Sidebar({
         <NavLink to="/search" onClick={onNavigate} data-od-id="C-03">
           搜索
         </NavLink>
+        <NavLink to="/series" onClick={onNavigate} data-testid="nav-series" data-od-id="C-05">
+          系列
+        </NavLink>
+        <NavLink to="/history" onClick={onNavigate} data-testid="nav-history" data-od-id="C-06">
+          阅读历史
+        </NavLink>
         {isH5 ? null : (
           <>
-            <NavLink to="/series" onClick={onNavigate} data-testid="nav-series" data-od-id="C-05">
-              系列
-            </NavLink>
-            <NavLink to="/history" onClick={onNavigate} data-testid="nav-history" data-od-id="C-06">
-              阅读历史
-            </NavLink>
             <NavLink to="/admin" onClick={onNavigate} data-testid="nav-admin" data-od-id="C-07">
               书籍管理
             </NavLink>
@@ -113,6 +117,9 @@ export function Sidebar({
           <span>字数</span>
         </div>
       </div>
+
+      {/* 账号区放在侧栏底部：PC 常驻可见，H5 就在汉堡抽屉底部。不强制拦截浏览 */}
+      <SideAccount onNavigate={onNavigate} />
 
       <p className="side-foot meta">所有数据保存在你的电脑里</p>
     </aside>

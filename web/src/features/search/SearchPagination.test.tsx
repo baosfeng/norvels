@@ -30,7 +30,6 @@ function result(total: number, page = 1): SearchResult {
   return {
     q: "旧城",
     books: { items: page === 1 ? [book] : [book], total, page, size: 8 },
-    chapters: { items: [], total: 0, page, size: 8 },
   };
 }
 
@@ -57,7 +56,7 @@ describe("搜索分页（新增控件 C-54 / C-55）", () => {
     const next = screen.getByRole("button", { name: "下一页" }) as HTMLButtonElement;
     expect(prev.disabled).toBe(true);
     expect(next.disabled).toBe(false);
-    expect(useSearch).toHaveBeenCalledWith("旧城", "all", 1, 8);
+    expect(useSearch).toHaveBeenCalledWith("旧城", "book", 1, 8);
   });
 
   it("点「下一页」按第 2 页重查，且「下一页」在末页禁用", async () => {
@@ -65,9 +64,9 @@ describe("搜索分页（新增控件 C-54 / C-55）", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "下一页" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
     // 第 3 页是末页（20 条 / 每页 8 条）
-    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("旧城", "all", 2, 8));
+    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("旧城", "book", 2, 8));
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
-    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("旧城", "all", 3, 8));
+    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("旧城", "book", 3, 8));
     await waitFor(() => expect((screen.getByRole("button", { name: "下一页" }) as HTMLButtonElement).disabled).toBe(true));
   });
 
@@ -87,16 +86,7 @@ describe("搜索分页（新增控件 C-54 / C-55）", () => {
     expect(input.value).toBe("");
     expect(document.activeElement).toBe(input);
     // C-49：Esc 不只清输入，结果区与地址栏也回到默认（q 清空、回第 1 页）
-    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("", "all", 1, 8));
+    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("", "book", 1, 8));
   });
 
-  it("分栏支持左右方向键切换（C-50）", async () => {
-    renderAt("/search?q=旧城");
-    await waitFor(() => expect(screen.getByRole("tablist")).toBeTruthy());
-    const all = screen.getByRole("tab", { name: "全部" });
-    fireEvent.keyDown(all, { key: "ArrowRight" });
-    await waitFor(() =>
-      expect(screen.getByRole("tab", { name: /书名和作者/ }).getAttribute("aria-selected")).toBe("true"),
-    );
-  });
 });

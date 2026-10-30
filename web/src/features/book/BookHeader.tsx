@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom";
 /**
  * 详情页右栏头部：书名 / 署名 / 连载状态 / 标签 / 简介。
  * 锚点：C-32 署名作者链接、C-09 标签 chip（新增）、C-10 简介展开（仅 H5）。
+ *
+ * 两档差别只有落点与展开：PC 署名去作者页（作者页 PC 专属），H5 署名去「按该作者筛选的书架」。
  */
 export function BookHeader({
   book,
@@ -39,7 +41,9 @@ export function BookHeader({
     <>
       <h1>{book.title}</h1>
       <p className="byline" data-testid="book-byline">
-        <Link to="/authors" data-od-id="C-32">
+        {/* 作者页是 PC 专属（TierRoute 会把 H5 弹回首页）；H5 落到「按该作者筛选的书架」，
+            同一个作者名在两档都是可点的，不制造「点了就跳走」的死路 */}
+        <Link to={isH5 ? `/shelf?author=${book.authorId}` : "/authors"} data-od-id="C-32">
           {authorsOf(book).join("、") || "佚名"}
         </Link>{" "}
         · <span className="meta">{book.status === "parsed" ? "已入库" : "处理中"}</span> ·{" "}

@@ -1,7 +1,5 @@
 import type { RefObject } from "react";
-import type { ReadStatus } from "../../api/types";
 import { formatCount } from "../../lib/format";
-import { readStatusFilterLabel } from "../../lib/readStatus";
 import { RandomBookButton } from "./RandomBookButton";
 
 /** 书架页头（C-20/C-32/C-33）：标题、随机一本、选择模式、H5 排序入口。 */
@@ -18,10 +16,11 @@ export function ShelfHead({
   selecting,
   selectedCount,
   sheetOpen,
-  readStatus,
+  filterCount,
   onToggleSelecting,
   onOpenBatch,
   onOpenSheet,
+  mine,
 }: {
   isH5: boolean;
   loading: boolean;
@@ -35,21 +34,26 @@ export function ShelfHead({
   selecting: boolean;
   selectedCount: number;
   sheetOpen: boolean;
-  readStatus: Exclude<ReadStatus, ""> | null;
+  /** 已启用的筛选项数（H5 入口按钮据此显示「筛选 n」；PC 工具栏自己展示，不需要） */
+  filterCount: number;
   onToggleSelecting: () => void;
   onOpenBatch: () => void;
   onOpenSheet: () => void;
+  /** 当前是「我的书架」：标题与副标题换一套，避免把个人书架说成"最近入库" */
+  mine: boolean;
 }) {
   return (
     <div className="page-head">
       <div>
-        <p className="eyebrow">书架 · {loading ? "读取中" : `${formatCount(total)} 本`}</p>
+        <p className="eyebrow">
+          {mine ? "我的书架" : "书架"} · {loading ? "读取中" : `${formatCount(total)} 本`}
+        </p>
         <h1 ref={titleRef} tabIndex={-1}>
-          {isH5 ? "书架" : "最近入库"}
+          {mine ? "我的书架" : isH5 ? "书架" : "最近入库"}
         </h1>
         {isH5 ? null : (
           <p className="sub">
-            按{sortLabel}排序 · 共 {formatCount(total)} 本
+            {mine ? "主动加入书架的书，按加入时间排列" : `按${sortLabel}排序`} · 共 {formatCount(total)} 本
             {filtering ? "（已筛选）" : ""}
           </p>
         )}
@@ -58,16 +62,19 @@ export function ShelfHead({
         {isH5 ? null : (
           <RandomBookButton authorId={authorId ?? undefined} tag={tag ?? undefined} collection={collection ?? undefined} />
         )}
-        <button
-          className="btn"
-          type="button"
-          data-testid="shelf-select-toggle"
-          data-od-id="C-32"
-          aria-pressed={selecting}
-          onClick={onToggleSelecting}
-        >
-          {selecting ? "退出选择" : "选择"}
-        </button>
+        {/* 我的书架不做批量改元信息：那是书库管理动作，与"我挑出来的书"是两件事 */}
+        {mine ? null : (
+          <button
+            className="btn"
+            type="button"
+            data-testid="shelf-select-toggle"
+            data-od-id="C-32"
+            aria-pressed={selecting}
+            onClick={onToggleSelecting}
+          >
+            {selecting ? "退出选择" : "选择"}
+          </button>
+        )}
         {selecting ? (
           <button
             className="btn btn-primary"
@@ -85,7 +92,7 @@ export function ShelfHead({
             勾选至少一本书后可用。
           </span>
         ) : null}
-        {isH5 ? (
+        {isH5 && !mine ? (
           <button
             className="btn shelf-sort-trigger"
             type="button"
@@ -93,9 +100,10 @@ export function ShelfHead({
             data-od-id="C-20"
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
+            aria-label={filterCount > 0 ? `排序与筛选，已启用 ${filterCount} 项筛选` : "排序与筛选"}
             onClick={onOpenSheet}
           >
-            {readStatus === null ? `排序：${sortLabel}` : `${readStatusFilterLabel(readStatus)} · ${sortLabel}`}
+            {filterCount > 0 ? `筛选 ${filterCount} · ${sortLabel}` : `排序：${sortLabel}`}
           </button>
         ) : null}
       </div>

@@ -1,4 +1,4 @@
-import { useCategories } from "../../api/hooks";
+import { leavesOf, useCategoryOptions } from "./categoryOptions";
 
 /** 分类筛选值：两级都可为空（null = 不过滤）。小分类依附于大分类。 */
 export interface CategoryValue {
@@ -7,11 +7,10 @@ export interface CategoryValue {
 }
 
 /**
- * 分类筛选器（0015）：大分类下拉 + 联动的小分类下拉。
+ * 分类筛选器（0015）：大分类下拉 + 联动的小分类下拉（PC 工具栏用）。
+ * 选项来自 `useCategoryOptions`——与 H5 弹层同一份，见 categoryOptions.ts。
  *
  * 大分类切换时小分类自动清空（后端只给 L2 时按不过滤处理，前端不该造出这种组合）。
- * 未分类（l1 为空串）的书不进下拉——它们只能从「全部分类」里看到，
- * 因为后端的空串已经被「不过滤」占用。
  */
 export function CategoryFilter({
   value,
@@ -20,13 +19,9 @@ export function CategoryFilter({
   value: CategoryValue;
   onChange: (next: CategoryValue) => void;
 }) {
-  const { data, error } = useCategories();
+  const { nodes, error } = useCategoryOptions();
   const l1 = value.l1 ?? "";
-  const nodes = (data?.items ?? []).filter((node) => node.l1 !== "");
-  const current = nodes.find((node) => node.l1 === l1);
-  // 有命名的小分类才渲染第二级：选中小分类会排除「该大分类下未细分」的书，
-  // 所以即使只有一个选项也有意义（未分类的书仍只能从「全部分类」里看到）。
-  const leaves = (current?.items ?? []).filter((leaf) => leaf.l2 !== "");
+  const leaves = leavesOf(nodes, value.l1);
 
   return (
     <>

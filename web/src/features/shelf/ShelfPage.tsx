@@ -1,73 +1,67 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { useAuthors, useTags } from "../../api/hooks";
+import { useAuthors, useCollections, useTags } from "../../api/hooks";
 import type { BookSummary, ReadStatus } from "../../api/types";
 import { useShelfMode } from "../../layouts/shelfMode";
 import { tierFallbackText } from "../../layouts/tierFallback";
-import {
-  READ_STATUS_LABELS,
-  nextReadStatus,
-} from "../../lib/readStatus";
+import { READ_STATUS_LABELS, nextReadStatus } from "../../lib/readStatus";
 import { showToast } from "../../lib/toastStore";
+import { useIsH5 } from "../../lib/tier";
+import { hasShelfQuery } from "./shelfQuery";
+import { useShelfView } from "./useShelfView";
+import { useShelfIds } from "./shelfIds";
+import { ShelfMineEmpty, ShelfMineLoginPrompt } from "./ShelfMinePanel";
+import { ShelfViewSwitch } from "./ShelfViewSwitch";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
-import type { CategoryValue } from "./CategoryFilter";
-import { ResumeCard } from "./ResumeCard";
 import { FilterHints } from "./FilterHints";
-import { ShelfSortSheet } from "./ShelfSortSheet";
-import { ShelfToolbar } from "./ShelfToolbar";
+import { ResumeCard } from "./ResumeCard";
+import { ShelfFilterSheet } from "./ShelfFilterSheet";
 import { ShelfHead } from "./ShelfHead";
 import { ShelfList } from "./ShelfList";
+import { ShelfToolbar } from "./ShelfToolbar";
 import { SORTS, type SortValue } from "./shelfSorts";
-import { useIsH5 } from "../../lib/tier";
-import {
-  SHELF_REFRESH_MIN_AGE_MS,
-  readShelfCache,
-  writeShelfCache,
-} from "../../lib/shelfCache";
+import { useShelfFilters } from "./useShelfFilters";
+import { useShelfCache, useShelfScrollRestore, shouldRefresh } from "./useShelfScrollRestore";
 import { useBookFeed, type BookFeedRestore } from "../../lib/useBookFeed";
+
+/** 我的书架不支持多选：给列表一个稳定空集合，避免每次渲染新建引用 */
+const EMPTY_SELECTION: Set<number> = new Set();
 
 const PAGE_SIZE = 24;
 /** H5 首屏 30 本，之后每次再取 30 本追加；PC 仍按 PAGE_SIZE 分页 */
 const H5_PAGE_SIZE = 30;
 
 /**
- * 书架：PC 是工作台（排序 / 作者筛选 / 标签筛选 / 视图切换 / 分页），
- * H5 是单列简表——不做筛选与分页，但保留排序（底部弹层）与无限滚动。
- * 管理类入口（导入 / 作者 / 驾驶舱）仍是 PC 专属，见 00-brief §0.6。
+ * 书架：两档**同一套筛选**，只换承载形态。
+ * - PC：页头下方常驻工具栏（排序 + 分类/作者/书单/评分/状态 + 标签 chips），页码分页。
+ * - H5：单列书卡 + 无限滚动，全部筛选收进底部弹层（排序 / 状态 / 评分 / 分类 / 作者 / 书单 / 标签）。
+ *
+ * 筛选值同时写进地址（`shelfQuery.ts`）与会话缓存：地址负责刷新 / 后退 / 分享，
+ * 缓存负责返回时的列表、页码与滚动位置。管理类入口（导入 / 作者 / 驾驶舱）仍是 PC 专属。
+ *
+ * 状态与副作用拆在三个地方：筛选 → `useShelfFilters`；缓存与滚动 → `useShelfScrollRestore`；
+ * 本文件只管取数与渲染。
  */
 export function ShelfPage() {
   const isH5 = useIsH5();
   const { mode } = useShelfMode();
-  // /shelf?tag=X 是详情页标签 chip 的落地地址：链接要能复制、能直接打开，
-  // 所以地址上的标签优先于会话缓存（缓存里的筛选是「上次看到哪」的上下文，换链接进来不该沿用）。
-  const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  // 首帧捕获地址上的标签；之后地址跟随 tag 变化（下面的 effect），不回读
-  const [urlTag] = useState<string | null>(() => (isH5 ? null : searchParams.get("tag")));
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   // 驾驶舱「全部书架 →」（C-23）要落到全部书：带上这个 state 就忽略会话缓存里的筛选
   const resetRequested = (location.state as { resetFilters?: boolean } | null)?.resetFilters === true;
-  // /read 在 AppShell 之外：进阅读器时本页整体卸载，靠会话缓存把列表与滚动位置带回来
-  const cached = useMemo(() => {
-    const snapshot = readShelfCache();
-    return snapshot && (urlTag || resetRequested) ? null : snapshot;
-  }, [urlTag, resetRequested]);
-  const [sort, setSort] = useState<SortValue>(() =>
-    SORTS.some((option) => option.value === cached?.sort) ? (cached?.sort as SortValue) : "updated",
-  );
-  const [authorId, setAuthorId] = useState<number | null>(cached?.authorId ?? null);
-  const [tag, setTag] = useState<string | null>(urlTag ?? cached?.tag ?? null);
-  const [readStatus, setReadStatus] = useState<Exclude<ReadStatus, ""> | null>(cached?.readStatus ?? null);
-  /** 评分筛选 1–5；0 星 = 未评，后端不提供「只有未评」，所以这里没有「未评」档 */
-  const [rating, setRating] = useState<number | null>(cached?.rating ?? null);
-  /** 书单筛选（扁平收藏夹，一本书可属多个书单） */
-  const [collection, setCollection] = useState<number | null>(cached?.collection ?? null);
-  /** 分类筛选（0015）：大分类 + 联动的小分类 */
-  const [category, setCategory] = useState<CategoryValue>({
-    l1: cached?.categoryL1 ?? null,
-    l2: cached?.categoryL2 ?? null,
-  });
-  // 角标点击后的乐观值：列表重新取数会拿回后端值，这里只兜住「刚点完还没刷新」的空窗
+  // 地址上有筛选参数 = 以地址为准（刷新 / 后退 / 分享都能复现同一屏）
+  const cached = useShelfCache(hasShelfQuery(searchParams) || resetRequested);
+  const filters = useShelfFilters(cached);
+  const { sort, setSort, category, filtering, filterCount, resetFilters } = filters;
+  // 视图（我的书架 / 全部书）进地址：?view=mine|all，默认按登录态选（B2）
+  const shelfView = useShelfView();
+  const shelfIds = useShelfIds();
+  const mine = shelfView.view === "mine";
+  // 我的书架按加入时间倒序、不参与筛选：那些筛选器只属于共享书库
+  const feedFiltering = !mine && filtering;
+
   const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   // 多选模式：右上角「选择」进入；选中后批量设作者（循环 PATCH，纯前端）
@@ -75,39 +69,35 @@ export function ShelfPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // 最近打开的书（返回时滚进视口并高亮）与「滚动位置只恢复一次」的标记
-  const lastBookRef = useRef<number | null>(cached?.lastBookId ?? null);
-  const restoredRef = useRef(false);
-  // 记住「最后一次看到的滚动位置」：卸载时 DOM 已换成更短的下一页，再读 window.scrollY 会被夹到 0
-  const scrollYRef = useRef(cached?.scrollTop ?? 0);
   // 清除筛选后焦点回到排序下拉（C-29）；404 回书架后焦点交给页标题（C-18）
   const sortRef = useRef<HTMLSelectElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
-  const navigate = useNavigate();
 
-  // 筛选项的候选：作者与标签都是 PC 专属，H5 不发这两个请求
-  const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: !isH5 });
-  const tagOptions = useTags({ enabled: !isH5 });
+  // 筛选项的候选：PC 常驻在工具栏里，H5 只在弹层打开时才去取（首屏不多发三个请求）
+  const optionsEnabled = !isH5 || sheetOpen;
+  const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: optionsEnabled });
+  const tagOptions = useTags({ enabled: optionsEnabled });
+  const collectionOptions = useCollections({ enabled: optionsEnabled });
 
   const pageSize = isH5 ? H5_PAGE_SIZE : PAGE_SIZE;
-  // 缓存命中就先用它渲染；够新（60 秒内）时连后台刷新都不做，返回瞬间不再发第 1 页
   const [now] = useState(() => Date.now());
+  // 会话缓存只属于「全部书」（它记的是 /api/books 的列表、筛选与页码）：
+  // 我的书架是另一份内容，拿它恢复会出现"书架里显示着书库里没加入的书"。
   const restore = useMemo<BookFeedRestore | undefined>(() => {
-    if (!cached || cached.size !== pageSize || cached.items.length === 0) return undefined;
-    return {
-      items: cached.items,
-      total: cached.total,
-      page: cached.page,
-      refresh: now - cached.savedAt > SHELF_REFRESH_MIN_AGE_MS,
-    };
-  }, [cached, pageSize, now]);
+    if (mine || !cached || cached.size !== pageSize || cached.items.length === 0) return undefined;
+    return { items: cached.items, total: cached.total, page: cached.page, refresh: shouldRefresh(cached, now) };
+  }, [mine, cached, pageSize, now]);
+  // 未登录时「我的书架」不发请求：/api/shelf 会 401，先渲染成错误面板只会误导
+  const feedEnabled = !mine || shelfView.loggedIn;
   const feed = useBookFeed({
+    source: mine ? "shelf" : "books",
+    enabled: feedEnabled,
     sort,
-    authorId: authorId ?? undefined,
-    tag: tag ?? undefined,
-    readStatus: readStatus ?? undefined,
-    rating: rating ?? undefined,
-    collection: collection ?? undefined,
+    authorId: filters.authorId ?? undefined,
+    tag: filters.tag ?? undefined,
+    readStatus: filters.readStatus ?? undefined,
+    rating: filters.rating ?? undefined,
+    collection: filters.collection ?? undefined,
     categoryL1: category.l1 ?? undefined,
     categoryL2: category.l2 ?? undefined,
     size: pageSize,
@@ -117,100 +107,29 @@ export function ShelfPage() {
 
   const { items, total, loading, error, reload, loadMore, hasMore } = feed;
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const filtering =
-    authorId !== null ||
-    tag !== null ||
-    readStatus !== null ||
-    rating !== null ||
-    collection !== null ||
-    category.l1 !== null;
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "";
   // 老浏览器 / 测试环境没有 IntersectionObserver：改用底部「加载更多」按钮兜底
   const canObserve = typeof IntersectionObserver !== "undefined";
 
-  /** 把当前列表状态写进会话缓存：滚动位置取实时值，最近打开的书取 ref（避免闭包里的旧 state）。 */
-  const persistShelf = useCallback(() => {
-    if (items.length === 0) return;
-    writeShelfCache({
+  // 滚动/缓存恢复同样只在「全部书」生效（我的书架不写会话缓存，避免覆盖书库那份）
+  const scroll = useShelfScrollRestore({
+    snapshot: {
       sort,
-      authorId,
-      tag,
-      readStatus,
-      rating,
-      collection,
-      categoryL1: category.l1,
-      categoryL2: category.l2,
+      authorId: filters.authorId,
+      tag: filters.tag,
+      readStatus: filters.readStatus,
+      rating: filters.rating,
+      collection: filters.collection,
+      category,
       size: pageSize,
       mode: isH5 ? "infinite" : "paged",
       items,
       total,
       page: feed.page,
-      scrollTop: Math.round(scrollYRef.current),
-      lastBookId: lastBookRef.current,
-    });
-  }, [sort, authorId, tag, readStatus, rating, collection, category.l1, category.l2, pageSize, isH5, items, total, feed.page]);
-
-  /** 进详情/阅读器前记一下「最近打开的书 + 当前滚动位置」，返回时据此定位。 */
-  function rememberBook(id: number) {
-    lastBookRef.current = id;
-    scrollYRef.current = typeof window === "undefined" ? 0 : window.scrollY || 0;
-    persistShelf();
-    writeShelfCache({
-      sort,
-      authorId,
-      tag,
-      readStatus,
-      rating,
-      collection,
-      categoryL1: category.l1,
-      categoryL2: category.l2,
-      size: pageSize,
-      mode: isH5 ? "infinite" : "paged",
-      items,
-      total,
-      page: feed.page,
-      scrollTop: Math.round(scrollYRef.current),
-      lastBookId: id,
-    });
-  }
-
-  // 滚动停止 300ms 写一次；卸载（进阅读器）前再补一次，保证返回时位置准确
-  useEffect(() => {
-    let timer = 0;
-    function onScroll() {
-      scrollYRef.current = window.scrollY || 0;
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => persistShelf(), 300);
-    }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("scroll", onScroll);
-      persistShelf();
-    };
-  }, [persistShelf]);
-
-  // 加载完成 / 筛选排序变化：立刻落一次
-  useEffect(() => {
-    persistShelf();
-  }, [persistShelf, items.length]);
-
-  // 恢复滚动位置，再把最近打开的那本滚进视口并高亮 1.5 秒（已经在视口里就只高亮，不动位置）
-  useEffect(() => {
-    if (restoredRef.current || !cached || items.length === 0) return;
-    restoredRef.current = true;
-    scrollYRef.current = cached.scrollTop;
-    window.scrollTo({ top: cached.scrollTop });
-    const target = cached.lastBookId;
-    if (target === null) return;
-    const node = document.querySelector<HTMLElement>(`[data-book-id="${target}"]`);
-    if (!node) return;
-    // 位置优先：缓存里有滚动位置就按它恢复，不再把最近那本拽到中间（否则位置差会被放大）。
-    // 只有没有可用位置（新会话 / 从详情页深链进来）时才把这本书滚进视口居中。
-    if (cached.scrollTop <= 0) node.scrollIntoView({ block: "center" });
-    node.classList.add("is-recent");
-    window.setTimeout(() => node.classList.remove("is-recent"), 1500);
-  }, [cached, items.length]);
+    },
+    cached: mine ? null : cached,
+    enabled: !mine && items.length > 0,
+  });
 
   // H5：滚到底自动取下一页。换排序/筛选会换查询键，钩子自己丢弃在途响应并回到第 1 页。
   useEffect(() => {
@@ -232,25 +151,6 @@ export function ShelfPage() {
     return () => document.body.classList.remove("h5-sheet-open");
   }, [sheetOpen]);
 
-  // 底部弹层：Esc 收起（点遮罩与「关闭」同理）
-  useEffect(() => {
-    if (!sheetOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSheetOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sheetOpen]);
-
-  function scrollToTopOfList() {
-    // 换了排序 / 筛选 / 页码都回到列表顶部；老浏览器与测试环境可能没有 scrollTo
-    try {
-      window.scrollTo({ top: 0 });
-    } catch {
-      /* 不影响结果 */
-    }
-  }
-
   // 404 的「回书架」把焦点交给页标题（C-18 离开空态）
   useEffect(() => {
     if ((location.state as { focusTitle?: boolean } | null)?.focusTitle) titleRef.current?.focus();
@@ -264,19 +164,14 @@ export function ShelfPage() {
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location.state, location.pathname, location.search, navigate]);
 
-  // 标签变化写回 ?tag=：复制出去的书架链接能复现同一筛选；replace 不往后退栈里塞历史
-  useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        if ((prev.get("tag") ?? null) === tag) return prev;
-        const next = new URLSearchParams(prev);
-        if (tag) next.set("tag", tag);
-        else next.delete("tag");
-        return next;
-      },
-      { replace: true },
-    );
-  }, [tag, setSearchParams]);
+  function scrollToTopOfList() {
+    // 换了排序 / 筛选 / 页码都回到列表顶部；老浏览器与测试环境可能没有 scrollTo
+    try {
+      window.scrollTo({ top: 0 });
+    } catch {
+      /* 不影响结果 */
+    }
+  }
 
   function chooseSort(next: SortValue) {
     setSheetOpen(false);
@@ -297,26 +192,24 @@ export function ShelfPage() {
     feed.setPage(next);
   }
 
-  /** 一次清空七项筛选（C-29），焦点回排序下拉；只清筛选不动排序。 */
-  function resetFilters() {
-    setAuthorId(null);
-    setTag(null);
-    setReadStatus(null);
-    setRating(null);
-    setCollection(null);
-    setCategory({ l1: null, l2: null });
+  /** 清空筛选（C-29）：焦点回排序下拉。 */
+  function clearFilters() {
+    resetFilters();
     sortRef.current?.focus();
     scrollToTopOfList();
   }
 
   function chooseReadStatus(next: Exclude<ReadStatus, ""> | null) {
     setSheetOpen(false);
-    setReadStatus(next);
-    try {
-      window.scrollTo({ top: 0 });
-    } catch {
-      /* 老浏览器与测试环境可能没有 scrollTo：不影响筛选结果 */
-    }
+    filters.setReadStatus(next);
+    scrollToTopOfList();
+  }
+
+  /** 弹层里的其余筛选（评分 / 作者 / 书单 / 分类 / 标签）：选中即生效并收起弹层。 */
+  function chooseInSheet(apply: () => void) {
+    setSheetOpen(false);
+    apply();
+    scrollToTopOfList();
   }
 
   /** 角标循环：想读 → 在读 → 已读 → 未标记；先乐观回显，失败再退回原值。 */
@@ -360,75 +253,103 @@ export function ShelfPage() {
         titleRef={titleRef}
         sortLabel={sortLabel}
         filtering={filtering}
-        authorId={authorId}
-        tag={tag}
-        collection={collection}
+        authorId={filters.authorId}
+        tag={filters.tag}
+        collection={filters.collection}
         selecting={selecting}
         selectedCount={selected.size}
         sheetOpen={sheetOpen}
-        readStatus={readStatus}
+        filterCount={filterCount}
         onToggleSelecting={toggleSelecting}
         onOpenBatch={() => setBatchOpen(true)}
         onOpenSheet={() => setSheetOpen(true)}
+        mine={mine}
       />
 
-      {isH5 ? null : <ResumeCard />}
+      <ShelfViewSwitch
+        view={shelfView.view}
+        onChange={shelfView.setView}
+        mineCount={shelfIds.ready ? shelfIds.ids.size : null}
+      />
 
-      {isH5 ? null : (
+      {/* 我的书架按加入时间倒序，排序与筛选对它不成立：mine 视图不渲染整排筛选器 */}
+      {isH5 || mine ? null : <ResumeCard />}
+
+      {isH5 || mine ? null : (
         <ShelfToolbar
           sortRef={sortRef}
           sort={sort}
           onChooseSort={chooseSortOnPc}
-          readStatus={readStatus}
+          readStatus={filters.readStatus}
           onChooseReadStatus={chooseReadStatus}
-          rating={rating}
-          onRatingChange={setRating}
-          authorId={authorId}
-          onAuthorChange={setAuthorId}
+          rating={filters.rating}
+          onRatingChange={filters.setRating}
+          authorId={filters.authorId}
+          onAuthorChange={filters.setAuthorId}
           authors={authorOptions.data?.items ?? []}
-          collection={collection}
-          onCollectionChange={setCollection}
+          collection={filters.collection}
+          onCollectionChange={filters.setCollection}
           category={category}
-          onCategoryChange={setCategory}
-          tag={tag}
-          onTagChange={setTag}
+          onCategoryChange={filters.setCategory}
+          tag={filters.tag}
+          onTagChange={filters.setTag}
           tags={tagOptions.data?.items ?? []}
           filtering={filtering}
-          onResetFilters={resetFilters}
+          onResetFilters={clearFilters}
         />
       )}
 
-      {isH5 ? null : <FilterHints authors={authorOptions} tags={tagOptions} />}
+      {isH5 || mine ? null : <FilterHints authors={authorOptions} tags={tagOptions} />}
 
-      <ShelfList
-        isH5={isH5}
-        loading={loading}
-        error={error}
-        items={items}
-        total={total}
-        filtering={filtering}
-        mode={mode}
-        statusOverrides={statusOverrides}
-        selecting={selecting}
-        selected={selected}
-        feed={feed}
-        pages={pages}
-        canObserve={canObserve}
-        sentinelRef={sentinelRef}
-        onRetry={reload}
-        onResetFilters={resetFilters}
-        onCycle={(book) => void cycleStatus(book)}
-        onSelect={toggleSelected}
-        onOpen={rememberBook}
-        onPage={changePage}
-      />
+      {mine && !shelfView.loggedIn ? (
+        <ShelfMineLoginPrompt next={location.pathname + location.search} />
+      ) : (
+        <ShelfList
+          isH5={isH5}
+          loading={loading}
+          error={error}
+          items={items}
+          total={total}
+          filtering={feedFiltering}
+          mode={mode}
+          statusOverrides={statusOverrides}
+          selecting={mine ? false : selecting}
+          selected={mine ? EMPTY_SELECTION : selected}
+          feed={feed}
+          pages={pages}
+          canObserve={canObserve}
+          sentinelRef={sentinelRef}
+          onRetry={reload}
+          onResetFilters={clearFilters}
+          onCycle={(book) => void cycleStatus(book)}
+          onSelect={toggleSelected}
+          onOpen={scroll.rememberBook}
+          onPage={changePage}
+          emptySlot={mine ? <ShelfMineEmpty filtering={false} /> : undefined}
+        />
+      )}
 
       {isH5 && sheetOpen ? (
-        <ShelfSortSheet
+        <ShelfFilterSheet
           sort={sort}
-          readStatus={readStatus}
+          readStatus={filters.readStatus}
+          rating={filters.rating}
+          authorId={filters.authorId}
+          authors={authorOptions.data?.items ?? []}
+          collection={filters.collection}
+          collections={collectionOptions.data?.items ?? []}
+          category={category}
+          tag={filters.tag}
+          tags={tagOptions.data?.items ?? []}
+          filtering={filtering}
           onChooseSort={chooseSort}
           onChooseReadStatus={chooseReadStatus}
+          onChooseRating={(next) => chooseInSheet(() => filters.setRating(next))}
+          onChooseAuthor={(next) => chooseInSheet(() => filters.setAuthorId(next))}
+          onChooseCollection={(next) => chooseInSheet(() => filters.setCollection(next))}
+          onChooseCategory={(next) => chooseInSheet(() => filters.setCategory(next))}
+          onChooseTag={(next) => chooseInSheet(() => filters.setTag(next))}
+          onResetFilters={() => chooseInSheet(clearFilters)}
           onClose={() => setSheetOpen(false)}
         />
       ) : null}

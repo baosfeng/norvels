@@ -67,18 +67,10 @@ const mocks = {
     nextId: 0,
   })),
   authors: vi.fn(async () => page<AuthorSummary>({ id: 9, name: "佚名", bookCount: 3, wordCount: 100 })),
+  // 检索只有书名与作者：章节命中整块下线，响应里也只有 books 一栏
   search: vi.fn(async (q: string): Promise<SearchResult> => ({
     q,
-    books: { items: [], total: 0, page: 1, size: 20 },
-    chapters: page({
-      bookId: 1,
-      bookTitle: book.title,
-      chapterId: 2,
-      chapterIdx: 1,
-      chapterTitle: "第二章",
-      snippet: "…<b>词</b>…",
-      score: 1,
-    }),
+    books: page(book),
   })),
   importJobs: vi.fn(async () => ({ items: [job] })),
   readingProgress: vi.fn(async () => ({ items: [progress] })),
@@ -184,7 +176,7 @@ describe("各域取数 hook 都能拿到数据", () => {
     expect(mocks.search).not.toHaveBeenCalled();
 
     const ok = renderHook(() => hooks.useSearch("两个字"));
-    await waitFor(() => expect(ok.result.current.data?.chapters.total).toBe(1));
+    await waitFor(() => expect(ok.result.current.data?.books.total).toBe(1));
     expect(mocks.search).toHaveBeenCalledWith("两个字", { type: "all", page: 1, size: 8 }, expect.anything());
   });
 

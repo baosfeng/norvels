@@ -368,3 +368,38 @@
     transition: none;
   }
 }
+
+/* ── 账号与书架视图（B2）：登录页 / 视图切换 / 侧栏账号区 ── */
+.auth-page{display:flex;justify-content:center;padding:40px 16px}
+.auth-card{width:100%;max-width:420px;display:flex;flex-direction:column;gap:12px}
+.auth-card h1{font-size:24px;margin:0}
+.auth-card .sub{margin:0;color:var(--muted);font-size:13.5px;line-height:1.6}
+.auth-form{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.auth-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+.auth-actions{display:flex;gap:8px;flex-wrap:wrap}
+.auth-actions .btn{flex:1 1 auto;min-height:44px}
+.auth-hint{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0;padding:10px 12px;
+  border:1px solid color-mix(in oklab, var(--danger,#b42318) 35%, var(--border));border-radius:var(--radius);
+  color:var(--danger-text,#b42318);font-size:13px;line-height:1.5}
+.auth-hint-action{min-height:36px;border-color:currentColor;color:inherit}
+.auth-foot{margin:0;line-height:1.6}
+
+/* 书架视图切换：两个 chip 并排，与筛选 chips 同一套视觉语言 */
+.shelf-view-switch{display:flex;gap:8px;align-items:center;margin:0 0 10px}
+.shelf-view-switch .chip{min-height:36px}
+
+/* 侧栏账号区：贴在统计条下方，长名字截断不换行把侧栏撑开 */
+.side-account{display:flex;flex-direction:column;gap:6px;padding:12px 10px;border-top:1px solid var(--border)}
+.side-account-name{margin:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-account-note{margin:0;line-height:1.5}
+.side-account .btn{justify-content:flex-start;padding-left:0}
+.side-account .btn:hover{background:transparent;color:var(--accent)}
+
+/* 触屏：登录页与视图切换的可点区域抬到 44px（口径见 globals.css 顶部） */
+@media (max-width: 768px) {
+  .auth-page{padding:20px 12px}
+  .shelf-view-switch .chip{min-height:44px}
+  .side-account .btn{min-height:44px}
+  .auth-hint-action{min-height:44px}
+}
+

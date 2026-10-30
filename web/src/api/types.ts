@@ -230,26 +230,10 @@ export interface AuthorDetail extends AuthorSummary {
   books: BookSummary[];
 }
 
-export interface SearchHit {
-  bookId: number;
-  bookTitle: string;
-  chapterId: number;
-  chapterIdx: number;
-  chapterTitle: string;
-  /**
-   * 章节命中片段。检索范围收敛到书名 / 作者 / 章节标题后，后端**仍返回该字段，但恒为空字符串**；
-   * 字段保留是为了契约稳定（调用方不必判 undefined）。渲染前先过 lib/snippet 的 hasSnippet。
-   */
-  snippet: string;
-  score: number;
-}
-
 export interface SearchResult {
   q: string;
-  /** 书名与作者命中（检索范围之一） */
+  /** 书名与作者命中——这也是**唯一**的检索范围（章节标题检索已下线，后端不再返回 chapters 字段） */
   books: Page<BookSummary>;
-  /** 章节标题命中（检索范围之二）；每项都带 snippet 字段但恒为空串 */
-  chapters: Page<SearchHit>;
   /** 后端每次都会返回；可读提示语，为空串表示本次没有要额外说明的事 */
   notice?: string;
 }
@@ -492,6 +476,37 @@ export interface ReadingHistoryRow {
 export interface ReadingHistoryResult {
   items: ReadingHistoryRow[];
   total: number;
+}
+
+/**
+ * 当前账号（GET /api/auth/me）。没有密码，所以没有邮箱 / 头像之类——只有名字有用。
+ *
+ * 前端**读不到会话 Cookie**（HttpOnly），"我是谁" 只能靠这个接口回答：
+ * 200 即已登录（开放模式下后端直接回默认账号，行为与单用户时代一致），401 即未登录。
+ */
+export interface AuthUser {
+  id: number;
+  name: string;
+  createdAt: string;
+  /** 空串 = 建号后从未登录过 */
+  lastSeenAt: string;
+}
+
+/**
+ * 我的书架里的一行（GET /api/shelf）：书简介字段 + 加入时间。
+ *
+ * 后端取的是 BookBrief 列（比 BookSummary 少 volumeCount / intro / status 等），
+ * 所以这里的简介字段是可选的；渲染前必须过 `shelfItemsToBooks` 补齐默认值，
+ * 不要直接把 ShelfItem 当 BookSummary 用。
+ */
+export interface ShelfItem extends BookSummary {
+  /** 加入书架的时间（UTC ISO-8601） */
+  addedAt: string;
+}
+
+/** GET /api/shelf/ids：当前账号书架的全部书 id（不分页，用于列表打「已加入」标记）。 */
+export interface ShelfIdsResponse {
+  bookIds: number[];
 }
 
 /** POST /api/reading/sessions 的请求体：页面可见时累计，≥60s 且切章/隐藏/卸载才提交一次。 */

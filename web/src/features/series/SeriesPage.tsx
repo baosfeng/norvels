@@ -18,7 +18,7 @@ function updatedDate(iso: string | null | undefined): string {
 }
 
 /**
- * 系列列表（P3 发现域，PC 专属）：按系列聚合书目。
+ * 系列列表（P3 发现域，两档都开）：按系列聚合书目。
  * 数据全部来自 GET /api/series（后端已把书数 / 字数 / 最近更新 / 封面书算好），
  * 前端只做「字段 → 人话」与分页；筛选条件放 URL（q/page），刷新与回退都还原同一屏。
  */

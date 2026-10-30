@@ -28,6 +28,9 @@ import type {
   ReadingSessionInput,
   ReadingStats,
   SearchResult,
+  AuthUser,
+  ShelfIdsResponse,
+  ShelfItem,
   SeriesDetail,
   SeriesPage,
   SplitResult,
@@ -233,7 +236,11 @@ export const api = {
   authors: (params: { q?: string; sort?: "books" | "words" | "name"; page?: number; size?: number }, opts?: RequestOptions) =>
     request<Page<AuthorSummary>>(`/authors${query({ ...params })}`, opts),
   author: (id: number, opts?: RequestOptions) => request<AuthorDetail>(`/authors/${id}`, opts),
-  search: (q: string, params: { type?: "chapter" | "book" | "all"; page?: number; size?: number } = {}, opts?: RequestOptions) =>
+  /**
+   * 检索：只有书名与作者。type 只接受 book | all（两者等价），传 chapter 后端 400——
+   * 章节标题检索已整块下线，所以这里不给调用方留一个必然失败的取值。
+   */
+  search: (q: string, params: { type?: "book" | "all"; page?: number; size?: number } = {}, opts?: RequestOptions) =>
     request<SearchResult>(`/search${query({ q, ...params })}`, opts),
   importJobs: (opts?: RequestOptions) => request<{ items: ImportJob[] }>("/import/jobs", opts),
   tags: (opts?: RequestOptions) => request<{ items: TagSummary[] }>("/tags", opts),
@@ -498,4 +505,49 @@ export const api = {
   /** 阅读时长统计：days 1–365（默认 90）；与其它统计接口一样放宽超时（查聚合表）。 */
   readingStats: (days?: number, opts?: RequestOptions) =>
     request<ReadingStats>(`/stats/reading${query({ days })}`, { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
+
+  // --- 账号与「我的书架」（迁移 0016） ---
+  //
+  // 身份靠 HttpOnly Cookie `norvels_session`：**不往请求头塞 token**，前端也读不到它。
+  // 旧的共享口令（getAuthToken / Authorization: Bearer）在本文件上方原样保留，
+  // 那是"能不能进这个库"，与"进来之后我是谁"是两件事，互不替代。
+
+  /**
+   * 注册并直接登录：201 + 账号，同时下发会话 Cookie。
+   * 空名 / 超 32 字 400；重名（TRIM + 大小写折叠后一致）409。
+   */
+  register: (name: string, opts?: RequestOptions) =>
+    request<AuthUser>("/auth/register", { ...opts, method: "POST", body: { name } }),
+
+  /**
+   * 输账号登录：200 + 账号（下发会话 Cookie）。
+   * 账号不存在 404 code=account_not_found（没有密码可输错，唯一的失败原因就是号还没建）。
+   */
+  login: (name: string, opts?: RequestOptions) =>
+    request<AuthUser>("/auth/login", { ...opts, method: "POST", body: { name } }),
+
+  /** 登出：204，幂等（本来没登录也算成功），服务端真删会话行。 */
+  logout: (opts?: RequestOptions) => request<void>("/auth/logout", { ...opts, method: "POST" }),
+
+  /**
+   * 当前账号：200 即已登录；401 表示没有会话（开放模式下后端直接回默认账号，永不 401）。
+   * 判定登录态只认这个接口——Cookie 是 HttpOnly，前端没有别的办法知道"我是谁"。
+   */
+  me: (opts?: RequestOptions) => request<AuthUser>("/auth/me", opts),
+
+  /** 我的书架（按加入时间倒序，分页口径与 /api/books 一致）。 */
+  listShelf: (params: { page?: number; size?: number } = {}, opts?: RequestOptions) =>
+    request<Page<ShelfItem>>(`/shelf${query({ ...params })}`, opts),
+
+  /** 当前账号书架的全部书 id：一次性取全量，给列表打「已加入」标记，翻了页也不用再问。 */
+  listShelfIds: (opts?: RequestOptions) =>
+    request<ShelfIdsResponse>("/shelf/ids", opts).then((res) => res.bookIds ?? []),
+
+  /** 加入书架：204，幂等（重复加入同样成功）；书不存在 404。 */
+  addToShelf: (bookId: number, opts?: RequestOptions) =>
+    request<void>(`/shelf/${bookId}`, { ...opts, method: "PUT" }),
+
+  /** 移出书架：204，幂等（本来不在同样成功）。 */
+  removeFromShelf: (bookId: number, opts?: RequestOptions) =>
+    request<void>(`/shelf/${bookId}`, { ...opts, method: "DELETE" }),
 };

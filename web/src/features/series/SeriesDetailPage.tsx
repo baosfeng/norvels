@@ -8,7 +8,7 @@ import { formatCount, formatDate } from "../../lib/format";
 import { sortSeriesBooks } from "../../lib/seriesGroup";
 
 /**
- * 系列详情（P3 发现域，PC 专属）：系列名由路由参数给（useParams 已解码，不再二次 decode）。
+ * 系列详情（P3 发现域，两档都开）：系列名由路由参数给（useParams 已解码，不再二次 decode）。
  * 书目卡片复用书架的 book-grid / book-card 与 Cover，阅读顺序按 seriesIndex 排（没标序号的排最后）。
  */
 export function SeriesDetailPage() {

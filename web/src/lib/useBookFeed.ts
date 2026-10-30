@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type BookQuery } from "../api/client";
 import type { BookSummary } from "../api/types";
+import { shelfItemsToBooks } from "../features/shelf/shelfNormalize";
 import { mergeBooks } from "./shelfCache";
 
 /** 书架取数模式：paged 按页替换（PC 分页），infinite 逐页追加（H5 无限滚动）。 */
@@ -27,7 +28,22 @@ export interface BookFeedQuery {
    * refresh 为真才在后台拉第 1 页并与缓存合并（按 id 去重、保留已加载数量）。
    */
   restore?: BookFeedRestore;
+  /**
+   * 取数来源：`books`（默认）= 共享书库 `GET /api/books`，行为与之前完全一致；
+   * `shelf` = 当前账号的「我的书架」`GET /api/shelf`。
+   *
+   * 两者只有"取哪一页"不同：分页 / 无限滚动 / 在途作废 / 缓存合并全部共用这一份实现。
+   * 书架接口不支持排序与筛选（它按加入时间倒序），source=shelf 时那些参数一律不发。
+   */
+  source?: BookFeedSource;
+  /**
+   * 是否取数（默认 true）。false 时不发请求、不算加载中、列表为空——
+   * 用于"未登录时不该去问我的书架"这种情形（否则会先把 401 渲染成错误面板）。
+   */
+  enabled?: boolean;
 }
+
+export type BookFeedSource = "books" | "shelf";
 
 export interface BookFeedRestore {
   items: BookSummary[];
@@ -68,8 +84,8 @@ type Snapshot = {
   errorMore: ApiError | null;
 };
 
-function idle(key: string): Snapshot {
-  return { key, items: [], total: 0, page: 0, pending: 1, loading: true, loadingMore: false, error: null, errorMore: null };
+function idle(key: string, loading = true): Snapshot {
+  return { key, items: [], total: 0, page: 0, pending: loading ? 1 : null, loading, loadingMore: false, error: null, errorMore: null };
 }
 
 function asApiError(err: unknown): ApiError {
@@ -94,6 +110,8 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
     query.categoryL2 ?? null,
     query.size,
     query.mode,
+    query.source ?? "books",
+    query.enabled ?? true,
   ]);
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<Snapshot>(() => {
@@ -112,11 +130,11 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
         errorMore: null,
       };
     }
-    return idle(key);
+    return idle(key, query.enabled ?? true);
   });
 
-  // 查询变了：立刻回到第 1 页的加载态（下一次 effect 发请求）
-  if (state.key !== key) setState(idle(key));
+  // 查询变了：立刻回到第 1 页的加载态（下一次 effect 发请求）；未启用时直接落空态
+  if (state.key !== key) setState(idle(key, query.enabled ?? true));
 
   useEffect(() => {
     const page = state.pending;
@@ -124,22 +142,28 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
     const controller = new AbortController();
     let active = true;
 
-    api
-      .books(
-        {
-          sort: query.sort,
-          authorId: query.authorId,
-          tag: query.tag,
-          readStatus: query.readStatus,
-          rating: query.rating,
-          collection: query.collection,
-          categoryL1: query.categoryL1,
-          categoryL2: query.categoryL2,
-          page,
-          size: query.size,
-        },
-        { signal: controller.signal },
-      )
+    const request: Promise<{ items: BookSummary[]; total: number }> =
+      query.source === "shelf"
+        ? api
+            .listShelf({ page, size: query.size }, { signal: controller.signal })
+            .then((res) => ({ items: shelfItemsToBooks(res.items), total: res.total }))
+        : api.books(
+            {
+              sort: query.sort,
+              authorId: query.authorId,
+              tag: query.tag,
+              readStatus: query.readStatus,
+              rating: query.rating,
+              collection: query.collection,
+              categoryL1: query.categoryL1,
+              categoryL2: query.categoryL2,
+              page,
+              size: query.size,
+            },
+            { signal: controller.signal },
+          );
+
+    request
       .then((data) => {
         if (!active) return;
         setState((prev) => {

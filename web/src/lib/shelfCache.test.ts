@@ -66,6 +66,46 @@ describe("书架会话缓存", () => {
     expect(readShelfCache()).toBeNull();
   });
 
+  // 回归：readShelfCache 曾漏拼 categoryL1/categoryL2（接口声明了、回读漏了），
+  // 表现为「从分类筛选进详情再返回，筛选条件又没了」（ShelfPage 的 cached?.categoryL1 恒为 null）。
+  it("分类两级（categoryL1/L1）写入后能原样读回", () => {
+    writeShelfCache({ ...base, categoryL1: "武侠", categoryL2: "群像" });
+    const cached = readShelfCache();
+    expect(cached?.categoryL1).toBe("武侠");
+    expect(cached?.categoryL2).toBe("群像");
+  });
+
+  it("筛选字段全部往返：作者、标签、阅读状态、评分、书单、分类", () => {
+    writeShelfCache({
+      ...base,
+      authorId: 7,
+      tag: "民国",
+      readStatus: "done",
+      rating: 4,
+      collection: 3,
+      categoryL1: "武侠",
+      categoryL2: "群像",
+    });
+    expect(readShelfCache()).toMatchObject({
+      authorId: 7,
+      tag: "民国",
+      readStatus: "done",
+      rating: 4,
+      collection: 3,
+      categoryL1: "武侠",
+      categoryL2: "群像",
+    });
+  });
+
+  it("老缓存没有分类字段 / 分类是空串时读成 null（不造出无效筛选值）", () => {
+    writeShelfCache(base);
+    expect(readShelfCache()?.categoryL1).toBeNull();
+    expect(readShelfCache()?.categoryL2).toBeNull();
+    writeShelfCache({ ...base, categoryL1: "", categoryL2: "" });
+    expect(readShelfCache()?.categoryL1).toBeNull();
+    expect(readShelfCache()?.categoryL2).toBeNull();
+  });
+
   it("合并刷新：按 id 去重、新的在前、保留已加载数量", () => {
     const merged = mergeBooks([bookAt(3), bookAt(1)], [bookAt(1), bookAt(2), bookAt(4)], 3);
     expect(merged.map((item) => item.id)).toEqual([3, 1, 2]);

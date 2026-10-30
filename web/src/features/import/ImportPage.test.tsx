@@ -248,7 +248,7 @@ describe("导入页：文件上传与逐文件友好报错", () => {
             <Route
               path="/import"
               element={
-                <TierRoute>
+                <TierRoute segment="import">
                   <ImportPage />
                 </TierRoute>
               }

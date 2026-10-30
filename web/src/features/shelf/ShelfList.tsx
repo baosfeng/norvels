@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Link } from "react-router-dom";
 import type { ApiError } from "../../api/client";
 import type { BookSummary, ReadStatus } from "../../api/types";
@@ -36,6 +36,7 @@ export function ShelfList({
   onSelect,
   onOpen,
   onPage,
+  emptySlot,
 }: {
   isH5: boolean;
   loading: boolean;
@@ -57,6 +58,8 @@ export function ShelfList({
   onSelect: (id: number) => void;
   onOpen: (id: number) => void;
   onPage: (next: number) => void;
+  /** 空态替身：给了就用它代替默认的「书架还是空的」（我的书架有自己的一套出口） */
+  emptySlot?: ReactNode;
 }) {
   if (loading) {
     return (
@@ -79,16 +82,15 @@ export function ShelfList({
   }
 
   if (items.length === 0) {
+    if (emptySlot) return <>{emptySlot}</>;
     return (
       <div>
         <EmptyPanel
           title={filtering ? "没有符合筛选条件的书" : "书架还是空的"}
           description={
             filtering
-              ? "换一个作者或标签试试，或者清除筛选看全部书目。"
-              : isH5
-                ? "先在电脑上把存放 txt 的目录导入，书目会同步到这里。"
-                : "把存放 txt 的目录填进导入页，完成后书目会自动出现在这里。"
+              ? "换一个筛选条件试试，或者清除筛选看全部书目。"
+              : "书库还没有内容：在电脑上打开导入页，把存放 txt 的目录加进来，书目就会出现在这里。"
           }
           testId="shelf-empty"
           actions={

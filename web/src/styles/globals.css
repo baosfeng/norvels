@@ -176,6 +176,30 @@ button {
   gap: 8px;
   padding: 8px 2px;
 }
+/* 筛选项多（排序 + 六类筛选）时弹层不顶满整屏：内容区自己滚，头与「清除筛选」钉住 */
+.sheet-scroll {
+  max-height: min(68vh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.sheet-label {
+  display: grid;
+  gap: 6px;
+  padding: 4px 12px 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sheet-label .select {
+  min-height: 44px;
+  color: var(--fg);
+}
+.sheet-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 2px 0;
+  border-top: 1px solid var(--border);
+}
 .sheet-list {
   display: grid;
   gap: 2px;

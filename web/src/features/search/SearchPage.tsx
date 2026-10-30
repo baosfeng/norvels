@@ -3,21 +3,20 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useSearch } from "../../api/hooks";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
-import { hasSnippet, renderSnippet } from "../../lib/snippet";
 import { formatCount } from "../../lib/format";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
 
-type Tab = "all" | "book" | "chapter";
 const SEARCH_PAGE_SIZE = 8;
-const TABS: Tab[] = ["all", "book", "chapter"];
 
 /**
- * 搜索结果：PC 两栏（书名和作者 + 章节标题命中），H5 单列（两栏收成一列）。
+ * 搜索结果：**只按书名与作者搜**，两档同一口径、同一份结果。
  *
- * 检索范围只有三样：书名、作者、章节标题。章节命中不再带正文片段（后端仍返回 snippet 字段，
- * 但恒为空串），所以片段整行按「没有就完全不渲染」处理，不留空的高亮块或占位行。
- * 分页为新增能力：服务端已支持 page / size，两栏一起翻页（C-54 / C-55）。
+ * 检索范围收敛过一次：曾经按「书名 / 作者 / 章节标题」找，页面上还有 all/book/chapter 三个 tab，
+ * 但请求恒传 type=all、切 tab 只改渲染——结果是查目录查出一堆章节命中，用户要的书反而被挤下去。
+ * 现在章节命中整块删除（后端同批删除章节检索），页面不再传 type=chapter，也不再有多余的分栏。
+ *
+ * 分页为服务端能力：page / size 走地址（C-54 / C-55），返回、刷新都还原同一屏。
  */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
@@ -25,9 +24,9 @@ export function SearchPage() {
   const q = params.get("q") ?? "";
   const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
   const [draft, setDraft] = useState(q);
-  const [tab, setTab] = useState<Tab>("all");
   const searchBoxRef = useRef<HTMLInputElement | null>(null);
-  const { data, loading, error, reload } = useSearch(q, "all", page, SEARCH_PAGE_SIZE);
+  // type 恒为 "book"：书名 + 作者。不传 "all" 是为了让「不搜目录」在请求上也成立，而不只是嘴上说。
+  const { data, loading, error, reload } = useSearch(q, "book", page, SEARCH_PAGE_SIZE);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,19 +59,6 @@ export function SearchPage() {
     }
   }
 
-  function onTabsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const index = TABS.indexOf(tab);
-    let next: number;
-    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
-    else if (event.key === "ArrowLeft") next = (index + TABS.length - 1) % TABS.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = TABS.length - 1;
-    else return;
-    event.preventDefault();
-    setTab(TABS[next]);
-    event.currentTarget.querySelector<HTMLElement>(`[data-tab="${TABS[next]}"]`)?.focus();
-  }
-
   function retry() {
     reload();
     // 离开错误态后焦点交给搜索框（C-53）
@@ -80,11 +66,9 @@ export function SearchPage() {
   }
 
   const bookCount = data?.books.total ?? 0;
-  const chapterCount = data?.chapters.total ?? 0;
   const tooShort = q.trim().length > 0 && q.trim().length < 2;
   const bookItems = data?.books.items ?? [];
-  const chapterItems = data?.chapters.items ?? [];
-  const pages = Math.max(1, Math.ceil(bookCount / SEARCH_PAGE_SIZE), Math.ceil(chapterCount / SEARCH_PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(bookCount / SEARCH_PAGE_SIZE));
 
   return (
     <section data-testid="view:search" data-od-id="search">
@@ -100,7 +84,7 @@ export function SearchPage() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onSearchKeyDown}
             aria-label="搜索关键词"
-            placeholder="输入书名、作者或章节标题"
+            placeholder="输入书名或作者"
           />
           <button className="btn btn-primary" type="submit">
             搜索
@@ -110,112 +94,54 @@ export function SearchPage() {
         {q && !loading && !error ? (
           <div className="search-summary">
             <span className="meta">
-              找到 {formatCount(bookCount)} 本书 · {formatCount(chapterCount)} 个章节
+              找到 {formatCount(bookCount)} 本书
             </span>
-            <span className="pill">书名 · 作者 · 章节标题</span>
-          </div>
-        ) : null}
-
-        {data && !isH5 ? (
-          <div className="search-tabs" role="tablist" aria-label="结果分类" data-od-id="C-50" onKeyDown={onTabsKeyDown}>
-            <button
-              type="button"
-              role="tab"
-              data-tab="all"
-              aria-selected={tab === "all"}
-              className={tab === "all" ? "is-active" : ""}
-              onClick={() => setTab("all")}
-            >
-              全部
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-tab="book"
-              aria-selected={tab === "book"}
-              className={tab === "book" ? "is-active" : ""}
-              onClick={() => setTab("book")}
-            >
-              书名和作者 {bookCount}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-tab="chapter"
-              aria-selected={tab === "chapter"}
-              className={tab === "chapter" ? "is-active" : ""}
-              onClick={() => setTab("chapter")}
-            >
-              章节标题 {chapterCount}
-            </button>
+            <span className="pill">按书名、作者搜索</span>
           </div>
         ) : null}
       </div>
 
       {!q ? (
-        <EmptyPanel title="输入关键词开始查找" description="可以按书名、作者或章节标题查找。" />
+        <EmptyPanel title="输入关键词开始查找" description="按书名、作者搜索，输入 2 个字以上。" />
       ) : tooShort ? (
         <EmptyPanel title="关键词太短" description="至少输入 2 个字，才能找到有意义的匹配。" />
       ) : loading ? (
-        <LoadingPanel title="正在查找" description="正在书名、作者和章节标题里一起找。" />
+        <LoadingPanel title="正在查找" description="正在书名与作者里查找。" />
       ) : error ? (
         <div data-od-id="C-53">
           <ErrorPanel error={error} title="搜索没能完成" onRetry={retry} />
         </div>
-      ) : bookCount === 0 && chapterCount === 0 ? (
+      ) : bookCount === 0 ? (
         <EmptyPanel
-          title="没有匹配的书名、作者或章节标题"
-          description="试试更短的关键词，或者换一个说法。"
+          title="没有匹配的书名或作者"
+          description="试试更短的关键词，或者换个书名、作者的写法。"
           testId="search-empty"
         />
       ) : (
         <div className="search-layout" style={isH5 ? { gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
-          {tab !== "chapter" && bookItems.length > 0 ? (
-            <aside aria-label="书名和作者结果" data-od-id="search-books-col">
-              <h2>
-                书名和作者 <span className="meta">{bookCount}</span>
-              </h2>
-              <div className="search-books">
-                {bookItems.map((book) => (
-                  <article className="search-book" key={book.id} data-od-id="C-51">
-                    <Link className="book-link" to={`/book/${book.id}`}>
-                      <Cover title={book.title} showLabel={!isH5} />
-                      <div className="book-card-body">
-                        <h3>{book.title}</h3>
-                        <p className="book-author">{book.authorName || "佚名"}</p>
-                        <p className="book-meta">
-                          <span className="num">{formatCount(book.chapterCount)} 章</span>
-                          <span className="num">{formatCount(book.wordCount)} 字</span>
-                        </p>
-                        {isH5 ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
-                      </div>
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            </aside>
-          ) : null}
-
-          {tab !== "book" && chapterItems.length > 0 ? (
-            <div data-od-id="search-chapters-col">
-              <h2>
-                章节标题 <span className="meta">{chapterCount}</span>
-              </h2>
-              <div className="hits">
-                {chapterItems.map((hit) => (
-                  <article className="hit" key={`${hit.bookId}-${hit.chapterId}`} data-testid="search-hit" data-od-id="C-52">
-                    <p className="hit-meta">
-                      <Link to={`/book/${hit.bookId}`}>{hit.bookTitle}</Link>
-                      <span aria-hidden="true">·</span>
-                      <Link to={`/read/${hit.bookId}/${hit.chapterId}`}>{hit.chapterTitle}</Link>
-                    </p>
-                    {/* 章节命中不再有正文片段：没有片段就整行不渲染，不留空段落 */}
-                    {hasSnippet(hit.snippet) ? <p className="hit-snippet">{renderSnippet(hit.snippet)}</p> : null}
-                  </article>
-                ))}
-              </div>
+          <aside aria-label="书名和作者结果" data-od-id="search-books-col">
+            <h2>
+              书名和作者 <span className="meta">{bookCount}</span>
+            </h2>
+            <div className="search-books">
+              {bookItems.map((book) => (
+                <article className="search-book" key={book.id} data-od-id="C-51">
+                  <Link className="book-link" to={`/book/${book.id}`}>
+                    <Cover title={book.title} showLabel={!isH5} />
+                    <div className="book-card-body">
+                      <h3>{book.title}</h3>
+                      <p className="book-author">{book.authorName || "佚名"}</p>
+                      <p className="book-meta">
+                        <span className="num">{formatCount(book.chapterCount)} 章</span>
+                        <span className="num">{formatCount(book.wordCount)} 字</span>
+                      </p>
+                      {isH5 ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
+                    </div>
+                  </Link>
+                </article>
+              ))}
             </div>
-          ) : null}
+          </aside>
         </div>
       )}
 
@@ -236,18 +162,6 @@ export function SearchPage() {
             →
           </button>
         </nav>
-      ) : null}
-
-      {/* 切到某一档、而这一档恰好没有命中：说清这一档查的是什么，而不是留一块空白 */}
-      {q && !loading && !error && tab === "book" && bookCount === 0 && chapterCount > 0 ? (
-        <p className="meta" data-testid="search-books-empty">
-          这个关键词没有匹配的书名或作者，可以切到「章节标题」看看。
-        </p>
-      ) : null}
-      {q && !loading && !error && tab === "chapter" && chapterCount === 0 && bookCount > 0 ? (
-        <p className="meta" data-testid="search-chapters-empty">
-          这个关键词没有匹配的章节标题，可以切到「书名和作者」看看。
-        </p>
       ) : null}
 
       {data?.notice ? <p className="meta">{data.notice}</p> : null}

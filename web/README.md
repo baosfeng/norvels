@@ -30,9 +30,9 @@ pnpm exec vitest run --coverage   # 覆盖率（阈值 70%）
 src/
   api/        client.ts（唯一请求出口：超时 / 取消 / 错误分类）+ hooks.ts（各域取数）+ types.ts
   components/ StatePanel（加载 / 空 / 错误共用结构）、Cover、Icons
-  features/   start（H5 首屏）/ shelf / book / reader / search / import / authors / dashboard
-  layouts/    AppShell（PC 外壳 + H5 汉堡抽屉）、Sidebar、Topbar、TierRoute
-  lib/        tier（PC/H5 分档）、theme（三主题）、format、snippet（受限渲染）、audit（自检）、useResource
+  features/   start（H5 首屏）/ auth（登录 / 注册）/ shelf / book / reader / search / import / authors / dashboard
+  layouts/    AppShell（PC 外壳 + H5 汉堡抽屉）、Sidebar、SideAccount（账号区）、Topbar、TierRoute
+  lib/        tier（PC/H5 分档）、auth + AuthProvider（当前账号）、theme（三主题）、format、snippet（受限渲染）、audit（自检）、useResource
   styles/     tokens.css（warm-editorial）+ prototype.css（原型样式逐条移植）+ globals.css
 ```
 
@@ -43,3 +43,5 @@ src/
 - **四态**：每个数据区都由 `useResource` 给出 loading / error，空态由数据判断，面板统一走 `StatePanel`。
 - **不引图表库**：第二段的六张图继续手写 SVG/CSS。
 - **术语与重复信息自检**：`lib/audit.ts` 的 `auditDuplicates` / `findForbiddenTerms` 有单测，也可在浏览器控制台对同一份选择器跑。
+- **账号匿名可用**：身份只认 `GET /api/auth/me`（会话是 HttpOnly Cookie，前端读不到也不该读），未登录照样能浏览 / 搜索 / 阅读。需要账号的动作（加入书架）就地引导去 `/login?next=`，**不整站重定向**。后端未配口令时 me() 直接回默认账号 `reader`，那种部署下不渲染登录引导。
+- **「我的书架」与「全部书」是两份内容**：视图进地址（`?view=mine|all`；默认已登录 = 我的书架、未登录 = 全部书），我的书架走 `GET /api/shelf`（按加入时间倒序、不参与筛选），已加入集合由 `GET /api/shelf/ids` 预热在 `ShelfIdsProvider` 里共享。

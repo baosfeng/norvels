@@ -8,13 +8,19 @@ import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { stripTags } from "../../lib/text";
 import { BookAside } from "./BookAside";
+import { BookFacts } from "./BookFacts";
 import { BookHeader } from "./BookHeader";
 import { BookToc } from "./BookToc";
 import { AddToCollectionPanel } from "./AddToCollectionPanel";
 import { useTocColumns } from "./useTocColumns";
 import { ackNewChaptersIfLast } from "./newChapters";
 
-/** 书籍详情：PC 双栏（封面侧 + 目录），H5 单列（封面缩为横向头部，简介折叠）。 */
+/**
+ * 书籍详情：PC 双栏（封面侧 + 目录），H5 单列（封面缩为横向头部，简介折叠）。
+ *
+ * 事实区（字数 / 分类 / 系列 / 评分 / 阅读状态 / 书签 / 出版 / 标签）两档都渲染：
+ * PC 在左栏底部，H5 落在书名与简介之后——位置由 `isH5` 条件渲染决定，不靠 CSS 隐藏。
+ */
 export function BookPage() {
   const { bookId } = useParams();
   const id = Number(bookId);
@@ -133,6 +139,14 @@ export function BookPage() {
             notice={notice}
             lastChapter={lastChapterLabel(book)}
           />
+          {isH5 ? (
+            <BookFacts
+              book={book}
+              readStatus={currentReadStatus}
+              savingStatus={savingStatus}
+              onReadStatusChange={(next) => void changeReadStatus(next)}
+            />
+          ) : null}
           <BookToc
             book={book}
             columns={columns}

@@ -77,7 +77,7 @@ export function Topbar({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onSearchKeyDown}
-            placeholder="搜书名、作者、章节标题…"
+            placeholder="搜书名、作者…"
             aria-label="搜索"
           />
           <button className="btn" type="submit">

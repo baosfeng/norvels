@@ -44,6 +44,11 @@ function storage(): Storage | null {
   }
 }
 
+/** 空串与缺省同义：都不是有效筛选值（后端用空串表示「不过滤」）。 */
+function textOrNull(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
 /** 读缓存：超时、结构不对、JSON 坏了都当没有缓存，不抛错。 */
 export function readShelfCache(now = Date.now()): ShelfCache | null {
   const store = storage();
@@ -62,6 +67,9 @@ export function readShelfCache(now = Date.now()): ShelfCache | null {
       readStatus: (parsed.readStatus ?? null) as Exclude<ReadStatus, ""> | null,
       rating: typeof parsed.rating === "number" && parsed.rating > 0 ? parsed.rating : null,
       collection: typeof parsed.collection === "number" && parsed.collection > 0 ? parsed.collection : null,
+      // 分类两级：声明了就必须回读，否则「从详情返回」会悄悄丢筛选（本文件 §ShelfCache 的坑）
+      categoryL1: textOrNull(parsed.categoryL1),
+      categoryL2: textOrNull(parsed.categoryL2),
       size: typeof parsed.size === "number" && parsed.size > 0 ? parsed.size : 30,
       mode: parsed.mode === "paged" ? "paged" : "infinite",
       items: parsed.items as BookSummary[],

@@ -119,7 +119,8 @@ describe("api 其余端点都走同一出口", () => {
     await api.importTrend(14);
     await api.authors({ sort: "words", size: 10 });
     await api.author(3);
-    await api.search("青石巷", { type: "chapter", page: 2 });
+    // type 只接受 book | all（章节检索已下线，传 chapter 后端 400）
+    await api.search("青石巷", { type: "book", page: 2 });
     await api.importJobs();
     await api.importJob(7);
     await api.startImport({ dir: "/books", recursive: true });
@@ -133,7 +134,7 @@ describe("api 其余端点都走同一出口", () => {
       "/api/stats/import-trend?days=14",
       "/api/authors?sort=words&size=10",
       "/api/authors/3",
-      "/api/search?q=%E9%9D%92%E7%9F%B3%E5%B7%B7&type=chapter&page=2",
+      "/api/search?q=%E9%9D%92%E7%9F%B3%E5%B7%B7&type=book&page=2",
       "/api/import/jobs",
       "/api/import/jobs/7",
       "/api/import",
