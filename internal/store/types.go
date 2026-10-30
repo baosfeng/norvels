@@ -48,13 +48,12 @@ type ChapterQuery struct {
 	Limit  int
 }
 
-// SearchQuery 描述书名/作者/章节标题检索（不检索正文）。
+// SearchQuery 描述书名/作者检索（不检索正文，也不检索章节标题）。
+// 没有「检索维度」开关：能搜的只有书名与作者两项，全部查一次即可。
 type SearchQuery struct {
-	Q      string // 关键词，非空
-	Type   string // chapter|book|all，默认 all
-	Page   int
-	Size   int
-	BookID int64 // 非 0 时限定在单本书内检索
+	Q    string // 关键词，非空
+	Page int
+	Size int
 }
 
 // ---------- 出参 ----------
@@ -166,21 +165,6 @@ type AuthorDetail struct {
 	Books []BookSummary `json:"books"`
 }
 
-// ChapterHit 是一条**章节标题**检索命中。
-//
-// Snippet 字段保留但恒为空字符串：正文检索已下线，后端不再生成命中片段。
-// 保留字段是为了让前端与后端解耦（前端按「无片段」渲染即可），
-// 也避免后续加入摘要能力时再改一次 JSON 契约。
-type ChapterHit struct {
-	BookID       int64   `json:"bookId"`
-	BookTitle    string  `json:"bookTitle"`
-	ChapterID    int64   `json:"chapterId"`
-	ChapterIdx   int     `json:"chapterIdx"`
-	ChapterTitle string  `json:"chapterTitle"`
-	Snippet      string  `json:"snippet"`
-	Score        float64 `json:"score"`
-}
-
 // Page 是通用分页包装（api 层再包成具体响应）。
 type Page[T any] struct {
 	Items []T `json:"items"`
@@ -189,11 +173,10 @@ type Page[T any] struct {
 	Size  int `json:"size"`
 }
 
-// SearchResult 汇总书名/作者与章节标题两类命中（不含正文检索）。
+// SearchResult 是搜索响应：只有书籍命中（书名 / 作者），不含章节与正文。
 type SearchResult struct {
-	Q        string            `json:"q"`
-	Books    Page[BookSummary] `json:"books"`
-	Chapters Page[ChapterHit]  `json:"chapters"`
+	Q     string            `json:"q"`
+	Books Page[BookSummary] `json:"books"`
 	// Notice 是给前端的提示（如关键词少于 2 字），为空时不出现在 JSON；增量字段，向后兼容。
 	Notice string `json:"notice,omitempty"`
 }

@@ -91,18 +91,18 @@ func probeAuthors(t *testing.T, ctx context.Context, st *Store) {
 		authors.Total, authors.Items[0].Name, authors.Items[0].BookCount, authors.Items[0].WordCount)
 }
 
-// probeSearchLatency 对若干关键词各取 3 次，报告书名/作者/章节标题三类命中的耗时。
+// probeSearchLatency 对若干关键词各取 3 次，报告书名/作者命中的耗时。
 func probeSearchLatency(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
 	for _, kw := range []string{"长夜", "青川", "第一章", "风起"} {
-		books, chapters, best, avg, worst := measureSearch(t, ctx, st, kw)
-		t.Logf("Search(%q)：书名/作者命中=%d 章节标题命中=%d 最好=%v 平均=%v 最差=%v",
-			kw, books, chapters, best, avg, worst)
+		books, best, avg, worst := measureSearch(t, ctx, st, kw)
+		t.Logf("Search(%q)：书名/作者命中=%d 最好=%v 平均=%v 最差=%v",
+			kw, books, best, avg, worst)
 	}
 }
 
-// measureSearch 对同一关键词跑 3 次，返回两类命中数与最好/平均/最差耗时。
-func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (books, chapters int, best, avg, worst time.Duration) {
+// measureSearch 对同一关键词跑 3 次，返回命中数与最好/平均/最差耗时。
+func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (books int, best, avg, worst time.Duration) {
 	t.Helper()
 	var total time.Duration
 	for i := 0; i < 3; i++ {
@@ -112,7 +112,7 @@ func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (boo
 		if err != nil {
 			t.Fatalf("Search(%q): %v", kw, err)
 		}
-		books, chapters = res.Books.Total, res.Chapters.Total
+		books = res.Books.Total
 		if i == 0 || d < best {
 			best = d
 		}
@@ -121,5 +121,5 @@ func measureSearch(t *testing.T, ctx context.Context, st *Store, kw string) (boo
 		}
 		total += d
 	}
-	return books, chapters, best, total / 3, worst
+	return books, best, total / 3, worst
 }

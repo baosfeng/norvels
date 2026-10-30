@@ -42,7 +42,7 @@ func (s *Store) assertBookExists(ctx context.Context, bookID int64) error {
 	return nil
 }
 
-// ListBookmarks 返回一本书的全部书签（按 created_at 倒序，同秒用 id 兜底）。
+// ListBookmarks 返回当前账号在一本书里的全部书签（按 created_at 倒序，同秒用 id 兜底）。
 //
 // 书不存在返回 ErrNotFound（api 映射 404）：空书签列表与「书都没了」是两件事。
 // 章节被删时仍返回书签行（章名退化为空串），不让一条脏数据拖垮整页。
@@ -57,7 +57,8 @@ func (s *Store) ListBookmarks(ctx context.Context, bookID int64) ([]Bookmark, er
 		"SELECT bm.id, bm.chapter_id, bm.chapter_idx, COALESCE(c.title, ''), "+
 			"bm.para_index, bm.label, bm.created_at "+
 			"FROM bookmarks bm LEFT JOIN chapters c ON c.id = bm.chapter_id "+
-			"WHERE bm.book_id = ? ORDER BY bm.created_at DESC, bm.id DESC", bookID)
+			"WHERE bm.book_id = ? AND bm.user_id = ? "+
+			"ORDER BY bm.created_at DESC, bm.id DESC", bookID, ScopeUserID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("store: list bookmarks: %w", err)
 	}
@@ -78,11 +79,12 @@ func (s *Store) ListBookmarks(ctx context.Context, bookID int64) ([]Bookmark, er
 	return items, nil
 }
 
-// CountBookmarks 返回一本书的书签数（详情页 bookmarkCount）。
+// CountBookmarks 返回当前账号在一本书里的书签数（详情页 bookmarkCount）。
 func (s *Store) CountBookmarks(ctx context.Context, bookID int64) (int, error) {
 	var n int
 	if err := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM bookmarks WHERE book_id = ?", bookID).Scan(&n); err != nil {
+		"SELECT COUNT(*) FROM bookmarks WHERE book_id = ? AND user_id = ?",
+		bookID, ScopeUserID(ctx)).Scan(&n); err != nil {
 		return 0, fmt.Errorf("store: count bookmarks: %w", err)
 	}
 	return n, nil
@@ -114,7 +116,7 @@ func (s *Store) AddBookmark(ctx context.Context, bookID, chapterID int64, paraIn
 	if bm.Label == "" {
 		bm.Label = defaultBookmarkLabel(chapter.title, paraIndex)
 	}
-	created, err := upsertBookmarkInTx(ctx, tx, bookID, &bm)
+	created, err := upsertBookmarkInTx(ctx, tx, ScopeUserID(ctx), bookID, &bm)
 	if err != nil {
 		return Bookmark{}, false, err
 	}
@@ -163,30 +165,33 @@ func bookmarkChapterInTx(ctx context.Context, tx *sql.Tx, bookID, chapterID int6
 }
 
 // upsertBookmarkInTx 插入或更新书签，返回 created（true=新建）。
-func upsertBookmarkInTx(ctx context.Context, tx *sql.Tx, bookID int64, bm *Bookmark) (bool, error) {
+//
+// 「同位置」的口径带上账号：唯一索引是 (user_id, book_id, chapter_id, para_index)，
+// 查重条件必须与它一致，否则两个账号会在同一段落互相覆盖对方的 label。
+func upsertBookmarkInTx(ctx context.Context, tx *sql.Tx, userID, bookID int64, bm *Bookmark) (bool, error) {
 	var id int64
 	err := tx.QueryRowContext(ctx,
-		"SELECT id FROM bookmarks WHERE book_id = ? AND chapter_id = ? AND para_index = ?",
-		bookID, bm.ChapterID, bm.ParaIndex).Scan(&id)
+		"SELECT id FROM bookmarks WHERE user_id = ? AND book_id = ? AND chapter_id = ? AND para_index = ?",
+		userID, bookID, bm.ChapterID, bm.ParaIndex).Scan(&id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return insertBookmarkInTx(ctx, tx, bookID, bm)
+		return insertBookmarkInTx(ctx, tx, userID, bookID, bm)
 	case err != nil:
 		return false, fmt.Errorf("store: find bookmark: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE bookmarks SET label = ? WHERE id = ?", bm.Label, id); err != nil {
 		return false, fmt.Errorf("store: update bookmark %d: %w", id, err)
 	}
-	return false, readBookmarkFieldsInTx(ctx, tx, id, bookID, bm)
+	return false, readBookmarkFieldsInTx(ctx, tx, id, userID, bookID, bm)
 }
 
 // insertBookmarkInTx 插入一条书签并把 id/created_at 回填到 bm。
-func insertBookmarkInTx(ctx context.Context, tx *sql.Tx, bookID int64, bm *Bookmark) (bool, error) {
+func insertBookmarkInTx(ctx context.Context, tx *sql.Tx, userID, bookID int64, bm *Bookmark) (bool, error) {
 	bm.CreatedAt = formatTime(nowUTC())
 	res, err := tx.ExecContext(ctx,
-		"INSERT INTO bookmarks(book_id, chapter_id, chapter_idx, para_index, label, created_at) "+
-			"VALUES (?, ?, ?, ?, ?, ?)",
-		bookID, bm.ChapterID, bm.ChapterIdx, bm.ParaIndex, bm.Label, bm.CreatedAt)
+		"INSERT INTO bookmarks(user_id, book_id, chapter_id, chapter_idx, para_index, label, created_at) "+
+			"VALUES (?, ?, ?, ?, ?, ?, ?)",
+		userID, bookID, bm.ChapterID, bm.ChapterIdx, bm.ParaIndex, bm.Label, bm.CreatedAt)
 	if err != nil {
 		return false, fmt.Errorf("store: insert bookmark: %w", err)
 	}
@@ -199,21 +204,25 @@ func insertBookmarkInTx(ctx context.Context, tx *sql.Tx, bookID int64, bm *Bookm
 }
 
 // readBookmarkFieldsInTx 读回已有书签的 id 与 created_at（更新 label 后补齐响应字段）。
-func readBookmarkFieldsInTx(ctx context.Context, tx *sql.Tx, id, bookID int64, bm *Bookmark) error {
+func readBookmarkFieldsInTx(ctx context.Context, tx *sql.Tx, id, userID, bookID int64, bm *Bookmark) error {
 	if err := tx.QueryRowContext(ctx,
-		"SELECT id, created_at FROM bookmarks WHERE id = ? AND book_id = ?", id, bookID).
-		Scan(&bm.ID, &bm.CreatedAt); err != nil {
+		"SELECT id, created_at FROM bookmarks WHERE id = ? AND user_id = ? AND book_id = ?",
+		id, userID, bookID).Scan(&bm.ID, &bm.CreatedAt); err != nil {
 		return fmt.Errorf("store: read bookmark %d: %w", id, err)
 	}
 	return nil
 }
 
-// DeleteBookmark 删除一条书签；不存在返回 ErrNotFound（api 映射 404）。
+// DeleteBookmark 删除当前账号的一条书签；不存在（或属于别人）返回 ErrNotFound。
+//
+// 别人的书签按「不存在」处理而不是 403：书签 id 是自增的，返回 403 等于告诉
+// 调用方「这个 id 存在但属于别人」，没必要泄露这个信息。
 func (s *Store) DeleteBookmark(ctx context.Context, id int64) error {
 	if id <= 0 {
 		return fmt.Errorf("%w: bookmark id %d", ErrInvalidArgument, id)
 	}
-	res, err := s.db.ExecContext(ctx, "DELETE FROM bookmarks WHERE id = ?", id)
+	res, err := s.db.ExecContext(ctx,
+		"DELETE FROM bookmarks WHERE id = ? AND user_id = ?", id, ScopeUserID(ctx))
 	if err != nil {
 		return fmt.Errorf("store: delete bookmark %d: %w", id, err)
 	}

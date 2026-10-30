@@ -76,8 +76,9 @@ func (s *Store) AddReadingSession(ctx context.Context, in ReadingSessionInput) e
 		return err
 	}
 	if _, err := s.db.ExecContext(ctx,
-		"INSERT INTO reading_sessions(book_id, chapter_id, started_at, seconds) VALUES (?, ?, ?, ?)",
-		in.BookID, in.ChapterID, startedAt, in.Seconds); err != nil {
+		"INSERT INTO reading_sessions(user_id, book_id, chapter_id, started_at, seconds) "+
+			"VALUES (?, ?, ?, ?, ?)",
+		ScopeUserID(ctx), in.BookID, in.ChapterID, startedAt, in.Seconds); err != nil {
 		return fmt.Errorf("store: add reading session: %w", err)
 	}
 	return nil
@@ -152,8 +153,8 @@ func (s *Store) readingTotals(ctx context.Context, today time.Time, tzOffsetMinu
 		"SELECT COALESCE(SUM(seconds), 0), "+
 			"COALESCE(SUM(CASE WHEN date(started_at, ?) = ? THEN seconds END), 0), "+
 			"COALESCE(SUM(CASE WHEN date(started_at, ?) >= ? THEN seconds END), 0) "+
-			"FROM reading_sessions",
-		mod, dateUTCString(today), mod, dateUTCString(weekStartOf(today))).
+			"FROM reading_sessions WHERE user_id = ?",
+		mod, dateUTCString(today), mod, dateUTCString(weekStartOf(today)), ScopeUserID(ctx)).
 		Scan(&total, &todaySeconds, &weekSeconds)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("store: reading totals: %w", err)
@@ -166,7 +167,8 @@ func (s *Store) dailySeconds(ctx context.Context, from time.Time, tzOffsetMinute
 	mod := tzModifier(tzOffsetMinutes)
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT date(started_at, ?), SUM(seconds) FROM reading_sessions "+
-			"WHERE date(started_at, ?) >= ? GROUP BY 1", mod, mod, dateUTCString(from))
+			"WHERE user_id = ? AND date(started_at, ?) >= ? GROUP BY 1",
+		mod, ScopeUserID(ctx), mod, dateUTCString(from))
 	if err != nil {
 		return nil, fmt.Errorf("store: daily seconds: %w", err)
 	}
@@ -195,7 +197,8 @@ func (s *Store) dailySeconds(ctx context.Context, from time.Time, tzOffsetMinute
 // （每天只读 1 分钟也会累积）；口径仍然是「按 UTC 日期去重」。
 func (s *Store) readingStreak(ctx context.Context, today time.Time, tzOffsetMinutes int) (int, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT date(started_at, ?) FROM reading_sessions GROUP BY 1 ORDER BY 1 DESC", tzModifier(tzOffsetMinutes))
+		"SELECT date(started_at, ?) FROM reading_sessions WHERE user_id = ? GROUP BY 1 ORDER BY 1 DESC",
+		tzModifier(tzOffsetMinutes), ScopeUserID(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("store: reading streak: %w", err)
 	}
@@ -240,7 +243,7 @@ func (s *Store) ReadingHistory(ctx context.Context, page, size int) ([]HistoryRo
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, historyQuery, size, (page-1)*size)
+	rows, err := s.db.QueryContext(ctx, historyQuery, ScopeUserID(ctx), size, (page-1)*size)
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: reading history: %w", err)
 	}
@@ -265,14 +268,18 @@ func (s *Store) ReadingHistory(ctx context.Context, page, size int) ([]HistoryRo
 //
 // 章节用相关子查询取 (started_at, id) 最大的那条：同一秒内的多次上报用 id 兜底，
 // 保证「最后读的那一章」稳定可复现。
+//
+// 第一个参数是账号 id（两处都带上：外层聚合与取最后章节的子查询），
+// 漏掉子查询那一处会把「最后读的章」串成别人的。
 const historyQuery = "SELECT g.bid, COALESCE(b.title, ''), " +
 	"COALESCE(c.id, 0), COALESCE(c.title, ''), " +
 	"g.last_at, g.total_seconds, g.days FROM (" +
 	"SELECT s.book_id AS bid, MAX(s.started_at) AS last_at, SUM(s.seconds) AS total_seconds, " +
 	"COUNT(DISTINCT date(s.started_at)) AS days, " +
-	"(SELECT s2.chapter_id FROM reading_sessions s2 WHERE s2.book_id = s.book_id " +
+	"(SELECT s2.chapter_id FROM reading_sessions s2 " +
+	"WHERE s2.book_id = s.book_id AND s2.user_id = s.user_id " +
 	"ORDER BY s2.started_at DESC, s2.id DESC LIMIT 1) AS last_chapter " +
-	"FROM reading_sessions s GROUP BY s.book_id) g " +
+	"FROM reading_sessions s WHERE s.user_id = ? GROUP BY s.book_id) g " +
 	"LEFT JOIN books b ON b.id = g.bid " +
 	"LEFT JOIN chapters c ON c.id = g.last_chapter " +
 	"ORDER BY g.last_at DESC, g.bid DESC LIMIT ? OFFSET ?"
@@ -281,7 +288,8 @@ const historyQuery = "SELECT g.bid, COALESCE(b.title, ''), " +
 func (s *Store) countHistoryBooks(ctx context.Context) (int, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(DISTINCT book_id) FROM reading_sessions").Scan(&total); err != nil {
+		"SELECT COUNT(DISTINCT book_id) FROM reading_sessions WHERE user_id = ?",
+		ScopeUserID(ctx)).Scan(&total); err != nil {
 		return 0, fmt.Errorf("store: count reading history: %w", err)
 	}
 	return total, nil

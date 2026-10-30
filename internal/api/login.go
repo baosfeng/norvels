@@ -95,6 +95,23 @@ func authCookie(r *http.Request, value string, maxAge int) *http.Cookie {
 	}
 }
 
+// sessionCookie 构造账号会话 Cookie（与旧口令 Cookie 同一套安全属性）。
+//
+// 属性刻意与 authCookie 保持一致：HttpOnly（JS 读不到 token）、SameSite=Lax
+// （挡住跨站表单提交）、Secure 跟随实际协议。两者的区别只在 Cookie 名与语义，
+// 不在安全策略上——两套策略并存迟早会有人改错其中一份。
+func sessionCookie(r *http.Request, value string, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name:     SessionCookieName,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		MaxAge:   maxAge,
+	}
+}
+
 // writeLoginPage 渲染登录页并写入 next 与错误提示。
 func (s *Server) writeLoginPage(w http.ResponseWriter, next, errMsg string) {
 	body := strings.ReplaceAll(loginPageHTML, "{{NEXT}}", escapeHTMLText(safeNext(next)))

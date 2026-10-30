@@ -29,12 +29,14 @@ type Collection struct {
 	BookCount int    `json:"bookCount"`
 }
 
-// ListCollections 列出全部书单（按名字升序）并带书目数。
+// ListCollections 列出当前账号的全部书单（按名字升序）并带书目数。
 func (s *Store) ListCollections(ctx context.Context) ([]Collection, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT c.id, c.name, "+
-			"(SELECT COUNT(*) FROM collection_books cb WHERE cb.collection_id = c.id) "+
-			"FROM collections c ORDER BY c.name ASC, c.id ASC")
+			"(SELECT COUNT(*) FROM collection_books cb "+
+			"WHERE cb.collection_id = c.id AND cb.user_id = c.user_id) "+
+			"FROM collections c WHERE c.user_id = ? ORDER BY c.name ASC, c.id ASC",
+		ScopeUserID(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("store: list collections: %w", err)
 	}
@@ -54,19 +56,23 @@ func (s *Store) ListCollections(ctx context.Context) ([]Collection, error) {
 	return items, nil
 }
 
-// CreateCollection 新建书单；重名返回 ErrConflict（409，用户该换个名字）。
+// CreateCollection 新建书单；同一账号内重名返回 ErrConflict（409，用户该换个名字）。
+//
+// 重名口径是「同一账号内」：两个账号各有一个叫「想读」的书单是正常的。
 func (s *Store) CreateCollection(ctx context.Context, name string) (Collection, error) {
 	clean, err := cleanCollectionName(name)
 	if err != nil {
 		return Collection{}, err
 	}
+	userID := ScopeUserID(ctx)
 	c := Collection{Name: clean}
 	err = s.inTx(ctx, "create collection", func(tx *sql.Tx) error {
-		if err := ensureCollectionNameFree(ctx, tx, clean, 0); err != nil {
+		if err := ensureCollectionNameFree(ctx, tx, userID, clean, 0); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx,
-			"INSERT INTO collections(name, created_at) VALUES (?, ?)", clean, formatTime(nowUTC()))
+			"INSERT INTO collections(user_id, name, created_at) VALUES (?, ?, ?)",
+			userID, clean, formatTime(nowUTC()))
 		if err != nil {
 			return wrapCollectionNameError(err, clean)
 		}
@@ -90,15 +96,17 @@ func (s *Store) RenameCollection(ctx context.Context, id int64, name string) err
 	if err != nil {
 		return err
 	}
+	userID := ScopeUserID(ctx)
 	return s.inTx(ctx, "rename collection", func(tx *sql.Tx) error {
-		if err := collectionExistsInTx(ctx, tx, id); err != nil {
+		if err := collectionExistsInTx(ctx, tx, userID, id); err != nil {
 			return err
 		}
-		if err := ensureCollectionNameFree(ctx, tx, clean, id); err != nil {
+		if err := ensureCollectionNameFree(ctx, tx, userID, clean, id); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
-			"UPDATE collections SET name = ? WHERE id = ?", clean, id); err != nil {
+			"UPDATE collections SET name = ? WHERE id = ? AND user_id = ?",
+			clean, id, userID); err != nil {
 			return wrapCollectionNameError(err, clean)
 		}
 		return nil
@@ -110,7 +118,8 @@ func (s *Store) DeleteCollection(ctx context.Context, id int64) error {
 	if id <= 0 {
 		return fmt.Errorf("%w: 书单 id %d", ErrInvalidArgument, id)
 	}
-	res, err := s.db.ExecContext(ctx, "DELETE FROM collections WHERE id = ?", id)
+	res, err := s.db.ExecContext(ctx,
+		"DELETE FROM collections WHERE id = ? AND user_id = ?", id, ScopeUserID(ctx))
 	if err != nil {
 		return fmt.Errorf("store: delete collection %d: %w", id, err)
 	}
@@ -136,22 +145,24 @@ func (s *Store) ReplaceCollectionBooks(ctx context.Context, id int64, bookIDs []
 	if err != nil {
 		return err
 	}
+	userID := ScopeUserID(ctx)
 	return s.inTx(ctx, "replace collection books", func(tx *sql.Tx) error {
-		if err := collectionExistsInTx(ctx, tx, id); err != nil {
+		if err := collectionExistsInTx(ctx, tx, userID, id); err != nil {
 			return err
 		}
 		if err := requireBooksExistInTx(ctx, tx, ids); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
-			"DELETE FROM collection_books WHERE collection_id = ?", id); err != nil {
+			"DELETE FROM collection_books WHERE collection_id = ? AND user_id = ?",
+			id, userID); err != nil {
 			return fmt.Errorf("store: clear collection %d books: %w", id, err)
 		}
 		now := formatTime(nowUTC())
 		for _, bookID := range ids {
 			if _, err := tx.ExecContext(ctx,
-				"INSERT INTO collection_books(collection_id, book_id, added_at) VALUES (?, ?, ?)",
-				id, bookID, now); err != nil {
+				"INSERT INTO collection_books(user_id, collection_id, book_id, added_at) "+
+					"VALUES (?, ?, ?, ?)", userID, id, bookID, now); err != nil {
 				return fmt.Errorf("store: add book %d to collection %d: %w", bookID, id, err)
 			}
 		}
@@ -171,10 +182,14 @@ func cleanCollectionName(name string) (string, error) {
 	return clean, nil
 }
 
-// collectionExistsInTx 确认书单存在；不存在返回 ErrNotFound。
-func collectionExistsInTx(ctx context.Context, tx *sql.Tx, id int64) error {
+// collectionExistsInTx 确认书单存在且属于该账号；不存在返回 ErrNotFound。
+//
+// 别人的书单按「不存在」处理：书单 id 是自增的，区分「不存在」与「不属于你」
+// 只会泄露「这个 id 存在」这一信息，而用户该做的事（刷新列表）完全一样。
+func collectionExistsInTx(ctx context.Context, tx *sql.Tx, userID, id int64) error {
 	var got int64
-	err := tx.QueryRowContext(ctx, "SELECT id FROM collections WHERE id = ?", id).Scan(&got)
+	err := tx.QueryRowContext(ctx,
+		"SELECT id FROM collections WHERE id = ? AND user_id = ?", id, userID).Scan(&got)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: 书单 %d", ErrNotFound, id)
 	}
@@ -184,10 +199,11 @@ func collectionExistsInTx(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
-// ensureCollectionNameFree 事务内查重；excludeID 用于改名时跳过自己。
-func ensureCollectionNameFree(ctx context.Context, tx *sql.Tx, name string, excludeID int64) error {
+// ensureCollectionNameFree 事务内查重（限定同一账号）；excludeID 用于改名时跳过自己。
+func ensureCollectionNameFree(ctx context.Context, tx *sql.Tx, userID int64, name string, excludeID int64) error {
 	var id int64
-	err := tx.QueryRowContext(ctx, "SELECT id FROM collections WHERE name = ?", name).Scan(&id)
+	err := tx.QueryRowContext(ctx,
+		"SELECT id FROM collections WHERE name = ? AND user_id = ?", name, userID).Scan(&id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return nil
@@ -200,10 +216,10 @@ func ensureCollectionNameFree(ctx context.Context, tx *sql.Tx, name string, excl
 	return nil
 }
 
-// wrapCollectionNameError 把「撞 UNIQUE」的写错误翻成 ErrConflict（并发兜底），
-// 其余错误原样包装保留底层链。
+// wrapCollectionNameError 把「撞唯一索引」的写错误翻成 ErrConflict（并发兜底），
+// 其余错误原样包装保留底层链。0016 起唯一约束是 (user_id, name) 表达式索引。
 func wrapCollectionNameError(err error, name string) error {
-	if strings.Contains(err.Error(), "UNIQUE constraint failed: collections.name") {
+	if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 		return fmt.Errorf("%w: 书单名 %q 已存在", ErrConflict, name)
 	}
 	return fmt.Errorf("store: write collection %q: %w", name, err)

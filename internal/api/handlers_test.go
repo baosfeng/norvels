@@ -238,40 +238,6 @@ func TestListAuthors(t *testing.T) {
 	requireError(t, env.get("/api/authors/999999"), http.StatusNotFound, codeNotFound)
 }
 
-func TestSearchValidation(t *testing.T) {
-	env := newEnv(t)
-	requireError(t, env.get("/api/search"), http.StatusBadRequest, codeInvalidParam)
-	requireError(t, env.get("/api/search?q=%20"), http.StatusBadRequest, codeInvalidParam)
-	requireError(t, env.get("/api/search?q=单"), http.StatusBadRequest, codeQueryTooShort)
-	requireError(t, env.get("/api/search?q=测试&type=bogus"), http.StatusBadRequest, codeInvalidParam)
-	requireError(t, env.get("/api/search?q=测试&page=0"), http.StatusBadRequest, codeInvalidParam)
-}
-
-func TestSearch(t *testing.T) {
-	env := newEnv(t)
-	env.seedBook("测试之书", "测试作者")
-
-	rr := env.get("/api/search?q=测试")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("状态码 = %d，body=%s", rr.Code, rr.Body.String())
-	}
-	res := decodeBody[store.SearchResult](t, rr)
-	if res.Q != "测试" {
-		t.Fatalf("q = %q，期望回显 测试", res.Q)
-	}
-	if res.Books.Items == nil || res.Chapters.Items == nil {
-		t.Fatalf("books/chapters items 不应为 null: %+v", res)
-	}
-	if res.Books.Page != 1 || res.Books.Size != 20 {
-		t.Fatalf("分页回填 = %+v", res.Books)
-	}
-
-	// type=book 时也必须是 200
-	if rr := env.get("/api/search?q=测试&type=book"); rr.Code != http.StatusOK {
-		t.Fatalf("type=book 状态码 = %d，body=%s", rr.Code, rr.Body.String())
-	}
-}
-
 func TestTags(t *testing.T) {
 	env := newEnv(t)
 	rr := env.get("/api/tags")

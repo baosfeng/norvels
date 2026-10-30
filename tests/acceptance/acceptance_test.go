@@ -33,11 +33,14 @@ const (
 	synthChapterOneTitle = "第一章 灯塔初现"
 	synthChapterTwoTitle = "第二章 雾散时分"
 	// synthChapterOneBody 含检索关键词「灯塔」。
-	synthChapterOneBody  = "这是合成正文第一段，灯塔的光扫过海面。"
-	synthChapterTwoBody  = "这是合成正文第二段，雾散了，天亮了。"
-	synthBodyMarker      = "这是合成正文"
-	searchHitKeyword     = "灯塔"
-	searchMissKeyword    = "不存在的词条xyz"
+	synthChapterOneBody = "这是合成正文第一段，灯塔的光扫过海面。"
+	synthChapterTwoBody = "这是合成正文第二段，雾散了，天亮了。"
+	synthBodyMarker     = "这是合成正文"
+	searchHitKeyword    = "灯塔"
+	searchMissKeyword   = "不存在的词条xyz"
+	// searchChapterKeyword 只出现在合成书稿的章节标题里（「第一章 灯塔初现」），
+	// 用于验收「按章节标题搜索不再命中」。
+	searchChapterKeyword = "灯塔初现"
 	importStatusFailed   = "failed"
 	importStatusComplete = "completed"
 )
@@ -55,11 +58,9 @@ type world struct {
 	lastBookID    int64
 	firstChapter  int64
 
-	// 最近一次检索
-	hitBooks    int
-	hitChapters int
-	hitTitle    string
-	hitIdx      int
+	// 最近一次检索（只有书籍命中：书名 / 作者）
+	hitBooks  int
+	hitTitles []string
 
 	// 最近一次裸请求（用于断言错误响应）
 	lastCode int
@@ -90,10 +91,20 @@ type world struct {
 	// P3 管理侧补全：最近一次批量改评分的 updated/failed 条数
 	p3BatchUpdated int
 	p3BatchFailed  int
+
+	// 账号（0016）：带 cookie jar 的 client 与最近一次下发的会话 token。
+	// token 单独存一份：登出后 jar 里的 Cookie 已经没了，验「服务端真撤销」
+	// 只能靠拿旧 token 再请求一次。
+	acct             *http.Client
+	lastSessionToken string
 }
 
 // reset 关闭上一个场景留下的资源。
 func (w *world) reset() {
+	if w.acct != nil {
+		w.acct.CloseIdleConnections()
+		w.acct = nil
+	}
 	if w.srv != nil {
 		w.srv.Close()
 		w.srv = nil

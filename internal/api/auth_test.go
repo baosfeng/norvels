@@ -259,12 +259,14 @@ func TestBearerTokenParsing(t *testing.T) {
 }
 
 func TestAuthPublicPaths(t *testing.T) {
-	for _, p := range []string{"/api/health", "/login", "/logout"} {
+	for _, p := range []string{"/api/health", "/login", "/logout", "/api/auth/logout"} {
 		if !authPublicPath(p) {
 			t.Errorf("%s 应免鉴权", p)
 		}
 	}
-	for _, p := range []string{"/api/books", "/", "/assets/app.js", "/api/stats"} {
+	// 注册 / 登录 / me 不免鉴权：口令开启时不能给未持凭证者一个自助建号的口子。
+	for _, p := range []string{"/api/books", "/", "/assets/app.js", "/api/stats",
+		"/api/auth/register", "/api/auth/login", "/api/auth/me"} {
 		if authPublicPath(p) {
 			t.Errorf("%s 不应免鉴权", p)
 		}

@@ -145,12 +145,13 @@ func seedDeletableBook(t *testing.T, ctx context.Context, st *Store) int64 {
 func seedP3DeleteRows(t *testing.T, ctx context.Context, st *Store, bookID, chapterID int64) {
 	t.Helper()
 	if _, err := st.DB().ExecContext(ctx,
-		"INSERT INTO reading_sessions(book_id, chapter_id, started_at, seconds) VALUES (?, ?, ?, 60)",
-		bookID, chapterID, formatTime(nowUTC())); err != nil {
+		"INSERT INTO reading_sessions(user_id, book_id, chapter_id, started_at, seconds) "+
+			"VALUES (?, ?, ?, ?, 60)", defaultUserID, bookID, chapterID, formatTime(nowUTC())); err != nil {
 		t.Fatalf("写阅读会话: %v", err)
 	}
 	if _, err := st.DB().ExecContext(ctx,
-		"INSERT INTO collections(name, created_at) VALUES ('待删书单', ?)", formatTime(nowUTC())); err != nil {
+		"INSERT INTO collections(user_id, name, created_at) VALUES (?, '待删书单', ?)",
+		defaultUserID, formatTime(nowUTC())); err != nil {
 		t.Fatalf("写书单: %v", err)
 	}
 	var collID int64
@@ -159,9 +160,15 @@ func seedP3DeleteRows(t *testing.T, ctx context.Context, st *Store, bookID, chap
 		t.Fatalf("读书单 id: %v", err)
 	}
 	if _, err := st.DB().ExecContext(ctx,
-		"INSERT INTO collection_books(collection_id, book_id, added_at) VALUES (?, ?, ?)",
-		collID, bookID, formatTime(nowUTC())); err != nil {
+		"INSERT INTO collection_books(user_id, collection_id, book_id, added_at) VALUES (?, ?, ?, ?)",
+		defaultUserID, collID, bookID, formatTime(nowUTC())); err != nil {
 		t.Fatalf("写书单关联: %v", err)
+	}
+	// 书架（0016）也是无外键子表，一并造行，删除清单里漏了它就是孤儿数据。
+	if _, err := st.DB().ExecContext(ctx,
+		"INSERT INTO user_shelf(user_id, book_id, added_at) VALUES (?, ?, ?)",
+		defaultUserID, bookID, formatTime(nowUTC())); err != nil {
+		t.Fatalf("写书架: %v", err)
 	}
 }
 

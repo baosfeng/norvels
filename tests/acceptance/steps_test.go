@@ -31,6 +31,7 @@ func registerSteps(sc *godog.ScenarioContext, w *world) {
 	registerVolumeSteps(sc, w)
 	registerP3Steps(sc, w)
 	registerCategorySteps(sc, w)
+	registerAccountSteps(sc, w)
 	registerCommonAssertSteps(sc, w)
 }
 
@@ -78,31 +79,30 @@ func registerReadingSteps(sc *godog.ScenarioContext, w *world) {
 	})
 }
 
-// registerSearchSteps 注册全文搜索的步骤。
+// registerSearchSteps 注册搜索的步骤（检索范围只有书名与作者）。
 func registerSearchSteps(sc *godog.ScenarioContext, w *world) {
 	sc.Step(`^我搜索关键词 "(.+)"$`, func(ctx context.Context, kw string) error {
 		return w.search(kw)
 	})
-	sc.Step("^搜索结果应当至少命中 (\\d+) 条章节$", func(ctx context.Context, want string) error {
-		if w.hitChapters < atoiSafe(want) {
-			return fmt.Errorf("章节命中数 = %d，期望 >= %s", w.hitChapters, want)
+	sc.Step("^搜索结果应当命中书籍$", func(ctx context.Context) error {
+		if w.hitBooks < 1 || len(w.hitTitles) == 0 {
+			return fmt.Errorf("书籍命中数 = %d（书名 %v），期望至少 1 本", w.hitBooks, w.hitTitles)
 		}
-		return nil
-	})
-	sc.Step("^命中结果应当带书籍标题与章节号$", func(ctx context.Context) error {
-		if w.hitTitle != synthBookTitle {
-			return fmt.Errorf("命中结果书名 = %q，期望 %q", w.hitTitle, synthBookTitle)
+		for _, title := range w.hitTitles {
+			if title == synthBookTitle {
+				return nil
+			}
 		}
-		if w.hitIdx < 0 {
-			return fmt.Errorf("命中结果章节号 = %d，期望 >= 0", w.hitIdx)
-		}
-		return nil
+		return fmt.Errorf("命中书籍 = %v，期望包含 %q", w.hitTitles, synthBookTitle)
 	})
 	sc.Step("^搜索结果应当为空$", func(ctx context.Context) error {
-		if w.hitChapters != 0 || w.hitBooks != 0 {
-			return fmt.Errorf("搜索结果非空：章节 %d 条、书籍 %d 条", w.hitChapters, w.hitBooks)
+		if w.hitBooks != 0 {
+			return fmt.Errorf("搜索结果非空：书籍 %d 条（%v）", w.hitBooks, w.hitTitles)
 		}
 		return nil
+	})
+	sc.Step(`^我按章节范围请求搜索 "(.+)"$`, func(ctx context.Context, kw string) error {
+		return w.searchWithType(kw, "chapter")
 	})
 	sc.Step("^我用 (\\d+) 个字的关键词请求搜索$", func(ctx context.Context, n string) error {
 		return w.requestTooShortQuery(atoiSafe(n))
@@ -297,32 +297,37 @@ func (w *world) assertParamError(want int) error {
 	return fmt.Errorf("错误码 = %q，期望参数类错误码（invalid_param / query_too_short）", eb.Error.Code)
 }
 
-// search 执行一次检索并记录结果。
+// searchResponse 是 /api/search 的响应里验收关心的部分。
+type searchResponse struct {
+	Books struct {
+		Total int `json:"total"`
+		Items []struct {
+			Title string `json:"title"`
+		} `json:"items"`
+	} `json:"books"`
+}
+
+// search 执行一次检索并记录书籍命中（检索范围只有书名与作者）。
 func (w *world) search(kw string) error {
-	var res struct {
-		Books struct {
-			Total int `json:"total"`
-		} `json:"books"`
-		Chapters struct {
-			Total int `json:"total"`
-			Items []struct {
-				BookTitle  string `json:"bookTitle"`
-				ChapterIdx int    `json:"chapterIdx"`
-			} `json:"items"`
-		} `json:"chapters"`
-	}
-	code, body, err := w.getJSON("/api/search?q="+kw+"&type=all", &res)
+	return w.searchWithType(kw, "all")
+}
+
+// searchWithType 带 type 维度检索；type 非法时同样记录状态码，供拒绝类场景断言。
+func (w *world) searchWithType(kw, typ string) error {
+	var res searchResponse
+	code, _, err := w.getJSON("/api/search?q="+kw+"&type="+typ, &res)
 	if err != nil {
 		return err
 	}
+	w.hitBooks, w.hitTitles = 0, nil
 	if code != http.StatusOK {
-		return fmt.Errorf("GET /api/search 状态码 = %d，body=%s", code, body)
+		// 非 200（如 type=chapter 被拒）交给调用方按状态码断言，这里不算失败；
+		// 响应码与响应体已由 getJSON → doJSON 记在 lastCode/lastBody。
+		return nil
 	}
-	w.hitBooks, w.hitChapters = res.Books.Total, res.Chapters.Total
-	w.hitTitle, w.hitIdx = "", -1
-	if len(res.Chapters.Items) > 0 {
-		w.hitTitle = res.Chapters.Items[0].BookTitle
-		w.hitIdx = res.Chapters.Items[0].ChapterIdx
+	w.hitBooks = res.Books.Total
+	for _, item := range res.Books.Items {
+		w.hitTitles = append(w.hitTitles, item.Title)
 	}
 	return nil
 }

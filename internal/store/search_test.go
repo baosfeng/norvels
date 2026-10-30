@@ -8,7 +8,8 @@ import (
 	"norvels/internal/model"
 )
 
-// searchFixture 建库并写入两本书：b1 的书名/作者/章节标题可被检索，b2 带一段 script 标签。
+// searchFixture 建库并写入两本书：b1 的书名/作者可被检索（章节标题含「第一章 风起」），
+// b2 的正文里带一段 script 标签。
 func searchFixture(t *testing.T) (*Store, context.Context) {
 	t.Helper()
 	ctx := context.Background()
@@ -32,26 +33,25 @@ func TestSearch(t *testing.T) {
 	st, ctx := searchFixture(t)
 	t.Run("书名命中", func(t *testing.T) { checkBookTitleHit(t, ctx, st) })
 	t.Run("作者命中", func(t *testing.T) { checkAuthorHit(t, ctx, st) })
-	t.Run("章节标题命中", func(t *testing.T) { checkChapterTitleHit(t, ctx, st) })
-	t.Run("单字关键词返回提示", func(t *testing.T) { checkSingleRuneSearch(t, ctx, st) })
-	t.Run("type=book 只查书名", func(t *testing.T) { checkBookTypeSearch(t, ctx, st) })
-	t.Run("限定单本书", func(t *testing.T) { checkScopedSearch(t, ctx, st) })
+	t.Run("章节标题不再命中", func(t *testing.T) { checkChapterTitleNotSearchable(t, ctx, st) })
 	t.Run("正文不再参与检索", func(t *testing.T) { checkContentNotSearchable(t, ctx, st) })
+	t.Run("单字关键词返回提示", func(t *testing.T) { checkSingleRuneSearch(t, ctx, st) })
+	t.Run("分页回填", func(t *testing.T) { checkSearchPage(t, ctx, st) })
 }
 
-// checkBookTitleHit 书名命中：books 侧返回该本，章节侧不因书名而命中。
+// checkBookTitleHit 书名命中：返回该本书，并回填分页字段。
 func checkBookTitleHit(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
 	r := mustSearch(t, ctx, st, SearchQuery{Q: "梅宁风云"})
 	if r.Books.Total != 1 || r.Books.Items[0].Title != "梅宁风云" {
 		t.Fatalf("书名命中 = %+v", r.Books)
 	}
-	if r.Books.Page != 1 || r.Books.Size != 20 {
-		t.Errorf("search page = %d/%d", r.Books.Page, r.Books.Size)
+	if r.Books.Items[0].AuthorName != "示例作者" {
+		t.Errorf("作者名 = %q，期望 示例作者", r.Books.Items[0].AuthorName)
 	}
 }
 
-// checkAuthorHit 作者命中：按作者名同样返回该本书。
+// checkAuthorHit 作者命中：按作者名同样返回该本书（检索范围含 authors.name）。
 func checkAuthorHit(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
 	r := mustSearch(t, ctx, st, SearchQuery{Q: "月关"})
@@ -60,24 +60,31 @@ func checkAuthorHit(t *testing.T, ctx context.Context, st *Store) {
 	}
 }
 
-// checkChapterTitleHit 章节标题命中：返回书籍标题与章节序号，Snippet 恒为空。
-func checkChapterTitleHit(t *testing.T, ctx context.Context, st *Store) {
+// checkChapterTitleNotSearchable 章节标题（目录）不再参与匹配：
+// b1 的章节标题是「第一章 风起」，按它搜不到任何书，也不该带提示语。
+func checkChapterTitleNotSearchable(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	r := mustSearch(t, ctx, st, SearchQuery{Q: "第一章"})
-	if r.Chapters.Total != 1 || len(r.Chapters.Items) != 1 {
-		t.Fatalf("章节标题命中 = %+v", r.Chapters)
+	for _, kw := range []string{"第一章", "风起", "唯一的章"} {
+		r := mustSearch(t, ctx, st, SearchQuery{Q: kw})
+		if r.Books.Total != 0 {
+			t.Errorf("按章节标题 %q 搜索不应命中任何书: %+v", kw, r.Books)
+		}
+		if r.Notice != "" {
+			t.Errorf("正常关键词 %q 不应带提示，实际 %q", kw, r.Notice)
+		}
 	}
-	hit := r.Chapters.Items[0]
-	if hit.ChapterTitle != "第一章 风起" || hit.BookTitle != "梅宁风云" || hit.ChapterIdx != 0 {
-		t.Errorf("命中内容 = %+v", hit)
+}
+
+// checkContentNotSearchable 正文里的词也不参与检索（检索只到书名与作者）。
+func checkContentNotSearchable(t *testing.T, ctx context.Context, st *Store) {
+	t.Helper()
+	// 「秋蝉」只出现在 b2 的正文里，不在任何书名/作者中。
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "秋蝉"})
+	if r.Books.Total != 0 {
+		t.Errorf("正文关键词不应命中: %+v", r.Books)
 	}
-	// 正文检索下线后后端不产出正文片段，但标题命中要带章内位置上下文，
-	// 否则用户只看到一个章名，不知道它在书里的位置。
-	if hit.Snippet != "第 1 章 · 共 3 章" {
-		t.Errorf("Snippet 应为章序上下文，实际 %q", hit.Snippet)
-	}
-	if hit.Score != 0 {
-		t.Errorf("Score 应为 0（没有 bm25 排序），实际 %v", hit.Score)
+	if r.Notice != "" {
+		t.Errorf("正常关键词不应带提示，实际 %q", r.Notice)
 	}
 }
 
@@ -85,47 +92,21 @@ func checkChapterTitleHit(t *testing.T, ctx context.Context, st *Store) {
 func checkSingleRuneSearch(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
 	r := mustSearch(t, ctx, st, SearchQuery{Q: "梅"})
-	if r.Chapters.Total != 0 || r.Books.Total != 0 || r.Notice == "" {
+	if r.Books.Total != 0 || r.Notice == "" {
 		t.Errorf("1字查询应返回空结果+提示: %+v", r)
 	}
 }
 
-// checkBookTypeSearch type=book 只查书名（LIKE），不返回章节命中。
-func checkBookTypeSearch(t *testing.T, ctx context.Context, st *Store) {
+// checkSearchPage 分页口径：请求的 page/size 原样回填，空结果 items 也是 []。
+func checkSearchPage(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	r := mustSearch(t, ctx, st, SearchQuery{Q: "梅宁风云", Type: "book"})
-	if r.Books.Total != 1 || r.Books.Items[0].Title != "梅宁风云" {
-		t.Errorf("book 检索 = %+v", r.Books)
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "梅宁风云", Page: 1, Size: 5})
+	if r.Books.Page != 1 || r.Books.Size != 5 {
+		t.Errorf("分页回填 = %d/%d，期望 1/5", r.Books.Page, r.Books.Size)
 	}
-	if len(r.Chapters.Items) != 0 {
-		t.Errorf("type=book 不应返回章节: %+v", r.Chapters)
-	}
-}
-
-// checkScopedSearch BookID 非 0 时只在单本书内检索。
-func checkScopedSearch(t *testing.T, ctx context.Context, st *Store) {
-	t.Helper()
-	found, err := st.ListBooks(ctx, BookQuery{Q: "风雪归人", Page: 1, Size: 1})
-	if err != nil || len(found.Items) != 1 {
-		t.Fatalf("find b2: %+v, err=%v", found, err)
-	}
-	// b1 的章节标题不含「唯一」，b2 的章节标题「唯一的章」含它。
-	r := mustSearch(t, ctx, st, SearchQuery{Q: "唯一", BookID: found.Items[0].ID})
-	if r.Chapters.Total != 1 || r.Chapters.Items[0].BookID != found.Items[0].ID {
-		t.Errorf("book 内检索 = %+v", r.Chapters)
-	}
-}
-
-// checkContentNotSearchable 正文里的词不再被检索到（检索范围只到章节标题）。
-func checkContentNotSearchable(t *testing.T, ctx context.Context, st *Store) {
-	t.Helper()
-	// 「秋蝉」只出现在 b2 的正文里，不在任何书名/作者/章节标题中。
-	r := mustSearch(t, ctx, st, SearchQuery{Q: "秋蝉"})
-	if r.Chapters.Total != 0 || r.Books.Total != 0 {
-		t.Errorf("正文关键词不应命中: chapters=%+v books=%+v", r.Chapters, r.Books)
-	}
-	if r.Notice != "" {
-		t.Errorf("正常关键词不应带提示，实际 %q", r.Notice)
+	empty := mustSearch(t, ctx, st, SearchQuery{Q: "不存在之书"})
+	if empty.Books.Items == nil {
+		t.Error("空结果的 items 应为 []，实际 nil")
 	}
 }
 

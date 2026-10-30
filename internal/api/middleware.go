@@ -13,10 +13,13 @@ import (
 )
 
 // wrap 组装中间件链（由外到内）：
-// 请求 ID → CORS → 访问日志 → 鉴权 → panic 恢复 → gzip → 路由（API / 静态 SPA）。
+// 请求 ID → CORS → 访问日志 → 鉴权（含账号解析）→ panic 恢复 → gzip → 路由（API / 静态 SPA）。
 //
 // 鉴权放在访问日志之内、panic 恢复之外：401/303 都进访问日志，
 // 且鉴权拒绝不会触发 panic 恢复的兜底响应。
+//
+// 账号解析与鉴权在同一个中间件里完成（见 authMiddleware）：同一个请求只该被
+// 判定一次「能不能进门、代表谁」，拆成两层会让两处口径有机会分叉。
 func (s *Server) wrap(apiHandler http.Handler) http.Handler {
 	h := s.dispatch(apiHandler)
 	h = gzipMiddleware(h)
@@ -159,7 +162,8 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 		if origin != "" && devCORSOrigins[origin] {
 			h.Set("Access-Control-Allow-Origin", origin)
-			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			// PUT/DELETE 是书架与其它写端点用的方法：缺了它们，开发期跨域预检会直接失败。
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			h.Set("Access-Control-Allow-Headers", "Content-Type, Accept, X-Request-Id")
 			h.Set("Access-Control-Max-Age", "600")
 		}

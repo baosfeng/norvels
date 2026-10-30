@@ -21,10 +21,12 @@ type ReadingProgress struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-// ListReadingProgress 返回最近在读的前 limit 条（按 updated_at 倒序）。
+// ListReadingProgress 返回当前账号最近在读的前 limit 条（按 updated_at 倒序）。
 //
 // 用 LEFT JOIN：章节已被删除时仍能返回记录（书名保留，章名为空），
 // 避免「进度条在但章节没了」的脏数据把整个列表拖成 500。
+//
+// 账号维度取 ScopeUserID(ctx)：进度按账号隔离，同一本书不同账号各有自己的一条。
 func (s *Store) ListReadingProgress(ctx context.Context, limit int) ([]ReadingProgress, error) {
 	if limit <= 0 {
 		limit = 5
@@ -38,7 +40,8 @@ func (s *Store) ListReadingProgress(ctx context.Context, limit int) ([]ReadingPr
 			"FROM reading_progress p "+
 			"LEFT JOIN books b ON b.id = p.book_id "+
 			"LEFT JOIN chapters c ON c.id = p.chapter_id "+
-			"ORDER BY p.updated_at DESC, p.book_id DESC LIMIT ?", limit)
+			"WHERE p.user_id = ? "+
+			"ORDER BY p.updated_at DESC, p.book_id DESC LIMIT ?", ScopeUserID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: list reading progress: %w", err)
 	}
@@ -65,7 +68,7 @@ const maxProgressLimit = 50
 // maxPercent 是进度上限（1 = 读完）。
 const maxPercent = 1.0
 
-// SaveReadingProgress 按 book_id upsert 一条进度记录。
+// SaveReadingProgress 按 (当前账号, book_id) upsert 一条进度记录。
 //
 // chapter_id 必须存在且属于 book_id；percent 落在 [0,1]（越界拒绝，不静默截断）。
 func (s *Store) SaveReadingProgress(ctx context.Context, p ReadingProgress) error {
@@ -96,13 +99,16 @@ func (s *Store) saveProgressTx(ctx context.Context, p ReadingProgress, idx int) 
 	}
 	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
 
+	// 冲突目标必须是联合主键 (user_id, book_id)：只写 ON CONFLICT(book_id) 会在
+	// 迁移 0016 之后直接报「no such unique constraint」。
 	if _, err = tx.ExecContext(ctx,
-		"INSERT INTO reading_progress(book_id, chapter_id, chapter_idx, percent, para_index, updated_at) "+
-			"VALUES (?, ?, ?, ?, ?, ?) "+
-			"ON CONFLICT(book_id) DO UPDATE SET chapter_id=excluded.chapter_id, "+
+		"INSERT INTO reading_progress(user_id, book_id, chapter_id, chapter_idx, percent, para_index, updated_at) "+
+			"VALUES (?, ?, ?, ?, ?, ?, ?) "+
+			"ON CONFLICT(user_id, book_id) DO UPDATE SET chapter_id=excluded.chapter_id, "+
 			"chapter_idx=excluded.chapter_idx, percent=excluded.percent, "+
 			"para_index=excluded.para_index, updated_at=excluded.updated_at",
-		p.BookID, p.ChapterID, idx, p.Percent, p.ParaIndex, formatTime(nowUTC())); err != nil {
+		ScopeUserID(ctx), p.BookID, p.ChapterID, idx, p.Percent, p.ParaIndex,
+		formatTime(nowUTC())); err != nil {
 		return fmt.Errorf("store: save reading progress: %w", err)
 	}
 	// 阅读状态的唯一自动转移：'' → reading，与进度同事务落地。

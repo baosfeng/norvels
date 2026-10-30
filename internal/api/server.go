@@ -121,6 +121,11 @@ func (s *Server) registerBookRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/bookmarks/{id}", s.handleDeleteBookmark)
 	// 追更角标确认：读完最后一章后清零 new_chapters。
 	mux.HandleFunc("POST /api/books/{id}/ack-new-chapters", s.handleAckNewChapters)
+	// 我的书架（0016）：一本书只属于一个书架，加入 / 移出幂等。
+	mux.HandleFunc("GET /api/shelf", s.handleListShelf)
+	mux.HandleFunc("GET /api/shelf/ids", s.handleShelfBookIDs)
+	mux.HandleFunc("PUT /api/shelf/{bookId}", s.handleAddToShelf)
+	mux.HandleFunc("DELETE /api/shelf/{bookId}", s.handleRemoveFromShelf)
 }
 
 // registerLibraryRoutes 注册作者 / 系列 / 检索 / 标签 / 书单的读写端点。
@@ -180,6 +185,11 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+LoginPath, s.handleLoginPage)
 	mux.HandleFunc("POST "+LoginPath, s.handleLoginSubmit)
 	mux.HandleFunc("POST "+logoutPath, s.handleLogout)
+	// 账号（0016）：只注册 + 输账号登录，无密码。注册即登录。
+	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/auth/logout", s.handleAuthLogout)
+	mux.HandleFunc("GET /api/auth/me", s.handleAuthMe)
 }
 
 // baseContext 返回导入任务的父 context。

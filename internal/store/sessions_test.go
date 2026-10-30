@@ -155,8 +155,8 @@ func TestReadingHistoryDirtyData(t *testing.T) {
 	today := dateUTC(nowUTC())
 	// 书/章节已被清掉但会话还在（表上没有外键）：列表按空标题降级而不是整页失败。
 	mustExec(t, ctx, st, fmt.Sprintf(
-		"INSERT INTO reading_sessions(book_id, chapter_id, started_at, seconds) "+
-			"VALUES (999999, 888888, '%s', 5)", sessionTime(today, 0)))
+		"INSERT INTO reading_sessions(user_id, book_id, chapter_id, started_at, seconds) "+
+			"VALUES (%d, 999999, 888888, '%s', 5)", defaultUserID, sessionTime(today, 0)))
 
 	items, total, err := st.ReadingHistory(ctx, 1, 10)
 	requireOK(t, "ReadingHistory(脏数据)", err)

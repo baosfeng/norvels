@@ -75,18 +75,19 @@ func TestDeleteBookClearsP3Tables(t *testing.T) {
 	st := newTestStore(t)
 	bookID := insertLegacyP3Book(t, ctx, st, "/books/p3-delete.txt", "f14")
 	mustExec(t, ctx, st, fmt.Sprintf(
-		"INSERT INTO reading_sessions(book_id, chapter_id, started_at, seconds) "+
-			"VALUES (%d, 7, '2026-10-01T00:00:00.000Z', 60)", bookID))
-	mustExec(t, ctx, st,
-		"INSERT INTO collections(name, created_at) VALUES ('待清理书单', '2026-10-01T00:00:00.000Z')")
+		"INSERT INTO reading_sessions(user_id, book_id, chapter_id, started_at, seconds) "+
+			"VALUES (%d, %d, 7, '2026-10-01T00:00:00.000Z', 60)", defaultUserID, bookID))
+	mustExec(t, ctx, st, fmt.Sprintf(
+		"INSERT INTO collections(user_id, name, created_at) "+
+			"VALUES (%d, '待清理书单', '2026-10-01T00:00:00.000Z')", defaultUserID))
 	var collID int64
 	if err := st.DB().QueryRowContext(ctx,
 		"SELECT id FROM collections WHERE name = '待清理书单'").Scan(&collID); err != nil {
 		t.Fatalf("读书单 id: %v", err)
 	}
 	mustExec(t, ctx, st, fmt.Sprintf(
-		"INSERT INTO collection_books(collection_id, book_id, added_at) "+
-			"VALUES (%d, %d, '2026-10-01T00:00:00.000Z')", collID, bookID))
+		"INSERT INTO collection_books(user_id, collection_id, book_id, added_at) "+
+			"VALUES (%d, %d, %d, '2026-10-01T00:00:00.000Z')", defaultUserID, collID, bookID))
 
 	if err := st.DeleteBook(ctx, bookID); err != nil {
 		t.Fatalf("DeleteBook: %v", err)

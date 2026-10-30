@@ -1,13 +1,18 @@
 package store
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // 列表筛选：把 BookQuery 编译成 WHERE 片段与参数。
 //
 // 单独成文件的原因：筛选维度会持续长（读完/连载/标签/作者…），
 // 与列表查询、扫描、分页放在一起会把 books.go 顶过 400 行上限。
 // bookFilter 把 BookQuery 编译成 WHERE 片段与参数。
-func bookFilter(q BookQuery) ([]string, []any) {
+//
+// 需要 ctx 的唯一原因是「书单筛选」要带上当前账号（见下面 Collection 分支）。
+func bookFilter(ctx context.Context, q BookQuery) ([]string, []any) {
 	var (
 		where []string
 		args  []any
@@ -33,10 +38,11 @@ func bookFilter(q BookQuery) ([]string, []any) {
 		args = append(args, rs)
 	}
 	// 书单是 M:N 关联，存在性子查询即可（collection_books 很小，不必 JOIN 去重）。
+	// 带上账号维度：书单本身是个人数据，只按 collection_id 过滤会读到别人的书单内容。
 	if q.Collection != 0 {
 		where = append(where, "EXISTS (SELECT 1 FROM collection_books cb "+
-			"WHERE cb.book_id = b.id AND cb.collection_id = ?)")
-		args = append(args, q.Collection)
+			"WHERE cb.book_id = b.id AND cb.collection_id = ? AND cb.user_id = ?)")
+		args = append(args, q.Collection, ScopeUserID(ctx))
 	}
 	// 连载状态：none 是「未知（''）」的哨兵值，其余按取值精确匹配。
 	if ss := strings.TrimSpace(q.SerialStatus); ss != "" {

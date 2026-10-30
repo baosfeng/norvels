@@ -249,6 +249,16 @@ var apiRoutes = []struct {
 	{"/api/stats/import-trend", http.MethodGet},
 	{"/api/reading/progress", http.MethodGet},
 	{"/api/reading/progress", http.MethodPut},
+	// 账号与我的书架（0016）：不登记的话，方法不对会掉进 404 而不是 405，
+	// 前端按 405 判断「这个端点存在但我用错了动词」的逻辑就失效了。
+	{"/api/auth/register", http.MethodPost},
+	{"/api/auth/login", http.MethodPost},
+	{"/api/auth/logout", http.MethodPost},
+	{"/api/auth/me", http.MethodGet},
+	{"/api/shelf", http.MethodGet},
+	{"/api/shelf/ids", http.MethodGet},
+	{"/api/shelf/{bookId}", http.MethodPut},
+	{"/api/shelf/{bookId}", http.MethodDelete},
 	{"/login", http.MethodGet},
 	{"/login", http.MethodPost},
 }

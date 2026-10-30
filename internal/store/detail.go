@@ -86,10 +86,14 @@ func (s *Store) loadBookDetailRow(ctx context.Context, id int64) (bookDetailRow,
 		updated  string
 	)
 	// 书签数用相关子查询带出来：少一次往返，也不必为「统计失败」再加一条错误分支。
+	//
+	// 子查询必须带 bm.user_id：书签是个人数据，只按 book_id 数会把别人的书签
+	// 算进「这本书我有几条书签」，详情页数字对不上自己的列表页。
 	row := s.db.QueryRowContext(ctx,
 		"SELECT "+bookSummaryColumns+", b.encoding, b.source_name, b.file_size, "+
-			"(SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id) "+
-			"FROM books b LEFT JOIN authors a ON a.id = b.author_id WHERE b.id = ?", id)
+			"(SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id AND bm.user_id = ?) "+
+			"FROM books b LEFT JOIN authors a ON a.id = b.author_id WHERE b.id = ?",
+		ScopeUserID(ctx), id)
 	// 摘要列 + 详情列共用一套扫描目标：列顺序由 bookSummaryColumns 单点决定。
 	dest := append(summaryScanTargets(&out.summary, &imported, &updated),
 		&out.encoding, &out.sourceName, &out.fileSize, &out.bookmarkCount)

@@ -141,7 +141,7 @@ func (s *Store) loadBooks(ctx context.Context, where []string, args []any, order
 // ListBooks 分页列出书籍。
 func (s *Store) ListBooks(ctx context.Context, q BookQuery) (Page[BookSummary], error) {
 	page, size := normPage(q.Page, q.Size)
-	where, args := bookFilter(q)
+	where, args := bookFilter(ctx, q)
 	total, err := s.countBooks(ctx, where, args)
 	if err != nil {
 		return Page[BookSummary]{}, err

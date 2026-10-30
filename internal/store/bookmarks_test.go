@@ -169,6 +169,44 @@ func requireBookmarkCount(t *testing.T, st *Store, bookID int64, want int) {
 	}
 }
 
+// TestDetailBookmarkCountIsolatedPerUser 详情页的 bookmarkCount 只数当前账号的书签。
+//
+// 回归点：detail.go 的那条相关子查询一度只按 book_id 数，别人加了书签会算进
+// 「这本书我有几条」，详情页数字与自己列出来的列表对不上。
+func TestDetailBookmarkCountIsolatedPerUser(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	bookID := seedSeriesBook(t, ctx, st, 1, "示例书甲", "", 0, 30)
+	chapterID := chapterIDsOf(t, ctx, st, bookID)[0]
+	other := mustRegister(t, st, "读者乙")
+
+	requireOK(t, "甲加书签", addBookmarkFor(st, ctx, defaultUserID, bookID, chapterID, 1))
+	requireOK(t, "乙加书签1", addBookmarkFor(st, ctx, other.ID, bookID, chapterID, 1))
+	requireOK(t, "乙加书签2", addBookmarkFor(st, ctx, other.ID, bookID, chapterID, 2))
+
+	for _, c := range []struct {
+		name   string
+		ctx    context.Context
+		userID int64
+		want   int
+	}{
+		{"默认账号", ctx, defaultUserID, 1},
+		{"读者乙", WithUserID(ctx, other.ID), other.ID, 2},
+	} {
+		detail, err := st.GetBook(c.ctx, bookID)
+		requireOK(t, c.name+"读详情", err)
+		if detail.BookmarkCount != c.want {
+			t.Errorf("%s 详情 bookmarkCount = %d，期望 %d（串号了）", c.name, detail.BookmarkCount, c.want)
+		}
+	}
+}
+
+// addBookmarkFor 以指定账号加一条书签（测试辅助）。
+func addBookmarkFor(st *Store, ctx context.Context, userID, bookID, chapterID int64, paraIndex int) error {
+	_, _, err := st.AddBookmark(WithUserID(ctx, userID), bookID, chapterID, paraIndex, "")
+	return err
+}
+
 // requireOnlyBookmarkLabel 断言全书恰好一条书签且 label 等于 want。
 func requireOnlyBookmarkLabel(t *testing.T, st *Store, bookID int64, want string) {
 	t.Helper()
