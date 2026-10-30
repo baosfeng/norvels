@@ -127,7 +127,8 @@ export function ReaderPage() {
 
   const { goShelf, goBack, goChapter } = useReaderNavActions(bookId);
 
-  const { step: stepChapter, jump: jumpChapter } = useReaderZoneNav({ prev, next, goChapter });
+  // consumeFlip / goFlip 由翻章出口自己标记：只有翻章落章首，目录链接与浏览器后退按段恢复。
+  const { step: stepChapter, jump: jumpChapter, goFlip, consumeFlip } = useReaderZoneNav({ prev, next, goChapter });
 
   /** 进度滑块松手：按章节下标跳章（滑块与手势共用同一句浮条口径）。 */
   const jumpToChapterAt = useCallback(
@@ -138,7 +139,6 @@ export function ReaderPage() {
     },
     [chapters, chapterId, jumpChapter],
   );
-
 
   const controls = useReaderControls({
     isH5,
@@ -172,7 +172,7 @@ export function ReaderPage() {
     overlayOpen,
     next,
     index,
-    goChapter,
+    goChapter: goFlip,
     isH5,
   });
 
@@ -198,6 +198,7 @@ export function ReaderPage() {
   useReaderVisiblePara({ paragraphs, chapterDataId: chapter.data?.id, onAnchor: setAnchor });
 
   useReaderScrollRestore({
+    consumeFlip,
     searchOpen,
     currentHit,
     hitCount,
@@ -218,9 +219,16 @@ export function ReaderPage() {
   const reducedMotion = prefersReducedMotion();
   const articleKey = reducedMotion ? "static" : `chapter-${chapterId}`;
 
+  // 面板打开时不接管滑动：与点按分区同一口径（zonesEnabled={!overlayOpen}）。
+  // 目录/设置/搜索打开时读者的横滑是「浏览这个面板」，不该把背后正文翻掉且不给任何提示。
   const swipeHandlers = useMemo(
-    () => ({ enabled: isH5, onPrev: () => stepChapter("prev"), onNext: () => stepChapter("next") }),
-    [isH5, stepChapter],
+    () => ({
+      enabled: isH5 && !overlayOpen,
+      reducedMotion,
+      onPrev: () => stepChapter("prev"),
+      onNext: () => stepChapter("next"),
+    }),
+    [isH5, overlayOpen, reducedMotion, stepChapter],
   );
   const swipeRef = useSwipePaging(swipeHandlers);
 
