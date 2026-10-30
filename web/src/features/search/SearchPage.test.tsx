@@ -103,6 +103,25 @@ describe("搜索页：只按书名与作者搜", () => {
     expect(findForbiddenTerms(screen.getByTestId("view:search").textContent ?? "")).toEqual([]);
   });
 
+  // 回归：0 本时页头曾同时渲染「找到 0 本书」与「没有匹配的书名或作者」，同一件事说两遍，
+  // 还把空态标题挤到下一屏。计数摘要只在真的有结果时出现。
+  it("0 本时不显示计数摘要（不把同一件事说两遍）", async () => {
+    useSearch.mockReturnValue({ data: emptyResult, loading: false, error: null, reload: () => {} });
+    renderAt("青川剑砚");
+
+    await screen.findByTestId("search-empty");
+    expect(document.querySelector(".search-summary")).toBeNull();
+    expect(document.body.textContent).not.toContain("找到 0 本书");
+  });
+
+  it("有结果时计数摘要照常出现", async () => {
+    useSearch.mockReturnValue({ data: hitResult, loading: false, error: null, reload: () => {} });
+    renderAt("旧城");
+
+    await waitFor(() => expect(document.querySelector(".search-summary")).not.toBeNull());
+    expect(screen.getByText("找到 1 本书")).toBeTruthy();
+  });
+
   it("H5 与 PC 同一份结果：没有 tab、没有分栏", async () => {
     useSearch.mockReturnValue({ data: hitResult, loading: false, error: null, reload: () => {} });
     renderAt("旧城", "h5");

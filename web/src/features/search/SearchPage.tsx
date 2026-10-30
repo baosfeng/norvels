@@ -125,7 +125,9 @@ export function SearchPage() {
           </button>
         </form>
 
-        {q && !loading && !error ? (
+        {/* 计数摘要只在真的有结果时出现：0 本时下面已经是「没有匹配」的空态，
+            再来一行「找到 0 本书」是把同一件事说两遍，还把空态标题挤下去一屏。 */}
+        {done && bookCount > 0 ? (
           <div className="search-summary">
             <span className="meta">找到 {formatCount(bookCount)} 本书</span>
             <span className="pill">按书名、作者搜索</span>
