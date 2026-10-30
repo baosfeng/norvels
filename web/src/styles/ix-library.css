@@ -421,8 +421,8 @@
   .h5-book-cta-shelf{flex:0 0 auto;min-width:112px}
   .h5-book-cta-read{flex:1 1 auto;font-weight:600}
   .h5-book-cta .has-no-chapter{flex:1 1 auto;display:flex;align-items:center;justify-content:center;opacity:.55}
-  /* 吸底条会盖住最后一行内容：给页面主体让出高度 */
-  .book-layout{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+  /* 吸底条会盖住最后一行内容：给页面主体让出高度（条高 46 + 上下 padding 20 + 安全区） */
+  .book-layout{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
 
   /* H5 事实区：两列网格，比纵向长表省一半高度。
      选择器带 .book-main 是为了盖住 prototype.css 里 .book-main .facts 的单列规则（特异性相同、它在前面）。 */
@@ -445,13 +445,36 @@
   }
 }
 
-/* 简介折叠入口：跟在正文最后一行右侧，不再独占一行大按钮 */
-.intro-toggle-inline{
-  display:inline;margin:0 0 8px;padding:0;border:none;background:none;
+/* 简介折叠（C-10）：入口是行内的一句「… 展开 ›」，不是独立一行的大按钮。
+   包一层专用的 .book-synopsis —— .book-intro 已被书架卡片的 2 行 clamp 占用（prototype.css），
+   复用同名类会把展开态也裁成两行。 */
+.book-synopsis{position:relative;margin-bottom:18px}
+/* 收起态：把 .intro 的 margin-bottom 收进包裹层，绝对定位的入口才能与第三行同基线 */
+.book-synopsis.is-clamp .intro{margin-bottom:0}
+.intro-toggle{
+  display:inline;padding:0;border:none;background:none;
   color:var(--accent);font:inherit;cursor:pointer;
+  transition:opacity var(--motion-fast) var(--ease-standard);
 }
-.intro-toggle-inline::after{content:"  ›";font-size:.9em}
-@media (max-width: 768px){ .intro-toggle-inline{min-height:44px} }
+.intro-toggle:active{opacity:.6}
+/* 收起态：正文第三行用 mask 淡出，入口压在右下角。
+   淡出的最后一段（70% 以下）几乎透明，入口排在那里就不会跟被裁的字叠在一起。 */
+/* 收起态：正文给到 3 行（line-clamp 由组件内联给出），入口排在第三行之下的
+   独立一档里——右对齐的小字，不压正文、不占整行高度。
+   曾经把入口绝对定位到第三行右端，被裁的字与按钮总会叠出半个残字。 */
+.book-synopsis.is-clamp .intro-toggle{
+  /* 右浮动：既在正文之后另起一档，又能贴右对齐；负边距把这一档拉回正文下沿，
+     不留 18px 的空档（入口读作简介的收尾，不是新的一段） */
+  float:right;margin:-8px 0 0;
+  line-height:1.4;
+}
+/* 触控目标 44 用另一个伪元素扩，不动行内排版：真按钮的文字仍与正文同一基线 */
+.intro-toggle{position:relative}
+.intro-toggle::before{
+  content:"";position:absolute;left:0;right:-4px;top:50%;
+  height:44px;transform:translateY(-50%);
+}
+.intro-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* 目录头：标题 + 计数 + 正倒序开关同处一行 */
 .dir-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -470,6 +493,23 @@
 }
 .toc-resume-main{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 
+/* 目录头的正倒序开关：按下缩放 + 透明度，150ms（与全站按下口径一致） */
+.dir-order{
+  transition:transform var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.dir-order:active{transform:scale(.98);opacity:.9}
+.dir-order:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 定位条的按下反馈 */
+.toc-resume{
+  transition:transform var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+.toc-resume:active{transform:scale(.99);opacity:.92}
+.toc-resume:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
 @media (max-width: 768px){
   .dir-order{min-height:44px}
   .toc-resume{min-height:44px}
@@ -478,7 +518,6 @@
 /* H5：封面旁只剩「加入书单」一个次要动作，压成小号文字按钮，不再撑成一整行大块 */
 @media (max-width: 768px){
   .book-aside .actions{margin-bottom:4px}
-  .h5-book-collection{min-height:44px;padding:0 12px;font-size:14px;color:var(--fg-2)}
 }
 
 /* 已读章节：标题与字数一起降一档，扫目录时一眼能分出读到哪（契约 C-15 扩展） */
@@ -491,4 +530,62 @@
   display:flex;align-items:center;justify-content:center;width:100%;margin:8px 0 0;padding:0 12px;
   min-height:44px;border:1px dashed var(--border);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--accent);font:inherit;font-size:14px;cursor:pointer;
+}
+
+/* 目录标题里的章数：跟标题同一行，字号降一档、不加粗（PC 沿用同一形态） */
+.dir-count{font-size:var(--text-sm);font-weight:400;letter-spacing:0;color:var(--muted)}
+
+/* 阅读状态 chip 组（H5，C-07）：四个状态摊成一行，一次点中；PC 仍是下拉 */
+.status-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.status-chips .chip{
+  border:1px solid var(--border);background:var(--surface);color:var(--fg-2);
+  font-size:13px;cursor:pointer;
+  transition:background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+.status-chips .chip.is-active{
+  border-color:var(--accent);background:var(--accent);color:var(--accent-on);font-weight:600;
+}
+/* 按下反馈：缩放 + 透明度，150ms（口径同全站） */
+.status-chips .chip:active:not(:disabled){transform:scale(.98);opacity:.9}
+.status-chips .chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 保存中整组禁用（不是隐藏）：读者看得到上一次选择，也看得到它正在写 */
+.status-chips.is-saving{opacity:.55}
+.status-chips .chip:disabled{cursor:default}
+@media (max-width: 768px){
+  /* 四颗 chip 在半宽的网格格里放不下：这一格跨满两列，一行排完 */
+  .book-main .facts .fact-status{grid-column:1 / -1}
+  .status-chips{gap:6px}
+  .status-chips .chip{min-height:44px;padding:0 10px;font-size:13px}
+}
+
+/* H5 顶部信息区：封面（3:4）+ 右侧书名/作者/状态。
+   封面尺寸由 aspect-ratio 锁死，封面加载与否都不会把标题挤动。
+   三行网格：封面 + 信息列占第一行，按钮行独占第二行铺满整幅。 */
+@media (max-width: 768px){
+  .book-aside{
+    display:grid;
+    grid-template-columns:88px minmax(0,1fr);
+    align-items:start;
+    gap:var(--space-4);
+  }
+  /* Cover 自带 aspect-ratio:3/4，这里只锁宽、不让它被网格拉伸；跨两行贴在左侧 */
+  .book-aside > .cover{width:88px;align-self:start;grid-row:1 / span 2}
+  .book-aside-info{min-width:0}
+  /* 信息列里的标题比 PC 小一档：390 宽下 28px 会把长书名折成四行 */
+  .book-aside-info h1{font-size:22px;margin:0 0 6px;line-height:1.25}
+  .book-aside-info .byline{margin:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+  /* 按钮行：贴在信息列下方（封面右侧），只剩「加入书单」一个次要动作 */
+  .book-aside .actions{grid-column:2;flex-direction:row;flex-wrap:wrap;gap:8px;align-items:center;margin:0}
+  .book-aside .actions .btn{width:auto;flex:0 0 auto}
+  /* 书单入口贴在信息列右侧，不另起一行占位：它只是次要动作 */
+  .h5-book-collection{justify-content:flex-start;padding:0;min-height:44px;color:var(--fg-2)}
+  .h5-book-collection:hover{background:transparent;color:var(--accent)}
+}
+
+/* H5 的简介与事实区在标题下方单列，不跟着封面列走 */
+@media (max-width: 768px){
+  .book-main{min-width:0}
 }

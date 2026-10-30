@@ -163,10 +163,13 @@ function TocHead({
 }) {
   return (
     <div className="dir-head" ref={headRef}>
-      <h2>目录</h2>
-      <span className="meta" data-testid="book-dir-meta">
-        共 {formatCount(total)} 章 · {volumeCount} 卷
-      </span>
+      <h2>
+        目录
+        {/* 章数写进标题括号里：手机上计数单独一行会被折行，跟标题分成两截 */}
+        <span className="dir-count" data-testid="book-dir-meta">
+          （共 {formatCount(total)} 章{volumeCount > 1 ? ` · ${volumeCount} 卷` : ""}）
+        </span>
+      </h2>
       {/* 追更的书要看最新章，正序要滚到底；这个开关让两种读法都一步到位 */}
       {onToggleOrder ? (
         <button

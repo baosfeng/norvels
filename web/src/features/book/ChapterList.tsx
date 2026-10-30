@@ -87,6 +87,9 @@ export function ChapterList({
       : unbounded && rows.length > UNBOUNDED_ROW_LIMIT
         ? { maxHeight: UNBOUNDED_MAX_HEIGHT }
         : undefined;
+  // react-hooks/incompatible-library：TanStack Virtual 的返回值本就不可 memo，
+  // 它只在本组件内消费、不外传给其它 memo 化的 hook，编译器的跳过是安全的。
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,

@@ -3,6 +3,7 @@ import type { BookDetail, ReadStatus } from "../../api/types";
 import { formatCount, formatDate } from "../../lib/format";
 import { READ_STATUS_OPTIONS } from "../../lib/readStatus";
 import { BookRating } from "./RatingStars";
+import { ReadStatusChips } from "./ReadStatusChips";
 
 /**
  * 详情页的书籍事实区（C-06 / C-07 / C-08 + 元信息）：字数、导入时间、系列、阅读状态、评分、
@@ -17,11 +18,14 @@ export function BookFacts({
   readStatus,
   savingStatus,
   onReadStatusChange,
+  isH5 = false,
 }: {
   book: BookDetail;
   readStatus: string;
   savingStatus: boolean;
   onReadStatusChange: (next: ReadStatus) => void;
+  /** H5 用 chip 组（一次点中），PC 保留下拉（省纵向空间、鼠标可选） */
+  isH5?: boolean;
 }) {
   return (
     <dl className="facts" data-testid="book-facts">
@@ -34,26 +38,30 @@ export function BookFacts({
         <dd className="num">{formatDate(book.importedAt)}</dd>
       </div>
       {book.series ? <SeriesFact series={book.series} seriesIndex={book.seriesIndex} /> : null}
-      <div>
+      <div className="fact-status">
         <dt>
-          <label htmlFor="book-read-status">阅读状态</label>
+          <label htmlFor={isH5 ? undefined : "book-read-status"}>阅读状态</label>
         </dt>
         <dd>
-          <select
-            className={`select${savingStatus ? " is-saving" : ""}`}
-            id="book-read-status"
-            data-testid="book-read-status"
-            data-od-id="C-07"
-            value={readStatus}
-            disabled={savingStatus}
-            onChange={(event) => onReadStatusChange(event.target.value as ReadStatus)}
-          >
-            {READ_STATUS_OPTIONS.map((option) => (
-              <option key={option.value || "none"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          {isH5 ? (
+            <ReadStatusChips value={readStatus} saving={savingStatus} onChange={onReadStatusChange} />
+          ) : (
+            <select
+              className={`select${savingStatus ? " is-saving" : ""}`}
+              id="book-read-status"
+              data-testid="book-read-status"
+              data-od-id="C-07"
+              value={readStatus}
+              disabled={savingStatus}
+              onChange={(event) => onReadStatusChange(event.target.value as ReadStatus)}
+            >
+              {READ_STATUS_OPTIONS.map((option) => (
+                <option key={option.value || "none"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
         </dd>
       </div>
       {savingStatus ? (

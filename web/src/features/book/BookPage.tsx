@@ -146,6 +146,7 @@ export function BookPage() {
               readStatus={currentReadStatus}
               savingStatus={savingStatus}
               onReadStatusChange={(next) => void changeReadStatus(next)}
+              isH5
             />
           ) : null}
           <BookToc

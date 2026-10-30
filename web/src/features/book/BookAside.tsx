@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { BookDetail, ChapterBrief, ReadStatus } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { BookFacts } from "./BookFacts";
+import { BookName } from "./BookHeader";
 import { useBookShelf } from "./useBookShelf";
 
 /**
@@ -46,6 +47,13 @@ export function BookAside({
         hasCover={book.hasCover}
         showLabel={!isH5}
       />
+      {/* H5：书名与署名放在封面右侧的同一行（见 ix-library.css 的 .book-aside 两列网格）；
+          PC 的书名仍由 BookHeader 在主栏给出，这里不重复渲染 */}
+      {isH5 ? (
+        <div className="book-aside-info">
+          <BookName book={book} isH5 />
+        </div>
+      ) : null}
       <div className="actions">
         {/* C-02 边界：没有阅读进度时整颗按钮不渲染（不是禁用），改由「从第一章开始」承接。
             H5 把「开读」整组交给底部吸底条（H5StickyCta）：顶部再放一份，同屏会出现两个主操作。 */}

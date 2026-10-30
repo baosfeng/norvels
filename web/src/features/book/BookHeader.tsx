@@ -1,15 +1,15 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { BookDetail, SerialStatus } from "../../api/types";
 import { formatDate } from "../../lib/format";
 import { authorsOf } from "../../lib/metaDraft";
 import { markShelfTagFilter, shelfTagHref } from "./shelfTagLink";
-import { useNavigate } from "react-router-dom";
 
 /**
- * 详情页右栏头部：书名 / 署名 / 连载状态 / 标签 / 简介。
- * 锚点：C-32 署名作者链接、C-09 标签 chip（新增）、C-10 简介展开（仅 H5）。
+ * 详情页头部：书名 / 署名 / 连载状态 / 标签 / 简介。
+ * 锚点：C-32 署名作者链接、C-09 标签 chip、C-10 简介展开（仅 H5）。
  *
- * 两档差别只有落点与展开：PC 署名去作者页（作者页 PC 专属），H5 署名去「按该作者筛选的书架」。
+ * H5 的书名与署名移到封面右侧（见 BookAside 的 titleSlot），这里只留时间行、标签与简介；
+ * PC 仍是完整头部。拆开的原因是手机上「封面独占一行、标题另起一行」会白白吃掉 100px 高度。
  */
 export function BookHeader({
   book,
@@ -28,21 +28,34 @@ export function BookHeader({
   notice: string;
   lastChapter: string;
 }) {
-  const navigate = useNavigate();
-  const tags = book.tags ?? [];
+  return (
+    <>
+      {isH5 ? null : <BookName book={book} isH5={false} />}
+      <p className="meta book-updated" data-testid="book-last-chapter">
+        最后更新 · {formatDate(book.updatedAt)} · 最新章节 · {lastChapter}
+      </p>
+      <BookTags book={book} />
+      {notice ? (
+        <p className="meta" role="status" data-testid="book-notice">
+          {notice}
+        </p>
+      ) : null}
+      <BookIntro intro={intro} isH5={isH5} open={introOpen} onToggle={onToggleIntro} />
+    </>
+  );
+}
 
-  /** 标签 chip：写入书架筛选意图后跳转，书架按 tag= 打开并显示「民国 · n 本」。 */
-  function openTag(tag: string) {
-    markShelfTagFilter(tag);
-    navigate(shelfTagHref(tag));
-  }
-
+/**
+ * 书名 + 署名 + 连载状态。
+ *
+ * 作者页是 PC 专属（TierRoute 会把 H5 弹回首页）；H5 落到「按该作者筛选的书架」，
+ * 同一个作者名在两档都点得动，不制造「点了就跳走」的死路。
+ */
+export function BookName({ book, isH5 }: { book: BookDetail; isH5: boolean }) {
   return (
     <>
       <h1>{book.title}</h1>
       <p className="byline" data-testid="book-byline">
-        {/* 作者页是 PC 专属（TierRoute 会把 H5 弹回首页）；H5 落到「按该作者筛选的书架」，
-            同一个作者名在两档都是可点的，不制造「点了就跳走」的死路 */}
         <Link to={isH5 ? `/shelf?author=${book.authorId}` : "/authors"} data-od-id="C-32">
           {authorsOf(book).join("、") || "佚名"}
         </Link>{" "}
@@ -56,31 +69,38 @@ export function BookHeader({
           </span>
         ) : null}
       </p>
-      <p className="meta" data-testid="book-last-chapter">
-        最后更新 · {formatDate(book.updatedAt)} · 最新章节 · {lastChapter}
-      </p>
-
-      {tags.length > 0 ? (
-        <p className="chips" data-testid="book-tags" data-od-id="C-09">
-          {tags.map((tag) => (
-            <button key={tag} className="chip" type="button" onClick={() => openTag(tag)}>
-              {tag}
-            </button>
-          ))}
-        </p>
-      ) : null}
-      {notice ? (
-        <p className="meta" role="status" data-testid="book-notice">
-          {notice}
-        </p>
-      ) : null}
-
-      <BookIntro intro={intro} isH5={isH5} open={introOpen} onToggle={onToggleIntro} />
     </>
   );
 }
 
-/** 简介：H5 默认收 3 行，展开按钮只在 H5 出现；PC 恒为全文。 */
+/** 标签 chip（C-09）：写入书架筛选意图后跳转，书架按 tag= 打开并显示「民国 · n 本」。 */
+export function BookTags({ book }: { book: BookDetail }) {
+  const navigate = useNavigate();
+  const tags = book.tags ?? [];
+  if (tags.length === 0) return null;
+
+  function openTag(tag: string) {
+    markShelfTagFilter(tag);
+    navigate(shelfTagHref(tag));
+  }
+
+  return (
+    <p className="chips" data-testid="book-tags" data-od-id="C-09">
+      {tags.map((tag) => (
+        <button key={tag} className="chip" type="button" onClick={() => openTag(tag)}>
+          {tag}
+        </button>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * 简介（C-10）：H5 默认收 3 行，展开入口做成**行内**的「… 展开 ›」，PC 恒为全文。
+ *
+ * 入口不再独占一行大按钮——那会在简介与事实区之间多出一道空白。
+ * 收起态时入口浮在第三行右端并压一层同底色渐变，读起来像正文的延续。
+ */
 function BookIntro({
   intro,
   isH5,
@@ -95,25 +115,36 @@ function BookIntro({
   if (!intro) return <p className="meta">这本书还没有简介。</p>;
   const clamp = isH5 && !open;
   return (
-    <>
+    <div className={`book-synopsis${clamp ? " is-clamp" : ""}`}>
       <p
-        className={`intro${clamp ? " is-clamp" : ""}`}
+        className="intro"
         style={clamp ? { WebkitLineClamp: 3, overflow: "hidden", display: "-webkit-box", WebkitBoxOrient: "vertical" } : undefined}
       >
         {intro}
+        {isH5 && !clamp ? <IntroToggle open onToggle={onToggle} /> : null}
       </p>
-      {isH5 ? (
-        <button
-          className="intro-toggle-inline"
-          type="button"
-          data-od-id="C-10"
-          aria-expanded={open}
-          onClick={onToggle}
-        >
-          {open ? "收起" : "展开"}
-        </button>
-      ) : null}
-    </>
+      {/* 收起态：入口挂在包裹层上（不挂在 .intro 里），否则会跟着被裁的正文一起藏掉 */}
+      {clamp ? <IntroToggle open={false} onToggle={onToggle} /> : null}
+    </div>
+  );
+}
+
+/** 行内展开 / 收起入口。收起态带前置省略号，与「正文被剪断」这件事对得上。 */
+function IntroToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className="intro-toggle"
+      type="button"
+      data-od-id="C-10"
+      data-testid="book-intro-toggle"
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      {open ? null : <span aria-hidden="true">… </span>}
+      {open ? "收起" : "展开"}
+      <span aria-hidden="true"> ›</span>
+      <span className="sr-only">{open ? "收起简介" : "展开简介"}</span>
+    </button>
   );
 }
 

@@ -123,11 +123,29 @@ describe("详情页事实区：H5 不再被裁掉", () => {
     expect(all[0].closest(".book-aside")).not.toBeNull();
   });
 
-  it("H5 改阅读状态照常保存并即时回显", async () => {
+  it("H5 阅读状态是 chip 组：点一下即改，不展开下拉，选中态由 aria-pressed 表达", async () => {
     renderPage("h5");
-    fireEvent.change(screen.getByTestId("book-read-status"), { target: { value: "done" } });
+    // H5 用 chip 组（一次点中）；下拉只在 PC 出现
+    expect(document.querySelector("select#book-read-status")).toBeNull();
+    const group = screen.getByTestId("book-read-status");
+    expect(group.getAttribute("role")).toBe("group");
+    // 书上写的是 reading：在读那颗是按下态
+    expect(screen.getByTestId("book-read-status-reading").getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByTestId("book-read-status-done"));
     await waitFor(() => expect(updateBook).toHaveBeenCalledWith(7, { readStatus: "done" }));
-    expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe("done");
+    await waitFor(() =>
+      expect(screen.getByTestId("book-read-status-done").getAttribute("aria-pressed")).toBe("true"),
+    );
+  });
+
+  it("H5 阅读状态保存中整组禁用，读者看得到上一次选择", async () => {
+    updateBook.mockReset().mockReturnValue(new Promise<BookDetail>(() => {}));
+    renderPage("h5");
+    fireEvent.click(screen.getByTestId("book-read-status-done"));
+    await waitFor(() => expect(screen.getByTestId("book-read-status-done").hasAttribute("disabled")).toBe(true));
+    expect(screen.getByTestId("book-read-status").getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByTestId("book-read-status-note").textContent).toContain("正在保存");
   });
 
   it("H5 封面 / 开读 / 加入书单 / 加入书架四个入口都在", () => {
