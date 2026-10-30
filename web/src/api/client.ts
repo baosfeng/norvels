@@ -502,6 +502,18 @@ export const api = {
   readingHistory: (params: { page?: number; size?: number } = {}, opts?: RequestOptions) =>
     request<ReadingHistoryResult>(`/reading/history${query({ ...params })}`, opts),
 
+  /**
+   * 删掉当前账号在某一本书上的全部阅读记录：204。
+   * 只动 reading_sessions——阅读进度、书签、书架都还在（「不想在历史里看到这本」不等于「把这本书读回第一页」）。
+   * bookId 非法 400 invalid_id；这本书本来就没有记录 404 not_found。
+   */
+  deleteReadingHistory: (bookId: number, opts?: RequestOptions) =>
+    request<void>(`/reading/history/${bookId}`, { ...opts, method: "DELETE" }),
+
+  /** 清空当前账号的全部阅读记录：204，幂等（本来就是空的也成功）。同样不动进度 / 书签 / 书架。 */
+  clearReadingHistory: (opts?: RequestOptions) =>
+    request<void>("/reading/history", { ...opts, method: "DELETE" }),
+
   /** 阅读时长统计：days 1–365（默认 90）；与其它统计接口一样放宽超时（查聚合表）。 */
   readingStats: (days?: number, opts?: RequestOptions) =>
     request<ReadingStats>(`/stats/reading${query({ days })}`, { timeoutMs: STATS_TIMEOUT_MS, ...opts }),

@@ -598,3 +598,19 @@
 @media (max-width: 768px){
   .book-main{min-width:0}
 }
+
+/* ── 账号页 H5：主操作占主位 ──
+   PC 两个按钮同行等宽没问题（指针操作、屏幕够宽）；H5 上「进入」才是主路径，
+   「注册新账号」是第一次来的人才会点的分支：主按钮通栏、次按钮降成文字型，靠体量分主次。
+   次按钮仍是 44px 高的整行点击区（只去边框和底色，不去高度）。 */
+@media (max-width: 768px){
+  .auth-actions{flex-direction:column;gap:4px;margin-top:2px}
+  .auth-actions .btn{width:100%;flex:0 0 auto}
+  .auth-actions .btn:not(.btn-primary){
+    border-color:transparent;background:transparent;color:var(--accent);
+    min-height:44px;font-weight:500;
+  }
+  .auth-actions .btn:not(.btn-primary):hover{background:transparent;color:var(--accent)}
+  /* 去掉边框后两个按钮之间只剩 4px，主按钮的下边距把点击区分开 */
+  .auth-actions .btn-primary{min-height:48px}
+}

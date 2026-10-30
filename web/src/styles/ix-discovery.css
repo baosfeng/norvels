@@ -761,3 +761,120 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── H5 首页：骨架屏与去重后的行 ── */
+/* 最近入库的加载态原来是转圈面板（大段留白 + 布局跳动），换成与真实行同形的骨架：
+   行高 64、封面 36、两行文字，取回数据后列表原地替换，不推着下面的内容跳。 */
+.sk-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.sk-row:last-child {
+  border-bottom: 0;
+}
+.sk-row-cover {
+  width: 36px;
+  aspect-ratio: 3 / 4;
+  flex: none;
+  border-radius: 4px;
+}
+.sk-rows-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.sk-rows-text .sk-line {
+  height: 10px;
+}
+/* 「今天已读多久」：只在真有读数时出现，压在 h1 下面一行，不再另起一块占屏。 */
+.h5-today {
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 阅读历史：删除入口（H5 卡片右上 ×，行内二段式确认；页头「清空」） ──
+   删除是这个页面上唯一的破坏性动作，三处都要能"看明白才点下去"：
+   入口常驻但低调（低对比描边圆点），确认态就地展开并给出「进度和书签会留着」，
+   执行中整组禁用——不给第二次点击留窗口。 */
+.history-card{position:relative}
+.history-delete{
+  position:absolute;top:0;right:0;
+  display:flex;align-items:center;justify-content:center;
+  width:44px;height:44px;
+  border:0;border-radius:var(--radius);
+  background:transparent;color:var(--muted);
+  font-size:22px;line-height:1;
+  cursor:pointer;
+  transition:color 120ms ease,background-color 120ms ease;
+}
+.history-delete:hover{color:var(--danger-text);background:transparent}
+.history-delete:disabled{opacity:.45;cursor:default}
+.history-delete:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* 给 × 让出位置：整条链接右侧留 44px，长书名与时长行都不会钻到按钮底下 */
+.history-card .history-link{padding-right:44px}
+.history-card .history-body .book-title{padding-right:0}
+
+/* 确认态：盖住卡片内容（就地替换语义），高度跟卡片一致，不让列表跳动 */
+.history-card.is-confirming{border-color:color-mix(in oklab,var(--danger) 40%,var(--border))}
+.history-confirm{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;justify-content:center;gap:4px;
+  padding:10px 12px;
+  border-radius:var(--radius);
+  background:color-mix(in oklab,var(--danger) 6%,var(--surface));
+}
+.history-confirm-text{margin:0;font-size:14px;font-weight:600;color:var(--fg)}
+.history-confirm-note{margin:0;font-size:12px;color:var(--muted)}
+.history-confirm-actions{display:flex;gap:8px;margin-top:6px}
+.history-confirm-actions .btn{min-height:40px;padding:0 14px;flex:0 0 auto}
+.history-confirm-yes{background:var(--danger);border-color:var(--danger);color:#fff}
+.history-confirm-yes:hover{background:color-mix(in oklab,var(--danger),black 8%)}
+
+/* 页头「清空」：默认是低调的次按钮，展开后换成同一套二段式确认（PC / H5 同一形态） */
+.history-clear{
+  flex:none;align-self:flex-end;
+  min-height:36px;
+  border-color:transparent;background:transparent;
+  color:var(--muted);font-size:13px;
+}
+.history-clear:hover{border-color:transparent;background:transparent;color:var(--danger-text)}
+.history-clear-confirm{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.history-clear-note{margin:0;font-size:12px;color:var(--muted)}
+.history-clear-actions{display:flex;gap:8px}
+.history-clear-actions .btn{min-height:36px}
+
+@media (max-width: 768px){
+  /* 触屏上「清空」与确认按钮都抬到 44px 可点区 */
+  .history-clear{min-height:44px}
+  .history-clear-actions .btn{min-height:44px}
+  .history-confirm-actions .btn{min-height:44px}
+  /* 页头在 390 宽下是竖排：确认组跟着右对齐会悬在中间，改成整行 */
+  .history-clear-confirm{align-items:stretch}
+  .history-clear-actions .btn{flex:1 1 0}
+}
+
+/* ── PC 历史表格的行内删除：与 H5 卡片同一个动作，不因窗口变宽消失 ── */
+.history-row-del{width:1%;white-space:nowrap;text-align:right}
+.history-del-btn{
+  min-width:32px;min-height:32px;
+  border-color:transparent;background:transparent;
+  color:var(--muted);font-size:14px;line-height:1;
+}
+.history-del-btn:hover:not(:disabled){border-color:transparent;background:transparent;color:var(--danger-text)}
+.history-del-btn:disabled{opacity:.45}
+.history-row-confirm{display:inline-flex;gap:6px}
+.history-row-confirm .btn{min-height:32px;padding:0 10px;font-size:13px}

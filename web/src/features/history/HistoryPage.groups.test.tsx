@@ -121,14 +121,15 @@ describe("阅读历史：分组 / 单条结构 / 骨架", () => {
     expect(screen.getByTestId("history-row-2").textContent).not.toContain("0%");
   });
 
-  it("PC 表格也分组，且仍是五列表头 + 每本书一行", async () => {
+  it("PC 表格也分组，五列信息 + 操作列表头 + 每本书一行", async () => {
     readingHistory.mockResolvedValue({
       items: [row({ bookId: 1, lastReadAt: hoursAgo(1) }), row({ bookId: 2, lastReadAt: hoursAgo(50) })],
       total: 2,
     });
     renderHistory("pc");
     await waitFor(() => expect(screen.getByTestId("history-live")).toBeTruthy());
-    expect(document.querySelectorAll("thead th")).toHaveLength(5);
+    // 五列信息 + 一个操作列（行内删除）：PC 也有删除入口，不因窗口变宽消失
+    expect(document.querySelectorAll("thead th")).toHaveLength(6);
     // 两组各一个 tbody（表头也是 rowgroup，所以按 tbody 数）
     expect(document.querySelectorAll("tbody")).toHaveLength(2);
     expect(screen.getByTestId("history-row-1")).toBeTruthy();

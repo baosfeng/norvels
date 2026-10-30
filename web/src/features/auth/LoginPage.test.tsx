@@ -30,9 +30,9 @@ function Landing() {
   return <p data-testid="landing">{location.pathname + location.search}</p>;
 }
 
-function renderLogin(path = "/login", auth: AuthState = makeAuth()) {
+function renderLogin(path = "/login", auth: AuthState = makeAuth(), tier: "pc" | "h5" = "pc") {
   return render(
-    <TierProvider value="pc">
+    <TierProvider value={tier}>
       <AuthProvider initialState={auth}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
@@ -123,5 +123,44 @@ describe("登录 / 注册页：一个输入框 + 两个动作，无密码", () =
   it("已登录的人打开登录页直接回来源页（不做中间页）", async () => {
     renderLogin("/login?next=%2Fshelf", makeAuth({ user, loggedIn: true }));
     await waitFor(() => expect(screen.getByTestId("landing").textContent).toBe("/shelf"));
+  });
+});
+
+/**
+ * H5 的竖屏预算：390×844 下首屏必须同时看到两个动作。
+ * 实测（390 宽）说明把主操作顶出首屏的是三行长说明——所以短文案是硬要求，不是措辞偏好。
+ */
+describe("登录页 H5：短说明 + 主操作占主位 + 错误提示贴输入框", () => {
+  it("H5 用短说明（≤2 行份量），PC 保留完整说明", () => {
+    const { unmount } = renderLogin("/login", makeAuth(), "h5");
+    const h5Sub = screen.getByTestId("auth-sub").textContent ?? "";
+    expect(h5Sub).toBe("阅读记录跟着账号走。没有密码，输入账号名就能进。");
+    expect(h5Sub).not.toContain("注册新账号");
+    unmount();
+
+    renderLogin("/login", makeAuth(), "pc");
+    const pcSub = screen.getByTestId("auth-sub").textContent ?? "";
+    expect(pcSub).toContain("第一次来点「注册新账号」");
+  });
+
+  it("错误提示排在输入框之后、动作按钮之前（H5 上不落到按钮下方）", async () => {
+    renderLogin("/login", makeAuth(), "h5");
+    fireEvent.click(screen.getByTestId("auth-login"));
+    await waitFor(() => expect(screen.getByTestId("auth-hint")).toBeTruthy());
+
+    const name = screen.getByTestId("auth-name");
+    const hint = screen.getByTestId("auth-hint");
+    const action = screen.getByTestId("auth-login");
+    // 同一棵 form 内，且文档顺序为 输入框 → 提示 → 按钮（compareDocumentPosition: 4 = FOLLOWING）
+    expect(name.closest("form")).toBe(action.closest("form"));
+    expect(hint.closest("form")).toBe(action.closest("form"));
+    expect(name.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(hint.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("两个动作在 H5 与 PC 都可达（层级差由样式承担，DOM 不变）", () => {
+    renderLogin("/login", makeAuth(), "h5");
+    expect(screen.getByTestId("auth-login").textContent).toBe("进入");
+    expect(screen.getByTestId("auth-register").textContent).toBe("注册新账号");
   });
 });

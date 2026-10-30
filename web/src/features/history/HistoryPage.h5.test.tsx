@@ -93,12 +93,13 @@ describe("阅读历史：H5 用卡片列表（PC 仍是表格）", () => {
     expect(screen.getByRole("link", { name: "去书架挑一本" }).getAttribute("href")).toBe("/shelf");
   });
 
-  it("PC 仍是表格（一行一本，五列）", async () => {
+  it("PC 仍是表格（一行一本，五列信息 + 操作列）", async () => {
     readingHistory.mockResolvedValue(result(1, 2, 2));
     renderHistory("pc");
     await waitFor(() => expect(screen.getByTestId("history-live")).toBeTruthy());
     expect(document.querySelector("table")).not.toBeNull();
-    expect(document.querySelectorAll("thead th")).toHaveLength(5);
+    // 五列信息 + 操作列（行内删除）
+    expect(document.querySelectorAll("thead th")).toHaveLength(6);
     expect(document.querySelector(".history-card")).toBeNull();
   });
 });
