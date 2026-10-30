@@ -63,7 +63,7 @@ func checkImportJobCompleted(t *testing.T, ctx context.Context, st *store.Store,
 func checkImportedBooksSearchable(t *testing.T, ctx context.Context, st *store.Store) {
 	t.Helper()
 	assertImportedBookMeta(t, ctx, st)
-	assertChapterTitleSearchable(t, ctx, st)
+	assertChapterTitleNotSearchable(t, ctx, st)
 	assertBodyNotSearchable(t, ctx, st)
 }
 
@@ -81,17 +81,17 @@ func assertImportedBookMeta(t *testing.T, ctx context.Context, st *store.Store) 
 	}
 }
 
-// assertChapterTitleSearchable 导入后按章节标题可检索。
-// 合成书稿的章节标题固定为「第一章 风起」等，不依赖 parser 的书名推断。
-func assertChapterTitleSearchable(t *testing.T, ctx context.Context, st *store.Store) {
+// assertChapterTitleNotSearchable 导入后按章节标题检索不到书。
+// 合成书稿的章节标题固定为「第一章 风起」等，书名是「示例书名」——
+// 两者不重叠，命中就说明检索范围又漏回了目录。
+func assertChapterTitleNotSearchable(t *testing.T, ctx context.Context, st *store.Store) {
 	t.Helper()
 	r, err := st.Search(ctx, store.SearchQuery{Q: "第一章"})
-	if err != nil || r.Chapters.Total < 1 {
-		t.Fatalf("search 第一章 = %+v, err=%v", r.Chapters, err)
+	if err != nil {
+		t.Fatalf("search 第一章: %v", err)
 	}
-	// 正文检索已下线，但标题命中要带章序上下文（「第 N 章 · 共 M 章」）。
-	if got := r.Chapters.Items[0].Snippet; got != "第 1 章 · 共 3 章" {
-		t.Errorf("Snippet 应为章序上下文，实际 %q", got)
+	if r.Books.Total != 0 {
+		t.Errorf("按章节标题搜索不应命中书籍，实际 %+v", r.Books)
 	}
 }
 
@@ -102,8 +102,8 @@ func assertBodyNotSearchable(t *testing.T, ctx context.Context, st *store.Store)
 	if err != nil {
 		t.Fatalf("search 梅宁市: %v", err)
 	}
-	if inBody.Chapters.Total != 0 || inBody.Books.Total != 0 {
-		t.Errorf("正文关键词不应命中：chapters=%d books=%d", inBody.Chapters.Total, inBody.Books.Total)
+	if inBody.Books.Total != 0 {
+		t.Errorf("正文关键词不应命中：books=%d", inBody.Books.Total)
 	}
 }
 
