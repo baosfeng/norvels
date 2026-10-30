@@ -130,12 +130,15 @@ describe("详情页事实区：H5 不再被裁掉", () => {
     expect((screen.getByTestId("book-read-status") as HTMLSelectElement).value).toBe("done");
   });
 
-  it("H5 封面 / 开始阅读 / 加入书单 / 加入书架四个入口都在", () => {
+  it("H5 封面 / 开读 / 加入书单 / 加入书架四个入口都在", () => {
     renderPage("h5");
-    expect(screen.getByText("从第一章开始")).toBeTruthy();
     expect(screen.getByTestId("book-add-collection")).toBeTruthy();
-    // 「我的书架」B2 起两档都渲染：未登录点它会引导去登录页（不静默失败，也不藏按钮）
-    expect(screen.getByTestId("book-toggle-shelf")).toBeTruthy();
+    // H5 的「开读」与「加入书架」都在底部吸底条（H5StickyCta）：主操作常驻拇指区。
+    // 顶部不再重复渲染同一组按钮，否则同屏会出现两个主操作。
+    expect(screen.getByTestId("book-h5-cta")).toBeTruthy();
+    expect(screen.getByTestId("book-h5-read")).toBeTruthy();
+    expect(screen.getByTestId("book-h5-shelf")).toBeTruthy();
+    expect(screen.queryByText("从第一章开始")).toBeNull();
   });
 
   it("H5 署名作者不跳 PC 专属的作者页（否则会被 TierRoute 弹回首页）", () => {

@@ -13,6 +13,7 @@ import { BookHeader } from "./BookHeader";
 import { BookToc } from "./BookToc";
 import { AddToCollectionPanel } from "./AddToCollectionPanel";
 import { useTocColumns } from "./useTocColumns";
+import { H5StickyCta } from "./H5StickyCta";
 import { ackNewChaptersIfLast } from "./newChapters";
 
 /**
@@ -156,6 +157,14 @@ export function BookPage() {
           />
         </div>
       </div>
+
+      {isH5 ? (
+        <H5StickyCta
+          book={book}
+          resume={resume ? { chapterId: resume.chapterId, chapterTitle: resume.chapterTitle } : null}
+          first={first}
+        />
+      ) : null}
 
       {collectionOpen ? (
         <AddToCollectionPanel bookId={book.id} bookTitle={book.title} onClose={closeCollection} />

@@ -36,6 +36,12 @@ export function BookToc({
   const headRef = useRef<HTMLDivElement | null>(null);
   const match = useMemo(() => searchToc(allChapters, query), [allChapters, query]);
   const searching = query.trim().length > 0;
+  // 倒序只换展示顺序，不换数据：卷内章节与卷顺序同时反转，读起来才是「从最新往回」
+  const [reversed, setReversed] = useState(false);
+  const orderedVolumes = useMemo(
+    () => (reversed ? [...volumes].reverse().map((v) => ({ ...v, chapters: [...v.chapters].reverse() })) : volumes),
+    [volumes, reversed],
+  );
 
   /** 清空关键词：恢复全量目录、滚回目录顶部、焦点回搜索框（契约 C-12 移除后）。 */
   function clearSearch() {
@@ -61,7 +67,14 @@ export function BookToc({
 
   return (
     <>
-      <TocHead total={allChapters.length} volumeCount={volumes.length} headRef={headRef} />
+      <TocHead
+        total={allChapters.length}
+        volumeCount={volumes.length}
+        headRef={headRef}
+        reversed={reversed}
+        onToggleOrder={() => setReversed((v) => !v)}
+      />
+      {resumeChapterId ? <ResumeJump book={book} chapterId={resumeChapterId} onNavigate={onNavigate} /> : null}
       <div className="dir-search">
         <label className="sr-only" htmlFor="book-toc-search">
           搜索章节
@@ -105,7 +118,7 @@ export function BookToc({
       ) : volumes.length === 1 ? (
         <SingleVolume
           bookId={book.id}
-          volume={volumes[0]}
+          volume={orderedVolumes[0]}
           columns={columns}
           dense={dense}
           resumeChapterId={resumeChapterId}
@@ -114,7 +127,7 @@ export function BookToc({
       ) : (
         <MultiVolumes
           bookId={book.id}
-          volumes={volumes}
+          volumes={orderedVolumes}
           columns={columns}
           dense={dense}
           resumeChapterId={resumeChapterId}
@@ -129,10 +142,14 @@ function TocHead({
   total,
   volumeCount,
   headRef,
+  reversed,
+  onToggleOrder,
 }: {
   total: number;
   volumeCount: number;
   headRef: React.RefObject<HTMLDivElement | null>;
+  reversed?: boolean;
+  onToggleOrder?: () => void;
 }) {
   return (
     <div className="dir-head" ref={headRef}>
@@ -140,7 +157,54 @@ function TocHead({
       <span className="meta" data-testid="book-dir-meta">
         共 {formatCount(total)} 章 · {volumeCount} 卷
       </span>
+      {/* 追更的书要看最新章，正序要滚到底；这个开关让两种读法都一步到位 */}
+      {onToggleOrder ? (
+        <button
+          className={`dir-order${reversed ? " is-reversed" : ""}`}
+          type="button"
+          data-testid="book-toc-order"
+          aria-pressed={Boolean(reversed)}
+          onClick={onToggleOrder}
+        >
+          {reversed ? "倒序" : "正序"}
+        </button>
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * 目录顶部的续读定位条。
+ *
+ * 动因：有阅读进度的书进来，目录默认从第 1 章开始摊开，读者要自己往下翻找「读到哪」。
+ * 这条把目标章直接摆在目录头上，点一下就跳过去——不用在几百章里滚。
+ */
+function ResumeJump({
+  book,
+  chapterId,
+  onNavigate,
+}: {
+  book: BookDetail;
+  chapterId: number;
+  onNavigate: (chapter: ChapterBrief) => void;
+}) {
+  const flat = book.volumes.flatMap((volume) => volume.chapters);
+  const index = flat.findIndex((chapter) => chapter.id === chapterId);
+  if (index < 0) return null;
+  const chapter = flat[index];
+  return (
+    <button
+      className="toc-resume"
+      type="button"
+      data-testid="book-toc-resume"
+      onClick={() => onNavigate(chapter)}
+    >
+      <span className="meta">继续阅读</span>
+      <span className="toc-resume-main">
+        第 {index + 1} 章 · {chapter.title}
+      </span>
+      <span aria-hidden="true">›</span>
+    </button>
   );
 }
 

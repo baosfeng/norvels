@@ -73,7 +73,7 @@ describe("详情页头部锚点", () => {
     expect(pc.container.querySelector('[data-od-id="C-10"]')).toBeNull();
     pc.unmount();
     renderHeader(true);
-    const toggle = screen.getByText("展开简介");
+    const toggle = screen.getByText("展开");
     expect(toggle.getAttribute("data-od-id")).toBe("C-10");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });

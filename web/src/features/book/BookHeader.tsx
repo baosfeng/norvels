@@ -104,13 +104,13 @@ function BookIntro({
       </p>
       {isH5 ? (
         <button
-          className="btn btn-ghost intro-toggle"
+          className="intro-toggle-inline"
           type="button"
           data-od-id="C-10"
           aria-expanded={open}
           onClick={onToggle}
         >
-          {open ? "收起简介" : "展开简介"}
+          {open ? "收起" : "展开"}
         </button>
       ) : null}
     </>

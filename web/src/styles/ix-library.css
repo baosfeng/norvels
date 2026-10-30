@@ -403,3 +403,74 @@
   .auth-hint-action{min-height:44px}
 }
 
+
+/* H5 详情页吸底操作条：主操作常驻拇指区，页面底部留出等高空白防遮挡 */
+.h5-book-cta{display:none}
+
+@media (max-width: 768px) {
+  .h5-book-cta{
+    position:fixed;left:0;right:0;bottom:0;z-index:40;
+    display:flex;gap:10px;align-items:center;
+    padding:10px 14px;
+    padding-bottom:calc(10px + env(safe-area-inset-bottom));
+    background:color-mix(in oklab, var(--bg), transparent 8%);
+    backdrop-filter:blur(12px);
+    border-top:1px solid var(--border);
+  }
+  .h5-book-cta .btn{min-height:46px;display:flex;align-items:center;justify-content:center}
+  .h5-book-cta-shelf{flex:0 0 auto;min-width:112px}
+  .h5-book-cta-read{flex:1 1 auto;font-weight:600}
+  .h5-book-cta .has-no-chapter{flex:1 1 auto;display:flex;align-items:center;justify-content:center;opacity:.55}
+  /* 吸底条会盖住最后一行内容：给页面主体让出高度 */
+  .book-layout{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+
+  /* H5 事实区：两列网格，比纵向长表省一半高度。
+     选择器带 .book-main 是为了盖住 prototype.css 里 .book-main .facts 的单列规则（特异性相同、它在前面）。 */
+  .book-main .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+  .book-main .facts div{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;min-height:0}
+  .book-main .facts dt{min-width:0;font-size:12px;letter-spacing:0;text-transform:none;color:var(--muted)}
+  .book-main .facts dd{min-width:0;margin:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .book-main .facts .inline-note{grid-column:1 / -1}
+
+  /* 阅读状态：下拉在手机上要多点一次，这里压成一行文字，视觉上并入网格 */
+  .book-main .facts .select{
+    appearance:none;border:none;background:transparent;padding:0;height:auto;
+    font-size:14px;color:var(--fg);min-height:0;width:100%;
+  }
+}
+
+/* 简介折叠入口：跟在正文最后一行右侧，不再独占一行大按钮 */
+.intro-toggle-inline{
+  display:inline;margin:0 0 8px;padding:0;border:none;background:none;
+  color:var(--accent);font:inherit;cursor:pointer;
+}
+.intro-toggle-inline::after{content:"  ›";font-size:.9em}
+@media (max-width: 768px){ .intro-toggle-inline{min-height:44px} }
+
+/* 目录头：标题 + 计数 + 正倒序开关同处一行 */
+.dir-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.dir-order{
+  margin-left:auto;min-height:32px;padding:0 10px;border:1px solid var(--border);
+  border-radius:var(--radius-pill);background:var(--surface);color:var(--fg-2);
+  font:inherit;font-size:13px;cursor:pointer;
+}
+.dir-order.is-reversed{border-color:var(--accent);color:var(--accent)}
+
+/* 目录顶部「继续阅读」定位条：有进度时才出现 */
+.toc-resume{
+  display:flex;align-items:center;gap:8px;width:100%;margin:0 0 10px;padding:10px 12px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface-warm);color:var(--fg);font:inherit;text-align:left;cursor:pointer;
+}
+.toc-resume-main{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+
+@media (max-width: 768px){
+  .dir-order{min-height:44px}
+  .toc-resume{min-height:44px}
+}
+
+/* H5：封面旁只剩「加入书单」一个次要动作，压成小号文字按钮，不再撑成一整行大块 */
+@media (max-width: 768px){
+  .book-aside .actions{margin-bottom:4px}
+  .h5-book-collection{min-height:44px;padding:0 12px;font-size:14px;color:var(--fg-2)}
+}
