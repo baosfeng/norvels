@@ -6,6 +6,7 @@ import { Cover } from "../../components/Cover";
 import { MenuIcon, SearchIcon } from "../../components/Icons";
 import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount } from "../../lib/format";
+import { SEARCH_HISTORY_MIN_LEN, readSearchHistory, rememberSearch } from "../../lib/searchHistory";
 import { showToast } from "../../lib/toastStore";
 import { useNavDrawer } from "../../layouts/navDrawer";
 import { tierFallbackText } from "../../layouts/tierFallback";
@@ -21,6 +22,8 @@ export function HomePage() {
   const progress = useReadingProgress();
   const recent = useBooks({ sort: "updated", page: 1, size: 5 });
   const [q, setQ] = useState("");
+  // 惰性初值：历史只在挂载时读一次；本页没有「清空历史」入口，不需要活状态
+  const [history] = useState<string[]>(readSearchHistory);
   const recentRowsRef = useRef<HTMLDivElement | null>(null);
   const [awaitRetry, setAwaitRetry] = useState(false);
 
@@ -46,7 +49,15 @@ export function HomePage() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const keyword = q.trim();
-    if (keyword) navigate(`/search?q=${encodeURIComponent(keyword)}`);
+    if (!keyword) return;
+    // 与搜索页同一份历史：首页提交也要记，否则「从首页搜的」永远进不了历史
+    if (keyword.length >= SEARCH_HISTORY_MIN_LEN) rememberSearch(keyword);
+    navigate(`/search?q=${encodeURIComponent(keyword)}`);
+  }
+
+  function pickHistory(keyword: string) {
+    rememberSearch(keyword);
+    navigate(`/search?q=${encodeURIComponent(keyword)}`);
   }
 
   function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -141,6 +152,22 @@ export function HomePage() {
           搜索
         </button>
       </form>
+
+      {/* 最近搜过的词直接可点：首页是「今晚读点什么」的决策屏，让用户重新打一遍
+          上次搜过的字是把最常做的事放在最远的位置。清空入口只放在搜索页一处，
+          同一个「清空」在两页各有一套确认逻辑会分叉。 */}
+      {history.length > 0 ? (
+        <div className="h5-search-history" data-testid="home-search-history">
+          <span className="meta">最近搜过</span>
+          <div className="chips">
+            {history.map((keyword) => (
+              <button className="chip" key={keyword} type="button" onClick={() => pickHistory(keyword)}>
+                {keyword}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="h5-section">
         <div className="h5-section-head">

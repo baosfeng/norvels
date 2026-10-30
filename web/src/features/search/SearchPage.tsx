@@ -1,11 +1,20 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useSearch } from "../../api/hooks";
-import { Cover } from "../../components/Cover";
-import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
+import { ErrorPanel } from "../../components/StatePanel";
 import { formatCount } from "../../lib/format";
+import {
+  SEARCH_HISTORY_MIN_LEN,
+  clearSearchHistory,
+  readSearchHistory,
+  rememberSearch,
+} from "../../lib/searchHistory";
 import { useIsH5 } from "../../lib/tier";
-import { stripTags } from "../../lib/text";
+import { showToast } from "../../lib/toastStore";
+import { SearchEmpty } from "./SearchEmpty";
+import { SearchResultItem } from "./SearchResultItem";
+import { SearchResultSkeleton } from "./SearchResultSkeleton";
+import { useSearchScrollRestore } from "./useSearchScrollRestore";
 
 const SEARCH_PAGE_SIZE = 8;
 
@@ -17,22 +26,40 @@ const SEARCH_PAGE_SIZE = 8;
  * 现在章节命中整块删除（后端同批删除章节检索），页面不再传 type=chapter，也不再有多余的分栏。
  *
  * 分页为服务端能力：page / size 走地址（C-54 / C-55），返回、刷新都还原同一屏。
+ * 滚动位置不走地址，由 useSearchScrollRestore 记在本次会话里。
  */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const isH5 = useIsH5();
   const q = params.get("q") ?? "";
   const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
   const [draft, setDraft] = useState(q);
+  const [history, setHistory] = useState<string[]>(readSearchHistory);
   const searchBoxRef = useRef<HTMLInputElement | null>(null);
   // type 恒为 "book"：书名 + 作者。不传 "all" 是为了让「不搜目录」在请求上也成立，而不只是嘴上说。
   const { data, loading, error, reload } = useSearch(q, "book", page, SEARCH_PAGE_SIZE);
 
+  const trimmed = q.trim();
+  const tooShort = trimmed.length > 0 && trimmed.length < 2;
+  const bookCount = data?.books.total ?? 0;
+  const bookItems = data?.books.items ?? [];
+  const pages = Math.max(1, Math.ceil(bookCount / SEARCH_PAGE_SIZE));
+  const done = Boolean(trimmed) && !tooShort && !loading && !error;
+
+  useSearchScrollRestore(location.pathname + location.search, done && bookCount > 0);
+
+  /** 所有「换个关键词再搜」的入口都走这里：写历史、换地址、第 1 页。 */
+  function runSearch(keyword: string) {
+    const value = keyword.trim();
+    setDraft(value);
+    if (value.length >= SEARCH_HISTORY_MIN_LEN) setHistory(rememberSearch(value));
+    setParams(value ? { q: value } : {});
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const keyword = draft.trim();
-    // 提交即回第 1 页；空关键词回到「输入关键词开始查找」
-    setParams(keyword ? { q: keyword } : {});
+    runSearch(draft);
   }
 
   function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -65,10 +92,17 @@ export function SearchPage() {
     searchBoxRef.current?.focus();
   }
 
-  const bookCount = data?.books.total ?? 0;
-  const tooShort = q.trim().length > 0 && q.trim().length < 2;
-  const bookItems = data?.books.items ?? [];
-  const pages = Math.max(1, Math.ceil(bookCount / SEARCH_PAGE_SIZE));
+  function clearHistory() {
+    clearSearchHistory();
+    setHistory([]);
+    showToast("搜索历史已清空。");
+  }
+
+  function emptyKind(): "idle" | "short" | "none" {
+    if (!trimmed) return "idle";
+    if (tooShort) return "short";
+    return "none";
+  }
 
   return (
     <section data-testid="view:search" data-od-id="search">
@@ -86,37 +120,29 @@ export function SearchPage() {
             aria-label="搜索关键词"
             placeholder="输入书名或作者"
           />
-          <button className="btn btn-primary" type="submit">
+          <button className="btn btn-primary search-submit" type="submit">
             搜索
           </button>
         </form>
 
         {q && !loading && !error ? (
           <div className="search-summary">
-            <span className="meta">
-              找到 {formatCount(bookCount)} 本书
-            </span>
+            <span className="meta">找到 {formatCount(bookCount)} 本书</span>
             <span className="pill">按书名、作者搜索</span>
           </div>
         ) : null}
       </div>
 
-      {!q ? (
-        <EmptyPanel title="输入关键词开始查找" description="按书名、作者搜索，输入 2 个字以上。" />
-      ) : tooShort ? (
-        <EmptyPanel title="关键词太短" description="至少输入 2 个字，才能找到有意义的匹配。" />
-      ) : loading ? (
-        <LoadingPanel title="正在查找" description="正在书名与作者里查找。" />
+      {loading && !tooShort ? (
+        <div data-testid="search-loading">
+          <SearchResultSkeleton count={isH5 ? 3 : 4} />
+        </div>
       ) : error ? (
         <div data-od-id="C-53">
           <ErrorPanel error={error} title="搜索没能完成" onRetry={retry} />
         </div>
-      ) : bookCount === 0 ? (
-        <EmptyPanel
-          title="没有匹配的书名或作者"
-          description="试试更短的关键词，或者换个书名、作者的写法。"
-          testId="search-empty"
-        />
+      ) : !trimmed || tooShort || bookCount === 0 ? (
+        <SearchEmpty kind={emptyKind()} history={history} onPick={runSearch} onClearHistory={clearHistory} />
       ) : (
         <div className="search-layout" style={isH5 ? { gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           <aside aria-label="书名和作者结果" data-od-id="search-books-col">
@@ -125,20 +151,7 @@ export function SearchPage() {
             </h2>
             <div className="search-books">
               {bookItems.map((book) => (
-                <article className="search-book" key={book.id} data-od-id="C-51">
-                  <Link className="book-link" to={`/book/${book.id}`}>
-                    <Cover title={book.title} showLabel={!isH5} />
-                    <div className="book-card-body">
-                      <h3>{book.title}</h3>
-                      <p className="book-author">{book.authorName || "佚名"}</p>
-                      <p className="book-meta">
-                        <span className="num">{formatCount(book.chapterCount)} 章</span>
-                        <span className="num">{formatCount(book.wordCount)} 字</span>
-                      </p>
-                      {isH5 ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
-                    </div>
-                  </Link>
-                </article>
+                <SearchResultItem book={book} keyword={trimmed} isH5={isH5} key={book.id} />
               ))}
             </div>
           </aside>
