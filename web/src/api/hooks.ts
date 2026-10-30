@@ -93,11 +93,11 @@ export function useImportJobs() {
   return useResource((signal: AbortSignal) => api.importJobs({ signal }), []);
 }
 
-/** 驾驶舱用：最多取 50 条（接口上限），用于按书聚合阅读三态。 */
 /**
- * 阅读进度（按书的最新位置）。阅读器翻章 / 滚动停下都会写进度，
- * 写完由 lib/readingRevision 广播，这里订阅并 reload——否则从阅读器返回首页，
- * 「继续阅读」卡片已经是新章节，下面「最近在读」那几行还挂着旧百分比。
+ * 阅读进度（按书的最新位置）。All 版最多取 50 条（接口上限），给驾驶舱按书聚合阅读三态。
+ *
+ * 阅读器翻章 / 滚动停下都会写进度，写完由 lib/readingRevision 广播，这里订阅并 reload——
+ * 否则从阅读器返回首页，「继续阅读」卡片已经是新章节，下面「最近在读」那几行还挂着旧百分比。
  */
 export function useReadingProgressAll() {
   const progress = useResource((signal: AbortSignal) => api.readingProgress({ signal }, 50), []);
