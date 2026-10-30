@@ -47,6 +47,7 @@ export function ChapterList({
   fill = false,
   scrollToCurrent = false,
   focusLastRow,
+  readUpToId,
 }: {
   bookId: number;
   chapters: ChapterBrief[];
@@ -67,6 +68,11 @@ export function ChapterList({
   scrollToCurrent?: boolean;
   /** 递增计数：变化时滚到本卷末尾并把焦点交给最后一行（C-16 铺满后按钮消失） */
   focusLastRow?: number;
+  /**
+   * 读到的那一章：排在它前面的章按「已读」弱化。
+   * 只按章序判断，不看阅读时长——读者要的是「哪些翻过了」，不是「哪些读够了」。
+   */
+  readUpToId?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cols = Math.max(1, Math.trunc(columns) || 1);
@@ -89,6 +95,8 @@ export function ChapterList({
   });
 
   const currentRow = rowIndexOfChapter(chapters, cols, currentChapterId);
+  // 已读分界线：readUpToId 在本次传入的列表里的下标；找不到就不弱化任何章（跨卷时也是这个语义）
+  const readUpToIndex = readUpToId === undefined ? -1 : chapters.findIndex((c) => c.id === readUpToId);
   useEffect(() => {
     if (!scrollToCurrent || currentRow < 0) return;
     virtualizer.scrollToIndex(currentRow, { align: "center" });
@@ -147,11 +155,13 @@ export function ChapterList({
           >
             {rows[row.index].items.map((chapter) => {
               const current = chapter.id === currentChapterId;
+              const chapterIndex = chapters.findIndex((c) => c.id === chapter.id);
+              const read = readUpToIndex >= 0 && chapterIndex >= 0 && chapterIndex < readUpToIndex;
               return (
                 <Link
                   key={chapter.id}
                   to={`/read/${bookId}/${chapter.id}`}
-                  className={`cv-row${layout === "drawer" ? " is-drawer" : ""}${current ? " is-current" : ""}`}
+                  className={`cv-row${layout === "drawer" ? " is-drawer" : ""}${current ? " is-current" : ""}${read ? " is-read" : ""}`}
                   style={{ height: rowHeight }}
                   aria-current={current ? "true" : undefined}
                   data-od-id="C-15"

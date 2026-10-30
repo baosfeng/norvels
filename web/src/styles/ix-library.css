@@ -427,9 +427,15 @@
   /* H5 事实区：两列网格，比纵向长表省一半高度。
      选择器带 .book-main 是为了盖住 prototype.css 里 .book-main .facts 的单列规则（特异性相同、它在前面）。 */
   .book-main .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
-  .book-main .facts div{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;min-height:0}
+  /* 只作用于事实项的**顶层**行（.facts 直接子级）：裸 div 选择器会把评分块里包星星的 .chips
+     也改成 column，5 颗星就整整齐齐竖排下来（实测该块高 269px） */
+  .book-main .facts > div{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;min-height:0}
   .book-main .facts dt{min-width:0;font-size:12px;letter-spacing:0;text-transform:none;color:var(--muted)}
   .book-main .facts dd{min-width:0;margin:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 评分这类内部有多个可点控件的格子：单行省略会把 5 颗星逼成竖排（实测块高 269px），
+     这里放行换行并让它们按自己的 flex 排布走 */
+  .book-main .facts dd:has(.chips),
+  .book-main .facts dd:has(.rating-row){white-space:normal;overflow:visible;text-overflow:clip}
   .book-main .facts .inline-note{grid-column:1 / -1}
 
   /* 阅读状态：下拉在手机上要多点一次，这里压成一行文字，视觉上并入网格 */
@@ -473,4 +479,16 @@
 @media (max-width: 768px){
   .book-aside .actions{margin-bottom:4px}
   .h5-book-collection{min-height:44px;padding:0 12px;font-size:14px;color:var(--fg-2)}
+}
+
+/* 已读章节：标题与字数一起降一档，扫目录时一眼能分出读到哪（契约 C-15 扩展） */
+.cv-row.is-read .cv-title,
+.cv-row.is-read .cv-word{color:var(--muted);opacity:.72}
+.cv-row.is-read{background:transparent}
+
+/* 目录折叠预览的「查看全部」：与卷内「再显示 60 章」区分开，它是一次铺开 */
+.toc-expand{
+  display:flex;align-items:center;justify-content:center;width:100%;margin:8px 0 0;padding:0 12px;
+  min-height:44px;border:1px dashed var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--accent);font:inherit;font-size:14px;cursor:pointer;
 }

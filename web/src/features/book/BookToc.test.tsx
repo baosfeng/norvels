@@ -129,6 +129,9 @@ describe("卷内再显示 60 章（C-16 新增）", () => {
   it("一次最多补 60 行，按钮文案剩余数同步减少，铺满后按钮消失", async () => {
     renderToc(bookOf([130]));
     const rows = () => document.querySelectorAll(".cv-row").length;
+    // 目录默认是折叠预览（8 章 + 「查看全部 130 章」）：先铺开，再验证分块补章
+    expect(rows()).toBe(8);
+    fireEvent.click(screen.getByTestId("book-toc-expand"));
     expect(rows()).toBe(60);
     const more = screen.getByTestId("book-more-0");
     expect(more.textContent).toBe("在本卷再显示 60 章（本卷还有 70 章）");

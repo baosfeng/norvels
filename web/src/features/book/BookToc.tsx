@@ -38,6 +38,14 @@ export function BookToc({
   const searching = query.trim().length > 0;
   // 倒序只换展示顺序，不换数据：卷内章节与卷顺序同时反转，读起来才是「从最新往回」
   const [reversed, setReversed] = useState(false);
+  /**
+   * 目录默认只给一屏预览，点「查看全部目录」才铺开。
+   *
+   * 动因：几百章的书一次性铺开，详情页会被撑到两三千像素高，
+   * 「简介 → 目录 → 页脚」之间的信息全被目录盖住，读者想找的不是第一章而是「有没有目录」。
+   * 搜索命中时不受影响：那时用户已经明确在找具体章节。
+   */
+  const [preview, setPreview] = useState(true);
   const orderedVolumes = useMemo(
     () => (reversed ? [...volumes].reverse().map((v) => ({ ...v, chapters: [...v.chapters].reverse() })) : volumes),
     [volumes, reversed],
@@ -123,6 +131,8 @@ export function BookToc({
           dense={dense}
           resumeChapterId={resumeChapterId}
           onNavigate={onNavigate}
+          collapsed={preview}
+          onExpandAll={() => setPreview(false)}
         />
       ) : (
         <MultiVolumes
@@ -253,6 +263,7 @@ function SearchResults({
         bookId={bookId}
         chapters={chapters}
         currentChapterId={resumeChapterId}
+        readUpToId={resumeChapterId}
         columns={1}
         dense={dense}
         onNavigate={onNavigate}
@@ -262,7 +273,14 @@ function SearchResults({
   );
 }
 
-/** 单卷书：不渲染卷跳转与卷头，章节直接铺开，但同样按 60 章分块。 */
+/**
+ * 单卷书：不渲染卷跳转与卷头，章节直接铺开，但同样按 60 章分块。
+ *
+ * collapsed 时只给一屏预览（PREVIEW_COUNT 章）+「查看全部目录」，
+ * 避免几百章的书把详情页撑成两三千像素高。
+ */
+const PREVIEW_COUNT = 8;
+
 function SingleVolume({
   bookId,
   volume,
@@ -270,6 +288,8 @@ function SingleVolume({
   dense,
   resumeChapterId,
   onNavigate,
+  collapsed = false,
+  onExpandAll,
 }: {
   bookId: number;
   volume: Volume;
@@ -277,17 +297,22 @@ function SingleVolume({
   dense: boolean;
   resumeChapterId?: number;
   onNavigate: (chapter: ChapterBrief) => void;
+  collapsed?: boolean;
+  onExpandAll?: () => void;
 }) {
   const [shown, setShown] = useState(() => initialShown(volume.chapters.length));
   // 铺满的那一次点击：按钮随即消失，焦点交给新增的最后一行（C-16 移除后）
   const [focusToken, setFocusToken] = useState(0);
   const remaining = volume.chapters.length - shown;
+  const limit = collapsed ? Math.min(PREVIEW_COUNT, volume.chapters.length) : shown;
+  const hidden = volume.chapters.length - limit;
   return (
     <div className="vol-body" data-testid="book-single-volume" data-volume={volume.idx}>
       <ChapterList
         bookId={bookId}
-        chapters={volume.chapters.slice(0, shown)}
+        chapters={volume.chapters.slice(0, limit)}
         currentChapterId={resumeChapterId}
+        readUpToId={resumeChapterId}
         columns={columns}
         dense={dense}
         scrollToCurrent
@@ -295,7 +320,16 @@ function SingleVolume({
         ariaLabel="章节目录"
         focusLastRow={focusToken || undefined}
       />
-      {remaining > 0 ? (
+      {collapsed && hidden > 0 && onExpandAll ? (
+        <button
+          className="toc-expand"
+          type="button"
+          data-testid="book-toc-expand"
+          onClick={onExpandAll}
+        >
+          查看全部 {volume.chapters.length} 章 ›
+        </button>
+      ) : remaining > 0 ? (
         <MoreButton
           volumeIdx={volume.idx}
           remaining={remaining}
@@ -329,6 +363,8 @@ function MultiVolumes({
   const openByDefault = resumeVolume?.idx ?? volumes[0].idx;
   const [open, setOpen] = useState<Set<number>>(() => new Set([openByDefault]));
   const [shown, setShown] = useState<Record<number, number>>({});
+  /** 与单卷同一口径：展开的那卷先给 PREVIEW_COUNT 章预览，点「查看全部目录」才铺开 */
+  const [preview, setPreview] = useState(true);
   /** 某卷刚铺满：递增计数驱动该卷把焦点交到新增最后一行（C-16） */
   const [focusTokens, setFocusTokens] = useState<Record<number, number>>({});
   /** 卷跳转最多同时有 4 个算「当前卷」：卷开得再多，高亮也只留最早打开的 4 个（契约 C-13）。 */
@@ -366,8 +402,10 @@ function MultiVolumes({
       </div>
       <div className="volumes">
         {volumes.map((volume) => {
-          const limit = shown[volume.idx] ?? initialShown(volume.chapters.length);
-          const remaining = volume.chapters.length - limit;
+          const full = shown[volume.idx] ?? initialShown(volume.chapters.length);
+          const limit = preview ? Math.min(PREVIEW_COUNT, volume.chapters.length) : full;
+          const remaining = volume.chapters.length - full;
+          const hiddenByPreview = volume.chapters.length - limit;
           return (
             <section
               className={`volume${open.has(volume.idx) ? " is-open" : ""}`}
@@ -393,6 +431,7 @@ function MultiVolumes({
                     bookId={bookId}
                     chapters={volume.chapters.slice(0, limit)}
                     currentChapterId={resumeChapterId}
+                    readUpToId={resumeChapterId}
                     columns={columns}
                     dense={dense}
                     scrollToCurrent
@@ -400,7 +439,16 @@ function MultiVolumes({
                     ariaLabel={`${volumeLabel(volume)} 目录`}
                     focusLastRow={focusTokens[volume.idx]}
                   />
-                  {remaining > 0 ? (
+                  {preview && hiddenByPreview > 0 ? (
+                    <button
+                      className="toc-expand"
+                      type="button"
+                      data-testid="book-toc-expand"
+                      onClick={() => setPreview(false)}
+                    >
+                      查看全部 {volume.chapters.length} 章 ›
+                    </button>
+                  ) : remaining > 0 ? (
                     <MoreButton
                       volumeIdx={volume.idx}
                       remaining={remaining}
