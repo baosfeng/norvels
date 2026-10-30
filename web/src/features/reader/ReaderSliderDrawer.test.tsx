@@ -34,7 +34,11 @@ function chapterOf(id: number): ChapterDetail {
     id: brief.id,
     idx: brief.idx,
     title: brief.title,
-    content: "雨从傍晚开始下。\n\n他站在巷口，没有打伞。",
+    // 下一章用另一段正文：连续流同屏会渲染两章，相同文本会让断言撞车
+    content:
+      brief.idx === 0
+        ? "雨从傍晚开始下。\n\n他站在巷口，没有打伞。"
+        : `第${brief.idx + 1}章的正文。\n\n灯在巷尾亮着。`,
     wordCount: brief.wordCount,
     prevId: 0,
     nextId: 0,
@@ -270,26 +274,28 @@ describe("目录 / 书签：合并成一个 tab 抽屉", () => {
   });
 });
 
-describe("章末引导：下一章是主按钮，末章给出口", () => {
+describe("章末衔接：没有按钮卡片，下一章正文直接接在下面", () => {
   beforeEach(() => {
     store = [];
     vi.clearAllMocks();
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   });
 
-  it("非末章：正文末尾是「下一章」主按钮，并写明会去哪一章", () => {
+  it("非末章：章末没有任何翻章按钮，下一章的标题与正文已经接在下面", () => {
     renderReader(["/read/7/10"]);
-    const next = screen.getByRole("button", { name: /下一章/ });
-    expect(next.className).toContain("btn-primary");
+    // 章末只剩一行轻分隔，不再是「下一章」大按钮卡片
+    expect(screen.queryByRole("button", { name: /下一章/ })).toBeNull();
+    expect(screen.getByTestId("reader-stream-mark").textContent).toContain("本章完");
+    // 第二章的正文已经在同一棵 DOM 里：读者滚过章界线就是它，不用点
+    const next = screen.getByTestId("reader-segment-11");
     expect(next.textContent).toContain("第二章 落雨");
-    fireEvent.click(next);
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 / 3 章");
+    expect(next.textContent).toContain("第2章的正文。");
   });
 
-  it("末章：给「已经是最后一章」+ 回详情页 / 回书架两个出口，没有下一章按钮", () => {
+  it("末章：给「全书读完」+ 回详情页 / 回书架两个出口", () => {
     renderReader(["/read/7/12"]);
     const end = screen.getByTestId("reader-pager-end");
-    expect(end.textContent).toContain("已经是最后一章");
+    expect(end.textContent).toContain("全书读完");
     expect(within(end).getByRole("link", { name: "回详情页" })).toBeTruthy();
     fireEvent.click(within(end).getByRole("button", { name: "回书架" }));
     expect(screen.getByText("书架页 restore")).toBeTruthy();
@@ -300,8 +306,10 @@ describe("章末引导：下一章是主按钮，末章给出口", () => {
     const prev = screen.getByRole("button", { name: "← 上一章" });
     expect(prev.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("已经是第一章了")).toBeTruthy();
-    // 末章时同一颗按钮换到可点态——说明它没被隐藏，只是禁用
-    fireEvent.click(screen.getByRole("button", { name: /下一章/ }));
+    // 翻到第二章后同一颗按钮换到可点态——说明它没被隐藏，只是禁用
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    });
     expect(screen.getByRole("button", { name: "← 上一章" }).hasAttribute("disabled")).toBe(false);
   });
 });
@@ -318,7 +326,9 @@ describe("章末信息行：字数换算成阅读时长", () => {
     // 2000 字 / 500 = 4 分钟
     expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
     expect(screen.getByTestId("reader-word").textContent).toContain("2,000 字");
-    fireEvent.click(screen.getByRole("button", { name: /下一章/ }));
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    });
     // 2100 字 → 4.2 → 4 分钟
     expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
   });
@@ -327,7 +337,9 @@ describe("章末信息行：字数换算成阅读时长", () => {
     renderReader(["/read/7/10"]);
     // 第 1 章时剩第 2 + 3 章 = 2100 + 2200 = 4300 字 → 9 分钟
     expect(screen.getByTestId("reader-remaining-time").textContent).toContain("还剩约 9 分钟");
-    fireEvent.click(screen.getByRole("button", { name: /下一章/ }));
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    });
     // 第 2 章时只剩第 3 章 = 2200 字 → 4 分钟
     expect(screen.getByTestId("reader-remaining-time").textContent).toContain("还剩约 4 分钟");
   });
@@ -337,6 +349,6 @@ describe("章末信息行：字数换算成阅读时长", () => {
     expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
     // 剩余字数 0 也不编一条「还剩约 1 分钟」
     expect(screen.queryByTestId("reader-remaining-time")).toBeNull();
-    expect(screen.getByTestId("reader-pager-end").textContent).toContain("已经是最后一章");
+    expect(screen.getByTestId("reader-pager-end").textContent).toContain("全书读完");
   });
 });

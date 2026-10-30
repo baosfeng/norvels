@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 
@@ -116,6 +116,19 @@ function touch(type: string, x: number, y: number) {
   return event;
 }
 
+/**
+ * jsdom 不做布局：给每个章节 section 一个「在正文里的起始位置」，落位逻辑才有数可算。
+ * 容器自己的 rect 固定在屏幕上（top=0），section 的 rect 随 scrollTop 上移。
+ */
+function stubLayout(offsets: Record<string, number>) {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const id = (this as HTMLElement).dataset?.chapterId;
+    const start = id === undefined ? 0 : offsets[id] ?? 0;
+    const top = id === undefined ? 0 : start - surface().scrollTop;
+    return { top, bottom: top, height: 0, left: 0, right: 0, width: 0, x: 0, y: 0 } as DOMRect;
+  });
+}
+
 /** 一次横滑：起点 → 两个中间点 → 松手。 */
 function swipe(from: number, to: number, dy = 2) {
   const node = surface();
@@ -130,21 +143,28 @@ describe("翻章与回章首", () => {
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   /**
    * 防复发：实测章内滚到 70%（scrollTop=780）左滑翻章，新章停在 56%——
    * 旧实现用 window.scrollTo({top:0}) 回章首，而正文在容器内滚动，它对这个容器无效。
    */
   it("章内滚到一半左滑翻章，新章从章首开始", async () => {
+    stubLayout({ "10": 0, "11": 2000 });
     renderReader("/read/7/10");
     surface().scrollTop = 500;
     swipe(300, 200);
     await waitFor(() => expect(progressText()).toContain("第 2 / 2 章"));
-    await waitFor(() => expect(surface().scrollTop).toBe(0));
+    // 按「第二章的 section」对齐到屏幕顶：连续流里上方还有第一章，不能停在它里面
+    await waitFor(() => expect(surface().scrollTop).toBe(2000));
     // 旧实现滚的是窗口：容器 scrollTop 一直是 500
     expect(window.scrollY).toBe(0);
   });
 
   it("右滑回上一章同样落在章首", async () => {
+    stubLayout({ "10": 0, "11": 2000 });
     renderReader("/read/7/11");
     surface().scrollTop = 480;
     swipe(100, 220);

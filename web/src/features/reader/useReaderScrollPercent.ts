@@ -41,6 +41,35 @@ function pageMetrics(): ScrollMetrics {
   };
 }
 
+/** 可见章那一段在正文里的位置与高度；量不到（未布局 / 不在连续流里）时为 null。 */
+function chapterBox(chapterId: number, scrolls: boolean, surface: HTMLElement) {
+  const node = document.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`);
+  if (!node) return null;
+  const rect = node.getBoundingClientRect();
+  if (!(rect.height > 0)) return null;
+  const top = scrolls
+    ? rect.top - surface.getBoundingClientRect().top + surface.scrollTop
+    : rect.top + (window.scrollY || 0);
+  return { top, height: rect.height };
+}
+
+/**
+ * 「本章」已读比例：连续流里同屏压着好几章，整条流的比例没有意义，只算可见章那一段。
+ * 回到章首是 0、读到章末是 1，滚过章界线换章后条子跟着从头开始。
+ */
+export function chapterPercentOf(chapterId: number, surface: HTMLElement, page: ScrollMetrics): number | null {
+  const scrolls = surface.scrollHeight - surface.clientHeight > 1;
+  const box = chapterBox(chapterId, scrolls, surface);
+  if (!box) return null;
+  const scrollTop = scrolls ? surface.scrollTop : page.scrollTop;
+  const view = scrolls ? surface.clientHeight : page.clientHeight;
+  const range = box.height - view;
+  if (!(range > 0)) return 0;
+  const ratio = (scrollTop - box.top) / range;
+  if (!Number.isFinite(ratio)) return 0;
+  return Math.min(1, Math.max(0, ratio));
+}
+
 export interface ReaderScrollProgressState {
   /** 本章已读比例 0~1。 */
   percent: number;
@@ -67,7 +96,8 @@ export function useReaderScrollPercent(resetKey: number): ReaderScrollProgressSt
 
     const apply = () => {
       frame = null;
-      const next = activePercent(surface, pageMetrics());
+      const page = pageMetrics();
+      const next = chapterPercentOf(resetKey, surface, page) ?? activePercent(surface, page);
       if (Math.abs(next - last) < 0.001) return;
       last = next;
       setPercent(next);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ApiError } from "../../api/client";
 import type { Volume } from "../../api/types";
-import { filterChapters, nextReveal, TOC_CHUNK, takeRevealed } from "../../lib/tocRows";
+import { filterChapters, nextReveal, shouldAutoReveal, TOC_CHUNK, takeRevealed } from "../../lib/tocRows";
 import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { showToast } from "../../lib/toastStore";
 import { TocChapterRow, TocVolumeHeader } from "./TocList";
@@ -103,6 +103,26 @@ export function TocPanel({
       setLoadingMore(false);
     }, 150);
   }, [loadingMore, total]);
+
+  // 滚到底自动续载：滚动事件是主路径；一屏装不满 / 事件没到的边界由下面的 effect 兜住。
+  // 搜索态直接铺全部命中章，不走分块，所以也不自动续载。
+  const autoLoad = useCallback(() => {
+    if (loading || filtering || total <= 0) return;
+    if (error && !flat) return;
+    const el = listRef.current;
+    if (!el) return;
+    const nearBottom = shouldAutoReveal(
+      { scrollTop: el.scrollTop, clientHeight: el.clientHeight, scrollHeight: el.scrollHeight },
+      revealed,
+      total,
+    );
+    if (nearBottom) reveal();
+  }, [loading, filtering, error, flat, revealed, total, reveal]);
+
+  useEffect(() => {
+    if (!active) return;
+    autoLoad();
+  }, [active, autoLoad]);
 
   const clearSearch = useCallback(() => {
     setQuery("");
@@ -207,6 +227,11 @@ export function TocPanel({
             ? `已显示全部 ${total} 章`
             : `再显示 60 章 · 已显示 ${revealed} / ${total}`}
       </button>
+      {revealed < total ? (
+        <span className="inline-note toc-auto-hint" data-testid="toc-auto-hint">
+          继续下滑，自动加载下一批
+        </span>
+      ) : null}
     </>
   );
 
@@ -245,7 +270,13 @@ export function TocPanel({
         </div>
       ) : null}
 
-      <div className="drawer-scroll" ref={listRef} onKeyDown={onListKeyDown}>
+      <div
+        className="drawer-scroll"
+        ref={listRef}
+        data-toc-scroll
+        onKeyDown={onListKeyDown}
+        onScroll={autoLoad}
+      >
         {loading ? (
           <LoadingPanel title="正在读取目录" description="稍等一下，马上就好。" />
         ) : error && !flat ? (

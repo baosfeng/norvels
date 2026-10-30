@@ -52,7 +52,11 @@ function chapterOf(id: number): ChapterDetail {
     id: brief.id,
     idx: brief.idx,
     title: brief.title,
-    content: "雨从傍晚开始下。\n\n他站在巷口，没有打伞。",
+    // 每章正文互不相同：连续流同屏会渲染两章，文本撞车会让 getByText 找不到唯一节点
+    content:
+      brief.idx === 0
+        ? "雨从傍晚开始下。\n\n他站在巷口，没有打伞。"
+        : `第${brief.idx + 1}章的正文。\n\n灯在巷尾亮着。`,
     wordCount: brief.wordCount,
     prevId: 0,
     nextId: 0,
@@ -253,7 +257,8 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
       fireEvent.click(screen.getByLabelText("下一章"));
     });
 
-    expect(chapterState).toHaveBeenLastCalledWith(7, 11);
+    // 连续流：进章就把下一章预取好（正文已经在下面），翻章时不需要等加载
+    expect(chapterState.mock.calls).toEqual(expect.arrayContaining([[7, 11]]));
     expect(headerHidden()).toBe("false");
     expect(screen.getByTestId("reader-top").textContent).toContain("第 2 / 3 章");
     // 收起态下进度数字不常驻：收起后一起隐藏
@@ -323,21 +328,21 @@ describe("阅读器：书架出口与返回语义", () => {
     expect(screen.getByText("书架页 restore")).toBeTruthy();
   });
 
-  it("返回优先走浏览器历史：从书架进来的阅读器退回书架原位置", () => {
+  it("顶栏返回固定回这本书的详情页，即使上一页是书架", () => {
     renderReader("pc", ["/shelf", "/read/7/10"], 1);
 
     fireEvent.click(screen.getByLabelText("返回目录"));
 
-    // 回退到历史里的 /shelf（不是 push 一条新的），因此不该带 restore 标记
-    expect(screen.getByText("书架页 none")).toBeTruthy();
+    // 阅读器可能从任何入口进来：退出阅读的落点永远是这本书的介绍页，不猜上一页
+    expect(screen.getByText("书籍详情")).toBeTruthy();
   });
 
-  it("没有历史时返回回落到 /shelf 并带 restore", () => {
+  it("直接进入阅读器（没有历史）点返回同样落在详情页", () => {
     renderReader("pc", ["/read/7/10"]);
 
     fireEvent.click(screen.getByLabelText("返回目录"));
 
-    expect(screen.getByText("书架页 restore")).toBeTruthy();
+    expect(screen.getByText("书籍详情")).toBeTruthy();
   });
 });
 

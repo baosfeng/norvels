@@ -1,0 +1,37 @@
+/*
+ * 目录抽屉（TocPanel）专用样式。
+ * 只命中带 data-toc-scroll 的目录列表：书签面板、其他 .drawer-scroll 不受影响。
+ * 选择器特异性 0,2,0 高于 .drawer-scroll（0,1,0），因此不依赖本文件被引入的先后顺序。
+ */
+
+/* ── 滚动加固：.drawer-body(overflow:hidden) 里嵌一层可滚区，
+   iOS Safari 偶发「手指滑不动」，原因是弹性子项没有可解析高度 + 旧版本默认关掉惯性滚动 ── */
+.drawer-scroll[data-toc-scroll] {
+  /* 可滚动区必须是「确定高度」的弹性子项：min-height:0 才不会被内容撑开 */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  /* 老版本 iOS 默认无惯性滚动，补上才有原生手指滑动手感 */
+  -webkit-overflow-scrolling: touch;
+  /* 纵向滚动到边界不再把整页/抽屉一起带走 */
+  overscroll-behavior: contain;
+  /* 让浏览器把手势直接当纵向平移处理，避免被横向手势或双击缩放吃掉 */
+  touch-action: pan-y;
+}
+
+/* ── 自动续载提示：放在回退按钮下面，说明不用点也能加载 ── */
+.toc-auto-hint {
+  display: block;
+  margin: -4px 0 16px;
+  color: var(--r-muted);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* H5：底部留出安全区，最后一行不压在系统手势条下 */
+@media (max-width: 899px) {
+  .drawer-scroll[data-toc-scroll] {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}

@@ -37,7 +37,7 @@ function chapterOf(chapterId: number): ChapterDetail {
     id: brief.id,
     idx: brief.idx,
     title: brief.title,
-    content: CONTENT,
+    content: brief.idx === 0 ? CONTENT : `第${brief.idx + 1}章的正文。`,
     wordCount: brief.wordCount,
     prevId: 0,
     nextId: 0,
@@ -239,9 +239,9 @@ describe("章内位置记忆：进章节恢复 + 上报时机", () => {
     spies.saveProgress.mockClear();
 
     act(() => FakeObserver.emit(1));
-    // 还没到 1 秒就切章
+    // 还没到 1 秒就切章（章末不再有「下一章」按钮，翻章走键盘）
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /下一章/ }));
+      fireEvent.keyDown(window, { key: "ArrowRight" });
     });
     expect(spies.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ chapterId: 10, paraIndex: 1 }));
   });

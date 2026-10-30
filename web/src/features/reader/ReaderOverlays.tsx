@@ -5,7 +5,6 @@ import type { ResourceState } from "../../lib/useResource";
 import { BookmarkConfirmDialog } from "./BookmarkConfirmDialog";
 import { ReaderDrawer } from "./ReaderDrawer";
 import type { ReaderDrawerTab } from "./readerConstants";
-import { ReaderEdgeHints } from "./ReaderEdgeHints";
 import { ReaderSettingsPanel } from "./ReaderSettingsPanel";
 import type { ReaderSettings } from "./readerSettings";
 
@@ -101,7 +100,6 @@ export function ReaderOverlays(props: ReaderOverlaysProps) {
         onConfirm={props.onConfirmDelete}
       />
 
-      {props.isH5 ? <ReaderEdgeHints visible={!props.settingsOpen && !props.drawerOpen} /> : null}
     </>
   );
 }

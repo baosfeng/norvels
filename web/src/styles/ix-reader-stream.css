@@ -1,0 +1,61 @@
+/* 连续滚动阅读流（章末无缝衔接下一章）。只由 stream-reader 分支写。
+   与 ix-reader.css 分开：那边是章末「下一章」卡片时代的样式，这里是流式衔接。 */
+
+/* 上方章节增减的位置补偿由 useChapterStream 写进 scrollTop（同一帧、绘制前）。
+   浏览器的自动滚动锚定会再补一次，变成双倍补偿：滚到章界就来回翻，必须关掉。
+   正文容器自己也关——锚点候选会从被排除的子树往上找到容器里的其他层。 */
+.reader-main,
+.reader-stream {
+  overflow-anchor: none;
+}
+
+/* ── 流容器：多章纵向排列，章节之间不再有按钮卡片 ── */
+.reader-stream {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+/* 每一章：正文排版沿用 .reader-content，段与段之间不留额外外边距。
+   章节之间的呼吸写在「章末分隔」的下外边距里（跟着自己的章走），
+   不用 .reader-segment + .reader-segment 这种「看兄弟位置」的选择器——
+   窗口移动会让某一章从「第二段」变成「第一段」，间距一变，滚动位置就跳。 */
+.reader-segment {
+  margin: 0;
+}
+
+/* ── 章末分隔：一行灰字，不是卡片、不带按钮 ── */
+.reader-stream-mark {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 34px 0 40px;
+  padding-top: 13px;
+  border-top: 1px solid color-mix(in srgb, var(--r-fg) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--r-muted);
+}
+.reader-stream-mark-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--r-fg) 60%, transparent);
+}
+.reader-stream-mark-meta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 流末尾：全书读完了的出口 + 轻量的章节切换 ── */
+.reader-stream-nav {
+  margin-top: 18px;
+  border-top: none;
+  padding-top: 0;
+}
+
+@media (max-width: 768px) {
+  .reader-stream-mark {
+    margin: 28px 0 34px;
+  }
+}

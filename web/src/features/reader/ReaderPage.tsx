@@ -1,12 +1,10 @@
 import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useBook, useBookmarks, useChapter, useRecordReadingSession, useSaveProgress } from "../../api/hooks";
+import { useBook, useBookmarks, useRecordReadingSession, useSaveProgress } from "../../api/hooks";
 import { useIsH5 } from "../../lib/tier";
 import { formatWords } from "../../lib/format";
 import { useReaderControls } from "../../lib/useReaderControls";
-import { useSwipePaging } from "../../lib/useSwipePaging";
 import { prefersReducedMotion } from "../../lib/theme";
-import { splitParagraphs } from "../../lib/readerSearch";
 import { ReaderBottomBar } from "./ReaderBottomBar";
 import { ReaderOverlays } from "./ReaderOverlays";
 import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
@@ -23,13 +21,14 @@ import { useReaderKeyboard } from "./useReaderKeyboard";
 import { useReaderVisiblePara } from "./useReaderVisiblePara";
 import { useReaderScrollRestore } from "./useReaderScrollRestore";
 import { useReaderRepositionAfterReflow } from "./useReaderRepositionAfterReflow";
-import { useReaderChapterIndex } from "./useReaderChapterIndex";
 import { useReaderFullscreen } from "./useReaderFullscreen";
 import { useReaderZoneNav } from "./useReaderZoneNav";
 import { useReaderNavActions } from "./useReaderNavActions";
 import { useReaderToggles } from "./useReaderToggles";
 import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
+import { useReaderSwipe } from "./useReaderSwipe";
+import { useChapterStream } from "./useChapterStream";
 import { tradToSimp } from "../../lib/trad2simp";
 import { pickStoredParaIndex, useReaderProgress } from "./readerProgress";
 import { useReadingSessionReporter } from "../../lib/readingTimer";
@@ -38,16 +37,21 @@ import { useReadingSessionReporter } from "../../lib/readingTimer";
  * 阅读器：产品核心，两端能力等价。
  * PC：设置面板浮在右上、目录从右侧抽屉滑出；H5：设置面板变宽、目录全屏抽屉。
  * 五档背景 / 五档字号 / 三区手势 / 进度拖动跳章 / 键盘翻页 / 进度恢复在两端都可用。
+ *
+ * 正文是一条连续章节流（useChapterStream）：滚过章末继续下滑就是下一章。
+ * params.chapterId 只表示「路由带来的入口章」，读到哪一章由流自己跟踪（stream.activeId），
+ * 两者在滚动跨章时用 replace 对齐，所以这里统一用 chapterId = stream.activeId。
  */
 export function ReaderPage() {
   const params = useParams();
   const navigate = useNavigate();
   const isH5 = useIsH5();
   const bookId = Number(params.bookId);
-  const chapterId = Number(params.chapterId);
+  const routeChapterId = Number(params.chapterId);
 
   const book = useBook(Number.isFinite(bookId) ? bookId : null);
-  const chapter = useChapter(Number.isFinite(bookId) ? bookId : null, Number.isFinite(chapterId) ? chapterId : null);
+  const stream = useChapterStream({ bookId, routeChapterId, book: book.data });
+  const chapterId = stream.activeId;
   const saveProgress = useSaveProgress();
   const recordSession = useRecordReadingSession();
   useReadingSessionReporter({ bookId, chapterId, report: recordSession });
@@ -58,15 +62,20 @@ export function ReaderPage() {
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
   const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
 
-  const { chapters, volumes, index, prev, next, percent } = useReaderChapterIndex(book.data, chapterId);
+  const { chapters, volumes, activeIndex: index, prev, next } = stream;
+  const { settings, changeSettings, theme, themes, changeTheme } = useReaderSettings(stream.activeParagraphs);
 
-  const content = chapter.data?.content ?? "";
-  const paragraphs = useMemo(() => splitParagraphs(content), [content]);
-  const { settings, changeSettings, theme, themes, changeTheme } = useReaderSettings(paragraphs);
-  const viewParagraphs = useMemo(
-    () => (settings.script ? paragraphs.map(tradToSimp) : paragraphs),
-    [paragraphs, settings.script],
+  // 简繁映射作用到流里的每一章：滚到下一章时字形仍是同一个口径
+  const segments = useMemo(
+    () =>
+      stream.segments.map((segment) =>
+        settings.script ? { ...segment, paragraphs: segment.paragraphs.map(tradToSimp) } : segment,
+      ),
+    [stream.segments, settings.script],
   );
+  const activeSegment = segments.find((segment) => segment.id === chapterId);
+  const viewParagraphs = activeSegment?.paragraphs ?? [];
+
   const {
     query: searchQuery,
     setQuery: setSearchQuery,
@@ -77,7 +86,6 @@ export function ReaderPage() {
     stepHit,
     reset: resetSearch,
   } = useReaderSearchState(viewParagraphs);
-
 
   const {
     drawerOpen,
@@ -95,9 +103,9 @@ export function ReaderPage() {
     openSearch,
     closeSearch,
     toggleHelp,
-  } = useReaderPanels({ canSearch: Boolean(chapter.data), onResetSearch: resetSearch });
+  } = useReaderPanels({ canSearch: Boolean(stream.chapterData), onResetSearch: resetSearch });
 
-  const anchorPara = anchor.chapterId === (chapter.data?.id ?? 0) ? anchor.para : 0;
+  const anchorPara = anchor.chapterId === chapterId ? anchor.para : 0;
 
   const {
     addingBookmark,
@@ -115,7 +123,7 @@ export function ReaderPage() {
     chapterId,
     anchorPara,
     viewParagraphs,
-    chapterTitle: chapter.data?.title ?? null,
+    chapterTitle: activeSegment?.title ?? null,
     navigate,
     bookmarks,
     onOpenBookmarks: () => openDrawer("bookmarks"),
@@ -147,20 +155,22 @@ export function ReaderPage() {
   });
   const { fullscreen, canFullscreen, toggle: toggleFullscreen } = useReaderFullscreen({ onUnsupported: controls.hide });
 
-  const { retryingChapter, chapterFailures, retryChapter } = useChapterRetry({ chapter, chapterId });
+  const { retryingChapter, chapterFailures, retryChapter } = useChapterRetry({
+    chapter: { data: stream.chapterData, error: stream.error, reload: stream.reload },
+    chapterId,
+  });
 
   const storedParaIndex = useMemo(
     () => pickStoredParaIndex(progressList.data?.items ?? [], bookId, chapterId),
     [progressList.data, bookId, chapterId],
   );
 
-
   useReaderProgressSync({
     bookId,
     chapterId,
     chapters,
     index,
-    chapterDataId: chapter.data?.id,
+    chapterDataId: stream.chapterData?.id,
     storedParaIndex,
     anchor,
     saveProgress,
@@ -170,8 +180,8 @@ export function ReaderPage() {
     settings,
     updateSettings: changeSettings,
     overlayOpen,
-    next,
-    index,
+    next: stream.flipTarget,
+    index: stream.flipIndex,
     goChapter: goFlip,
     isH5,
   });
@@ -195,15 +205,16 @@ export function ReaderPage() {
     goChapterAnnounce: (target) => jumpChapter(target, "已经是最后一章了"),
   });
 
-  useReaderVisiblePara({ paragraphs, chapterDataId: chapter.data?.id, onAnchor: setAnchor });
+  useReaderVisiblePara({ segments: stream.segments, onAnchor: setAnchor });
 
   useReaderScrollRestore({
     consumeFlip,
+    consumeAdvance: stream.consumeAdvance,
     searchOpen,
     currentHit,
     hitCount,
     chapterId,
-    chapterDataId: chapter.data?.id,
+    chapterDataId: stream.chapterData?.id,
     pendingJump,
     storedParaIndex,
     progressLoading: progressList.loading,
@@ -211,26 +222,13 @@ export function ReaderPage() {
   });
 
   // 改字号 / 行距 / 段距 / 字体 / 页宽 / 对齐会让正文重排，像素位置随之失效：按段落锚点回到原处
-  useReaderRepositionAfterReflow({ settings, chapterDataId: chapter.data?.id, anchor });
+  useReaderRepositionAfterReflow({ settings, chapterDataId: stream.chapterData?.id, anchor });
 
   const restoreHintVisible =
-    Boolean(chapter.data) && storedParaIndex > 0 && !pendingJump && hintDismissedFor !== chapterId;
+    Boolean(stream.chapterData) && storedParaIndex > 0 && !pendingJump && hintDismissedFor !== chapterId;
 
   const reducedMotion = prefersReducedMotion();
-  const articleKey = reducedMotion ? "static" : `chapter-${chapterId}`;
-
-  // 面板打开时不接管滑动：与点按分区同一口径（zonesEnabled={!overlayOpen}）。
-  // 目录/设置/搜索打开时读者的横滑是「浏览这个面板」，不该把背后正文翻掉且不给任何提示。
-  const swipeHandlers = useMemo(
-    () => ({
-      enabled: isH5 && !overlayOpen,
-      reducedMotion,
-      onPrev: () => stepChapter("prev"),
-      onNext: () => stepChapter("next"),
-    }),
-    [isH5, overlayOpen, reducedMotion, stepChapter],
-  );
-  const swipeRef = useSwipePaging(swipeHandlers);
+  const swipeRef = useReaderSwipe({ isH5, overlayOpen, reducedMotion, step: stepChapter });
 
   const { toggleSearch, toggleSettings, toggleDirectory, toggleBookmarks } = useReaderToggles({
     searchOpen,
@@ -244,8 +242,8 @@ export function ReaderPage() {
     onCloseDrawer: closeDrawer,
   });
 
-  const bookTitle = book.data?.title ?? chapter.data?.bookTitle ?? "";
-  const chapterWords = chapter.data ? formatWords(chapter.data.wordCount) : "";
+  const bookTitle = book.data?.title ?? stream.chapterData?.bookTitle ?? "";
+  const chapterWords = activeSegment ? formatWords(activeSegment.wordCount) : "";
   const progressText =
     chapters.length > 0 && index >= 0
       ? `第 ${index + 1} / ${chapters.length} 章${chapterWords ? ` · ${chapterWords}` : ""}`
@@ -271,7 +269,7 @@ export function ReaderPage() {
         progressText={progressText}
         fullscreen={fullscreen}
         canFullscreen={canFullscreen}
-        searchEnabled={Boolean(chapter.data)}
+        searchEnabled={Boolean(stream.chapterData)}
         searchOpen={searchOpen}
         drawerOpen={drawerOpen}
         helpOpen={helpOpen}
@@ -303,27 +301,21 @@ export function ReaderPage() {
         swipeRef={swipeRef}
         surfaceProps={controls.surfaceProps}
         zonesEnabled={!overlayOpen}
-        loading={chapter.loading}
-        error={chapter.error}
-        chapter={chapter.data ?? null}
+        loading={stream.loading}
+        error={stream.error}
         retrying={retryingChapter}
         retryFailures={chapterFailures}
-        next={next}
+        // 流里的段落按当前设置映射过简繁（渲染与搜索 / 书签用同一份文本）
+        stream={{ ...stream, segments }}
         onRetry={retryChapter}
         onPrev={() => stepChapter("prev")}
         onNext={() => stepChapter("next")}
         onJumpChapter={jumpToChapterAt}
         onShelf={goShelf}
-        paragraphs={viewParagraphs}
         hitsByPara={hitsByPara}
         currentHit={currentHit}
         searching={searchOpen}
         bookId={bookId}
-        chapters={chapters}
-        index={index}
-        prev={prev}
-        percent={percent}
-        enterKey={articleKey}
         reducedMotion={reducedMotion}
         hintVisible={restoreHintVisible}
         onDismissHint={dismissHint}
@@ -338,7 +330,7 @@ export function ReaderPage() {
           index={index}
           prev={prev}
           next={next}
-          searchEnabled={Boolean(chapter.data)}
+          searchEnabled={Boolean(stream.chapterData)}
           onPrev={() => stepChapter("prev")}
           onNext={() => stepChapter("next")}
           onJumpChapter={jumpToChapterAt}
@@ -373,7 +365,7 @@ export function ReaderPage() {
         settings={settings}
         theme={theme}
         themes={themes}
-        autoScrollAvailable={Boolean(chapter.data)}
+        autoScrollAvailable={Boolean(stream.chapterData)}
         volumes={volumes}
         bookId={bookId}
         currentChapterId={chapterId}
@@ -382,7 +374,7 @@ export function ReaderPage() {
         bookmarks={bookmarks}
         addingBookmark={addingBookmark}
         retryingBookmarks={retryingBookmarks}
-        canAddBookmark={Boolean(chapter.data)}
+        canAddBookmark={Boolean(stream.chapterData)}
         onClosePanels={closeAllPanels}
         onCancelDelete={cancelDelete}
         onConfirmDelete={() => void confirmDelete()}

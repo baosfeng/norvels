@@ -37,7 +37,8 @@ function chapterOf(chapterId: number): ChapterDetail {
     id: brief.id,
     idx: brief.idx,
     title: brief.title,
-    content: CONTENT,
+    // 下一章用另一段正文：连续流同屏会渲染两章，相同文本会让断言撞车
+    content: brief.idx === 0 ? CONTENT : `第${brief.idx + 1}章的正文。`,
     wordCount: brief.wordCount,
     prevId: 0,
     nextId: 0,

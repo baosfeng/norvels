@@ -211,10 +211,11 @@ describe("三区手势：H5 单击分区", () => {
     expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章");
   });
 
-  it("页边提示只在正文态出现，且不吃点击", () => {
+  // 沉浸式：纯阅读态正文两侧不留任何装饰（曾经的 24×88 灰胶囊压在字上，实测像没加载出来的占位）。
+  // 「左右可滑」的可发现性由翻章浮条与快捷键帮助承担，不靠常驻视觉——主流阅读器也都不放。
+  it("纯阅读态正文两侧没有任何装饰层", () => {
     renderReader();
-    const hints = screen.getByTestId("reader-edge-hints");
-    expect(hints.getAttribute("aria-hidden")).toBe("true");
-    expect(hints.querySelectorAll(".reader-edge-hint")).toHaveLength(2);
+    expect(screen.queryByTestId("reader-edge-hints")).toBeNull();
+    expect(document.querySelectorAll(".reader-edge-hint")).toHaveLength(0);
   });
 });

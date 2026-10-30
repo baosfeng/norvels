@@ -27,10 +27,13 @@ function mount(props: {
   chapterDataId?: number;
   storedParaIndex?: number;
   flipped?: boolean;
+  /** 这次换章是连续流滚过章界线出来的。 */
+  streamed?: boolean;
   pendingJump?: { chapterId: number; paraIndex: number } | null;
 }) {
   const onRestoreAnchor = vi.fn();
   const consumeFlip = vi.fn(() => props.flipped === true);
+  const consumeAdvance = vi.fn(() => props.streamed === true);
   const hook = renderHook(() =>
     useReaderScrollRestore({
       searchOpen: false,
@@ -42,6 +45,7 @@ function mount(props: {
       storedParaIndex: props.storedParaIndex ?? 0,
       progressLoading: false,
       consumeFlip,
+      consumeAdvance,
       onRestoreAnchor,
     }),
   );
@@ -95,6 +99,19 @@ describe("useReaderScrollRestore 回章首", () => {
     expect(surface.scrollTop).toBe(300);
     expect(onRestoreAnchor).not.toHaveBeenCalled();
     expect((document.getElementById("para-4") as HTMLElement).scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("滚过章界线换到下一章：位置是读者滚出来的，既不回章首也不跳锚点", async () => {
+    const surface = mountSurface(1200);
+    const { onRestoreAnchor } = mount({
+      chapterId: 1041,
+      storedParaIndex: 3,
+      streamed: true,
+      pendingJump: null,
+    });
+    await flush();
+    expect(surface.scrollTop).toBe(1200);
+    expect(onRestoreAnchor).not.toHaveBeenCalled();
   });
 
   it("同一章只处理一次：重渲染不会再把读者滚回去", async () => {

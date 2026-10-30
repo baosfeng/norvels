@@ -216,43 +216,6 @@
   }
 }
 
-/* ── 三区手势：左右页边 24px 渐隐提示（H5 专有，不吃点击） ── */
-.reader-edge-hints {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 20;
-  pointer-events: none;
-  display: none;
-}
-.reader-shell.is-h5 .reader-edge-hints {
-  display: block;
-}
-.reader-edge-hint {
-  position: absolute;
-  top: 50%;
-  width: 24px;
-  height: 88px;
-  margin-top: -44px;
-  border-radius: var(--radius-pill);
-  opacity: 0;
-  transition: opacity 180ms var(--ease-standard);
-}
-.reader-edge-hint.is-prev {
-  left: 0;
-  background: linear-gradient(to right, color-mix(in oklab, var(--r-fg), transparent 82%), transparent);
-}
-.reader-edge-hint.is-next {
-  right: 0;
-  background: linear-gradient(to left, color-mix(in oklab, var(--r-fg), transparent 82%), transparent);
-}
-/* 只在控制层收起（纯阅读态）亮出来：菜单开着时读者已经知道自己在哪 */
-.reader-shell.is-h5:not(.is-controls) .reader-edge-hint {
-  opacity: 1;
-}
-
 /* ── 合并抽屉：目录 / 书签页签 ── */
 .reader-drawer .drawer-head {
   flex-wrap: wrap;
@@ -496,33 +459,13 @@
   overflow-wrap: anywhere;
 }
 
-/* ── 章末引导：明显的「下一章」主按钮 / 末章出口 ── */
+/* ── 章末出口：上一章 / 返回书籍详情；末章给「全书读完」与回详情页 / 回书架 ──
+   章与章之间已经连续排版（见 ix-reader-stream.css），这里不再有「下一章」主按钮。 */
 .reader-pager {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
   margin: 32px 0 0;
-}
-.reader-pager-next {
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  min-height: 60px;
-  padding: 10px 18px;
-  font-size: 17px;
-  font-weight: 600;
-}
-.reader-pager-next-label {
-  font-size: 17px;
-}
-.reader-pager-next-title {
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 400;
-  opacity: 0.82;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .reader-pager-end {
   display: flex;
@@ -633,7 +576,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .chapter-slider-input::-webkit-slider-thumb,
-  .reader-edge-hint,
   .drawer-tab,
   .font-levels button,
   .theme-swatches button {
