@@ -84,6 +84,15 @@
   grid-column: 1 / -1;
 }
 
+/* 事实项的行布局只作用于顶层格子。
+   prototype.css 用裸的 .facts div 给所有后代套了 flex-direction:column，
+   评分块里包星星的 .chips 也被套上，5 颗星就竖着排下来（PC 实测 5 行）。
+   这里把后代那层恢复成行内排布，让 chips 自己决定换行。 */
+.facts .rating-row .chips {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
 /* ── C-08 评分：hover 只做预览，占位星也点亮但比真值淡一档 ── */
 .rating-row .chip {
   transition:
