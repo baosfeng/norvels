@@ -59,6 +59,8 @@ norvels/
 ├── scripts/
 │   ├── import.sh           # 批量导入（本地 / docker 两种模式）
 │   ├── backup.sh           # SQLite 备份 + 保留策略
+│   ├── preview.sh          # 一条命令起预览：后端 :8080 + vite HMR :5173（已在跑则复用）
+│   ├── shot.sh             # 截图（agent-browser 独立会话），配 preview 用
 │   └── tidy-pending-collection.py  # 待整理合集包：去重 → 按分类抓取到导入目录
 ├── interaction/            # 交互契约与可点原型：四域 244 个锚点，见 interaction/README.md
 ├── docs/
@@ -76,17 +78,17 @@ norvels/
 ### 本地（3 条命令）
 
 ```bash
-make build                                                   # 构建前端 + 后端（产物 bin/norvels）
-./bin/norvels import --dir "/path/to/txt" --db ./data/norvels.db          # 整个目录
-./bin/norvels import --dir "/path/to/某本书.txt" --db ./data/norvels.db   # 或单个 txt
-./bin/norvels serve --addr :8080 --db ./data/norvels.db
+make preview                                                        # 起预览：后端 :8080 + vite HMR :5173（缺二进制会先编译）
+./bin/norvels import --dir "/path/to/txt" --db ./data/norvels.db     # 整目录或单个 txt
+make build                                                          # 生产产物 bin/norvels（前端先同步进 go:embed 目录）
 ```
 
 `--dir` 同时接受目录和单个 `.txt` / `.epub` / `.zip` 文件：给目录就批量扫描（`--recursive` 控制是否进子目录），
 给文件就只导这一本。传入其他扩展名的文件会直接报错，不会静默导 0 本。
 
-打开 <http://127.0.0.1:8080> 即可使用；接口在 <http://127.0.0.1:8080/api/stats>。
-只改后端时用 `make build-server`（复用已有 `internal/webui/dist`，跳过前端构建）。
+改前端看 <http://127.0.0.1:5173>（HMR 即时生效，`/api` 由 vite 代理到 :8080）；看生产行为走 <http://127.0.0.1:8080>，接口在 `/api/stats`。
+`make preview` 会**复用**已经在 :8080 / :5173 上的服务（不 kill、不占第二个端口）；要后台跑用 `scripts/preview.sh --detach`，收尾 `--stop`（只收它自己起的）。
+只改后端用 `make build-server`（复用已有 `internal/webui/dist`，跳过前端构建）；截个图：`make shot URL=http://127.0.0.1:5173 OUT=.shots/home.png VIEWPORT=390x844`。
 
 ### Docker（3 条命令）
 
@@ -160,6 +162,11 @@ docker run --rm --entrypoint /norvels \
 | `make build` | 构建前端并同步到 `internal/webui/dist`，再编译 `bin/norvels` |
 | `make build-server` | 只编译后端（要求 `internal/webui/dist` 已有前端产物） |
 | `make run` | 本地启动服务（`:8080`，`./data/norvels.db`） |
+| `make preview` | 一条命令起预览：后端 `:8080` + vite HMR `:5173`；已在跑则复用（不占第二个端口） |
+| `make shot URL=… OUT=…` | 用 agent-browser 截一张图（`VIEWPORT=390x844` 可传），默认落 `.shots/` |
+| `make gate-fast` | 快环：gofmt + go vet + 前端 `tsc --noEmit`（秒级；通过 ≠ 门禁通过） |
+| `make gate` | 提交前完整门禁（9 项并行执行，见 [quality-gates](docs/quality-gates.md)） |
+| `make privacy-changed` | 隐私扫描：只扫相对 HEAD 的改动（提交前仍用 `make privacy` 全量） |
 | `make test` | 运行全部 Go 测试 |
 | `make fmt` | gofmt |
 | `make docker` | 构建容器镜像 |

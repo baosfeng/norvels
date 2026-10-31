@@ -27,6 +27,8 @@ internal/webui/dist/*
 .open-design/shots/
 # 验收截图同样只留本地：可能含语料画面，重生成一次即可
 .shots/
+# 本地预览的日志与 PID（scripts/preview.sh 生成，日志里有本机绝对路径，不入库）
+/.preview/
 # Open Design 官方模版种子（第三方资产，按需 odops template-use 重新拉取）
 .open-design/seed/
 

@@ -3,7 +3,8 @@
 #
 # 用法：
 #   scripts/privacy-scan.sh              # 扫描暂存区（先 git add）
-#   scripts/privacy-scan.sh --all        # 扫描工作区全部受版本控制的文件
+#   scripts/privacy-scan.sh --changed    # 只扫相对 HEAD 的改动（含未跟踪），秒级自查
+#   scripts/privacy-scan.sh --all        # 扫描工作区全部受版本控制的文件（提交前硬条件）
 #
 # 三层规则：
 #   1) 内置通用规则：绝对路径、IP、真实邮箱、私钥、常见令牌前缀
@@ -19,17 +20,29 @@ cd "$ROOT_DIR" || exit 2
 
 case "${1:-}" in
   ""|--staged) MODE=staged ;;
+  --changed)   MODE=changed ;;
   --all)       MODE=all ;;
-  -h|--help)   sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help)   sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf '[错误] 未知参数: %s\n' "$1" >&2; exit 2 ;;
 esac
 
 LIST_FILE=$(mktemp -t privacy-files)
 RULES_FILE=$(mktemp -t privacy-rules)
-trap 'rm -f "$LIST_FILE" "$RULES_FILE"' EXIT
+DENY_RULES_FILE=$(mktemp -t privacy-deny-rules)
+PAT_FILE=$(mktemp -t privacy-patterns)
+CAND_FILE=$(mktemp -t privacy-candidates)
+TEXT_LIST=$(mktemp -t privacy-text-files)
+WORK_DIR=$(mktemp -d -t privacy-hits)
+trap 'rm -f "$LIST_FILE" "$RULES_FILE" "$DENY_RULES_FILE" "$PAT_FILE" "$CAND_FILE" "$TEXT_LIST"; rm -rf "$WORK_DIR"' EXIT
 
 if [[ "$MODE" == "staged" ]]; then
   git diff --cached --name-only --diff-filter=ACMR > "$LIST_FILE" 2>/dev/null
+elif [[ "$MODE" == "changed" ]]; then
+  # --changed：相对 HEAD 的全部改动（已暂存 + 未暂存 + 未跟踪），删掉已不存在的文件。
+  # 是 --all 的子集，用于改完随手自查；提交前仍以 --all 为准（未改动的旧文件也要扫）。
+  { git diff --name-only HEAD 2>/dev/null || git diff --cached --name-only 2>/dev/null
+    git ls-files --others --exclude-standard 2>/dev/null
+  } | sort -u | while IFS= read -r f; do [[ -f "$f" ]] && printf '%s\n' "$f"; done > "$LIST_FILE"
 else
   # --all：已跟踪 + 未跟踪（但遵守 .gitignore）的全部文件，适合首次提交前自查
   { git ls-files 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u > "$LIST_FILE"
@@ -54,11 +67,13 @@ is_text() {
 }
 
 hits=0
-# scan_pattern <pattern> <label> [allow-regex]
+# scan_rule <序号> <pattern<TAB>label[<TAB>allow-regex]>
 # allow-regex 命中的行会被放行（用于把 127.0.0.1 / 0.0.0.0 / localhost 这类正常回环地址排除掉）。
-scan_pattern() {
-  local pat=$1 label=$2 allow=${3:-} f out
+# 每条规则独立扫完全部候选文件，结果写进自己的 .hit；回放由 run_rule_set 负责。
+scan_rule() {
+  local idx=$1 line=$2 pat label allow f out
   local found=""
+  IFS=$'\t' read -r pat label allow <<<"$line"
   while IFS= read -r f; do
     [[ -n "$f" && -f "$f" ]] || continue
     is_text "$f" || continue
@@ -70,10 +85,33 @@ scan_pattern() {
     [[ -n "$out" ]] && found="${found}${f}\n${out}\n"
   done < "$LIST_FILE"
   if [[ -n "$found" ]]; then
-    printf '\n[命中] %s\n' "$label"
-    printf '%b' "$found" | sed 's/^/  /' | cut -c1-200
-    hits=$((hits + 1))
+    {
+      printf '\n[命中] %s\n' "$label"
+      printf '%b' "$found" | sed 's/^/  /' | cut -c1-200
+    } > "$WORK_DIR/$idx.hit"
   fi
+}
+
+# run_rule_set <规则文件>：规则之间并发执行，再按规则在文件里的顺序回放命中块。
+# 输出与串行版本逐字节相同（只有快慢变了），hits 的计数口径也不变：一条规则算一类。
+run_rule_set() {
+  local file=$1 idx=0 line
+  rm -f "$WORK_DIR"/*.hit   # 两次调用（内置规则 / 黑名单）共用编号空间，先清掉上一批
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    idx=$((idx + 1))
+    ( scan_rule "$idx" "$line" ) &
+  done < "$file"
+  wait
+  idx=0
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    idx=$((idx + 1))
+    if [[ -f "$WORK_DIR/$idx.hit" ]]; then
+      cat "$WORK_DIR/$idx.hit"
+      hits=$((hits + 1))
+    fi
+  done < "$file"
 }
 
 # 内置通用规则（pattern<TAB>label）；用 \t 分隔避免与正则里的 | 冲突。
@@ -88,20 +126,52 @@ printf '%s\n' \
   'sk-[A-Za-z0-9]{20,}	API Secret Key' \
   > "$RULES_FILE"
 
-while IFS=$'\t' read -r pat label allow; do
-  [[ -n "${pat:-}" && -n "${label:-}" ]] || continue
-  scan_pattern "$pat" "$label" "${allow:-}"
-done < "$RULES_FILE"
-
+# 项目黑名单规则（先建好，预筛要把它一起算进去）
 DENY=".privacy-denylist.txt"
 if [[ -f "$DENY" ]]; then
-  printf '\n==> 项目黑名单 %s\n' "$DENY"
   while IFS= read -r term; do
     [[ -z "$term" ]] && continue
     case "$term" in \#*) continue ;; esac
     esc=$(printf '%s' "$term" | sed 's/[][\\./\*^$()+?{|]/\\&/g')
-    scan_pattern "$esc" "黑名单：$term"
+    printf '%s\t%s\n' "$esc" "黑名单：$term" >> "$DENY_RULES_FILE"
   done < "$DENY"
+fi
+
+# 预筛：把所有规则合成一份 pattern 文件，一次 grep 找出「可能有命中」的文件。
+# 干净仓库（绝大多数情况）这一步就结束扫描；有嫌疑文件时才逐规则精确扫描，
+# 精确扫描仍走原样的 grep -n + allow 放行，命中集合与「全量逐规则扫」一致。
+cut -f1 "$RULES_FILE" > "$PAT_FILE"
+cut -f1 "$DENY_RULES_FILE" >> "$PAT_FILE"
+: > "$CAND_FILE"
+if [[ -s "$PAT_FILE" ]]; then
+  # 一次 grep 扫完所有文本文件（xargs -0 处理含空格的路径名，不逐个 fork）
+  : > "$TEXT_LIST"
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
+    is_text "$f" && printf '%s\n' "$f" >> "$TEXT_LIST"
+  done < "$LIST_FILE"
+  if [[ -s "$TEXT_LIST" ]]; then
+    tr '\n' '\0' < "$TEXT_LIST" \
+      | xargs -0 grep -lIE --binary-files=without-match -f "$PAT_FILE" -- > "$CAND_FILE" 2>/dev/null
+  fi
+fi
+
+if [[ -s "$CAND_FILE" ]]; then
+  printf '==> 预筛：%d 个文件可能有命中，逐规则精确扫描\n' "$(wc -l < "$CAND_FILE" | tr -d ' ')"
+  ALL_LIST=$LIST_FILE
+  LIST_FILE=$CAND_FILE
+  run_rule_set "$RULES_FILE"
+  LIST_FILE=$ALL_LIST
+fi
+
+if [[ -f "$DENY" ]]; then
+  printf '\n==> 项目黑名单 %s\n' "$DENY"
+  if [[ -s "$CAND_FILE" ]]; then
+    ALL_LIST=$LIST_FILE
+    LIST_FILE=$CAND_FILE
+    run_rule_set "$DENY_RULES_FILE"
+    LIST_FILE=$ALL_LIST
+  fi
 else
   printf '\n[提示] 可选：创建 %s 登记真实书名/作者/站点名\n' "$DENY"
 fi

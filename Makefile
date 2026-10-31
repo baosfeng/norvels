@@ -7,7 +7,8 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.bui
 BIN := bin/norvels
 
 .PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy \
-        bench-capacity verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance
+        bench-capacity verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance \
+        preview shot gate-fast privacy-changed
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -28,8 +29,14 @@ build-web: ## 构建前端（产物落到 web/dist）
 build-server: ## 编译服务端二进制（内嵌 internal/webui/dist）
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/norvels
 
-run: ## 本地启动
+run: ## 本地启动（只用后端 :8080）
 	go run ./cmd/norvels serve --addr :8080 --db ./data/norvels.db
+
+preview: ## 一条命令起预览：后端 :8080 + vite HMR :5173（已在跑则复用，不占新端口）
+	@scripts/preview.sh
+
+shot: ## 截一张图（URL=http://127.0.0.1:5173 OUT=.shots/x.png VIEWPORT=390x844 可选）
+	@scripts/shot.sh --url "$(URL)" $(if $(OUT),--out "$(OUT)",) $(if $(VIEWPORT),--viewport "$(VIEWPORT)",) $(if $(FULL),--full,)
 
 import: ## 导入示例（SOURCE=路径）
 	go run ./cmd/norvels import --dir "$(SOURCE)" --db ./data/norvels.db
@@ -52,6 +59,9 @@ docker: ## 构建镜像（需要本机有 docker）
 privacy: ## 隐私扫描（工作区全部文件，提交前跑一次）
 	scripts/privacy-scan.sh --all
 
+privacy-changed: ## 隐私扫描（只扫相对 HEAD 的改动，含未跟踪；随手自查用）
+	scripts/privacy-scan.sh --changed
+
 # ---------- 容量压测 ----------
 # 默认小规模（500 本 x 500 章，约 1 GB 临时库，几秒跑完），产物是可直接贴进
 # docs/data-profile.md 的 markdown 表格。大库压测请显式传参：
@@ -63,6 +73,10 @@ bench-capacity: ## 容量压测（500 本 x 500 章合成库，输出 markdown �
 
 # ---------- 质量门禁（quality-gates 9 项，逐项可单独跑）----------
 # 每个 gate-* 都如实报告：不达标即 exit 1，不调阈值、不 skip。详见 docs/quality-gates.md。
+# 两层入口：gate-fast 随改随跑（秒级，只查格式+编译），gate 提交前完整口径（9 项并行）。
+
+gate-fast: ## 快环：gofmt + go vet + 前端 tsc --noEmit（秒级；通过 ≠ 门禁通过）
+	@scripts/gate-fast.sh
 
 gate-complexity: ## 门禁 4：圈复杂度（单函数 ≤ 10，豁免须在 docs 登记）
 	@scripts/gate-complexity.sh
