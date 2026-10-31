@@ -67,6 +67,8 @@ var allowedDeps = map[string][]string{
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config"},
 	"norvels/cmd/healthcheck": {},
+	// 压缩率/延迟实测工具：只读库 + 调正文编码层，不进发布二进制（Makefile 只 build ./cmd/norvels）。
+	"norvels/cmd/codebench": {"norvels/internal/textcode"},
 }
 
 const modulePrefix = "norvels/"
