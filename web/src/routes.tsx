@@ -14,6 +14,7 @@ import { AdminBookPage } from "./features/admin/AdminBookPage";
 import { SeriesPage } from "./features/series/SeriesPage";
 import { SeriesDetailPage } from "./features/series/SeriesDetailPage";
 import { HistoryPage } from "./features/history/HistoryPage";
+import { CollectionsPage } from "./features/collections/CollectionsPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { TierRoute } from "./layouts/TierRoute";
 import { LandingRedirect, NotFoundPage, TierHomeRedirect } from "./layouts/Redirects";
@@ -24,7 +25,7 @@ import { LandingRedirect, NotFoundPage, TierHomeRedirect } from "./layouts/Redir
  * - 阅读器是独立外壳（没有侧栏/顶栏），其余视图共用 AppShell。
  * - 哪些路由分档、分到哪一档，**只在 `lib/tier.ts` 里定义**（`routeTier`），这里只把一级段名
  *   交给 `TierRoute` 去查表：管理四页（导入 / 作者 / 驾驶舱 / 书籍管理）PC 专属，
- *   首页 H5 专属，其余（书架 / 详情 / 搜索 / 系列 / 系列详情 / 阅读历史 / 阅读器）两档都在。
+ *   首页 H5 专属，其余（书架 / 详情 / 搜索 / 系列 / 系列详情 / 阅读历史 / 书单 / 阅读器）两档都在。
  */
 export const routeTable: RouteObject[] = [
   { path: "/", element: <TierHomeRedirect /> },
@@ -119,6 +120,8 @@ export const routeTable: RouteObject[] = [
           </TierRoute>
         ),
       },
+      // 书单是收藏夹本身的管理面，两档都开（表里没有 = 两档可用，见 lib/tier.ts）
+      { path: "collections", element: <CollectionsPage /> },
       { path: "landing", element: <LandingRedirect /> },
       { path: "*", element: <NotFoundPage /> },
     ],

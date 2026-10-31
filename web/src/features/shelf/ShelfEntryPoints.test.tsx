@@ -137,21 +137,22 @@ describe("H5 书架：排序与筛选是两个独立入口", () => {
   });
 });
 
-describe("PC 书架：「管理书单」是工具栏右侧的独立操作", () => {
-  it("管理书单不在任何筛选 label 里，与清除筛选同处操作区", async () => {
+describe("PC 书架：工具栏不再承载书单管理", () => {
+  it("工具栏与操作区都不出现「管理书单」（书单管理已搬到 /collections 页）", async () => {
     renderShelf("pc", ["/?status=done"]);
     await waitFor(() => expect(screen.getByTestId("shelf-toolbar")).toBeTruthy());
 
-    const manage = screen.getByTestId("collection-manage-open");
-    // 以前它和书单下拉一起塞在「书单」label 里，把那一组撑成两行、整排标签错位
-    expect(manage.closest("label")).toBeNull();
+    expect(screen.queryByTestId("collection-manage-open")).toBeNull();
+    expect(screen.queryByTestId("collection-manager")).toBeNull();
+    expect(within(screen.getByTestId("shelf-toolbar")).queryByText("管理书单")).toBeNull();
 
+    // 操作区只剩作用于当前列表的「清除筛选」，不混进书单本身的维护入口
     const actions = screen.getByTestId("shelf-toolbar-actions");
-    expect(actions.contains(manage)).toBe(true);
     expect(within(actions).getByText("清除筛选")).toBeTruthy();
+    expect(within(actions).queryAllByRole("button")).toHaveLength(1);
   });
 
-  it("6 个筛选组都是「小标题 + 一个下拉」，没有组里再塞按钮", async () => {
+  it("6 个筛选组都是「小标题 + 一个下拉」，书单筛选下拉保留", async () => {
     renderShelf("pc");
     await waitFor(() => expect(screen.getByTestId("shelf-toolbar")).toBeTruthy());
 
@@ -161,15 +162,8 @@ describe("PC 书架：「管理书单」是工具栏右侧的独立操作", () =
       expect(label.querySelectorAll("select")).toHaveLength(1);
       expect(label.querySelectorAll("button")).toHaveLength(0);
     }
-  });
-
-  it("点「管理书单」能打开管理弹层", async () => {
-    renderShelf("pc");
-    await waitFor(() => expect(screen.getByTestId("shelf-toolbar")).toBeTruthy());
-
-    fireEvent.click(screen.getByTestId("collection-manage-open"));
-    await waitFor(() => expect(screen.getByTestId("collection-manager")).toBeTruthy());
-    expect(screen.getByTestId("collection-manager").textContent).toContain("管理书单");
+    // 书单仍是六类筛选之一：搬走的是「管理书单」，不是「书单」筛选
+    expect(screen.getByTestId("filter-collection-select")).toBeTruthy();
   });
 
   it("没有筛选时不出现「清除筛选」，有筛选时才出现", async () => {

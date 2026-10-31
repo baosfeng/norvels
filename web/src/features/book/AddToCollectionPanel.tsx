@@ -145,7 +145,7 @@ export function AddToCollectionPanel({
           </p>
         ) : collections.length === 0 ? (
           <p className="meta" data-testid="add-to-collection-empty">
-            还没有书单。到书架的筛选区点「管理书单」新建一个，再回来把书放进去。
+            还没有书单。到「书单」页新建一个，再回来把书放进去。
           </p>
         ) : (
           <ul className="drawer-list" data-testid="add-to-collection-list">

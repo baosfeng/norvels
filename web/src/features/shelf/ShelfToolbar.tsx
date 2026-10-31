@@ -2,7 +2,7 @@ import type { RefObject } from "react";
 import type { Collection, ReadStatus } from "../../api/types";
 import { READ_STATUS_FILTERS } from "../../lib/readStatus";
 import { CategoryFilter, type CategoryValue } from "./CategoryFilter";
-import { CollectionFilter, CollectionManageButton } from "./CollectionFilter";
+import { CollectionFilter } from "./CollectionFilter";
 import { SORTS, type SortValue } from "./shelfSorts";
 
 type AuthorOption = { id: number; name: string; bookCount: number };
@@ -13,8 +13,8 @@ type TagOption = { id: number; name: string };
  *
  * 排版口径：每组都是「一行小标题 + 一个控件」，组与组等宽、顶端对齐（样式在 ix-library.css 的
  * `.shelf-toolbar`，不改 prototype.css 的全局 .toolbar——它还被 AdminFilterBar / AuthorsPage 用）。
- * 「管理书单」管的是书单本身而不是当前筛选值，放在右侧操作区与「清除筛选」同一处：
- * 留在「书单」组里会把这个 label 撑成两行，整排筛选的标签都会被 flex-end 顶歪。
+ * 右侧操作区只留「清除筛选」这类作用于当前列表的动作：书单本身的新建 / 改名 / 删除属于另一件事，
+ * 已搬到独立页 /collections，工具栏里只保留「书单」这个筛选下拉。
  */
 export function ShelfToolbar({
   sortRef,
@@ -28,7 +28,6 @@ export function ShelfToolbar({
   onAuthorChange,
   authors,
   collections,
-  onCollectionsChanged,
   collection,
   onCollectionChange,
   category,
@@ -51,7 +50,6 @@ export function ShelfToolbar({
   authors: AuthorOption[];
   /** 书单候选：书架页已为 H5 弹层取过一份，PC 复用同一份（不再单独请求） */
   collections: Collection[];
-  onCollectionsChanged: () => void;
   collection: number | null;
   onCollectionChange: (next: number | null) => void;
   category: CategoryValue;
@@ -142,12 +140,6 @@ export function ShelfToolbar({
       <CategoryFilter value={category} onChange={onCategoryChange} />
 
       <div className="shelf-toolbar-actions" data-testid="shelf-toolbar-actions">
-        <CollectionManageButton
-          value={collection}
-          onChange={onCollectionChange}
-          items={collections}
-          onChanged={onCollectionsChanged}
-        />
         {filtering ? (
           <button className="btn btn-ghost" type="button" data-od-id="C-29" onClick={onResetFilters}>
             清除筛选

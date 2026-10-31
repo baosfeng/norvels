@@ -1,0 +1,308 @@
+/* ── 书单页（/collections）──
+   书单的新建 / 改名 / 删除以前塞在书架工具栏右侧的弹层里，现在这里是它唯一的维护面：
+   新建表单与列表定宽、靠左，行内动作与历史页的行内确认同一套尺寸口径。 */
+
+.collections-create {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 480px;
+  margin: 0 0 var(--space-5);
+}
+.collections-create-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.collections-create-row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.collections-create-row .btn {
+  flex: none;
+}
+
+.collections-list {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 720px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.collections-row {
+  display: grid;
+  gap: var(--space-1);
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+/* 确认删除时把边框染成危险色：这一行正在等一个不可撤销的动作 */
+.collections-row.is-confirming {
+  border-color: color-mix(in oklab, var(--danger) 40%, var(--border));
+}
+.collections-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.collections-row-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.collections-row-name strong {
+  font-size: 15px;
+}
+.collections-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.collections-row-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+.collections-row-actions .btn {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .collections-create,
+  .collections-list {
+    max-width: none;
+  }
+  .collections-create-row .btn {
+    min-height: 44px;
+  }
+  .collections-row {
+    padding: 10px 12px;
+  }
+  /* 窄屏上名字与动作各占一行：并排会把长名字挤成一字一行 */
+  .collections-row-main {
+    flex-wrap: wrap;
+  }
+  .collections-row-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .collections-row-actions .btn {
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: var(--text-sm);
+  }
+}
+/* ── 书单成员：行内展开的成员列表 + 添加书籍弹层 ──
+   成员列表就地展开（看完就收起），添加书籍用弹层：选书要搜索 + 多选，行内塞不下。
+   PC 弹层居中；H5（≤768px）改成从底部升起的全屏式弹层，点按区 ≥44px。 */
+
+.collections-members-wrap {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-soft);
+}
+
+.collection-members {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.collection-member {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 0;
+}
+.collection-member + .collection-member {
+  border-top: 1px solid var(--border-soft);
+}
+.collection-member-cover {
+  width: 36px;
+  height: 48px;
+  flex: none;
+}
+.collection-member-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.collection-member-main b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-member-main .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-member .btn {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.collection-members-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+/* ── 添加书籍弹层 ── */
+.add-books-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(78dvh, 640px);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 24px 64px rgb(32 25 20 / 22%);
+  transform: translate(-50%, -50%);
+}
+.add-books-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.add-books-head h2 {
+  margin: 2px 0 4px;
+  font-size: 18px;
+}
+.add-books-search .input {
+  width: 100%;
+}
+.add-books-body {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.add-books-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.add-books-item {
+  display: grid;
+  /* 第四列留给「已加入」标记：没有标记时这一列为空，行高不变 */
+  grid-template-columns: auto 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.add-books-item:hover {
+  background: var(--surface-warm);
+}
+.add-books-item.is-picked {
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+.add-books-check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+/* 已是书单成员：整行变淡、不可再勾，右侧挂「已加入」 */
+.add-books-item.is-member {
+  opacity: 0.62;
+  cursor: default;
+}
+.add-books-item.is-member:hover {
+  background: transparent;
+}
+.add-books-tag {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-warm);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.add-books-cover {
+  width: 36px;
+  height: 48px;
+}
+.add-books-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.add-books-main b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.add-books-main .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.add-books-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+}
+
+@media (max-width: 768px) {
+  .collection-member .btn {
+    min-height: 44px;
+  }
+  .collection-members-pager .btn {
+    min-height: 44px;
+  }
+  /* H5：底部升起的全屏式弹层，搜索框与勾选行都保持可点尺寸 */
+  .add-books-dialog {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 88dvh;
+    padding: var(--space-4) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    transform: none;
+  }
+  .add-books-head .btn,
+  .add-books-foot .btn {
+    min-height: 44px;
+  }
+  .add-books-search .input {
+    min-height: 44px;
+  }
+  .add-books-item {
+    min-height: 60px;
+  }
+}
+/* 禁用态：全站没有统一的 .btn[disabled] 变淡规则，这一块自己给（否则「添加 0 本」看着仍可点） */
+.add-books-foot .btn[disabled],
+.add-books-head .btn[disabled],
+.collection-member .btn[disabled],
+.collection-members-pager .btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}

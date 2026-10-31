@@ -1,24 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Collection } from "../../api/types";
-import { CollectionFilter, CollectionManageButton } from "./CollectionFilter";
-
-const createCollection = vi.fn();
-const renameCollection = vi.fn();
-const deleteCollection = vi.fn();
-
-vi.mock("../../api/client", async () => {
-  const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return {
-    ...actual,
-    api: {
-      ...actual.api,
-      createCollection: (name: string, opts?: unknown) => createCollection(name, opts),
-      renameCollection: (id: number, name: string, opts?: unknown) => renameCollection(id, name, opts),
-      deleteCollection: (id: number, opts?: unknown) => deleteCollection(id, opts),
-    },
-  };
-});
+import { CollectionFilter } from "./CollectionFilter";
 
 function items(): Collection[] {
   return [
@@ -27,22 +10,11 @@ function items(): Collection[] {
   ];
 }
 
-/** 下拉与控制按钮的候选都由书架页给（同一份 /api/collections），这里不自己取数 */
+/** 下拉的候选由书架页给（同一份 /api/collections），这里不自己取数 */
 function renderFilter(list: Collection[] = items(), value: number | null = null, onChange = vi.fn()) {
   const view = render(<CollectionFilter value={value} onChange={onChange} items={list} />);
   return { onChange, view };
 }
-
-function renderManage(value: number | null = null, onChange = vi.fn(), onChanged = vi.fn(), list = items()) {
-  render(<CollectionManageButton value={value} onChange={onChange} items={list} onChanged={onChanged} />);
-  return { onChange, onChanged };
-}
-
-beforeEach(() => {
-  createCollection.mockReset();
-  renameCollection.mockReset();
-  deleteCollection.mockReset();
-});
 
 describe("书架书单筛选", () => {
   it("下拉列出全部书单，选中把 id 交给书架", async () => {
@@ -65,90 +37,5 @@ describe("书架书单筛选", () => {
     view.rerender(<CollectionFilter value={null} onChange={vi.fn()} items={[{ id: 9, name: "新书单", bookCount: 1 }]} />);
     await waitFor(() => expect(screen.getByTestId("filter-collection-select").children).toHaveLength(2));
     expect(screen.getByTestId("filter-collection-select").textContent).toContain("新书单");
-  });
-});
-
-describe("书单管理弹层", () => {
-  function open() {
-    fireEvent.click(screen.getByTestId("collection-manage-open"));
-    return waitFor(() => expect(screen.getByTestId("collection-manager")).toBeTruthy());
-  }
-
-  it("管理入口是独立按钮，不挂在书单下拉外面", () => {
-    renderManage();
-    const trigger = screen.getByTestId("collection-manage-open");
-    // 下拉与「管理书单」不再共处一个 label：以前两者并排把「书单」那个筛选组撑成两行
-    expect(trigger.closest("label")).toBeNull();
-    expect(trigger.textContent).toBe("管理书单");
-  });
-
-  it("新建：去掉首尾空白后下发名字并让父级刷新候选", async () => {
-    createCollection.mockResolvedValue({ id: 3, name: "今年想读", bookCount: 0 });
-    const { onChanged } = renderManage();
-    await open();
-
-    fireEvent.change(screen.getByTestId("collection-new-input"), { target: { value: "  今年想读  " } });
-    fireEvent.click(screen.getByTestId("collection-create"));
-
-    await waitFor(() => expect(createCollection).toHaveBeenCalledWith("今年想读", undefined));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
-  });
-
-  it("重名（409）给人话提示，不静默失败", async () => {
-    const { ApiError } = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-    createCollection.mockRejectedValue(new ApiError("http", "conflict", 409, "conflict"));
-    renderManage();
-    await open();
-
-    fireEvent.change(screen.getByTestId("collection-new-input"), { target: { value: "想读" } });
-    fireEvent.click(screen.getByTestId("collection-create"));
-
-    await waitFor(() => expect(screen.getByTestId("collection-manager-error").textContent).toContain("已经有同名书单"));
-  });
-
-  it("改名：保存后让父级刷新候选", async () => {
-    renameCollection.mockResolvedValue(undefined);
-    const { onChanged } = renderManage();
-    await open();
-
-    fireEvent.click(screen.getByTestId("collection-rename-1"));
-    fireEvent.change(screen.getByTestId("collection-rename-input-1"), { target: { value: "待读" } });
-    fireEvent.click(screen.getByTestId("collection-rename-save-1"));
-
-    await waitFor(() => expect(renameCollection).toHaveBeenCalledWith(1, "待读", undefined));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
-  });
-
-  it("删除：先确认再下发，删掉的正好是当前筛选时清空筛选", async () => {
-    deleteCollection.mockResolvedValue(undefined);
-    const { onChange, onChanged } = renderManage(1);
-    await open();
-
-    fireEvent.click(screen.getByTestId("collection-delete-1"));
-    // 点「删除」只进入确认态，不发请求
-    expect(deleteCollection).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("collection-delete-confirm-1"));
-
-    await waitFor(() => expect(deleteCollection).toHaveBeenCalledWith(1, undefined));
-    expect(onChange).toHaveBeenCalledWith(null);
-    expect(onChanged).toHaveBeenCalledTimes(1);
-  });
-
-  it("删掉的不是当前筛选值时不打扰筛选", async () => {
-    deleteCollection.mockResolvedValue(undefined);
-    const { onChange } = renderManage(2);
-    await open();
-
-    fireEvent.click(screen.getByTestId("collection-delete-1"));
-    fireEvent.click(screen.getByTestId("collection-delete-confirm-1"));
-
-    await waitFor(() => expect(deleteCollection).toHaveBeenCalledWith(1, undefined));
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it("没有任何书单时给新建指引", async () => {
-    renderManage(null, vi.fn(), vi.fn(), []);
-    await open();
-    expect(screen.getByTestId("collection-manager-empty").textContent).toContain("还没有书单");
   });
 });
