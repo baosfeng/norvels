@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useBook, useBookmarks, useRecordReadingSession, useSaveProgress } from "../../api/hooks";
 import { useIsH5 } from "../../lib/tier";
-import { formatWords } from "../../lib/format";
+import { formatRemainingTime, formatWords } from "../../lib/format";
+import { chapterPosition, readPercent } from "../shelf/progressText";
 import { useReaderControls } from "../../lib/useReaderControls";
 import { prefersReducedMotion } from "../../lib/theme";
 import { ReaderBottomBar } from "./ReaderBottomBar";
@@ -11,6 +12,7 @@ import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
 import { ReaderTopChrome } from "./ReaderTopChrome";
 import { ReaderBody } from "./ReaderBody";
 import { ReaderScrollProgress } from "./ReaderScrollProgress";
+import { ReaderRestoreHint } from "./ReaderRestoreHint";
 import { useReaderSearchState } from "./useReaderSearchState";
 import { useReaderPanels } from "./useReaderPanels";
 import { useReaderBookmarkActions } from "./useReaderBookmarkActions";
@@ -25,6 +27,7 @@ import { useReaderFullscreen } from "./useReaderFullscreen";
 import { useReaderZoneNav } from "./useReaderZoneNav";
 import { useReaderNavActions } from "./useReaderNavActions";
 import { useReaderToggles } from "./useReaderToggles";
+import { ReaderErrorBoundary, ReaderErrorPanel } from "./ReaderErrorBoundary";
 import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
 import { useReaderSwipe } from "./useReaderSwipe";
@@ -43,6 +46,17 @@ import { useReadingSessionReporter } from "../../lib/readingTimer";
  * 两者在滚动跨章时用 replace 对齐，所以这里统一用 chapterId = stream.activeId。
  */
 export function ReaderPage() {
+  const params = useParams();
+  const bookId = Number(params.bookId);
+  // 兜底必须在正文组件之外：ReaderScreen 自身渲染抛错时，只有外层的边界能接住
+  return (
+    <ReaderErrorBoundary fallback={(reset) => <ReaderErrorPanel bookId={bookId} onRetry={reset} />}>
+      <ReaderScreen />
+    </ReaderErrorBoundary>
+  );
+}
+
+function ReaderScreen() {
   const params = useParams();
   const navigate = useNavigate();
   const isH5 = useIsH5();
@@ -133,7 +147,7 @@ export function ReaderPage() {
 
   const overlayOpen = settingsOpen || drawerOpen || searchOpen || helpOpen || Boolean(deleteTarget);
 
-  const { goShelf, goBack, goChapter } = useReaderNavActions(bookId);
+  const { goShelf, goBack, goBookDetail, goChapter } = useReaderNavActions(bookId);
 
   // consumeFlip / goFlip 由翻章出口自己标记：只有翻章落章首，目录链接与浏览器后退按段恢复。
   const { step: stepChapter, jump: jumpChapter, goFlip, consumeFlip } = useReaderZoneNav({ prev, next, goChapter });
@@ -244,10 +258,31 @@ export function ReaderPage() {
 
   const bookTitle = book.data?.title ?? stream.chapterData?.bookTitle ?? "";
   const chapterWords = activeSegment ? formatWords(activeSegment.wordCount) : "";
-  const progressText =
+  // 章末不再印统计行（那是常驻状态，不是章节内容）：章号 / 字数 / 全书进度 / 剩余时长
+  // 统一由顶栏承担。PC 顶栏常驻、宽度够，全部显示；H5 顶栏窄，只留章号与字数。
+  // 顶栏与书架卡同一口径：章号用 chapterPosition（「第 N 章 / 共 M 章」），
+  // 百分比用 readPercent（读过至少 1%，不显示 0%）。两处文案只在一处维护。
+  const wholePercent =
+    readPercent(chapters.length > 0 && index >= 0 ? { percent: (index + 1) / chapters.length } : null) ?? 0;
+  const remainingWords =
     chapters.length > 0 && index >= 0
-      ? `第 ${index + 1} / ${chapters.length} 章${chapterWords ? ` · ${chapterWords}` : ""}`
-      : "正在读取目录";
+      ? chapters.slice(index + 1).reduce((sum, chapter) => sum + (chapter.wordCount || 0), 0)
+      : 0;
+  // 顶栏进度：章号 + 字数一行，全书百分比 + 剩余时长一行。两档数据口径完全一致，
+  // 只是 H5 顶栏窄——把第二行放到书名下面当小字，不挤掉书名（PC 仍拼成一行）。
+  const chapterLine = [
+    chapterPosition(chapters.length > 0 && index >= 0 ? index : null, chapters.length),
+    chapterWords,
+  ];
+  const extraLine =
+    chapters.length > 0 && index >= 0
+      ? [`全书 ${wholePercent}%`, ...(remainingWords > 0 ? [formatRemainingTime(remainingWords)] : [])]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
+  const chapterText = chapters.length > 0 && index >= 0 ? chapterLine.join(" · ") : "正在读取目录";
+  // PC 拼成一行；H5 主行只放章号与字数，全书/剩余交给第二行（同一份数据，不重复算）
+  const progressText = isH5 || !extraLine ? chapterText : `${chapterText} · ${extraLine}`;
 
   function dismissHint() {
     setHintDismissedFor(chapterId);
@@ -267,6 +302,7 @@ export function ReaderPage() {
         controlsVisible={controls.visible}
         bookTitle={bookTitle}
         progressText={progressText}
+        progressSubtext={isH5 ? extraLine : undefined}
         fullscreen={fullscreen}
         canFullscreen={canFullscreen}
         searchEnabled={Boolean(stream.chapterData)}
@@ -287,6 +323,7 @@ export function ReaderPage() {
         onBack={goBack}
         onToggleFullscreen={() => void toggleFullscreen()}
         onShelf={goShelf}
+        onOpenBookDetail={goBookDetail}
         onOpenBookmarks={toggleBookmarks}
         onToggleSearch={toggleSearch}
         onOpenDirectory={toggleDirectory}
@@ -317,9 +354,10 @@ export function ReaderPage() {
         searching={searchOpen}
         bookId={bookId}
         reducedMotion={reducedMotion}
-        hintVisible={restoreHintVisible}
-        onDismissHint={dismissHint}
       />
+
+      {/* 进度恢复提示：固定浮条（3 秒自动消失），不进正文流、不把正文往下推 */}
+      <ReaderRestoreHint visible={restoreHintVisible} onDismiss={dismissHint} />
 
       <ReaderScrollProgress resetKey={chapterId} />
 

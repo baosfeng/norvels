@@ -132,9 +132,9 @@ describe("阅读器：键盘补全", () => {
   it("方向键仍然翻章", () => {
     renderReader();
     press("ArrowRight");
-    expect(screen.getByTestId("reader-top").textContent).toContain("第 2 / 2 章");
+    expect(screen.getByTestId("reader-top").textContent).toContain("第 2 章 / 共 2 章");
     press("ArrowLeft");
-    expect(screen.getByTestId("reader-top").textContent).toContain("第 1 / 2 章");
+    expect(screen.getByTestId("reader-top").textContent).toContain("第 1 章 / 共 2 章");
   });
 
   it("? 打开快捷键帮助，列出 PageUp 与 Shift+空格，Esc 关闭", () => {
@@ -164,7 +164,7 @@ describe("阅读器：键盘补全", () => {
     renderReader();
     fireEvent.click(screen.getByRole("button", { name: "快捷键帮助" }));
     press("ArrowRight");
-    expect(screen.getByTestId("reader-top").textContent).toContain("第 1 / 2 章");
+    expect(screen.getByTestId("reader-top").textContent).toContain("第 1 章 / 共 2 章");
   });
 
   it("正文末尾不再有那行快捷键提示", () => {

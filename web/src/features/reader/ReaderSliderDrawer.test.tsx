@@ -151,12 +151,12 @@ describe("进度滑块：拖动跳章", () => {
     expect(bubble.textContent).toContain("第 3 章");
     expect(bubble.textContent).toContain("第三章 归途");
     // 还没松手：仍在第 1 章
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章");
 
     act(() => {
       fireEvent.pointerUp(input, { clientX: 10, clientY: 800 });
     });
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 章 / 共 3 章");
     expect(screen.queryByTestId("chapter-slider-bubble")).toBeNull();
   });
 
@@ -172,7 +172,7 @@ describe("进度滑块：拖动跳章", () => {
     });
 
     expect(showToast).not.toHaveBeenCalled();
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 章 / 共 3 章");
   });
 
   it("键盘可达：改值即跳章，Home / End 跳首末章", () => {
@@ -180,15 +180,15 @@ describe("进度滑块：拖动跳章", () => {
     const input = slider();
     // 非拖动状态下改值（键盘 ← / → 走的就是 change）
     fireEvent.change(input, { target: { value: "2" } });
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 章 / 共 3 章");
   });
 
   it("Home / End 直接跳首章 / 末章", () => {
     renderReader(["/read/7/11"]);
     fireEvent.keyDown(slider(), { key: "End" });
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 章 / 共 3 章");
     fireEvent.keyDown(slider(), { key: "Home" });
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章");
   });
 
   it("H5 底栏顶部也有一个进度滑块，和正文底部那个共用跳章口径", () => {
@@ -200,7 +200,7 @@ describe("进度滑块：拖动跳章", () => {
     const bar = within(screen.getByTestId("reader-bar")).getByTestId("reader-bar-slider") as HTMLInputElement;
     expect(bar.type).toBe("range");
     fireEvent.change(bar, { target: { value: "1" } });
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 章 / 共 3 章");
   });
 });
 
@@ -314,41 +314,61 @@ describe("章末衔接：没有按钮卡片，下一章正文直接接在下面"
   });
 });
 
-describe("章末信息行：字数换算成阅读时长", () => {
+describe("阅读进度常驻顶栏（章末不再重复统计）", () => {
   beforeEach(() => {
     store = [];
     vi.clearAllMocks();
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   });
 
-  it("本章时长复用 500 字/分钟口径，与字数同一行", () => {
-    renderReader(["/read/7/10"]);
-    // 2000 字 / 500 = 4 分钟
-    expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
-    expect(screen.getByTestId("reader-word").textContent).toContain("2,000 字");
+  it("章号与字数由顶栏承担，章末分隔只剩「本章完」", () => {
+    renderReader(["/read/7/10"], "pc");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章 · 2,000 字");
     act(() => {
       fireEvent.keyDown(window, { key: "ArrowRight" });
     });
-    // 2100 字 → 4.2 → 4 分钟
-    expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 章 / 共 3 章 · 2,100 字");
+    // 章末不再印字数 / 时长 / 进度：这些都是常驻状态
+    expect(screen.queryByTestId("reader-word")).toBeNull();
+    expect(screen.queryByTestId("reader-chapter-time")).toBeNull();
+    expect(screen.getByTestId("reader-stream-mark").textContent).toBe("本章完");
   });
 
-  it("全书剩余时长按目录剩余章字数求和，翻章后跟着变小", () => {
-    renderReader(["/read/7/10"]);
+  it("全书剩余时长按目录剩余章字数求和，翻章后跟着变小（PC 顶栏）", () => {
+    renderReader(["/read/7/10"], "pc");
     // 第 1 章时剩第 2 + 3 章 = 2100 + 2200 = 4300 字 → 9 分钟
-    expect(screen.getByTestId("reader-remaining-time").textContent).toContain("还剩约 9 分钟");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("还剩约 9 分钟");
     act(() => {
       fireEvent.keyDown(window, { key: "ArrowRight" });
     });
     // 第 2 章时只剩第 3 章 = 2200 字 → 4 分钟
-    expect(screen.getByTestId("reader-remaining-time").textContent).toContain("还剩约 4 分钟");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("还剩约 4 分钟");
   });
 
-  it("末章没有剩余章节：不显示全书剩余时长，只留本章时长", () => {
-    renderReader(["/read/7/12"]);
-    expect(screen.getByTestId("reader-chapter-time").textContent).toContain("约 4 分钟");
-    // 剩余字数 0 也不编一条「还剩约 1 分钟」
-    expect(screen.queryByTestId("reader-remaining-time")).toBeNull();
+  it("末章没有剩余章节：顶栏不编「还剩约」，流末尾给「全书读完」出口", () => {
+    renderReader(["/read/7/12"], "pc");
+    const progress = screen.getByTestId("reader-top-progress").textContent ?? "";
+    expect(progress).toContain("第 3 章 / 共 3 章");
+    expect(progress).not.toContain("还剩约");
     expect(screen.getByTestId("reader-pager-end").textContent).toContain("全书读完");
+  });
+
+  it("H5 顶栏把「全书 % · 还剩约」换到第二行小字，数据与 PC 同一份", () => {
+    renderReader(["/read/7/10"], "h5");
+    const main = screen.getByTestId("reader-top-progress").textContent ?? "";
+    expect(main).toContain("第 1 章 / 共 3 章 · 2,000 字");
+    // 主进度行只放章号与字数，全书/剩余换到第二行，避免挤掉书名
+    expect(main).not.toContain("全书");
+
+    const sub = screen.getByTestId("reader-top-progress-sub").textContent ?? "";
+    expect(sub).toContain("全书 33%");
+    expect(sub).toContain("还剩约 9 分钟");
+  });
+
+  it("H5 末章：第二行只有「全书 %」，不编「还剩约」", () => {
+    renderReader(["/read/7/12"], "h5");
+    const sub = screen.getByTestId("reader-top-progress-sub").textContent ?? "";
+    expect(sub).toContain("全书 100%");
+    expect(sub).not.toContain("还剩约");
   });
 });

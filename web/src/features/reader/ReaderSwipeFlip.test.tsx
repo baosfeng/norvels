@@ -94,7 +94,7 @@ function renderReader(entry: string) {
   );
 }
 
-/** 顶栏进度文本（「第 2 / 2 章」）就是当前章号：路由变化不必另做探针。 */
+/** 顶栏进度文本（「第 2 章 / 共 2 章」）就是当前章号：路由变化不必另做探针。 */
 function progressText(): string {
   return screen.getByTestId("reader-top-progress").textContent ?? "";
 }
@@ -156,7 +156,7 @@ describe("翻章与回章首", () => {
     renderReader("/read/7/10");
     surface().scrollTop = 500;
     swipe(300, 200);
-    await waitFor(() => expect(progressText()).toContain("第 2 / 2 章"));
+    await waitFor(() => expect(progressText()).toContain("第 2 章 / 共 2 章"));
     // 按「第二章的 section」对齐到屏幕顶：连续流里上方还有第一章，不能停在它里面
     await waitFor(() => expect(surface().scrollTop).toBe(2000));
     // 旧实现滚的是窗口：容器 scrollTop 一直是 500
@@ -168,7 +168,7 @@ describe("翻章与回章首", () => {
     renderReader("/read/7/11");
     surface().scrollTop = 480;
     swipe(100, 220);
-    await waitFor(() => expect(progressText()).toContain("第 1 / 2 章"));
+    await waitFor(() => expect(progressText()).toContain("第 1 章 / 共 2 章"));
     await waitFor(() => expect(surface().scrollTop).toBe(0));
   });
 
@@ -178,7 +178,7 @@ describe("翻章与回章首", () => {
     fireEvent(node, touch("touchstart", 300, 200));
     fireEvent(node, touch("touchmove", 260, 240));
     fireEvent(node, touch("touchend", 230, 245));
-    expect(progressText()).toContain("第 1 / 2 章");
+    expect(progressText()).toContain("第 1 章 / 共 2 章");
   });
 
   it("目录抽屉打开时横滑不翻章，关掉后才翻", async () => {
@@ -191,6 +191,6 @@ describe("翻章与回章首", () => {
     await waitFor(() => expect(screen.getByTestId("reader-drawer").getAttribute("aria-hidden")).toBe("false"));
 
     swipe(300, 200);
-    expect(progressText()).toContain("第 1 / 2 章");
+    expect(progressText()).toContain("第 1 章 / 共 2 章");
   });
 });

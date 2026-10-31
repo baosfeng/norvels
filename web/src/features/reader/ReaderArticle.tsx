@@ -1,10 +1,9 @@
 import type { ChapterBrief } from "../../api/types";
 import type { ReactNode } from "react";
-import { formatReadingTime, formatRemainingTime, formatWords } from "../../lib/format";
+import { formatRemainingTime } from "../../lib/format";
 import type { ReaderHit } from "../../lib/readerSearch";
 import { ReaderChapterSlider } from "./ReaderChapterSlider";
 import { ReaderPager } from "./ReaderPager";
-import { ReaderRestoreHint } from "./ReaderRestoreHint";
 import type { ChapterStream, StreamSegment } from "./useChapterStream";
 
 /**
@@ -28,8 +27,6 @@ export function ReaderArticle({
   onJumpChapter,
   onShelf,
   reducedMotion,
-  hintVisible,
-  onDismissHint,
 }: {
   stream: ChapterStream;
   hitsByPara: Map<number, ReaderHit[]>;
@@ -41,8 +38,6 @@ export function ReaderArticle({
   onJumpChapter: (index: number) => void;
   onShelf: () => void;
   reducedMotion: boolean;
-  hintVisible: boolean;
-  onDismissHint: () => void;
 }) {
   const { chapters, activeIndex, segments } = stream;
   const tail = segments[segments.length - 1];
@@ -57,7 +52,7 @@ export function ReaderArticle({
 
   return (
     <div className="reader-stream">
-      {segments.map((segment, at) => {
+      {segments.map((segment) => {
         const active = segment.id === stream.activeId;
         return (
           <section
@@ -66,7 +61,6 @@ export function ReaderArticle({
             data-chapter-id={segment.id}
             data-testid={`reader-segment-${segment.id}`}
           >
-            {at === 0 ? <ReaderRestoreHint visible={hintVisible} onDismiss={onDismissHint} /> : null}
             <h2>{segment.title}</h2>
             <div>
               {segment.paragraphs.map((para, i) =>
@@ -110,9 +104,10 @@ export function ReaderArticle({
 
 /**
  * 章末分隔：一行灰字，不是卡片、不带按钮——它只把两章分开，滑过去不需要任何动作。
- * 字数与阅读时长同一行写：字数没有直觉，「约几分钟」有。
+ * 章号 / 字数 / 全书进度 / 剩余时长不在这里重复：那是常驻状态信息，已经放在阅读器顶栏
+ * （PC 顶栏常驻，H5 控制栏常显）；每章末尾再印一遍会把正文的停顿打断。
  *
- * 每一章都渲染同一份内容（含数字）：高度必须与「是不是可见章」无关，
+ * 每一章都渲染同一份内容：高度必须与「是不是可见章」无关，
  * 否则滚过章界线的那一帧里，上一章的分隔行会在读者眼皮底下变矮，下面的正文跟着上跳。
  * data-testid 只挂在可见章上，用例才找得到唯一节点。
  */
@@ -127,31 +122,10 @@ function StreamMark({
 }) {
   const total = chapters.length;
   const last = total > 0 && segment.index === total - 1;
-  const percent = total > 0 && segment.index >= 0 ? (segment.index + 1) / total : 0;
-  // 全书剩余字数：目录里这一章之后的字数和；末章为 null（不编一条「还剩约 1 分钟」）
-  const rest = segment.index >= 0 ? chapters.slice(segment.index + 1).reduce((sum, c) => sum + (c.wordCount || 0), 0) : 0;
   return (
     // div 而不是 p：.reader-content p 的段距 / 缩进会压到分隔行上
     <div className="reader-stream-mark" data-testid={active ? "reader-stream-mark" : undefined}>
       <span className="reader-stream-mark-label">{last ? "全书完" : "本章完"}</span>
-      <span className="reader-stream-mark-meta">
-        第 <strong className="num">{segment.index + 1}</strong> / {total} 章
-        <span className="word" data-testid={active ? "reader-word" : undefined}>
-          {" "}
-          · {formatWords(segment.wordCount)}
-        </span>
-        <span className="reader-time" data-testid={active ? "reader-chapter-time" : undefined}>
-          {" "}
-          · {formatReadingTime(segment.wordCount)}
-        </span>
-        {" · "}全书 <strong className="num">{Math.round(percent * 100)}</strong>%
-        {rest > 0 ? (
-          <span className="reader-time" data-testid={active ? "reader-remaining-time" : undefined}>
-            {" "}
-            · {formatRemainingTime(rest)}
-          </span>
-        ) : null}
-      </span>
     </div>
   );
 }

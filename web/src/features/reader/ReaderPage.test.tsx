@@ -251,7 +251,7 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     renderReader();
 
     act(() => tap());
-    expect(screen.getByTestId("reader-top").textContent).toContain("第 1 / 3 章");
+    expect(screen.getByTestId("reader-top").textContent).toContain("第 1 章 / 共 3 章");
 
     act(() => {
       fireEvent.click(screen.getByLabelText("下一章"));
@@ -260,7 +260,7 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     // 连续流：进章就把下一章预取好（正文已经在下面），翻章时不需要等加载
     expect(chapterState.mock.calls).toEqual(expect.arrayContaining([[7, 11]]));
     expect(headerHidden()).toBe("false");
-    expect(screen.getByTestId("reader-top").textContent).toContain("第 2 / 3 章");
+    expect(screen.getByTestId("reader-top").textContent).toContain("第 2 章 / 共 3 章");
     // 收起态下进度数字不常驻：收起后一起隐藏
     act(() => tap());
     expect(headerHidden()).toBe("true");
@@ -270,14 +270,14 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     renderReader();
 
     act(() => tap());
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章 · 2,000 字");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章 · 2,000 字");
 
     act(() => {
       fireEvent.click(screen.getByLabelText("下一章"));
     });
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 / 3 章 · 2,100 字");
-    // 正文底部的进度行同样带字数，口径一致
-    expect(screen.getByTestId("reader-word").textContent).toContain("2,100 字");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 章 / 共 3 章 · 2,100 字");
+    // 章末不再重复统计：章号与字数只由顶栏承担（H5 顶栏不显示全书百分比与剩余时长）
+    expect(screen.queryByTestId("reader-word")).toBeNull();
   });
 
   it("浏览器没有全屏 API 时按钮照常可点：收起控制层并提示（契约 C-02）", () => {
@@ -331,7 +331,7 @@ describe("阅读器：书架出口与返回语义", () => {
   it("顶栏返回固定回这本书的详情页，即使上一页是书架", () => {
     renderReader("pc", ["/shelf", "/read/7/10"], 1);
 
-    fireEvent.click(screen.getByLabelText("返回目录"));
+    fireEvent.click(screen.getByLabelText("返回书籍详情"));
 
     // 阅读器可能从任何入口进来：退出阅读的落点永远是这本书的介绍页，不猜上一页
     expect(screen.getByText("书籍详情")).toBeTruthy();
@@ -340,7 +340,7 @@ describe("阅读器：书架出口与返回语义", () => {
   it("直接进入阅读器（没有历史）点返回同样落在详情页", () => {
     renderReader("pc", ["/read/7/10"]);
 
-    fireEvent.click(screen.getByLabelText("返回目录"));
+    fireEvent.click(screen.getByLabelText("返回书籍详情"));
 
     expect(screen.getByText("书籍详情")).toBeTruthy();
   });

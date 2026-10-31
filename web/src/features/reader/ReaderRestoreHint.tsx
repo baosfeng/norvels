@@ -1,8 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+
+/** 提示条自动消失的时间：够读者看到，又不长期挡在正文上。 */
+export const RESTORE_HINT_MS = 3000;
 
 /**
- * 进度恢复提示条（C-16）：进入章节时若存在上次读到的段落，提示条浮在正文顶部。
- * 「知道了」点击后 150ms 淡出；滚动超过一屏也自动消失。焦点交还正文，不抢走。
+ * 进度恢复提示条（C-16）：进入章节时若存在上次读到的段落，提示条浮在正文**之上**
+ * （position: fixed，不占正文位置、不把正文往下推）。
+ *
+ * 3 秒自动消失——恢复本身是「已经发生在你身上」的事，不需要读者先关掉浮条才能读；
+ * 「知道了」保留给想立刻收起的读者。焦点不抢：点「知道了」后交还正文。
  */
 export function ReaderRestoreHint({
   visible,
@@ -11,20 +17,10 @@ export function ReaderRestoreHint({
   visible: boolean;
   onDismiss: () => void;
 }) {
-  const base = useRef<number | null>(null);
-
   useEffect(() => {
-    if (!visible) {
-      base.current = null;
-      return;
-    }
-    base.current = window.scrollY;
-    const onScroll = () => {
-      if (base.current === null) return;
-      if (Math.abs(window.scrollY - base.current) > window.innerHeight) onDismiss();
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    if (!visible) return;
+    const timer = window.setTimeout(onDismiss, RESTORE_HINT_MS);
+    return () => window.clearTimeout(timer);
   }, [visible, onDismiss]);
 
   if (!visible) return null;

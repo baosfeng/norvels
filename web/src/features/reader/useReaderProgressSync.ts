@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChapterBrief } from "../../api/types";
 import { bumpReadingRevision } from "../../lib/readingRevision";
+import { showToast } from "../../lib/toastStore";
 
 const PROGRESS_DEBOUNCE_MS = 1000;
+/** 写失败提示的节流窗口：连续失败（每章都失败）只提示一次，不刷屏。 */
+const FAILURE_NOTICE_MS = 60_000;
 
 type Anchor = { chapterId: number; para: number };
 type SaveProgress = (input: { bookId: number; chapterId: number; percent: number; paraIndex: number }) => unknown;
@@ -32,9 +35,21 @@ export function useReaderProgressSync({
 }) {
   const lastSent = useRef({ chapterId: 0, para: -1 });
   const anchorRef = useRef(anchor);
+  const lastNoticeAt = useRef(0);
   useEffect(() => {
     anchorRef.current = anchor;
   });
+
+  /**
+   * 写失败提示：后端不可用时阅读不该被打断，但也不能一直静默——
+   * 一次 error toast 说明「这次没存上、稍后会再试」，60 秒内的后续失败不再弹。
+   */
+  const noticeFailure = useCallback(() => {
+    const now = Date.now();
+    if (now - lastNoticeAt.current < FAILURE_NOTICE_MS) return;
+    lastNoticeAt.current = now;
+    showToast("阅读进度没能保存，稍后会再试。", "error");
+  }, []);
 
   const sendProgress = useCallback(
     (targetChapter: number, paraIndex: number) => {
@@ -47,9 +62,19 @@ export function useReaderProgressSync({
       // 下面「最近在读」那行还是第 11 章的百分比）。
       void Promise.resolve(
         saveProgress({ bookId, chapterId: targetChapter, percent: (at + 1) / chapters.length, paraIndex }),
-      ).then(bumpReadingRevision, () => undefined);
+      ).then(
+        (saved) => {
+          // useSaveProgress 失败返回 false（不抛）；真抛了也走同一条提示
+          if (saved === false) {
+            noticeFailure();
+            return;
+          }
+          bumpReadingRevision();
+        },
+        () => noticeFailure(),
+      );
     },
-    [bookId, chapters, saveProgress],
+    [bookId, chapters, saveProgress, noticeFailure],
   );
 
   useEffect(() => {

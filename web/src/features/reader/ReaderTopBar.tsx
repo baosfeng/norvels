@@ -1,14 +1,17 @@
 import { ChevronLeftIcon } from "../../components/Icons";
 
 /**
- * 阅读器顶栏：PC 右侧是书架 / 书签 / 搜索 / 目录 / 帮助 / 设置，H5 只保留全屏。
- * 每个按钮带契约锚点（C-01…C-08），禁用态用常驻说明而不是悬停提示。
+ * 阅读器顶栏：PC 右侧是书架 / 详情 / 书签 / 搜索 / 目录 / 帮助 / 设置；
+ * H5 是「返回 + 可点的书名 + 全屏」——手机上没有横向空间再放一颗按钮，
+ * 书名本来就是读者想点的地方，点它回书籍详情（aria-label 与 PC 的「详情」一致）。
+ * 其余按钮带契约锚点（C-01…C-08），禁用态用常驻说明而不是悬停提示。
  */
 export function ReaderTopBar({
   isH5,
   hidden,
   bookTitle,
   progressText,
+  progressSubtext,
   fullscreen,
   canFullscreen,
   searchEnabled,
@@ -19,6 +22,7 @@ export function ReaderTopBar({
   onBack,
   onToggleFullscreen,
   onShelf,
+  onOpenBookDetail,
   onOpenBookmarks,
   onToggleSearch,
   onOpenDirectory,
@@ -29,6 +33,8 @@ export function ReaderTopBar({
   hidden: boolean;
   bookTitle: string;
   progressText: string;
+  /** H5 顶栏第二行小字（全书 % · 还剩约）；不传就只显示主进度行 */
+  progressSubtext?: string;
   fullscreen: boolean;
   canFullscreen: boolean;
   searchEnabled: boolean;
@@ -39,26 +45,50 @@ export function ReaderTopBar({
   onBack: () => void;
   onToggleFullscreen: () => void;
   onShelf: () => void;
+  /** 回书籍详情（/book/:bookId）：PC 是顶栏「详情」按钮，H5 是可点的书名 */
+  onOpenBookDetail: () => void;
   onOpenBookmarks: () => void;
   onToggleSearch: () => void;
   onOpenDirectory: () => void;
   onToggleHelp: () => void;
   onToggleSettings: () => void;
 }) {
+  // H5 收起态：aria-hidden 只对读屏生效，键盘仍能 Tab 进屏幕外的按钮。
+  // 容器加 inert（把整棵子树移出焦点顺序），老浏览器不认时靠各按钮的 tabIndex=-1 兜底。
   return (
     <header
       className="reader-top"
       data-testid="reader-top"
       data-od-id="reader-top"
       aria-hidden={hidden ? "true" : "false"}
+      inert={hidden}
     >
-      <button className="icon-btn" type="button" aria-label="返回目录" data-od-id="C-01" onClick={onBack}>
+      <button
+        className="icon-btn"
+        type="button"
+        aria-label="返回书籍详情"
+        tabIndex={hidden ? -1 : undefined}
+        data-od-id="C-01"
+        onClick={onBack}
+      >
         <ChevronLeftIcon />
       </button>
-      <div className="reader-top-title">
-        <strong>{bookTitle || "正在打开"}</strong>
-        <span data-testid="reader-top-progress">{progressText}</span>
-      </div>
+      {isH5 ? (
+        <button
+          className="reader-top-title reader-top-title-btn"
+          type="button"
+          aria-label="查看书籍详情"
+          tabIndex={hidden ? -1 : undefined}
+          data-testid="reader-top-detail"
+          onClick={onOpenBookDetail}
+        >
+          <TitleLines bookTitle={bookTitle} progressText={progressText} subtext={progressSubtext} />
+        </button>
+      ) : (
+        <div className="reader-top-title">
+          <TitleLines bookTitle={bookTitle} progressText={progressText} />
+        </div>
+      )}
       <div className="reader-top-actions">
         {isH5 ? (
           <button
@@ -67,6 +97,7 @@ export function ReaderTopBar({
             aria-label={fullscreen ? "退出全屏" : "全屏阅读"}
             aria-pressed={fullscreen}
             aria-haspopup="true"
+            tabIndex={hidden ? -1 : undefined}
             data-od-id="C-02"
             onClick={onToggleFullscreen}
           >
@@ -78,6 +109,15 @@ export function ReaderTopBar({
           <>
             <button className="btn" type="button" aria-label="返回书架" data-od-id="C-03" onClick={onShelf}>
               书架
+            </button>
+            <button
+              className="btn"
+              type="button"
+              aria-label="查看书籍详情"
+              data-testid="reader-top-detail"
+              onClick={onOpenBookDetail}
+            >
+              详情
             </button>
             <button
               className="btn"
@@ -121,5 +161,31 @@ export function ReaderTopBar({
         )}
       </div>
     </header>
+  );
+}
+
+/**
+ * 书名 + 进度（+ H5 的第二行小字）：PC 放进 div、H5 放进可点的 button，排版只写一次。
+ * 第二行是「全书 % · 还剩约」，与 PC 顶栏同一份数据；H5 只是换行显示，不另算一遍。
+ */
+function TitleLines({
+  bookTitle,
+  progressText,
+  subtext,
+}: {
+  bookTitle: string;
+  progressText: string;
+  subtext?: string;
+}) {
+  return (
+    <>
+      <strong>{bookTitle || "正在打开"}</strong>
+      <span data-testid="reader-top-progress">{progressText}</span>
+      {subtext ? (
+        <span className="reader-top-sub" data-testid="reader-top-progress-sub">
+          {subtext}
+        </span>
+      ) : null}
+    </>
   );
 }

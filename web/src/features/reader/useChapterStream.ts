@@ -33,6 +33,9 @@ const VISIBLE_BAND = "-10% 0px -85% 0px";
 /** 取过的正文留在内存里：窗口移动时同一章会被换到另一个槽位，别让它闪成加载态。 */
 const CACHE_LIMIT = 8;
 
+/** 换章后的判定冷却：覆盖「切换那一帧已经排队、但报告的是旧位置」的 observer 回调。 */
+const ADVANCE_COOLDOWN_MS = 220;
+
 const SURFACE_SELECTOR = '[data-testid="reader-swipe-area"]';
 const SEGMENT_SELECTOR = "[data-chapter-id]";
 
@@ -193,17 +196,60 @@ export function useChapterStream({
   const loading = !loaded && Boolean(activeSlot?.loading);
   const error = loaded ? null : (activeSlot?.error ?? null);
 
+  /**
+   * 切换后的冷却期：IntersectionObserver 的回调是异步的，切换那一刻已经在队列里的 entry
+   * 报告的是「补偿之前」的交叉状态——照单全收就会把刚读到的章又判回上一章，
+   * 补偿再把位置推回去，快速滚动时形成 12149↔13549 的来回震荡。
+   * 冷却期内的判定一律丢弃，冷却结束时用最新的可见集合补判一次。
+   */
+  const cooldownUntil = useRef(0);
+  const judgeTimer = useRef<number | null>(null);
+  const seenRef = useRef<Set<HTMLElement>>(new Set());
+  const orderRef = useRef<Map<HTMLElement, number>>(new Map());
+
   /** 滚过章界线：把可见章换成 targetId，URL 跟上。 */
   const advanceTo = useCallback(
     (targetId: number) => {
       if (chapters.findIndex((chapter) => chapter.id === targetId) < 0 || targetId === activeId) return;
       advanced.current = true;
+      cooldownUntil.current = performance.now() + ADVANCE_COOLDOWN_MS;
       setActiveId(targetId);
       // replace 不新增历史条目；也不走 remount，正文节点原地复用，滚动位置不动
       navigate(`/read/${bookId}/${targetId}`, { replace: true });
     },
     [activeId, bookId, chapters, navigate],
   );
+
+  /** 冷却结束后的补判回调：judge 内部要引用自己，走 ref 免得 lint 报「声明前访问」。 */
+  const judgeRef = useRef<() => void>(() => {});
+
+  /** 用当前的可见集合判一次章；冷却期内挂一个补判，避免用户正好停在冷却期里。 */
+  const judge = useCallback(() => {
+    const seen = seenRef.current;
+    if (seen.size === 0) return;
+    const wait = cooldownUntil.current - performance.now();
+    if (wait > 0) {
+      if (judgeTimer.current === null) {
+        judgeTimer.current = window.setTimeout(() => {
+          judgeTimer.current = null;
+          judgeRef.current();
+        }, wait + 16);
+      }
+      return;
+    }
+    // 判定带里同时压着两章时取靠前的那一章：界线就在眼前，先算还在上一章
+    let pick: HTMLElement | null = null;
+    for (const node of seen) {
+      if (!pick || (orderRef.current.get(node) ?? 0) < (orderRef.current.get(pick) ?? 0)) pick = node;
+    }
+    if (!pick) return;
+    const id = Number(pick.dataset.chapterId);
+    if (Number.isFinite(id)) advanceTo(id);
+  }, [advanceTo]);
+
+  useEffect(() => {
+    judgeRef.current = judge;
+  }, [judge]);
 
   const segmentKey = windowIds.join(",");
   // 窗口是「想要哪几章」，renderedKey 是「真的渲染出来了哪几章」：
@@ -217,8 +263,9 @@ export function useChapterStream({
     // H5 正文自己滚（.reader-main 定高 overflow），判定带就相对这个容器；PC 由整页滚，相对视口
     const surface = document.querySelector<HTMLElement>(SURFACE_SELECTOR);
     const scroller = surface && surface.scrollHeight - surface.clientHeight > 1 ? surface : null;
-    const order = new Map(nodes.map((node, at) => [node, at]));
+    orderRef.current = new Map(nodes.map((node, at) => [node, at]));
     const seen = new Set<HTMLElement>();
+    seenRef.current = seen;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -226,21 +273,20 @@ export function useChapterStream({
           if (entry.isIntersecting) seen.add(node);
           else seen.delete(node);
         }
-        if (seen.size === 0) return;
-        // 判定带里同时压着两章时取靠前的那一章：界线就在眼前，先算还在上一章
-        let pick: HTMLElement | null = null;
-        for (const node of seen) {
-          if (!pick || (order.get(node) ?? 0) < (order.get(pick) ?? 0)) pick = node;
-        }
-        if (!pick) return;
-        const id = Number(pick.dataset.chapterId);
-        if (Number.isFinite(id)) advanceTo(id);
+        judge();
       },
       { root: scroller, rootMargin: VISIBLE_BAND },
     );
     nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
-  }, [segmentKey, renderedKey, advanceTo]);
+    return () => {
+      observer.disconnect();
+      seenRef.current = new Set();
+      if (judgeTimer.current !== null) {
+        window.clearTimeout(judgeTimer.current);
+        judgeTimer.current = null;
+      }
+    };
+  }, [segmentKey, renderedKey, judge]);
 
   /**
    * 首次落位：挂载后正文停在入口章的章首。

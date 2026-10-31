@@ -25,6 +25,17 @@
   margin: 0;
 }
 
+/* PC 上正文是一条居中的阅读列：.reader-main 虽然是 flex 居中，但流里的 section 是 flex item
+   （默认 stretch 到整行），只有 margin-inline:auto 才会真的把 42rem 的正文列放到中间。
+   流末尾的进度区与翻章条跟正文同宽同轴，避免读到末章时突然横跨整屏。 */
+.reader-segment,
+.reader-progress,
+.reader-pager {
+  width: 100%;
+  max-width: var(--reader-width, 42rem);
+  margin-inline: auto;
+}
+
 /* ── 章末分隔：一行灰字，不是卡片、不带按钮 ── */
 .reader-stream-mark {
   display: flex;

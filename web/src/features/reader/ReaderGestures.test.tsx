@@ -168,26 +168,26 @@ describe("三区手势：H5 单击分区", () => {
     renderReader();
     act(() => tapAt(250));
     expect(showToast).toHaveBeenCalledWith("已翻到第 2 章");
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 章 / 共 3 章");
   });
 
   it("点左区翻到上一章；第一章再点只提示不动", () => {
     renderReader(["/read/7/11"]);
     act(() => tapAt(10));
     expect(showToast).toHaveBeenCalledWith("已翻到第 1 章");
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章");
 
     showToast.mockClear();
     act(() => tapAt(10));
     expect(showToast).toHaveBeenCalledWith("已经是第一章了");
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章");
   });
 
   it("最后一章点右区只提示已经是最后一章", () => {
     renderReader(["/read/7/12"]);
     act(() => tapAt(280));
     expect(showToast).toHaveBeenCalledWith("已经是最后一章了");
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 3 章 / 共 3 章");
   });
 
   it("设置面板打开时短按不翻章（只切控制层）", () => {
@@ -198,7 +198,7 @@ describe("三区手势：H5 单击分区", () => {
     showToast.mockClear();
     act(() => tapAt(280));
     expect(showToast).not.toHaveBeenCalledWith("已翻到第 3 章");
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章");
     // 面板还开着：短按没有被当成「收起控制层」
     expect(screen.getByTestId("reader-settings").getAttribute("aria-hidden")).toBe("false");
   });
@@ -208,7 +208,7 @@ describe("三区手势：H5 单击分区", () => {
     fireEvent.pointerDown(surface(), { clientX: 280, clientY: 300 });
     fireEvent.pointerUp(surface(), { clientX: 60, clientY: 305 });
     expect(screen.getByTestId("reader-top").getAttribute("aria-hidden")).toBe("true");
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 / 3 章");
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章");
   });
 
   // 沉浸式：纯阅读态正文两侧不留任何装饰（曾经的 24×88 灰胶囊压在字上，实测像没加载出来的占位）。

@@ -11,6 +11,7 @@ export function ReaderTopChrome({
   controlsVisible,
   bookTitle,
   progressText,
+  progressSubtext,
   fullscreen,
   canFullscreen,
   searchEnabled,
@@ -22,6 +23,7 @@ export function ReaderTopChrome({
   onBack,
   onToggleFullscreen,
   onShelf,
+  onOpenBookDetail,
   onOpenBookmarks,
   onToggleSearch,
   onOpenDirectory,
@@ -34,6 +36,8 @@ export function ReaderTopChrome({
   controlsVisible: boolean;
   bookTitle: string;
   progressText: string;
+  /** H5 顶栏第二行小字（全书 % · 还剩约）；PC 不传，进度拼成一行 */
+  progressSubtext?: string;
   fullscreen: boolean;
   canFullscreen: boolean;
   searchEnabled: boolean;
@@ -54,6 +58,7 @@ export function ReaderTopChrome({
   onBack: () => void;
   onToggleFullscreen: () => void;
   onShelf: () => void;
+  onOpenBookDetail: () => void;
   onOpenBookmarks: () => void;
   onToggleSearch: () => void;
   onOpenDirectory: () => void;
@@ -69,6 +74,7 @@ export function ReaderTopChrome({
         hidden={isH5 && !controlsVisible}
         bookTitle={bookTitle}
         progressText={progressText}
+        progressSubtext={progressSubtext}
         fullscreen={fullscreen}
         canFullscreen={canFullscreen}
         searchEnabled={searchEnabled}
@@ -79,6 +85,7 @@ export function ReaderTopChrome({
         onBack={onBack}
         onToggleFullscreen={onToggleFullscreen}
         onShelf={onShelf}
+        onOpenBookDetail={onOpenBookDetail}
         onOpenBookmarks={onOpenBookmarks}
         onToggleSearch={onToggleSearch}
         onOpenDirectory={onOpenDirectory}

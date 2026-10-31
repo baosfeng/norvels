@@ -29,8 +29,6 @@ export function ReaderBody({
   searching,
   bookId,
   reducedMotion,
-  hintVisible,
-  onDismissHint,
 }: {
   isH5: boolean;
   swipeRef: (node: HTMLElement | null) => void;
@@ -56,8 +54,6 @@ export function ReaderBody({
   searching: boolean;
   bookId: number;
   reducedMotion: boolean;
-  hintVisible: boolean;
-  onDismissHint: () => void;
 }) {
   const hasBody = stream.segments.length > 0;
   return (
@@ -73,8 +69,6 @@ export function ReaderBody({
           onJumpChapter={onJumpChapter}
           onShelf={onShelf}
           reducedMotion={reducedMotion}
-          hintVisible={hintVisible}
-          onDismissHint={onDismissHint}
         />
       ) : (
         <ReaderStateArea

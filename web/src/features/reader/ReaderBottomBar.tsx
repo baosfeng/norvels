@@ -99,34 +99,44 @@ export function ReaderBottomBar({
   drawerTab: "toc" | "bookmarks";
   searchOpen: boolean;
 }) {
+  // 与顶栏同一套：收起态整条 bar 加 inert（键盘不可达），老浏览器靠子元素 tabIndex=-1 兜底
+  const tabInert = hidden ? -1 : undefined;
   return (
-    <nav className="h5-reader-bar" data-testid="reader-bar" aria-label="阅读控制" aria-hidden={hidden}>
+    <nav
+      className="h5-reader-bar"
+      data-testid="reader-bar"
+      aria-label="阅读控制"
+      aria-hidden={hidden}
+      inert={hidden}
+    >
       <div className="h5-reader-bar-slider">
         <ReaderChapterSlider
           chapters={chapters}
           index={index}
           disabled={chapters.length === 0}
+          tabIndex={hidden ? -1 : undefined}
           testId="reader-bar-slider"
           onCommit={onJumpChapter}
         />
       </div>
       <div className="h5-reader-bar-actions">
-      <button type="button" aria-label="上一章" disabled={!prev} data-od-id="C-17" onClick={onPrev}>
+      <button type="button" aria-label="上一章" tabIndex={tabInert} disabled={!prev} data-od-id="C-17" onClick={onPrev}>
         <IconPrev />
         <span>上一章</span>
         {!prev ? <span className="inline-note">已是首章</span> : null}
       </button>
-      <button type="button" aria-label="章节目录" aria-expanded={drawerOpen && drawerTab === "toc"} data-od-id="C-18" onClick={() => onOpenDrawer("toc")}>
+      <button type="button" aria-label="章节目录" tabIndex={tabInert} aria-expanded={drawerOpen && drawerTab === "toc"} data-od-id="C-18" onClick={() => onOpenDrawer("toc")}>
         <IconMenu />
         <span>目录</span>
       </button>
-      <button type="button" aria-label="打开书签" aria-expanded={drawerOpen && drawerTab === "bookmarks"} data-od-id="C-19" onClick={() => onOpenDrawer("bookmarks")}>
+      <button type="button" aria-label="打开书签" tabIndex={tabInert} aria-expanded={drawerOpen && drawerTab === "bookmarks"} data-od-id="C-19" onClick={() => onOpenDrawer("bookmarks")}>
         <IconBookmark />
         <span>书签</span>
       </button>
       <button
         type="button"
         aria-label="搜索本章"
+        tabIndex={tabInert}
         aria-expanded={searchOpen}
         disabled={!searchEnabled}
         data-od-id="C-20"
@@ -136,15 +146,15 @@ export function ReaderBottomBar({
         <span>搜索</span>
         {!searchEnabled ? <span className="inline-note">正文还没载入，稍后可以搜索</span> : null}
       </button>
-      <button type="button" aria-label="返回书架" data-od-id="C-21" onClick={onGoShelf}>
+      <button type="button" aria-label="返回书架" tabIndex={tabInert} data-od-id="C-21" onClick={onGoShelf}>
         <IconShelf />
         <span>书架</span>
       </button>
-      <button type="button" aria-label="阅读设置" aria-expanded={settingsOpen} data-od-id="C-22" onClick={onToggleSettings}>
+      <button type="button" aria-label="阅读设置" tabIndex={tabInert} aria-expanded={settingsOpen} data-od-id="C-22" onClick={onToggleSettings}>
         <IconSettings />
         <span>设置</span>
       </button>
-      <button type="button" aria-label="下一章" disabled={!next} data-od-id="C-23" onClick={onNext}>
+      <button type="button" aria-label="下一章" tabIndex={tabInert} disabled={!next} data-od-id="C-23" onClick={onNext}>
         <IconNext />
         <span>下一章</span>
         {!next ? <span className="inline-note">已是末章</span> : null}

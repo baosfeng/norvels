@@ -89,6 +89,24 @@ describe("新增控件：进度恢复提示条（C-16）", () => {
     rerender(<ReaderRestoreHint visible={false} onDismiss={onDismiss} />);
     expect(screen.queryByText("已回到上次读到的地方")).toBeNull();
   });
+
+  it("3 秒后自动消失，不需要点「知道了」", () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    render(<ReaderRestoreHint visible onDismiss={onDismiss} />);
+    expect(screen.getByTestId("reader-restore-hint")).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(2999);
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
 });
 
 describe("新增控件：目录卷折叠（C-27）", () => {

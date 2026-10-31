@@ -13,6 +13,7 @@ export function ReaderChapterSlider({
   index,
   disabled,
   testId = "chapter-slider",
+  tabIndex,
   onCommit,
 }: {
   chapters: ChapterBrief[];
@@ -20,6 +21,8 @@ export function ReaderChapterSlider({
   index: number;
   disabled: boolean;
   testId?: string;
+  /** 控制层收起时传 -1：老浏览器不支持 inert 时也能把滑块移出焦点顺序。 */
+  tabIndex?: number;
   onCommit: (index: number) => void;
 }) {
   const total = chapters.length;
@@ -81,6 +84,7 @@ export function ReaderChapterSlider({
         aria-label="全书章节进度"
         aria-valuetext={total > 0 ? `第 ${value + 1} 章，共 ${total} 章` : "目录还没就绪"}
         data-testid={testId}
+        tabIndex={tabIndex}
         style={{ ["--slider-pct" as string]: `${percent}%` }}
         onPointerDown={() => setDrag(safeIndex)}
         onPointerUp={endDrag}
