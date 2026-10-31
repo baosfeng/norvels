@@ -108,6 +108,19 @@ describe("详情页事实区：H5 不再被裁掉", () => {
     expect(facts.querySelector('[data-testid="book-rating"]')).not.toBeNull();
   });
 
+  it("H5 评分格跨满整行（半栏 160px 装不下 5 颗 39px 的星）", () => {
+    renderPage("h5");
+    const facts = screen.getByTestId("book-facts");
+    // 外层行与星级按钮组共用 testId，取第一个（外层 .rating-row）
+    const row = facts.querySelector('[data-testid="book-rating"]') as HTMLElement;
+    const cell = row.closest(".fact-rating") as HTMLElement | null;
+    // 跨满由 .fact-rating 这个结构类决定（规则见 styles/ix-library.css，jsdom 量不到宽度）
+    expect(cell).not.toBeNull();
+    expect(cell?.parentElement).toBe(facts);
+    expect(cell?.querySelectorAll("[data-testid^='book-rating-star-']")).toHaveLength(5);
+    expect(cell?.querySelector("[data-testid='book-rating-label']")).not.toBeNull();
+  });
+
   it("H5 事实区落在主栏（书名与简介之后），左栏不再承载它", () => {
     renderPage("h5");
     const facts = screen.getByTestId("book-facts");
@@ -166,9 +179,22 @@ describe("详情页事实区：H5 不再被裁掉", () => {
     expect(link.getAttribute("href")).not.toContain("/authors");
   });
 
-  it("PC 署名作者仍去作者页", () => {
+  it("PC 署名作者去该作者的作品页（/authors/:id）", () => {
     renderPage("pc");
     const link = screen.getByTestId("book-byline").querySelector("a") as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("/authors");
+    expect(link.getAttribute("href")).toBe("/authors/1");
+  });
+
+  it("分类：大 / 小分类各自可点，分别带 l1 与 l1+l2 的书架筛选", () => {
+    renderPage("pc");
+    const facts = screen.getByTestId("book-facts");
+    const l1 = facts.querySelector('[data-testid="book-category-l1"]') as HTMLAnchorElement;
+    const l2 = facts.querySelector('[data-testid="book-category-l2"]') as HTMLAnchorElement;
+    expect(l1.getAttribute("href")).toBe(`/shelf?l1=${encodeURIComponent("武侠")}`);
+    expect(l2.getAttribute("href")).toBe(
+      `/shelf?l1=${encodeURIComponent("武侠")}&l2=${encodeURIComponent("群像")}`,
+    );
+    expect(l1.textContent).toBe("武侠");
+    expect(l2.textContent).toBe("群像");
   });
 });

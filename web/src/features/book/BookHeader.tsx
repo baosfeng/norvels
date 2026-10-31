@@ -1,7 +1,9 @@
+import { Fragment } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { BookDetail, SerialStatus } from "../../api/types";
 import { formatDate } from "../../lib/format";
 import { authorsOf } from "../../lib/metaDraft";
+import { authorHref } from "./bookLinks";
 import { markShelfTagFilter, shelfTagHref } from "./shelfTagLink";
 
 /**
@@ -50,15 +52,14 @@ export function BookHeader({
  *
  * 作者页是 PC 专属（TierRoute 会把 H5 弹回首页）；H5 落到「按该作者筛选的书架」，
  * 同一个作者名在两档都点得动，不制造「点了就跳走」的死路。
+ * 署名支持多作者：可点的只有主作者（详见 BylineAuthors）。
  */
 export function BookName({ book, isH5 }: { book: BookDetail; isH5: boolean }) {
   return (
     <>
       <h1>{book.title}</h1>
       <p className="byline" data-testid="book-byline">
-        <Link to={isH5 ? `/shelf?author=${book.authorId}` : "/authors"} data-od-id="C-32">
-          {authorsOf(book).join("、") || "佚名"}
-        </Link>{" "}
+        <BylineAuthors book={book} isH5={isH5} />{" "}
         · <span className="meta">{book.status === "parsed" ? "已入库" : "处理中"}</span> ·{" "}
         <span className="meta" data-testid="book-serial">
           {serialLabel(book.serialStatus)}
@@ -69,6 +70,37 @@ export function BookName({ book, isH5 }: { book: BookDetail; isH5: boolean }) {
           </span>
         ) : null}
       </p>
+    </>
+  );
+}
+
+/**
+ * 署名：多个作者逐个渲染。BookDetail 只带一个 authorId（主作者），
+ * 所以只给主作者链接；其余作者没有 id，保持纯文本——宁可点不动，也不造错链接。
+ */
+function BylineAuthors({ book, isH5 }: { book: BookDetail; isH5: boolean }) {
+  const authors = authorsOf(book);
+  if (authors.length === 0) return <span>佚名</span>;
+  // 主作者 = 与 authorName 同名的那个；数据里找不到时退回第一位（authorsOf 已按主作者兜底）
+  const primary = (book.authorName ?? "").trim();
+  const found = authors.findIndex((name) => name === primary);
+  const linkIndex = found >= 0 ? found : 0;
+  const linkable = Number.isFinite(book.authorId) && book.authorId > 0;
+
+  return (
+    <>
+      {authors.map((name, index) => (
+        <Fragment key={`${name}-${index}`}>
+          {index > 0 ? "、" : null}
+          {linkable && index === linkIndex ? (
+            <Link to={authorHref(book.authorId, isH5)} data-od-id="C-32" data-testid="book-author-link">
+              {name}
+            </Link>
+          ) : (
+            <span data-testid="book-author-text">{name}</span>
+          )}
+        </Fragment>
+      ))}
     </>
   );
 }

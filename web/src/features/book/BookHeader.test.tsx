@@ -49,11 +49,61 @@ function renderHeader(isH5 = false) {
 }
 
 describe("详情页头部锚点", () => {
-  it("C-32 署名作者仍是通往作者页的链接", () => {
+  it("C-32 署名作者指向该作者的作品页（/authors/:id），不是作者总列表", () => {
     renderHeader();
     const link = screen.getByTestId("book-byline").querySelector("a") as HTMLAnchorElement;
     expect(link.getAttribute("data-od-id")).toBe("C-32");
-    expect(link.getAttribute("href")).toBe("/authors");
+    expect(link.getAttribute("href")).toBe("/authors/1");
+  });
+
+  it("多作者：主作者可点，没有 id 的其余作者保持纯文本（不造错链接）", () => {
+    render(
+      <MemoryRouter initialEntries={["/book/7"]}>
+        <Routes>
+          <Route
+            path="/book/:bookId"
+            element={
+              <BookHeader
+                book={{ ...book, authors: ["林砚", "另一位"] }}
+                intro={book.intro}
+                isH5={false}
+                introOpen={false}
+                onToggleIntro={() => {}}
+                notice=""
+                lastChapter="第 2 章"
+              />
+            }
+          />
+          <Route path="/authors/:authorId" element={<p>作者作品页</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const byline = screen.getByTestId("book-byline");
+    expect(byline.textContent).toContain("林砚、另一位");
+    const links = byline.querySelectorAll("a");
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute("href")).toBe("/authors/1");
+    // 非主作者是文本，不带 href
+    expect(screen.getByTestId("book-author-text").textContent).toBe("另一位");
+    expect(screen.getByTestId("book-author-text").closest("a")).toBeNull();
+  });
+
+  it("没有作者 id 时不渲染链接，署名退化成文本", () => {
+    render(
+      <MemoryRouter>
+        <BookHeader
+          book={{ ...book, authorId: 0 }}
+          intro=""
+          isH5={false}
+          introOpen={false}
+          onToggleIntro={() => {}}
+          notice=""
+          lastChapter=""
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("book-byline").querySelector("a")).toBeNull();
+    expect(screen.getByTestId("book-byline").textContent).toContain("林砚");
   });
 
   it("C-09（新增）标签是按钮而不是静态文本，点一个就以该标签打开书架", async () => {

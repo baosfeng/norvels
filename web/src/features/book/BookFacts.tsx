@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { BookDetail, ReadStatus } from "../../api/types";
 import { formatCount, formatDate } from "../../lib/format";
 import { READ_STATUS_OPTIONS } from "../../lib/readStatus";
+import { categoryHref } from "./bookLinks";
 import { BookRating } from "./RatingStars";
 import { ReadStatusChips } from "./ReadStatusChips";
 
@@ -69,7 +70,8 @@ export function BookFacts({
           正在保存上一次选择，读完再改。
         </p>
       ) : null}
-      <div>
+      {/* fact-rating：这一格跨满整行（PC 左栏与 H5 主栏共用），半栏装不下 5 颗星 */}
+      <div className="fact-rating">
         <dt>评分</dt>
         <dd>
           <BookRating book={book} />
@@ -86,9 +88,25 @@ export function BookFacts({
       {book.categoryL1 ? (
         <div>
           <dt>分类</dt>
-          <dd data-testid="book-category">
-            {book.categoryL1}
-            {book.categoryL2 ? ` / ${book.categoryL2}` : ""}
+          {/* 大 / 小分类各自可点：都落到书架的 l1 / l2 筛选（C-22 同口径的文字入口） */}
+          <dd className="fact-category" data-testid="book-category">
+            <Link className="fact-link" to={categoryHref(book.categoryL1)} data-testid="book-category-l1">
+              {book.categoryL1}
+            </Link>
+            {book.categoryL2 ? (
+              <>
+                <span className="fact-sep" aria-hidden="true">
+                  /
+                </span>
+                <Link
+                  className="fact-link"
+                  to={categoryHref(book.categoryL1, book.categoryL2)}
+                  data-testid="book-category-l2"
+                >
+                  {book.categoryL2}
+                </Link>
+              </>
+            ) : null}
           </dd>
         </div>
       ) : null}

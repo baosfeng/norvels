@@ -134,6 +134,17 @@
   align-items: center;
   min-height: 32px;
 }
+/* 分类行：大 / 小分类各自可点，两者与「/」同一行、垂直居中对齐
+   （inline-flex 的链接靠 min-height 撑高，纯文本的分隔符要跟着居中，否则会掉到底线） */
+.facts .fact-category {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 4px;
+}
+.facts .fact-category .fact-sep {
+  color: var(--muted);
+}
 @media (max-width: 768px) {
   .fact-link {
     min-height: 44px;
@@ -157,11 +168,18 @@
   grid-column: 1 / -1;
 }
 
-/* 评分一格：5 颗 32px 的星在 140px 的半栏里放不下，会折成 3+2 两行（实测块高 269px）；
-   这一格跨满两列，星星排成一行，右栏与左栏的基线也对齐。 */
-.book-aside .facts > div:has(.rating-row),
-.book-aside .facts .fact-status {
+/* 评分一格：半栏放不下 5 颗星——PC 左栏半格 140px、H5 390 宽下 160px，星宽 39px，
+   会折成 3+2 / 4+1 两行（实测块高 269px）并把「未评分」挤到下一行。
+   这一格跨满整行：PC 左栏与 H5 主栏共用同一条规则（H5 的事实区在 .book-main 里）。
+   阅读状态那格同理（H5 的四颗 chip 也要整行）。 */
+.facts > .fact-rating,
+.facts > .fact-status {
   grid-column: 1 / -1;
+}
+/* H5 的 dd 在 flex 列里按 max-content 收缩：格子跨满后 dd 仍只有一行星星的宽，
+   标签还是会被挤到第二行。让它吃满这一格——390 宽下星星 195 + 标签 38 + 间距 30 = 263 ≤ 334。 */
+.facts .fact-rating dd {
+  width: 100%;
 }
 
 /* 事实项的行布局只作用于顶层格子。
@@ -358,7 +376,7 @@
   align-self: flex-start;
 }
 
-/* ── C-30 热力格与浮层：每格可点可聚焦，浮层固定定位在格子上方 30px ── */
+/* ── C-30 热力格：每格可点可聚焦（读数浮层的样式在 ix-dashboard.css 的 .chart-tip） ── */
 .heat-cell {
   display: block;
   padding: 0;
@@ -372,20 +390,6 @@
 .heat-cell.is-active {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-.heat-tip {
-  position: fixed;
-  z-index: 70;
-  padding: 3px 8px;
-  border-radius: var(--space-1);
-  background: var(--fg);
-  color: var(--bg);
-  font-size: 12px;
-  line-height: 1.4;
-  white-space: nowrap;
-  pointer-events: none;
-  transform: translateY(-100%);
-  box-shadow: 0 6px 18px rgba(32, 25, 20, 0.18);
 }
 
 /* ── C-31 图表卡重试：重试中禁用 + 骨架块 ── */
@@ -522,9 +526,12 @@
   .book-main .facts dt{min-width:0;font-size:12px;letter-spacing:0;text-transform:none;color:var(--muted)}
   .book-main .facts dd{min-width:0;margin:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* 评分这类内部有多个可点控件的格子：单行省略会把 5 颗星逼成竖排（实测块高 269px），
-     这里放行换行并让它们按自己的 flex 排布走 */
-  .book-main .facts dd:has(.chips),
-  .book-main .facts dd:has(.rating-row){white-space:normal;overflow:visible;text-overflow:clip}
+     这里放行换行并让它们按自己的 flex 排布走（结构类名 .fact-rating 已挂在格子上） */
+  .book-main .facts .fact-rating dd{white-space:normal;overflow:visible;text-overflow:clip}
+  /* prototype.css 的裸 .book-main .facts div 把评分 chip 组的间距顶到 10px：
+     窄到 320 宽时 5 颗星 + 「未评分」正好差 17px 放不下。这里按 chip 组的本意收到 6px，
+     320 宽实测 195 + 间距 30 + 标签 38 = 263 ≤ 264，仍是一行。 */
+  .book-main .facts .fact-rating .chips{gap:6px}
   .book-main .facts .inline-note{grid-column:1 / -1}
 
   /* 阅读状态：下拉在手机上要多点一次，这里压成一行文字，视觉上并入网格 */
@@ -696,9 +703,10 @@
 }
 /* ── PC 书架工具栏：筛选组等宽同高、顶端对齐，右侧是独立操作区 ──
    prototype.css 的 .toolbar 是 AdminFilterBar / AuthorsPage 共用的，只在这里按书架收紧：
-   label 均分一行（同 basis 同 grow）、下拉铺满 label 宽度。「管理书单」不在筛选组里——
-   它管的是书单本身而不是当前筛选值。以前它挤在「书单」label 内，那一组被撑成 232×107，
-   其余是 132×61，align-items:flex-end 就把它的标签顶到整排之上（实测 top 402 vs 448）。 */
+   label 均分一行（同 basis 同 grow）、下拉铺满 label 宽度。书单的新建 / 改名 / 删除已搬到
+   独立页 /collections（见 ix-collections.css）：工具栏不承载书单本身的管理，只剩筛选与「清除筛选」。
+   以前的「管理书单」挤在「书单」label 内，那一组被撑成 232×107，其余 132×61，
+   align-items:flex-end 就把它的标签顶到整排之上（实测 top 402 vs 448）——那段留作回归说明。 */
 .shelf-toolbar {
   align-items: flex-end;
   gap: 12px 14px;
