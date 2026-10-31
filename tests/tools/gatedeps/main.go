@@ -3,9 +3,10 @@
 // 规则（fail-closed）：内置包之间只允许「上层依赖下层」：
 //
 //	cmd/*        → 任意 internal/*
-//	internal/api → importer / parser / store / webui / model
-//	internal/importer → parser / store / model
+//	internal/api → importer / parser / store / source / webui / model
+//	internal/importer → parser / store / source / model
 //	internal/parser, internal/store → model
+//	internal/source → 不依赖任何内置包（规则包是纯数据，不拖解析与存储细节）
 //	internal/model, internal/webui  → 不依赖任何其他内置包
 //
 // 未登记的包一律视为违规（提示在 allowedDeps 里登记），避免新增包悄悄绕过门禁。
@@ -36,16 +37,30 @@ type pkgJSON struct {
 
 // allowedDeps 是内置包允许依赖的内置包（正向白名单）。
 var allowedDeps = map[string][]string{
-	"norvels/internal/config":   {}, // 配置收敛包：只读环境变量 + 纯函数，不依赖任何内置包
-	"norvels/internal/model":    {},
-	"norvels/internal/webui":    {},
-	"norvels/internal/parser":   {"norvels/internal/model"},
-	"norvels/internal/store":    {"norvels/internal/model"},
-	"norvels/internal/ebook":    {"norvels/internal/model"},
-	"norvels/internal/importer": {"norvels/internal/model", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/ebook"},
+	"norvels/internal/config": {}, // 配置收敛包：只读环境变量 + 纯函数，不依赖任何内置包
+	"norvels/internal/model":  {},
+	"norvels/internal/webui":  {},
+	"norvels/internal/parser": {"norvels/internal/model"},
+	"norvels/internal/store":  {"norvels/internal/model", "norvels/internal/source"},
+	"norvels/internal/ebook":  {"norvels/internal/model"},
+	// 书源规则包：纯数据模型 + 校验，只依赖标准库（叶子包）。
+	"norvels/internal/source": {},
+	// 在线抓取执行器：只依赖标准库（叶子包），不碰解析与存储。
+	"norvels/internal/fetch": {},
+	// 声明式规则执行器：只依赖标准库与 CSS/XPath 解析库（叶子包）。
+	"norvels/internal/ruleexec": {},
+	// JS 沙箱执行器：只依赖 goja 与标准库（叶子包），不碰解析与抓取。
+	"norvels/internal/jsruntime": {},
+	// 书源导入适配器：Legado JSON → source.Profile，只依赖 source 与 ruleexec。
+	"norvels/internal/booksource": {"norvels/internal/source", "norvels/internal/ruleexec"},
+	// 通用导入取回层：只依赖 fetch 与标准库（叶子包），只取回 JSON 不解释类型。
+	"norvels/internal/ruleimport": {"norvels/internal/fetch"},
+	"norvels/internal/importer":   {"norvels/internal/model", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/ebook", "norvels/internal/source"},
 	"norvels/internal/api": {
 		"norvels/internal/model", "norvels/internal/importer", "norvels/internal/parser",
 		"norvels/internal/store", "norvels/internal/webui", "norvels/internal/ebook",
+		"norvels/internal/source", "norvels/internal/booksource",
+		"norvels/internal/fetch", "norvels/internal/ruleimport",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config"},

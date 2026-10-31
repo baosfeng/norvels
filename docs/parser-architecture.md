@@ -156,3 +156,4 @@ func Splitters() []Splitter
 - `New(Options)` / `ParseFile` / `ParseBytes` 签名不变，现有调用方（importer / api）零改动
 - 旧实现作为内置策略的**实现体**保留，先包装再逐步拆细：不在一次改动里重写算法，
   避免把已通过的语义测试一起推翻
+- `DecodeBytes` / `CleanText` 是给非文件来源（在线抓取）复用的入口：同一套 Codec/Filter 链，不切章、不抽元数据

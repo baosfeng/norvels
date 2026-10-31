@@ -14,6 +14,7 @@ import (
 	"norvels/internal/ebook"
 	"norvels/internal/model"
 	"norvels/internal/parser"
+	"norvels/internal/source"
 	"norvels/internal/store"
 )
 
@@ -36,6 +37,14 @@ type Options struct {
 	// TagRules 是词表打标规则（api 从 settings 读出注入）；空表示不打自动标签。
 	// 匹配口径见 tagrules.go：命中即写 source=auto 的标签，只增不删。
 	TagRules []store.TagRule
+	// Profiles 是调用方（api）从 settings 读出的书源规则包；空表示全走内置策略。
+	// 导入开始时编译一次（prepareProfiles），之后每个候选按 match 选一份，命中才生效。
+	Profiles []source.Profile
+	// ProfileID 显式指定规则包：非空时跳过 match 直接用这一份（dry-run 与真实导入
+	// 都支持）；指定的 id 不存在时入口返回 ErrProfileNotFound（api 映射 400）。
+	ProfileID string
+	// compiled 是编译后的规则包，由 prepareProfiles 在入口填一次；值拷贝共享。
+	compiled []Compiled
 	// Sources 非空表示「单文件重试」：只处理这些可重放源（绝对路径 / zip 包:包内路径），
 	// 跳过目录扫描；源不可用按文件级失败记录，不中断整批。
 	Sources []string
@@ -69,6 +78,17 @@ type Result struct {
 	// 文件不再处理。任务终态由 closing 写成 canceled，api 也会按错误映射，
 	// 这里让调用方可以直接从结果里读到取消标记。
 	Canceled bool
+	// AppliedProfiles 记录每个文件实际生效的规则包（源 → profileId）；未命中任何
+	// 规则包的文件不出现。import_job_files 加列是下一切片的事，这里只给 JSON 出口。
+	AppliedProfiles []AppliedProfile `json:"appliedProfiles,omitempty"`
+	// ProfileWarnings 是编译期被跳过的规则包及原因（坏编码名 / 坏正则等）。
+	ProfileWarnings []string `json:"profileWarnings,omitempty"`
+}
+
+// AppliedProfile 记录一个文件实际生效的规则包。
+type AppliedProfile struct {
+	Source    string `json:"source"`
+	ProfileID string `json:"profileId"`
 }
 
 // ErrNoFiles 表示目录中没有可导入的文件（支持格式见 SupportedExt）。
@@ -93,6 +113,10 @@ type parseOutcome struct {
 	books   []*model.ParsedBook
 	skipped bool
 	err     error
+	// profileID 是本次实际生效的规则包（空 = 走内置策略）；minChapters 是规则包
+	// 覆盖的上架门槛（0 = 用全局 Options.MinChapters）。
+	profileID   string
+	minChapters int
 }
 
 // Run 执行导入。cb 可为 nil。
@@ -103,10 +127,15 @@ type parseOutcome struct {
 //
 // 编排分四步，各自独立：准备（路径/任务）→ 扫描候选 → 并发解析 + 串行入库 → 落任务终态。
 func Run(ctx context.Context, st *store.Store, opt Options, cb func(Progress)) (*Result, error) {
+	opt, warnings := opt.prepareProfiles()
+	if err := opt.validateExplicitProfile(); err != nil {
+		return nil, err
+	}
 	state, dir, files, err := prepareRun(ctx, st, opt)
 	if err != nil {
 		return nil, err
 	}
+	state.res.ProfileWarnings = warnings
 
 	start := time.Now()
 	// 候选先展开（zip → 条目），再按条目数开任务：zip 里的每个条目都算一条进度。
@@ -194,6 +223,8 @@ func finishJob(ctx context.Context, st *store.Store, job *store.ImportJob, res *
 // processFile 读取单文件、算 SHA256、幂等判定、解析、合集拆分，并补齐路径相关元信息。
 func processFile(ctx context.Context, st *store.Store, p *parser.Parser, t fileTask, opt Options) parseOutcome {
 	oc := parseOutcome{index: t.index, path: t.cand.name, cand: t.cand}
+	pc := opt.selectProfile(t.cand)
+	oc.profileID, oc.minChapters = profileIDOf(pc), minChaptersOf(pc)
 	data, err := os.ReadFile(t.cand.path)
 	if err != nil {
 		oc.err = fmt.Errorf("read: %w", err)
@@ -211,7 +242,7 @@ func processFile(ctx context.Context, st *store.Store, p *parser.Parser, t fileT
 		return oc
 	}
 
-	book, err := parseFileWithRules(p, t.cand.path, data, opt.ChapterRules)
+	book, err := parseFileWithProfile(p, pc, t.cand.path, data, opt)
 	if err != nil {
 		oc.err = fmt.Errorf("parse: %w", err)
 		return oc
@@ -223,8 +254,10 @@ func processFile(ctx context.Context, st *store.Store, p *parser.Parser, t fileT
 	fillBookSource(book, t.cand, data, sha)
 	oc.books = splitBooks(book)
 	// 词表打标在拆分后逐本算：每本书的正文范围不同，命中结果也可能不同。
+	// 命中规则包时先打规则包自带的 tags，再补全局词表（同一标签只记一次）。
+	tags := opt.tagsFor(pc)
 	for _, b := range oc.books {
-		b.AutoTags = matchTags(opt.TagRules, b)
+		b.AutoTags = matchTags(tags, b)
 	}
 	return oc
 }
@@ -237,11 +270,17 @@ func sha256Hex(data []byte) string {
 
 // parseFile 按扩展名分发解析：.txt 走 parser；.epub 走 ebook，再转换成 ParsedBook。
 func parseFile(p *parser.Parser, path string, data []byte) (*model.ParsedBook, error) {
-	return parseFileWithRules(p, path, data, nil)
+	return parseFileWithProfile(p, nil, path, data, Options{})
 }
 
-// parseFileWithRules 在 parseFile 之上注入自定义切章规则（空 rules 等价于 parseFile）。
-func parseFileWithRules(p *parser.Parser, path string, data []byte, rules []parser.Rule) (*model.ParsedBook, error) {
+// parseFileWithProfile 在 parseFile 之上按生效规则包替换解析选项与切章规则：
+// pc 为 nil 时与改动前完全一致（全局 ParserOpts + Options.ChapterRules）。
+func parseFileWithProfile(p *parser.Parser, pc *Compiled, path string, data []byte, opt Options) (*model.ParsedBook, error) {
+	rules := opt.ChapterRules
+	if pc != nil {
+		p = parser.New(pc.Opts)
+		rules = pc.Rules
+	}
 	if FormatOf(path) != FormatEPUB {
 		return p.ParseBytesWithRules(filepath.Base(path), data, rules)
 	}

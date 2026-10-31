@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"norvels/internal/importer"
+	"norvels/internal/source"
 	"norvels/internal/store"
 )
 
@@ -27,14 +28,17 @@ const (
 //
 // 与真实导入共用同一套解析与查重口径；超过 60 秒回 503 timeout，
 // 让前端把「目录太大」当作可重试的临时失败，而不是 500。
-func (s *Server) handleDryRun(w http.ResponseWriter, r *http.Request, req importRequest, source string) {
+func (s *Server) handleDryRun(w http.ResponseWriter, r *http.Request, req importRequest, src string,
+	profiles []source.Profile) {
 	ctx, cancel := context.WithTimeout(r.Context(), dryRunTimeout)
 	defer cancel()
-	opts := importOptions(req, source, 0, s.loadChapterRules(ctx), s.loadTagRules(ctx))
+	opts := s.importOptions(ctx, req, src, 0, s.loadChapterRules(ctx), s.loadTagRules(ctx), profiles)
 	report, err := importer.DryRun(ctx, s.st, opts)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		writeError(w, http.StatusServiceUnavailable, codeTimeout, "预检超过 60 秒，请缩小目录范围后重试")
+	case errors.Is(err, importer.ErrProfileNotFound):
+		writeError(w, http.StatusBadRequest, codeInvalidParam, "该规则包 id 未配置")
 	case err != nil:
 		s.fail(w, r, err, "预检失败")
 	default:
@@ -98,8 +102,8 @@ func (s *Server) handleRetryImportJob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	opts := importOptions(importRequest{Dir: job.SourceDir}, job.SourceDir, newJob.ID,
-		s.loadChapterRules(r.Context()), s.loadTagRules(r.Context()))
+	opts := s.importOptions(r.Context(), importRequest{Dir: job.SourceDir}, job.SourceDir, newJob.ID,
+		s.loadChapterRules(r.Context()), s.loadTagRules(r.Context()), s.loadSourceProfiles(r.Context()))
 	opts.Sources = sources
 	ctx, cancel := context.WithCancel(s.baseContext())
 	s.spawnImport(newJob.ID, cancel, func() { s.runImport(ctx, cancel, newJob.ID, job.SourceDir, opts) })

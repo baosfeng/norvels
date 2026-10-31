@@ -139,7 +139,7 @@ export function useTags(options: { enabled?: boolean } = {}) {
   return useResource((signal: AbortSignal) => api.tags({ signal }), [], options);
 }
 
-/** 自定义章节识别规则（全局，最多 20 条）。 */
+/** 自定义章节识别规则（全局；条数上限由 capabilities 下发，前端不写死）。 */
 export function useChapterRules() {
   return useResource((signal: AbortSignal) => api.getChapterRules({ signal }), []);
 }
@@ -147,6 +147,19 @@ export function useChapterRules() {
 /** 词表规则（标签 ← 关键词）：导入时自动打标，只增不删。 */
 export function useTagRules() {
   return useResource((signal: AbortSignal) => api.tagRules({ signal }), []);
+}
+
+/** 书源规则包（声明式，非插件）：未配置时返回空数组。 */
+export function useSourceProfiles() {
+  return useResource((signal: AbortSignal) => api.sourceProfiles({ signal }), []);
+}
+
+/**
+ * 服务端能力清单：上限与策略名单的唯一来源。
+ * 导入页三张规则卡各自取一次（端点只拼装既有常量，不查库），失败时由各面板保守兜底。
+ */
+export function useCapabilities() {
+  return useResource((signal: AbortSignal) => api.capabilities({ signal }), []);
 }
 
 /** 某任务的失败文件清单（重试入口用）；jobId 为空时不发请求。 */

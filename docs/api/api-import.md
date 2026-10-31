@@ -4,11 +4,11 @@
 
 ### POST /api/import
 ```json
-{ "dir": "/books", "recursive": true, "force": false, "workers": 4, "dryRun": false }
+{ "dir": "/books", "recursive": true, "force": false, "workers": 4, "dryRun": false, "profileId": "" }
 ```
 → 202 `{ "jobId": 7 }`；已有运行中的任务时返回 409。
 
-**只预检**：body 加 `"dryRun": true` → **不建任务、不占锁**，同步返回报告（最长 60 秒，超时 503 `timeout`）：
+**只预检**：body 加 `"dryRun": true` → **不建任务、不占锁**，同步返回报告（最长 60 秒，超时 503 `timeout`）。`profileId` 可指定一份已配置的来源规则包（空 = 按 `match` 自动选；未配置的 id → 400 `invalid_param`），报告的 `sample[].profileId` 回显实际生效的规则包（空串 = 走内置）：
 ```json
 {
   "truncated": false,
@@ -19,7 +19,7 @@
 }
 ```
 - 判定口径与真实导入一致：SHA-256 / 源路径命中即 `duplicate`（追更时再加书名+作者指纹），扩展名不支持即 `unsupported`，解析出 0 章记 `failed`；
-- `sample` 最多 20 条（按扫描顺序）、`errors` 最多 50 条；目录候选超过 200 个只解析前 200 并置 `truncated: true`。
+- `sample` 最多 20 条（按扫描顺序）、`errors` 最多 50 条；目录候选超过 200 个只解析前 200 并置 `truncated: true`（三个上限由 capabilities 的 `limits.dryRun` 下发）。
 
 `dir` 可以是目录，也可以是单个 `.txt` / `.epub` / `.zip` 文件（如 `/books/某本书.epub`）：
 

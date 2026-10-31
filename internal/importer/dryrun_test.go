@@ -53,7 +53,7 @@ func TestDryRunTruncated(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	dir := t.TempDir()
-	for i := 0; i < dryRunMaxFiles+1; i++ {
+	for i := 0; i < DryRunMaxFiles+1; i++ {
 		path := filepath.Join(dir, "f"+itoaTest(i)+".txt")
 		writeTxtFile(t, path, "书名：批量"+itoaTest(i))
 	}
@@ -64,8 +64,8 @@ func TestDryRunTruncated(t *testing.T) {
 	if !rep.Truncated {
 		t.Error("超过 200 个文件应置 truncated")
 	}
-	if rep.Files.Total != dryRunMaxFiles {
-		t.Errorf("files.total = %d，期望 %d", rep.Files.Total, dryRunMaxFiles)
+	if rep.Files.Total != DryRunMaxFiles {
+		t.Errorf("files.total = %d，期望 %d", rep.Files.Total, DryRunMaxFiles)
 	}
 }
 

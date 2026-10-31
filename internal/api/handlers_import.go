@@ -15,6 +15,7 @@ import (
 
 	"norvels/internal/importer"
 	"norvels/internal/parser"
+	"norvels/internal/source"
 	"norvels/internal/store"
 )
 
@@ -35,6 +36,9 @@ type importRequest struct {
 	Update    bool   `json:"update"`
 	Workers   int    `json:"workers"`
 	DryRun    bool   `json:"dryRun"`
+	// ProfileID 显式指定一份来源规则包（与 GET/PUT 响应里 Profile 的 id 同名）；
+	// 空 = 按 match 自动选。未配置的 id → 400（不静默退回内置）。
+	ProfileID string `json:"profileId"`
 }
 
 func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
@@ -42,25 +46,30 @@ func (s *Server) handleStartImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	source, ok := validateImportSource(w, req)
+	src, ok := validateImportSource(w, req)
 	if !ok {
+		return
+	}
+	// 规则包与章节/词表规则一样在请求线程里读一次：导入 goroutine 不回头查 settings。
+	profiles := s.loadSourceProfiles(r.Context())
+	if !checkProfileID(w, req.ProfileID, profiles) {
 		return
 	}
 	if req.DryRun {
 		// 只预检：不建任务、不占锁，同步返回报告（P1-B §2.2）。
-		s.handleDryRun(w, r, req, source)
+		s.handleDryRun(w, r, req, src, profiles)
 		return
 	}
-	job, ok := s.acquireImportJob(w, r, source)
+	job, ok := s.acquireImportJob(w, r, src)
 	if !ok {
 		return
 	}
 	// 自定义章节规则与词表规则在请求线程里读一次并注入：导入 goroutine 不再回头查 settings。
-	opts := importOptions(req, source, job.ID, s.loadChapterRules(r.Context()), s.loadTagRules(r.Context()))
+	opts := s.importOptions(r.Context(), req, src, job.ID, s.loadChapterRules(r.Context()), s.loadTagRules(r.Context()), profiles)
 
 	// 导入任务随服务退出或用户主动取消而停止（Config.Context 由 serve 的 signal ctx 注入）。
 	ctx, cancel := context.WithCancel(s.baseContext())
-	s.spawnImport(job.ID, cancel, func() { s.runImport(ctx, cancel, job.ID, source, opts) })
+	s.spawnImport(job.ID, cancel, func() { s.runImport(ctx, cancel, job.ID, src, opts) })
 
 	writeJSON(w, http.StatusAccepted, struct {
 		JobID int64 `json:"jobId"`
@@ -151,11 +160,15 @@ func (s *Server) acquireImportJob(w http.ResponseWriter, r *http.Request, dir st
 // rules 由调用方从 settings 读出并编译后传入（见 loadChapterRules）：导入链路不读
 // settings，规则是显式参数——省掉这条参数就是「规则能存能读但导入不生效」。
 // dir 既可以是目录也可以是单个 .txt 文件；recursive 对文件无意义，会被扫描器忽略。
-func importOptions(req importRequest, dir string, jobID int64, rules []parser.Rule, tagRules []store.TagRule) importer.Options {
+func (s *Server) importOptions(ctx context.Context, req importRequest, dir string, jobID int64,
+	rules []parser.Rule, tagRules []store.TagRule, profiles []source.Profile) importer.Options {
 	recursive := true
 	if req.Recursive != nil {
 		recursive = *req.Recursive
 	}
+	cleanList := s.loadCleanRuleList(ctx)
+	parserOpts := parser.DefaultOptions()
+	parserOpts.ExtraFilters = cleanFilters(cleanList)
 	return importer.Options{
 		Dir:          dir,
 		Recursive:    recursive,
@@ -163,11 +176,23 @@ func importOptions(req importRequest, dir string, jobID int64, rules []parser.Ru
 		Update:       req.Update,
 		DryRun:       req.DryRun,
 		Workers:      req.Workers,
-		ParserOpts:   parser.DefaultOptions(),
+		ParserOpts:   parserOpts,
 		ChapterRules: rules,
 		TagRules:     tagRules,
+		Profiles:     withCleanRules(profiles, cleanList),
+		ProfileID:    req.ProfileID,
 		JobID:        jobID,
 	}
+}
+
+// loadCleanRuleList 读取全局净化规则（读失败只记日志、返回 nil）。
+func (s *Server) loadCleanRuleList(ctx context.Context) []store.CleanRule {
+	rules, err := s.st.ListCleanRules(ctx)
+	if err != nil {
+		s.logf("api: 读取净化规则失败，本次导入只用内置过滤器: %v", err)
+		return nil
+	}
+	return rules
 }
 
 // runningImportJob 返回库中正在运行的任务；僵尸任务（超过 staleImportJobAfter）会被标记失败并跳过。
@@ -227,6 +252,12 @@ func (s *Server) runImport(ctx context.Context, cancel context.CancelFunc, jobID
 		s.logf("api: 导入失败 dir=%s: %v", dir, err)
 		_ = s.finalizeImportJob(jobID, "failed", err.Error(), res)
 	default:
+		// 编译期被跳过的规则包逐条落日志：否则用户只看到「规则包没生效」。
+		if res != nil {
+			for _, w := range res.ProfileWarnings {
+				s.logf("api: %s", w)
+			}
+		}
 		// importer 已写入终态；DryRun 等未落终态的情况在这里补写。
 		if ferr := s.finalizeImportJob(jobID, "", "", res); ferr != nil {
 			s.logf("api: 收尾导入任务失败 job=%d: %v", jobID, ferr)

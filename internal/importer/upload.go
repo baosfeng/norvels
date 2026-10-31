@@ -25,10 +25,15 @@ import (
 //   - 候选按 SupportedExt 收集（txt/epub），而不是目录导入的 .txt 扫描；
 //   - 书籍来源改写为 upload://<sha256>/<文件名>，因为盘上的临时目录导入结束即删除。
 func RunUpload(ctx context.Context, st *store.Store, opt Options) (*Result, error) {
+	opt, warnings := opt.prepareProfiles()
+	if err := opt.validateExplicitProfile(); err != nil {
+		return nil, err
+	}
 	state, dir, files, err := prepareUpload(ctx, st, opt)
 	if err != nil {
 		return nil, err
 	}
+	state.res.ProfileWarnings = warnings
 	start := time.Now()
 	// 解包目录放在本次上传的临时目录里，导入结束随会话一起删除。
 	scratch, err := makeScratch(dir)

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TagRule } from "../../api/types";
+import type { Capabilities, TagRule } from "../../api/types";
 
 const rulesState = {
   data: { rules: [] as TagRule[] },
@@ -9,9 +9,33 @@ const rulesState = {
   reload: vi.fn(),
 };
 
+/** 后端默认能力清单：词表上限 50 / 100 / 20 / 20（测试夹具，不是前端副本）。 */
+const defaultCaps: Capabilities = {
+  splitters: ["di-unit"],
+  codecs: ["utf-8"],
+  filters: [{ name: "bom", priority: 10 }],
+  metas: [{ name: "filename", weight: 80 }],
+  extensions: ["txt", "epub", "zip"],
+  limits: {
+    chapterRules: { maxCount: 20, maxPatternRunes: 200, maxNameRunes: 60 },
+    tagRules: { maxCount: 50, maxTagRunes: 20, maxKeywords: 100, maxKeywordRunes: 20 },
+    sourceProfiles: { maxCount: 20, maxRulesPerProfile: 30, maxPatternRunes: 200, maxNameRunes: 60 },
+    upload: { maxFileBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024, maxFiles: 20 },
+    import: { maxWorkers: 32, defaultMaxChapterChars: 30000, defaultFallbackChunkChars: 8000 },
+    dryRun: { maxFiles: 200, samples: 20, errors: 50 },
+  },
+};
+
+const capsState = {
+  data: defaultCaps as Capabilities | null,
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
 const putTagRules = vi.fn<(rules: TagRule[]) => Promise<void>>();
 
-vi.mock("../../api/hooks", () => ({ useTagRules: () => rulesState }));
+vi.mock("../../api/hooks", () => ({ useTagRules: () => rulesState, useCapabilities: () => capsState }));
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
@@ -31,6 +55,8 @@ describe("词表规则面板", () => {
     rulesState.loading = false;
     rulesState.error = null;
     rulesState.reload.mockReset();
+    capsState.data = defaultCaps;
+    capsState.error = null;
     putTagRules.mockReset();
   });
 
@@ -77,6 +103,30 @@ describe("词表规则面板", () => {
     expect(screen.getByTestId("tag-rules-error-text").textContent).toContain("超过 20 字");
 
     expect(putTagRules).not.toHaveBeenCalled();
+  });
+
+  it("词表上限读 capabilities：下发 1 条就只让加 1 条", () => {
+    capsState.data = {
+      ...defaultCaps,
+      limits: { ...defaultCaps.limits, tagRules: { maxCount: 1, maxTagRunes: 20, maxKeywords: 100, maxKeywordRunes: 20 } },
+    };
+    render(<TagRulesPanel />);
+
+    fireEvent.click(screen.getByTestId("tag-rule-add"));
+    expect(screen.getAllByTestId("tag-rule-row")).toHaveLength(1);
+    expect(screen.getByTestId("tag-rules-full").textContent).toContain("最多 1 条");
+    expect((screen.getByTestId("tag-rule-add") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("能力清单读不到时不拦条数，并提示服务端仍会校验", () => {
+    capsState.error = new ApiError("http", "boom", 500);
+    render(<TagRulesPanel />);
+
+    expect(screen.getByTestId("tag-rules-limit-unknown").textContent).toContain("服务端仍会校验");
+    fireEvent.click(screen.getByTestId("tag-rule-add"));
+    fireEvent.click(screen.getByTestId("tag-rule-add"));
+    expect(screen.getAllByTestId("tag-rule-row")).toHaveLength(2);
+    expect(screen.queryByTestId("tag-rules-full")).toBeNull();
   });
 
   it("后端 400 时把原因说成人话，规则留在编辑区可改", async () => {

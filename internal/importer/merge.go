@@ -247,6 +247,9 @@ func processUnit(ctx context.Context, st *store.Store, p *parser.Parser, u impor
 // 任一分卷解析失败都让整组失败（fail-closed）：半本书入库会比整组重试更难收拾。
 func processVolumeGroup(ctx context.Context, st *store.Store, p *parser.Parser, u importUnit, opt Options) parseOutcome {
 	oc := parseOutcome{index: u.index, path: u.cands[0].name, cand: u.cands[0]}
+	// 分卷组按首卷选包：同目录同书名的卷文件属于同一来源，一组只应用一份规则包。
+	pc := opt.selectProfile(u.cands[0])
+	oc.profileID, oc.minChapters = profileIDOf(pc), minChaptersOf(pc)
 	parts := make([]*model.ParsedBook, 0, len(u.cands))
 	for _, c := range u.cands {
 		data, err := os.ReadFile(c.path)
@@ -254,7 +257,7 @@ func processVolumeGroup(ctx context.Context, st *store.Store, p *parser.Parser, 
 			oc.err, oc.path = fmt.Errorf("read: %w", err), c.name
 			return oc
 		}
-		book, err := parseFileWithRules(p, c.path, data, opt.ChapterRules)
+		book, err := parseFileWithProfile(p, pc, c.path, data, opt)
 		if err != nil {
 			oc.err, oc.path = fmt.Errorf("parse: %w", err), c.name
 			return oc

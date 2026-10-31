@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"norvels/internal/ruleimport"
 	"norvels/internal/store"
 	"norvels/internal/webui"
 )
@@ -39,6 +40,9 @@ type Config struct {
 	MaxUploadFileBytes  int64
 	MaxUploadTotalBytes int64
 	MaxUploadFiles      int
+	// RuleImportOptions 透传给 internal/ruleimport（取回 URL / legado:// 链接）：
+	// 零值用默认受限 HTTP 客户端；测试注入 Fetcher 避免真实出网。
+	RuleImportOptions ruleimport.Options
 }
 
 // AuthEnabled 报告是否启用鉴权。
@@ -161,6 +165,12 @@ func (s *Server) registerImportRoutes(mux *http.ServeMux) {
 	// P1-B 导入侧：文件级终态列表与单文件重试（spec §2.2）。
 	mux.HandleFunc("GET /api/import/jobs/{id}/files", s.handleListImportJobFiles)
 	mux.HandleFunc("POST /api/import/jobs/{id}/retry", s.handleRetryImportJob)
+	// 来源规则包（可插拔导入 P1 切片 1）：全量替换 + 只校验不落库。
+	mux.HandleFunc("GET "+sourceProfilesPath, s.handleGetSourceProfiles)
+	mux.HandleFunc("PUT "+sourceProfilesPath, s.handlePutSourceProfiles)
+	mux.HandleFunc("POST "+sourceProfilesPath+"/validate", s.handleValidateSourceProfiles)
+	// Legado 书源导入（预览 + 应用）：粘贴 JSON → 适配成规则包。
+	mux.HandleFunc("POST "+sourceProfilesPath+"/import", s.handleImportLegadoSources)
 }
 
 // registerMiscRoutes 注册健康检查、统计、设置、阅读进度与登录。
@@ -171,7 +181,13 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings/chapter-rules", s.handleGetChapterRules)
 	mux.HandleFunc("PUT /api/settings/chapter-rules", s.handlePutChapterRules)
 	mux.HandleFunc("GET /api/settings/tag-rules", s.handleGetTagRules)
+	// 全局净化规则（Legado replaceRule）：读写 + 试跑（不落库）。
+	mux.HandleFunc("GET /api/settings/replace-rules", s.handleGetReplaceRules)
+	mux.HandleFunc("PUT /api/settings/replace-rules", s.handlePutReplaceRules)
+	mux.HandleFunc("POST /api/settings/replace-rules/preview", s.handlePreviewReplaceRules)
 	mux.HandleFunc("PUT /api/settings/tag-rules", s.handlePutTagRules)
+	// 能力清单（策略注册表 + 上限）：前端硬编码上限的唯一来源。
+	mux.HandleFunc("GET "+capabilitiesPath, s.handleCapabilities)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	// 驾驶舱（docs/api.md §8）
 	mux.HandleFunc("GET /api/health/report", s.handleHealthReport)

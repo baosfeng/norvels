@@ -9,6 +9,7 @@ import { FailedFilesPanel } from "./FailedFilesPanel";
 import { ImportHistory } from "./ImportHistory";
 import { ImportProgressCard } from "./ImportProgressCard";
 import { ImportSuccessPanel } from "./ImportSuccessPanel";
+import { SourceProfilesPanel } from "./SourceProfilesPanel";
 import { TagRulesPanel } from "./TagRulesPanel";
 import { UploadPanel } from "./UploadPanel";
 import { useTimedNote } from "./useTimedNote";
@@ -278,6 +279,7 @@ export function ImportPage() {
           <UploadPanel onSubmitted={reload} disabled={Boolean(running)} />
           <ChapterRulesPanel />
           <TagRulesPanel />
+          <SourceProfilesPanel dir={dir} />
         </div>
 
         <div>

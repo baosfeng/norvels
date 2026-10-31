@@ -17,6 +17,8 @@ type Report struct {
 	Books     ReportBooks    `json:"books"`
 	Sample    []ReportSample `json:"sample"`
 	Errors    []ReportError  `json:"errors"`
+	// ProfileWarnings 是编译期被跳过的规则包及原因（坏编码名 / 坏正则等）。
+	ProfileWarnings []string `json:"profileWarnings,omitempty"`
 }
 
 // ReportFiles 是文件级分类计数（一个候选条目算一次）。
@@ -36,6 +38,9 @@ type ReportBooks struct {
 }
 
 // ReportSample 是一条样例（按扫描顺序，最多 20 条）。
+//
+// ProfileID 回显这本书实际生效的规则包 id；空串表示走内置策略（与请求体的
+// profileId 同名同义，前端直接读它做「这条用了哪份规则」的展示）。
 type ReportSample struct {
 	Source    string `json:"source"`
 	Title     string `json:"title"`
@@ -43,6 +48,7 @@ type ReportSample struct {
 	Words     int    `json:"words"`
 	Duplicate bool   `json:"duplicate"`
 	Reason    string `json:"reason"`
+	ProfileID string `json:"profileId"`
 }
 
 // ReportError 是一条预检错误（不支持 / 解析失败，最多 50 条）。
@@ -51,11 +57,15 @@ type ReportError struct {
 	Reason string `json:"reason"`
 }
 
-// 预检的规模上限：超过 200 个候选文件只解析前 200 并置 truncated。
+// 预检的规模上限（导出：capabilities 的 limits.dryRun 直接读这三个值，前端
+// 不再各写一份数字）。超过上限的候选只解析前 DryRunMaxFiles 个并置 truncated。
 const (
-	dryRunMaxFiles  = 200
-	dryRunSampleMax = 20
-	dryRunErrorsMax = 50
+	// DryRunMaxFiles 是单次预检最多解析的候选文件数。
+	DryRunMaxFiles = 200
+	// DryRunMaxSamples 是报告里最多返回的样例条数。
+	DryRunMaxSamples = 20
+	// DryRunMaxErrors 是报告里最多返回的错误条数。
+	DryRunMaxErrors = 50
 )
 
 // DryRun 同步预检：不建任务、不占锁、不写库（P1-B §2.2）。
@@ -65,6 +75,10 @@ const (
 func DryRun(ctx context.Context, st *store.Store, opt Options) (*Report, error) {
 	if st == nil {
 		return nil, errors.New("importer: nil store")
+	}
+	opt, warnings := opt.prepareProfiles()
+	if err := opt.validateExplicitProfile(); err != nil {
+		return nil, err
 	}
 	dir, err := resolveSourceDir(opt.Dir)
 	if err != nil {
@@ -77,7 +91,8 @@ func DryRun(ctx context.Context, st *store.Store, opt Options) (*Report, error) 
 	if err != nil {
 		return nil, err
 	}
-	rep := &Report{Truncated: truncated, Sample: []ReportSample{}, Errors: []ReportError{}}
+	rep := &Report{Truncated: truncated, Sample: []ReportSample{}, Errors: []ReportError{},
+		ProfileWarnings: warnings}
 	rep.Files.Unsupported = len(unsupported)
 	rep.Files.Total = len(unsupported)
 	for _, u := range unsupported {

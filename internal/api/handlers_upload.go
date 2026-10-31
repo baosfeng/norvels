@@ -14,6 +14,7 @@ import (
 
 	"norvels/internal/importer"
 	"norvels/internal/parser"
+	"norvels/internal/source"
 )
 
 // 上传接口（docs/specs/2026-10-25-import-formats.md §2）的默认上限。
@@ -107,7 +108,7 @@ func (s *Server) handleUploadImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 与目录导入同一条规则来源：请求线程里读一次 settings 再注入。
-	opts := uploadOptions(sess, job.ID, s.loadChapterRules(r.Context()))
+	opts := s.uploadOptions(r.Context(), sess, job.ID, s.loadChapterRules(r.Context()), s.loadSourceProfiles(r.Context()))
 	ctx, cancel := context.WithCancel(s.baseContext())
 	s.spawnImport(job.ID, cancel, func() { s.runUploadImport(ctx, cancel, job.ID, sess, opts) })
 	writeJSON(w, http.StatusAccepted, uploadResponse{JobID: job.ID, Accepted: sess.accepted, Rejected: sess.rejected})
@@ -116,13 +117,18 @@ func (s *Server) handleUploadImport(w http.ResponseWriter, r *http.Request) {
 // uploadOptions 把会话状态翻译成 importer.Options：force/update 都是用户在上传表单里
 // 显式勾选的开关，缺省一律 false（追更不能默认打开，否则一次误操作就会改库）。
 // rules 与目录导入同源（loadChapterRules），上传路径同样吃自定义切章规则。
-func uploadOptions(sess *uploadSession, jobID int64, rules []parser.Rule) importer.Options {
+func (s *Server) uploadOptions(ctx context.Context, sess *uploadSession, jobID int64, rules []parser.Rule,
+	profiles []source.Profile) importer.Options {
+	cleanList := s.loadCleanRuleList(ctx)
+	parserOpts := parser.DefaultOptions()
+	parserOpts.ExtraFilters = cleanFilters(cleanList)
 	return importer.Options{
 		Dir:          sess.dir,
 		Force:        sess.force,
 		Update:       sess.update,
-		ParserOpts:   parser.DefaultOptions(),
+		ParserOpts:   parserOpts,
 		ChapterRules: rules,
+		Profiles:     withCleanRules(profiles, cleanList),
 		JobID:        jobID,
 	}
 }

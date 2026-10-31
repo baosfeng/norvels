@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChapterRule, DryRunReport, ImportJob, ImportJobFile, UploadResult } from "../../api/types";
+import type { Capabilities, ChapterRule, DryRunReport, ImportJob, ImportJobFile, TagRule, UploadResult } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 import { TierRoute } from "../../layouts/TierRoute";
 
@@ -29,11 +29,49 @@ const rulesState = {
 };
 
 const tagRulesState = {
-  data: { rules: [] as ChapterRule[] },
+  data: { rules: [] as TagRule[] },
   loading: false,
   error: null as unknown,
   reload: vi.fn(),
 };
+
+/** 后端默认能力清单：面板上限与格式白名单都从这里来（值只是测试夹具，不是前端副本）。 */
+const defaultCaps: Capabilities = {
+  splitters: ["di-unit", "special", "numeric", "en-chapter", "unmarked"],
+  codecs: ["utf-8", "gb18030"],
+  filters: [{ name: "bom", priority: 10 }],
+  metas: [{ name: "filename", weight: 80 }],
+  extensions: ["txt", "epub", "zip"],
+  limits: {
+    chapterRules: { maxCount: 20, maxPatternRunes: 200, maxNameRunes: 60 },
+    tagRules: { maxCount: 50, maxTagRunes: 20, maxKeywords: 100, maxKeywordRunes: 20 },
+    sourceProfiles: { maxCount: 20, maxRulesPerProfile: 30, maxPatternRunes: 200, maxNameRunes: 60 },
+    upload: { maxFileBytes: 64 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024, maxFiles: 20 },
+    import: { maxWorkers: 32, defaultMaxChapterChars: 30000, defaultFallbackChunkChars: 8000 },
+    dryRun: { maxFiles: 200, samples: 20, errors: 50 },
+  },
+};
+
+const capsState = {
+  data: defaultCaps as Capabilities | null,
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
+/** 导入页现在也挂书源规则面板：它自带一份取数，这里给个空态即可。 */
+const sourceProfilesState = {
+  data: { profiles: [] as never[] },
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
+/** 能力清单的改动只在本用例内生效，别把状态漏给后面的用例。 */
+afterEach(() => {
+  capsState.data = defaultCaps;
+  capsState.error = null;
+});
 
 const failedFilesState = {
   data: { files: [] as ImportJobFile[] },
@@ -55,6 +93,8 @@ vi.mock("../../api/hooks", () => ({
   useChapterRules: () => rulesState,
   useTagRules: () => tagRulesState,
   useFailedFiles: () => failedFilesState,
+  useCapabilities: () => capsState,
+  useSourceProfiles: () => sourceProfilesState,
 }));
 
 vi.mock("../../api/client", async () => {
@@ -718,5 +758,84 @@ describe("导入页：运行中任务的进度轮询", () => {
       await vi.advanceTimersByTimeAsync(4000);
     });
     expect(importJob).not.toHaveBeenCalled();
+  });
+});
+
+describe("导入页：上限改为 capabilities 驱动", () => {
+  beforeEach(() => {
+    jobState.data = { items: [] };
+    jobState.loading = false;
+    jobState.error = null;
+    jobState.reload.mockReset();
+    rulesState.data = { rules: [{ name: "分节符", pattern: "^第\\d+章" }] };
+    rulesState.loading = false;
+    rulesState.error = null;
+    tagRulesState.data = { rules: [{ tag: "奇幻", keywords: ["魔法"] }] };
+    tagRulesState.loading = false;
+    tagRulesState.error = null;
+    uploadImport.mockReset();
+  });
+
+  it("capabilities 下发小值时三张卡的上限一起变小（不写死 20 / 64 MB）", () => {
+    capsState.data = {
+      ...defaultCaps,
+      extensions: ["txt"],
+      limits: {
+        ...defaultCaps.limits,
+        upload: { maxFileBytes: 1024, maxTotalBytes: 2048, maxFiles: 1 },
+        chapterRules: { maxCount: 1, maxPatternRunes: 200, maxNameRunes: 60 },
+        tagRules: { maxCount: 1, maxTagRunes: 20, maxKeywords: 100, maxKeywordRunes: 20 },
+      },
+    };
+    renderPage();
+
+    // 上传：一次只能选 1 个，多出来的当场说明
+    pickFiles(sample("甲.txt"), sample("乙.txt"));
+    expect(screen.getByTestId("upload-picked").textContent).toContain("甲.txt");
+    expect(screen.getByTestId("upload-picked").textContent).not.toContain("乙.txt");
+    expect(screen.getByText(/一次最多 1 个文件/)).toBeTruthy();
+
+    // 章节规则：已有 1 条 = 已满，新增禁用、满额说明里的数字来自下发值
+    expect((screen.getByRole("button", { name: "新增一条规则" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("rules-full").textContent).toContain("最多 1 条");
+
+    // 词表：同一份下发值的 maxCount 也生效
+    expect(screen.getByTestId("tag-rules-full").textContent).toContain("最多 1 条");
+    expect((screen.getByTestId("tag-rule-add") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("预检文案里的 200 / 20 也来自 capabilities；读不到时不写数字", async () => {
+    const report: DryRunReport = {
+      truncated: true,
+      files: { total: 1, willImport: 1, duplicate: 0, unsupported: 0, failed: 0 },
+      books: { new: 1, duplicate: 0, split: 0 },
+      sample: [
+        { source: "/path/to/txt/示例书简.txt", title: "示例书简", chapters: 2, words: 100, duplicate: false, reason: "" },
+      ],
+    };
+    dryRunImport.mockResolvedValueOnce(report);
+    capsState.data = { ...defaultCaps, limits: { ...defaultCaps.limits, dryRun: undefined as unknown as typeof defaultCaps.limits.dryRun } };
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("目录或单个文件路径"), { target: { value: "/path/to/txt" } });
+    fireEvent.click(screen.getByTestId("import-dry-run"));
+
+    await waitFor(() => expect(screen.getByTestId("dry-run-truncated")).toBeTruthy());
+    expect(screen.getByTestId("dry-run-truncated").textContent).toContain("前一部分文件");
+    expect(screen.getByTestId("dry-run-report").textContent).toContain("样例条数受服务端上限限制");
+  });
+
+  it("能力清单读不到时保守兜底：不限制、提示服务端仍会校验", () => {
+    capsState.error = new ApiError("http", "boom", 500);
+    renderPage();
+
+    expect(screen.getByTestId("upload-limits-unknown").textContent).toContain("服务端仍会校验");
+    expect(screen.getByTestId("rules-limit-unknown")).toBeTruthy();
+    expect(screen.getByTestId("tag-rules-limit-unknown")).toBeTruthy();
+
+    // 兜底是「不限制」：读不到也不该把上限变成 0
+    pickFiles(sample("甲.txt"), sample("乙.txt"));
+    expect(screen.getByTestId("upload-picked").textContent).toContain("乙.txt");
+    expect((screen.getByRole("button", { name: "新增一条规则" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

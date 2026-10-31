@@ -94,8 +94,9 @@ make verify       # 等同 make gate（提交前入口）
 
 ## 依赖方向
 
-`tests/tools/gatedeps/main.go` 的 `allowedDeps` 是事实源：cmd → internal/{api,importer,parser,store}；api → importer/parser/store/webui；
-importer → parser/store/model；parser,store → model；model、webui 为叶子。新增内部包必须先登记，否则 `make gate-deps` 以「未登记」判失败。
+`tests/tools/gatedeps/main.go` 的 `allowedDeps` 是事实源：cmd → internal/{api,importer,parser,store,source}；api → importer/parser/store/source/webui；
+importer → parser/store/source/model；parser,store → model；model、webui 为叶子。新增内部包必须先登记，否则 `make gate-deps` 以「未登记」判失败。
+`internal/source`（书源规则包）是叶子包：store、api、importer 可依赖它，它不依赖任何内部包（纯数据模型 + 校验）。
 
 ## 覆盖率：基线 + 渐进目标
 
@@ -112,3 +113,4 @@ importer → parser/store/model；parser,store → model；model、webui 为叶�
 - golangci-lint v2.x（门禁 4 首选；**缺失自动回退** gostats，不跳过门禁）。`gate-complexity.sh` 测量前自带 `cache clean`：
   缓存按绝对路径存取，会拿已删 worktree 的旧文件报「幻影超标」。脚本兼容 macOS 自带 bash 3.2（不用 `mapfile`）。
 - 验收测试 fixture 一律**合成**（书名/作者/正文都是造出来的串），不读真实语料；`scripts/privacy-scan.sh --all` 零命中是提交前硬条件（见 [privacy.md](privacy.md)）。
+- IP 类只放行 RFC 1918/3927/5737/4193 的私有、链路本地与文档保留段；公网地址一律拦截。

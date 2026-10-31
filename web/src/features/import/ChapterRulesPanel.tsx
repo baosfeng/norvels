@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { useChapterRules } from "../../api/hooks";
+import { useCapabilities, useChapterRules } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
 import type { ChapterRule } from "../../api/types";
 import { ErrorPanel } from "../../components/StatePanel";
 import { previewChapters, ruleError, type RulePreview } from "../../lib/chapterRules";
+import { LIMITS_UNKNOWN_HINT, chapterLimitsOf, type ChapterLimits } from "./limits";
 import { useTimedNote } from "./useTimedNote";
 
-/** 规则条数上限（与后端一致）：满了就不让再加，原因常驻在按钮下方。 */
-export const MAX_RULES = 20;
-/** 空列表与满额两条常驻说明（契约 C-12 / C-13 的边界列）。 */
+/** 空列表与满额两条常驻说明（契约 C-12 / C-13 的边界列）；条数来自 capabilities。 */
 export const EMPTY_HINT = "还没有自定义规则，导入一律走内置切章";
-export const FULL_HINT = "最多 20 条，先删掉用不上的再加";
+function fullHint(maxCount: number): string {
+  return `最多 ${maxCount} 条，先删掉用不上的再加`;
+}
 /** 正则没闭合时的拦截文案（契约 C-11）。 */
 export const UNCLOSED_HINT = "有一条规则的正则没闭合：括号或方括号少了收尾，先补全再保存。";
 /** 保存失败文案（契约 C-14）：不提任何实现词。 */
 export const SAVE_FAILED = "正则没通过校验，检查一下括号与转义。";
 
 /**
- * 章节识别规则（全局，最多 20 条）：导入时按顺序尝试，第一条命中的作为章节边界。
+ * 章节识别规则（全局，条数上限取 capabilities）：导入时按顺序尝试，第一条命中的作为章节边界。
  * 保存是整体替换；试切预览在浏览器里算，不写库也不发请求。
  *
  * 编辑是**本地草稿**：删一条规则只是从这份草稿里拿掉，不点「保存规则」就不生效
@@ -25,6 +26,8 @@ export const SAVE_FAILED = "正则没通过校验，检查一下括号与转义�
  */
 export function ChapterRulesPanel() {
   const { data, loading, error, reload } = useChapterRules();
+  const caps = useCapabilities();
+  const limits = chapterLimitsOf(caps.data);
   const saved = useTimedNote();
   const rules = data?.rules ?? [];
 
@@ -32,8 +35,14 @@ export function ChapterRulesPanel() {
     <section className="import-form ix-ops" data-testid="chapter-rules">
       <h2>章节识别规则</h2>
       <p className="meta">
-        导入时按顺序尝试，第一条命中的规则作为章节边界；都切不开就退回内置规则。最多 {MAX_RULES} 条。
+        导入时按顺序尝试，第一条命中的规则作为章节边界；都切不开就退回内置规则。
+        {limits.maxCount !== null ? `最多 ${limits.maxCount} 条。` : ""}
       </p>
+      {caps.error ? (
+        <p className="inline-note" data-testid="rules-limit-unknown">
+          {LIMITS_UNKNOWN_HINT}
+        </p>
+      ) : null}
       {saved.note ? (
         <p className="meta" role="status" data-testid="rules-saved">
           {saved.note}
@@ -49,6 +58,7 @@ export function ChapterRulesPanel() {
         <RuleEditor
           key={JSON.stringify(rules)}
           initial={rules}
+          limits={limits}
           onSaved={(count) => {
             saved.show(`已保存 ${count} 条规则，下次导入生效。`);
             reload();
@@ -68,7 +78,15 @@ function toRows(rules: ChapterRule[], startAt = 1): Row[] {
 }
 
 /** 编辑区：列表 + 名称/正则 + 新增删除 + 保存 + 试切预览。 */
-function RuleEditor({ initial, onSaved }: { initial: ChapterRule[]; onSaved: (count: number) => void }) {
+function RuleEditor({
+  initial,
+  limits,
+  onSaved,
+}: {
+  initial: ChapterRule[];
+  limits: ChapterLimits;
+  onSaved: (count: number) => void;
+}) {
   const [rows, setRows] = useState<Row[]>(() => toRows(initial));
   const [saving, setSaving] = useState(false);
   const [errorText, setErrorText] = useState("");
@@ -91,8 +109,13 @@ function RuleEditor({ initial, onSaved }: { initial: ChapterRule[]; onSaved: (co
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
   }
 
+  /** 条数上限取 capabilities；读不到（null）时不拦，交给服务端。 */
+  function atLimit(): boolean {
+    return limits.maxCount !== null && rows.length >= limits.maxCount;
+  }
+
   function addRow() {
-    if (rows.length >= MAX_RULES) return;
+    if (atLimit()) return;
     const key = nextKey.current++;
     setRows((prev) => [...prev, { key, name: "", pattern: "" }]);
     setErrorText("");
@@ -127,7 +150,7 @@ function RuleEditor({ initial, onSaved }: { initial: ChapterRule[]; onSaved: (co
       await api.putChapterRules(cleaned);
       onSaved(cleaned.length);
     } catch (err) {
-      setErrorText(saveErrorText(err));
+      setErrorText(saveErrorText(err, limits));
     } finally {
       setSaving(false);
     }
@@ -148,7 +171,7 @@ function RuleEditor({ initial, onSaved }: { initial: ChapterRule[]; onSaved: (co
     );
   }
 
-  const full = rows.length >= MAX_RULES;
+  const full = atLimit();
 
   return (
     <>
@@ -182,9 +205,9 @@ function RuleEditor({ initial, onSaved }: { initial: ChapterRule[]; onSaved: (co
           {saving ? "正在保存…" : "保存规则"}
         </button>
       </div>
-      {full ? (
+      {full && limits.maxCount !== null ? (
         <p className="inline-note" data-testid="rules-full">
-          {FULL_HINT}
+          {fullHint(limits.maxCount)}
         </p>
       ) : null}
       {errorText ? (
@@ -298,11 +321,19 @@ export function unclosedPattern(pattern: string): boolean {
 }
 
 /** 保存失败的文案：正则非法与条数/长度超限分开说，其它归为稍后再试。 */
-function saveErrorText(error: unknown): string {
+function saveErrorText(error: unknown, limits: ChapterLimits): string {
   if (error instanceof ApiError) {
     if (error.status === 400 && error.code === "invalid_pattern") return SAVE_FAILED;
-    if (error.status === 400) return `规则条数或长度超出限制（最多 ${MAX_RULES} 条、单条 200 字）。`;
+    if (error.status === 400) return overLimitText(limits);
     if (error.kind === "timeout") return "保存超时了，稍后再试。";
   }
   return "规则没能保存，稍后再试。";
+}
+
+/** 条数/长度超限文案：数字只从 capabilities 取，读不到时只说「超出限制」。 */
+function overLimitText(limits: ChapterLimits): string {
+  const parts: string[] = [];
+  if (limits.maxCount !== null) parts.push(`最多 ${limits.maxCount} 条`);
+  if (limits.maxPatternRunes !== null) parts.push(`单条 ${limits.maxPatternRunes} 字`);
+  return parts.length > 0 ? `规则条数或长度超出限制（${parts.join("、")}）。` : "规则条数或长度超出限制。";
 }

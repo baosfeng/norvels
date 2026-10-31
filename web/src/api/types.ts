@@ -293,6 +293,8 @@ export interface DryRunReport {
   sample: DryRunSample[];
   /** 最多 50 条 */
   errors?: { source: string; reason: string }[];
+  /** 规则包相关的告警（例如某份规则包没匹配上任何文件），面向用户的一句话 */
+  profileWarnings?: string[];
 }
 
 export interface DryRunSample {
@@ -302,6 +304,8 @@ export interface DryRunSample {
   words: number;
   duplicate: boolean;
   reason: string;
+  /** 这本书实际生效的规则包 id；空串 = 走内置策略（显式指定或 match 命中）。 */
+  profileId?: string;
 }
 
 /** 词表规则：命中关键词就给书打这个标签（导入时执行，只增不删，不覆盖手动标签）。 */
@@ -312,6 +316,243 @@ export interface TagRule {
 
 export interface TagRules {
   rules: TagRule[];
+}
+
+/**
+ * 服务端能力清单（GET /api/settings/capabilities）：上限与策略名单的唯一来源。
+ *
+ * 只读下发、不接受写入——上限是护栏，可配置等于把 DoS 开关交给一份 JSON。
+ * 前端不复制这些数字：读不到时按「不限制 + 服务端仍会校验」保守放行。
+ */
+export interface CapabilityFilter {
+  name: string;
+  priority: number;
+}
+
+export interface CapabilityMeta {
+  name: string;
+  weight: number;
+}
+
+/** 章节规则上限。 */
+export interface ChapterRuleLimit {
+  maxCount: number;
+  maxPatternRunes: number;
+  maxNameRunes: number;
+}
+
+/** 词表打标规则上限。 */
+export interface TagRuleLimit {
+  maxCount: number;
+  maxTagRunes: number;
+  maxKeywords: number;
+  maxKeywordRunes: number;
+}
+
+/** 书源规则包上限（切片 4 的面板用，这里先与后端对齐）。 */
+export interface SourceProfileLimit {
+  maxCount: number;
+  maxRulesPerProfile: number;
+  maxPatternRunes: number;
+  maxNameRunes: number;
+}
+
+/** 本进程生效的上传上限（随服务端 Config 注入，0 值已由后端回落默认）。 */
+export interface UploadLimit {
+  maxFileBytes: number;
+  maxTotalBytes: number;
+  maxFiles: number;
+}
+
+/** 导入线程的规模参数与解析默认值。 */
+export interface ImportLimit {
+  maxWorkers: number;
+  defaultMaxChapterChars: number;
+  defaultFallbackChunkChars: number;
+}
+
+/** 预检（dry-run）的规模上限：候选文件数、样例条数、错误条数。 */
+export interface DryRunLimit {
+  maxFiles: number;
+  samples: number;
+  errors: number;
+}
+
+/** 规则包的来源类型：本地文件 / 在线书源（本期只校验结构，不发起抓取）。 */
+export type SourceProfileKind = "local" | "online";
+
+/** match：哪些来源路径归这份规则包；条件之间是「与」，一份文件只应用一份规则包。 */
+export interface SourceMatch {
+  ext?: string[];
+  pathGlob?: string;
+  nameRegex?: string;
+  zipNameRegex?: string;
+}
+
+export interface SourceDecode {
+  forceEncoding?: string;
+}
+
+/** 一条声明式清洗规则（filters.extra）。 */
+export interface SourceFilterRule {
+  name: string;
+  priority: number;
+  pattern: string;
+  replace: string;
+}
+
+export interface SourceFilters {
+  /** 关闭内置过滤器（名字取 capabilities.filters） */
+  disable?: string[];
+  extra?: SourceFilterRule[];
+}
+
+/** 一条元数据抽取规则：pattern 的捕获组序号写到 title/author/intro（0 = 整段匹配）。 */
+export interface SourceMetaRule {
+  name: string;
+  weight: number;
+  pattern: string;
+  title: number;
+  author: number;
+  intro: number;
+}
+
+/** 一条行级切章规则（直通 parser.Rule）：^$ 锚定整行。 */
+export interface SourceSplitRule {
+  name: string;
+  pattern: string;
+}
+
+export interface SourceSplit {
+  /** 内置切章策略名（取 capabilities.splitters）；空串 = 用 Detect 打分选 */
+  forceSplitter?: string;
+  rules?: SourceSplitRule[];
+}
+
+export interface SourceTagRule {
+  tag: string;
+  keywords: string[];
+}
+
+export interface SourceLimits {
+  maxChapterChars: number;
+  minChapters: number;
+}
+
+/** 在线书源段：本期只做结构校验，不发起任何网络请求。 */
+export interface SourceOnline {
+  bookSourceUrl: string;
+  group?: string;
+  weight?: number;
+  ruleSearch?: Record<string, string>;
+  ruleBookInfo?: Record<string, string>;
+  ruleToc?: Record<string, string>;
+  ruleContent?: Record<string, string>;
+}
+
+/** 一份书源规则包（与后端 source.Profile 同形，字段语义见 docs/source-pluggable.md §3）。 */
+export interface SourceProfile {
+  id: string;
+  name: string;
+  schemaVersion: number;
+  enabled: boolean;
+  priority: number;
+  kind: SourceProfileKind;
+  match: SourceMatch;
+  /** 允许的容器格式；留空 = 取全局扩展名清单 */
+  format?: string[];
+  decode: SourceDecode;
+  filters: SourceFilters;
+  meta?: SourceMetaRule[];
+  split: SourceSplit;
+  tags?: SourceTagRule[];
+  limits: SourceLimits;
+  online?: SourceOnline;
+}
+
+export interface SourceProfiles {
+  profiles: SourceProfile[];
+}
+
+/** Legado 条目类型（预览表按它显示「书源 / 净化 / TXT 规则 / 未知」）。 */
+export type SourceImportType = "book_source" | "replace_rule" | "txt_toc_rule" | "unknown";
+
+/**
+ * 一条输入的导入结果状态。
+ * ok / partial 可入库（partial 带降级标记）；unusable 的关键字段依赖 @js，抓取必失败；
+ * invalid / unsupported_type 明确拒绝；recognized / unknown_type 本期不落库。
+ */
+export type SourceImportStatus =
+  | "ok"
+  | "partial"
+  | "unusable"
+  | "invalid"
+  | "unsupported_type"
+  | "recognized"
+  | "unknown_type";
+
+/** POST /api/import/source-profiles/import 的逐条结果。 */
+export interface SourceImportIssue {
+  index: number;
+  type: SourceImportType | string;
+  id: string;
+  name: string;
+  status: SourceImportStatus | string;
+  degradedFields: string[];
+  unsupportedFields: string[];
+  reason: string;
+}
+
+/** apply=true 时被跳过的条目（新语义：跳过不可用、只落可用）。 */
+export interface SourceImportSkipped {
+  index: number;
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  reason: string;
+}
+
+/** 预览 / 应用书源的响应。 */
+export interface SourceImportResult {
+  applied: number;
+  overwritten: number;
+  results: SourceImportIssue[];
+  /** 新语义下才有：本次被跳过的条目 */
+  skipped?: SourceImportSkipped[];
+  /** 输入形态：text / url / legado / yuedu（由后端取回层判定） */
+  via?: string;
+}
+
+/** POST /api/import/source-profiles/validate 的逐份结果。 */
+export interface SourceProfileIssue {
+  index: number;
+  id: string;
+  ok: boolean;
+  reason: string;
+}
+
+export interface SourceProfileValidateResult {
+  results: SourceProfileIssue[];
+}
+
+export interface Capabilities {
+  splitters: string[];
+  codecs: string[];
+  /** 按 priority 升序（= 执行顺序） */
+  filters: CapabilityFilter[];
+  /** 按 weight 降序（= 投票顺位） */
+  metas: CapabilityMeta[];
+  /** 可导入的扩展名（小写、不带点） */
+  extensions: string[];
+  limits: {
+    chapterRules: ChapterRuleLimit;
+    tagRules: TagRuleLimit;
+    sourceProfiles: SourceProfileLimit;
+    upload: UploadLimit;
+    import: ImportLimit;
+    dryRun: DryRunLimit;
+  };
 }
 
 export interface Stats {

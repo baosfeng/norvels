@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useCapabilities } from "../../api/hooks";
 import type { DryRunReport } from "../../api/types";
 import { EmptyPanel } from "../../components/StatePanel";
+import { dryRunLimitsOf } from "./limits";
 
 /**
  * 只预检的只读报告：计数 + 样例表 + 告警折叠条。
@@ -9,6 +11,8 @@ import { EmptyPanel } from "../../components/StatePanel";
 export function DryRunReportPanel({ report, dir }: { report: DryRunReport; dir: string }) {
   const files = report.files;
   const errors = report.errors ?? [];
+  const caps = useCapabilities();
+  const limits = dryRunLimitsOf(caps.data);
 
   return (
     <div className="dry-run" data-testid="dry-run-report">
@@ -21,7 +25,9 @@ export function DryRunReportPanel({ report, dir }: { report: DryRunReport; dir: 
       <p className="meta">预检不写库、不建任务，也不会挡住正在跑的导入；判定口径与真正导入一致。</p>
       {report.truncated ? (
         <p className="meta" data-testid="dry-run-truncated">
-          目录条目太多，只预检了前 200 个文件；真正导入不受这个上限限制。
+          {limits.maxFiles !== null
+            ? `目录条目太多，只预检了前 ${limits.maxFiles} 个文件；真正导入不受这个上限限制。`
+            : "目录条目太多，只预检了前一部分文件；真正导入不受这个上限限制。"}
         </p>
       ) : null}
 
@@ -93,7 +99,11 @@ export function DryRunReportPanel({ report, dir }: { report: DryRunReport; dir: 
               ))}
             </tbody>
           </table>
-          <p className="meta">样例最多 20 条，按扫描顺序；完整结果以计数为准。</p>
+          <p className="meta">
+            {limits.samples !== null
+              ? `样例最多 ${limits.samples} 条，按扫描顺序；完整结果以计数为准。`
+              : "样例条数受服务端上限限制，按扫描顺序；完整结果以计数为准。"}
+          </p>
         </div>
       ) : null}
     </div>

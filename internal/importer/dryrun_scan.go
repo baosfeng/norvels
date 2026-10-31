@@ -57,7 +57,7 @@ func (c *dryRunCollector) add(path string, d fs.DirEntry) {
 		c.unsupported = append(c.unsupported, path)
 		return
 	}
-	if len(c.roots) >= dryRunMaxFiles {
+	if len(c.roots) >= DryRunMaxFiles {
 		c.truncated = true
 		return
 	}
@@ -163,10 +163,10 @@ func dryRunBookDuplicate(ctx context.Context, st *store.Store, opt Options, b *m
 
 // addReportSample 追加一条样例（最多 20 条，按扫描顺序）。
 func addReportSample(rep *Report, oc parseOutcome, duplicate bool, reason string) {
-	if len(rep.Sample) >= dryRunSampleMax {
+	if len(rep.Sample) >= DryRunMaxSamples {
 		return
 	}
-	s := ReportSample{Source: oc.cand.source, Duplicate: duplicate, Reason: reason}
+	s := ReportSample{Source: oc.cand.source, Duplicate: duplicate, Reason: reason, ProfileID: oc.profileID}
 	if len(oc.books) > 0 {
 		s.Title = oc.books[0].Title
 		s.Chapters = len(oc.books[0].Chapters)
@@ -177,7 +177,7 @@ func addReportSample(rep *Report, oc parseOutcome, duplicate bool, reason string
 
 // addReportError 追加一条错误（最多 50 条）。
 func addReportError(rep *Report, source, reason string) {
-	if len(rep.Errors) >= dryRunErrorsMax {
+	if len(rep.Errors) >= DryRunMaxErrors {
 		return
 	}
 	rep.Errors = append(rep.Errors, ReportError{Source: source, Reason: reason})

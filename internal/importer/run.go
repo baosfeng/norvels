@@ -97,6 +97,10 @@ func (r *runState) consume(ctx context.Context, outcomes <-chan parseOutcome, to
 
 // applyOutcome 把单个条目的解析结果计入汇总，返回用于进度展示的书名。
 func (r *runState) applyOutcome(ctx context.Context, oc parseOutcome, opt Options) string {
+	if oc.profileID != "" {
+		r.res.AppliedProfiles = append(r.res.AppliedProfiles,
+			AppliedProfile{Source: oc.cand.source, ProfileID: oc.profileID})
+	}
 	switch {
 	case oc.err != nil:
 		return r.recordFileError(ctx, oc.cand.source, oc.path, oc.err)
@@ -114,14 +118,19 @@ func (r *runState) applyOutcome(ctx context.Context, oc parseOutcome, opt Option
 // saveBooks 逐本落库（合集拆出的多本各算一本），返回第一本的书名用于进度展示。
 func (r *runState) saveBooks(ctx context.Context, oc parseOutcome, opt Options) string {
 	title := ""
+	// 上架门槛：规则包的 limits.minChapters 覆盖全局值（0 = 用全局）。
+	minCh := oc.minChapters
+	if minCh <= 0 {
+		minCh = opt.MinChapters
+	}
 	for _, book := range oc.books {
 		if title == "" {
 			title = book.Title
 		}
-		if len(book.Chapters) < opt.MinChapters {
+		if len(book.Chapters) < minCh {
 			r.res.Skipped++
 			r.recordJobFile(ctx, oc.cand.source, oc.path, store.ImportFileStatusSkipped,
-				fmt.Sprintf("章节数不足 %d", opt.MinChapters), 0)
+				fmt.Sprintf("章节数不足 %d", minCh), 0)
 			continue
 		}
 		if opt.DryRun {

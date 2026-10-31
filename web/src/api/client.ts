@@ -9,6 +9,7 @@ import type {
   BookSummary,
   ChapterBrief,
   ChapterDetail,
+  Capabilities,
   ChapterRule,
   ChapterRules,
   Collection,
@@ -30,6 +31,10 @@ import type {
   ReadingSessionInput,
   ReadingStats,
   SearchResult,
+  SourceImportResult,
+  SourceProfile,
+  SourceProfiles,
+  SourceProfileValidateResult,
   AuthUser,
   ShelfIdsResponse,
   ShelfItem,
@@ -275,7 +280,15 @@ export const api = {
    * 服务端超时回 503 timeout（客户端超时设得比它更长，优先展示后端口径）。
    */
   dryRunImport: (
-    body: { dir: string; recursive?: boolean; force?: boolean; update?: boolean; workers?: number },
+    body: {
+      dir: string;
+      recursive?: boolean;
+      force?: boolean;
+      update?: boolean;
+      workers?: number;
+      /** 指定一份书源规则包试跑；省略 = 走 match 自动选包 */
+      profileId?: string;
+    },
     opts?: RequestOptions,
   ) =>
     request<DryRunReport>("/import", {
@@ -430,6 +443,33 @@ export const api = {
   /** 取消运行中的导入任务：202 `{"status":"canceling"}`；任务不存在 404，已结束 409。 */
   cancelImport: (id: number, opts?: RequestOptions) =>
     request<{ status: string }>(`/import/jobs/${id}/cancel`, { ...opts, method: "POST" }),
+  /**
+   * 服务端能力清单：上限与策略名单的唯一来源（只读下发）。
+   * 面板一律读它，不在前端各写一份数字；读不到时按「不限制 + 服务端仍会校验」保守兜底。
+   */
+  capabilities: (opts?: RequestOptions) => request<Capabilities>("/settings/capabilities", opts),
+  /** 书源规则包：未配置时返回 {"profiles":[]}（不是 null）。 */
+  sourceProfiles: (opts?: RequestOptions) => request<SourceProfiles>("/import/source-profiles", opts),
+  /** 全量替换规则包；任一不合法整批 400 且不改库（没有「半套规则」）。 */
+  putSourceProfiles: (profiles: SourceProfile[], opts?: RequestOptions) =>
+    request<void>("/import/source-profiles", { ...opts, method: "PUT", body: { profiles } }),
+  /**
+   * 导入 Legado 书源：raw 里放 JSON 文本或分享链接（取回与识别都在后端）。
+   * apply=false 只预览；apply=true 落库并返回 applied/overwritten（新语义还有 skipped）。
+   */
+  importSourceProfiles: (raw: string, apply: boolean, opts?: RequestOptions) =>
+    request<SourceImportResult>("/import/source-profiles/import", {
+      ...opts,
+      method: "POST",
+      body: { raw, apply },
+    }),
+  /** 只校验不落库，逐份返回 {index,id,ok,reason}，用于把失败标到具体那张卡上。 */
+  validateSourceProfiles: (profiles: SourceProfile[], opts?: RequestOptions) =>
+    request<SourceProfileValidateResult>("/import/source-profiles/validate", {
+      ...opts,
+      method: "POST",
+      body: { profiles },
+    }),
   getChapterRules: (opts?: RequestOptions) => request<ChapterRules>("/settings/chapter-rules", opts),
   /** 全量替换规则；正则非法后端 400 `invalid_pattern`，条数/长度超限也是 400。 */
   putChapterRules: (rules: ChapterRule[], opts?: RequestOptions) =>

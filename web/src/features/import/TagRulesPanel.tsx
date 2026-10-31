@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { useTagRules } from "../../api/hooks";
+import { useCapabilities, useTagRules } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
 import type { TagRule } from "../../api/types";
 import { ErrorPanel } from "../../components/StatePanel";
-import { MAX_TAG_RULES, keywordsToText, parseKeywords, tagRulesError } from "../../lib/tagRules";
+import { keywordsToText, parseKeywords, tagRulesError, type TagRuleLimits } from "../../lib/tagRules";
+import { LIMITS_UNKNOWN_HINT, tagLimitsOf } from "./limits";
 import { useTimedNote } from "./useTimedNote";
 
 /** 保存失败文案（契约 C-19）：说清是哪几类问题，不提实现词。 */
@@ -16,6 +17,8 @@ export const TAG_SAVE_FAILED = "词表没通过校验：条数、标签名、关
  */
 export function TagRulesPanel() {
   const { data, loading, error, reload } = useTagRules();
+  const caps = useCapabilities();
+  const limits = tagLimitsOf(caps.data);
   const saved = useTimedNote();
   const rules = data?.rules ?? [];
 
@@ -24,8 +27,13 @@ export function TagRulesPanel() {
       <h2>词表规则</h2>
       <p className="meta">
         导入时按「书名 + 作者 + 前三章标题 + 正文前 5000 字」匹配关键词（不区分大小写），命中就给书打标签；只增不删，
-        同书的手动标签不会被覆盖。最多 {MAX_TAG_RULES} 条。
+        同书的手动标签不会被覆盖。{limits.maxCount !== null ? `最多 ${limits.maxCount} 条。` : ""}
       </p>
+      {caps.error ? (
+        <p className="inline-note" data-testid="tag-rules-limit-unknown">
+          {LIMITS_UNKNOWN_HINT}
+        </p>
+      ) : null}
       {saved.note ? (
         <p className="meta" role="status" data-testid="tag-rules-saved">
           {saved.note}
@@ -41,6 +49,7 @@ export function TagRulesPanel() {
         <TagRuleEditor
           key={JSON.stringify(rules)}
           initial={rules}
+          limits={limits}
           onSaved={(count) => {
             saved.show(`已保存 ${count} 条词表规则，下次导入生效。`);
             reload();
@@ -62,7 +71,15 @@ function toRows(rules: TagRule[], startAt = 1): Row[] {
 }
 
 /** 编辑区：标签名 + 关键词（逗号分隔）+ 新增删除 + 保存。 */
-function TagRuleEditor({ initial, onSaved }: { initial: TagRule[]; onSaved: (count: number) => void }) {
+function TagRuleEditor({
+  initial,
+  limits,
+  onSaved,
+}: {
+  initial: TagRule[];
+  limits: TagRuleLimits;
+  onSaved: (count: number) => void;
+}) {
   const [rows, setRows] = useState<Row[]>(() => toRows(initial));
   const [saving, setSaving] = useState(false);
   const [errorText, setErrorText] = useState("");
@@ -72,8 +89,13 @@ function TagRuleEditor({ initial, onSaved }: { initial: TagRule[]; onSaved: (cou
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
   }
 
+  /** 条数上限取 capabilities；读不到（null）时不拦，交给服务端。 */
+  function atLimit(): boolean {
+    return limits.maxCount !== null && rows.length >= limits.maxCount;
+  }
+
   function addRow() {
-    if (rows.length >= MAX_TAG_RULES) return;
+    if (atLimit()) return;
     const key = nextKey.current++;
     setRows((prev) => [...prev, { key, tag: "", keywordsText: "" }]);
     setErrorText("");
@@ -89,7 +111,7 @@ function TagRuleEditor({ initial, onSaved }: { initial: TagRule[]; onSaved: (cou
       tag: row.tag.trim(),
       keywords: parseKeywords(row.keywordsText),
     }));
-    const message = tagRulesError(cleaned);
+    const message = tagRulesError(cleaned, limits);
     if (message) {
       setErrorText(message);
       return;
@@ -106,7 +128,7 @@ function TagRuleEditor({ initial, onSaved }: { initial: TagRule[]; onSaved: (cou
     }
   }
 
-  const full = rows.length >= MAX_TAG_RULES;
+  const full = atLimit();
 
   return (
     <>
@@ -162,9 +184,9 @@ function TagRuleEditor({ initial, onSaved }: { initial: TagRule[]; onSaved: (cou
           {saving ? "正在保存…" : "保存词表"}
         </button>
       </div>
-      {full ? (
+      {full && limits.maxCount !== null ? (
         <p className="inline-note" data-testid="tag-rules-full">
-          最多 {MAX_TAG_RULES} 条，先删掉用不上的再加
+          最多 {limits.maxCount} 条，先删掉用不上的再加
         </p>
       ) : null}
       {errorText ? (
