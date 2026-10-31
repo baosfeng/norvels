@@ -232,6 +232,10 @@ var migrationStepsByVersion = map[int][]migrationStep{
 		Name: "scope personal data to users and create default user",
 		Run:  addUserScopedTablesStep,
 	}},
+	17: {{
+		Name: "rebuild blocks to 8 MB codebook format",
+		Run:  rebuildBlocksForCodebook,
+	}},
 }
 
 // ---------- 0013：同书卷名唯一索引 ----------
