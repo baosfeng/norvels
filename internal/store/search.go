@@ -45,12 +45,32 @@ func (s *Store) Search(ctx context.Context, q SearchQuery) (*SearchResult, error
 		return out, nil
 	}
 
-	books, err := s.ListBooks(ctx, BookQuery{Q: out.Q, Page: page, Size: size, Sort: "updated"})
+	books, err := s.ListBooks(ctx, bookQueryOf(q, out.Q, page, size))
 	if err != nil {
 		return nil, err
 	}
 	out.Books = books
 	return out, nil
+}
+
+// bookQueryOf 把检索请求翻成书籍列表查询：筛选维度一对一透传，排序固定「最近更新」。
+//
+// 搜索不另写 WHERE：分类（只给 L2 时按不过滤）、评分、阅读状态、连载状态、作者、标签
+// 的编译逻辑都在 bookFilter 里，复制一份就会和书籍列表页产生两套口径。
+func bookQueryOf(q SearchQuery, keyword string, page, size int) BookQuery {
+	return BookQuery{
+		Q:            keyword,
+		Page:         page,
+		Size:         size,
+		Sort:         "updated",
+		CategoryL1:   q.CategoryL1,
+		CategoryL2:   q.CategoryL2,
+		Rating:       q.Rating,
+		ReadStatus:   q.ReadStatus,
+		SerialStatus: q.SerialStatus,
+		AuthorID:     q.AuthorID,
+		Tag:          q.Tag,
+	}
 }
 
 // newEmptySearchResult 构造空结果骨架（分页字段先填好，命中数为 0）。

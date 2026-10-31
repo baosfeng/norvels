@@ -28,7 +28,9 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 ## 搜索
 
 ### GET /api/search
-参数：`q`（必填，≥2 字符）、`type`=`book|all`（默认 all，两者等价）、`page`、`size`。
+参数：`q`（必填，≥2 字符）、`type`=`book|all`（默认 all，两者等价）、`page`、`size`；
+以及**与 `GET /api/books` 同名同口径的筛选**：`categoryL1`/`categoryL2`、`rating`=1–5（0 = 未评，不可筛）、
+`readStatus`=`want|reading|done`、`serialStatus`=`ongoing|completed|none`（`none` 筛「未知」）、`authorId`、`tag`。
 
 ```json
 {
@@ -46,6 +48,10 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 - `type=chapter` → `400` `{"error":{"code":"invalid_param","message":"搜索范围仅支持书名与作者：传 chapter 无效，按章节标题（目录）搜索已下线"}}`；
   不再静默降级，前端应去掉按章节检索的入口。
 - 响应可能带可选字段 `notice`（string）：关键词只由标点/空白组成时返回「关键词需要包含文字或数字」并给空结果；前端有则提示、无则忽略。
+- **筛选**与 `GET /api/books`（[api-books.md](api-books.md#get-apibooks)）同一套实现：搜索就是「带关键词的书籍列表」，
+  条件由 `ListBooks` 的 WHERE 编译，不另写一份。留空 = 不过滤；非法值 → `400` `invalid_param`（与列表接口同文案）；
+  只给 `categoryL2` 不给 `categoryL1` 时按「不过滤」处理（与 `/api/books` 一致）。`total` 是**筛选后**的总数，
+  `page`/`size` 也作用在筛选后的结果集上。
 
 ## 错误码一览
 

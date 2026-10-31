@@ -188,6 +188,7 @@ INSERT INTO chapters_fts(chapters_fts) VALUES('integrity-check');
 | `GET /api/reading/progress?limit=5` | < 100 ms | 空数组 | ✅（无进度数据） |
 | `GET /api/authors?sort=words&size=10` | < 100 ms | 约 600 B | ✅ |
 | `GET /api/health/report` | **28.5 ms**（P95） | 约 400 B | ✅（修复后） |
+| `GET /api/health/issues?kind=missing_intro&size=20` | **1.2 ms**（P95，10 次） | 2184 B（20 条） | ✅（2026-10-31 实测） |
 | `GET /api/stats` | **1.3 ms**（P95） | 约 260 B | ✅（修复后） |
 
 ### 9.7 驾驶舱性能修复（已收敛，2026-10-25）

@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
-import { api, type BookQuery, type RequestOptions } from "../api/client";
-import type { ReadingSessionInput } from "./types";
+import { api, type BookQuery, type RequestOptions, type SearchParams } from "../api/client";
+import type { HealthIssueKind, ReadingSessionInput } from "./types";
 import { useResource } from "../lib/useResource";
 import { subscribeReadingRevision } from "../lib/readingRevision";
 import { subscribeStatsRevision } from "../lib/statsRevision";
@@ -22,6 +22,18 @@ export function useStats() {
 
 export function useHealthReport() {
   return useResource((signal: AbortSignal) => api.healthReport({ signal }), []);
+}
+
+/**
+ * 健康卡下钻明细：kind 为空（抽屉没开）时不发请求；换 kind 或翻页即重取。
+ * 与 useHealthReport 分开取，是因为抽屉只在点开时才需要这一页数据。
+ */
+export function useHealthIssues(kind: HealthIssueKind | null, page: number, size: number) {
+  return useResource(
+    (signal: AbortSignal) => api.healthIssues(kind as HealthIssueKind, page, size, { signal }),
+    [kind, page, size],
+    { enabled: kind !== null },
+  );
 }
 
 export function useImportTrend(days: number) {
@@ -76,15 +88,17 @@ export function useAuthors(
 }
 
 /**
- * 搜索取数：两栏共用一份结果，按同一 page / size 分页（翻页时两栏一起换）。
+ * 搜索取数：结果按 page / size 分页，筛选参数（分类/评分/状态/作者/标签）与
+ * /api/books 同名同口径，一变就重取（key 序列化进依赖）。
  * 后端要求关键词至少 2 个字符，不足时不发请求（避免把 400 当成错误态展示）。
  */
-export function useSearch(q: string, type: "all" | "book" = "all", page = 1, size = 8) {
+export function useSearch(q: string, params: SearchParams = {}) {
   const trimmed = q.trim();
   const enabled = trimmed.length >= 2;
+  const key = JSON.stringify(params);
   return useResource(
-    (signal: AbortSignal) => api.search(trimmed, { type, page, size }, { signal }),
-    [trimmed, type, page, size],
+    (signal: AbortSignal) => api.search(trimmed, params, { signal }),
+    [trimmed, key],
     { enabled },
   );
 }

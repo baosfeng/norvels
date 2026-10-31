@@ -28,7 +28,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, codeQueryTooShort, "关键词至少 2 个字")
 		return
 	}
-	page, size, err := parsePagination(r)
+	query, err := searchQuery(r, q)
 	if err != nil {
 		s.badRequest(w, err, codeInvalidParam)
 		return
@@ -37,7 +37,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
-	res, err := s.st.Search(r.Context(), store.SearchQuery{Q: q, Page: page, Size: size})
+	res, err := s.st.Search(r.Context(), query)
 	if err != nil {
 		s.fail(w, r, err, "检索不可用")
 		return
@@ -46,8 +46,46 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		res = &store.SearchResult{}
 	}
 	res.Q = q
-	normalizePage(&res.Books, page, size)
+	normalizePage(&res.Books, query.Page, query.Size)
 	writeJSON(w, http.StatusOK, res)
+}
+
+// searchQuery 解析检索请求：q 之外还接受与 GET /api/books 同名同口径的筛选参数。
+//
+// 复用 handlers_books.go 的解析函数而不是再写一套：非法值、边界与错误文案
+// 在列表页和搜索页必须一致，两份实现迟早会漂移（rating 允许 1–5、serialStatus
+// 的 none 哨兵、authorId 必须是正整数……都在那些函数里）。
+// 只给 categoryL2 不给 categoryL1 时按「不过滤」处理——store 侧 appendCategoryWhere
+// 就是这么做的，这里不必额外拒绝（与 /api/books 一致）。
+func searchQuery(r *http.Request, q string) (store.SearchQuery, error) {
+	page, size, err := parsePagination(r)
+	if err != nil {
+		return store.SearchQuery{}, err
+	}
+	rating, err := intQuery(r, "rating", 0, 1, 5)
+	if err != nil {
+		return store.SearchQuery{}, err
+	}
+	status, err := parseBookStatusFilters(r)
+	if err != nil {
+		return store.SearchQuery{}, err
+	}
+	authorID, _, err := int64Query(r, "authorId")
+	if err != nil {
+		return store.SearchQuery{}, err
+	}
+	return store.SearchQuery{
+		Q:            q,
+		Page:         page,
+		Size:         size,
+		CategoryL1:   strings.TrimSpace(r.URL.Query().Get("categoryL1")),
+		CategoryL2:   strings.TrimSpace(r.URL.Query().Get("categoryL2")),
+		Rating:       rating,
+		ReadStatus:   status.read,
+		SerialStatus: status.serial,
+		AuthorID:     authorID,
+		Tag:          strings.TrimSpace(r.URL.Query().Get("tag")),
+	}, nil
 }
 
 // checkSearchType 校验 type：只接受 book / all（两者等价，都是书名 + 作者）。

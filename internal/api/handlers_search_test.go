@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"norvels/internal/store"
@@ -114,5 +115,96 @@ func checkSearchPagination(t *testing.T, env *testEnv) {
 	}
 	if res.Books.Items == nil {
 		t.Fatal("items 不应为 null")
+	}
+}
+
+// searchFixture 是三本筛选测试书：分类 / 评分 / 阅读状态 / 连载状态 / 标签/作者各不相同，
+// 每条筛选都能落到唯一一本（或唯一一组），断言总数即可。
+type searchFixture struct {
+	dongfang int64 // 玄幻 › 东方玄幻，5 星，在读，连载中，标签「武侠」
+	qihuan   int64 // 玄幻 › 奇幻，3 星，已读，已完结
+	dushi    int64 // 都市（无小分类），未评，未标记，未知
+}
+
+// seedSearchFilters 造三本书名都含「示例」的书，再逐本 PATCH 出筛选维度。
+func seedSearchFilters(t *testing.T, env *testEnv) searchFixture {
+	t.Helper()
+	base := []struct {
+		title string
+		patch string
+	}{
+		{"示例玄幻甲", `{"categoryL1":"玄幻","categoryL2":"东方玄幻","rating":5,"readStatus":"reading","serialStatus":"ongoing","tags":["武侠"]}`},
+		{"示例玄幻乙", `{"categoryL1":"玄幻","categoryL2":"奇幻","rating":3,"readStatus":"done","serialStatus":"completed"}`},
+		{"示例都市丙", `{"categoryL1":"都市"}`},
+	}
+	ids := make([]int64, 0, len(base))
+	for i, item := range base {
+		id := env.seedBook(item.title, "作者"+string(rune('甲'+i)))
+		if rr := env.patch(bookPath(id), item.patch); rr.Code != http.StatusOK {
+			t.Fatalf("PATCH %s 失败: %d %s", item.title, rr.Code, rr.Body.String())
+		}
+		ids = append(ids, id)
+	}
+	return searchFixture{dongfang: ids[0], qihuan: ids[1], dushi: ids[2]}
+}
+
+// TestSearchFilters：q 之外的筛选参数与 GET /api/books 同名同口径，且每条都真的收窄结果。
+func TestSearchFilters(t *testing.T) {
+	env := newEnv(t)
+	fx := seedSearchFilters(t, env)
+	authorID := bookAuthorID(t, env, fx.dongfang)
+
+	cases := []struct {
+		name  string
+		query string
+		total int
+	}{
+		{"不加筛选", "", 3},
+		{"大分类", "&categoryL1=" + url.QueryEscape("玄幻"), 2},
+		{"大+小分类", "&categoryL1=" + url.QueryEscape("玄幻") + "&categoryL2=" + url.QueryEscape("东方玄幻"), 1},
+		{"只给小分类按不过滤", "&categoryL2=" + url.QueryEscape("奇幻"), 3},
+		{"评分", "&rating=5", 1},
+		{"阅读状态", "&readStatus=reading", 1},
+		{"连载中", "&serialStatus=ongoing", 1},
+		{"连载未知", "&serialStatus=none", 1},
+		{"标签", "&tag=" + url.QueryEscape("武侠"), 1},
+		{"作者", "&authorId=" + strconv.FormatInt(authorID, 10), 1},
+		{"多条件叠加", "&categoryL1=" + url.QueryEscape("玄幻") + "&readStatus=done&serialStatus=completed", 1},
+	}
+	for _, tc := range cases {
+		res := getSearch(t, env, "/api/search?q="+url.QueryEscape("示例")+tc.query)
+		if res.Books.Total != tc.total {
+			t.Errorf("%s：命中 %d，期望 %d", tc.name, res.Books.Total, tc.total)
+		}
+	}
+}
+
+// TestSearchFilterValidation：非法值沿用 /api/books 的 400 + codeInvalidParam，不静默忽略。
+func TestSearchFilterValidation(t *testing.T) {
+	env := newEnv(t)
+	for _, query := range []string{
+		"&rating=0",
+		"&rating=6",
+		"&rating=abc",
+		"&readStatus=bogus",
+		"&serialStatus=bogus",
+		"&authorId=abc",
+		"&authorId=0",
+		"&page=0",
+		"&size=0",
+	} {
+		requireError(t, env.get("/api/search?q="+url.QueryEscape("示例")+query), http.StatusBadRequest, codeInvalidParam)
+	}
+}
+
+// TestSearchFilterPagination：筛选与分页组合时，总数是「筛选后的总数」，页码原样回填。
+func TestSearchFilterPagination(t *testing.T) {
+	env := newEnv(t)
+	seedSearchFilters(t, env)
+
+	target := "/api/search?q=" + url.QueryEscape("示例") + "&categoryL1=" + url.QueryEscape("玄幻") + "&size=1&page=2"
+	res := getSearch(t, env, target)
+	if res.Books.Total != 2 || res.Books.Page != 2 || res.Books.Size != 1 {
+		t.Fatalf("分页/筛选组合 = total %d page %d size %d，期望 2/2/1", res.Books.Total, res.Books.Page, res.Books.Size)
 	}
 }

@@ -13,6 +13,8 @@ import type {
   ChapterRules,
   Collection,
   DryRunReport,
+  HealthIssueKind,
+  HealthIssues,
   HealthReport,
   ImportJob,
   ImportJobFiles,
@@ -209,6 +211,19 @@ export interface BookQuery {
 /** 契约文档（docs/specs/2026-10-25-p1-reading.md §2.3）里的名字；与 BookQuery 是同一份参数。 */
 export type BookListQuery = BookQuery;
 
+/**
+ * 检索参数：q 之外的筛选与 /api/books 同名同口径（后端把筛选原样并进列表查询，
+ * 不另写 WHERE），所以字段类型直接复用 BookQuery，避免两处各写一遍枚举。
+ */
+export type SearchParams = Pick<
+  BookQuery,
+  "categoryL1" | "categoryL2" | "rating" | "readStatus" | "serialStatus" | "authorId" | "tag"
+> & {
+  type?: "book" | "all";
+  page?: number;
+  size?: number;
+};
+
 /** 上传选项：force 对应「重新导入已入库的文件」，update 对应「追更（只追加新章节）」。 */
 export interface UploadOptions {
   force?: boolean;
@@ -221,6 +236,12 @@ export const api = {
   stats: (opts?: RequestOptions) => request<Stats>("/stats", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   healthReport: (opts?: RequestOptions) =>
     request<HealthReport>("/health/report", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
+  /** 健康卡下钻：某一类问题具体是哪些书 / 章节（kind 非法后端 400）。 */
+  healthIssues: (kind: HealthIssueKind, page: number, size: number, opts?: RequestOptions) =>
+    request<HealthIssues>(`/health/issues${query({ kind, page, size })}`, {
+      timeoutMs: STATS_TIMEOUT_MS,
+      ...opts,
+    }),
   importTrend: (days: number, opts?: RequestOptions) =>
     request<ImportTrendPoint[]>(`/stats/import-trend${query({ days })}`, { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   books: (params: BookQuery, opts?: RequestOptions) =>
@@ -239,8 +260,9 @@ export const api = {
   /**
    * 检索：只有书名与作者。type 只接受 book | all（两者等价），传 chapter 后端 400——
    * 章节标题检索已整块下线，所以这里不给调用方留一个必然失败的取值。
+   * 筛选参数与 /api/books 同名同口径，直接复用 SearchParams。
    */
-  search: (q: string, params: { type?: "book" | "all"; page?: number; size?: number } = {}, opts?: RequestOptions) =>
+  search: (q: string, params: SearchParams = {}, opts?: RequestOptions) =>
     request<SearchResult>(`/search${query({ q, ...params })}`, opts),
   importJobs: (opts?: RequestOptions) => request<{ items: ImportJob[] }>("/import/jobs", opts),
   tags: (opts?: RequestOptions) => request<{ items: TagSummary[] }>("/tags", opts),

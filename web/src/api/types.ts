@@ -366,6 +366,36 @@ export interface ReadingBuckets {
   finished: number;
 }
 
+/**
+ * 库健康问题的可下钻类型：与 /api/health/issues 的 kind 一一对应。
+ * 前三个是书级问题，huge_chapter 是章节级问题。
+ */
+export type HealthIssueKind = "missing_author" | "missing_intro" | "thin_book" | "huge_chapter";
+
+/**
+ * 健康明细里的一条。书级问题只填书字段；章节级问题（超长章节）另外带
+ * chapterId / chapterIdx / chapterTitle，此时 wordCount 是**这一章**的字数。
+ */
+export interface HealthIssueItem {
+  bookId: number;
+  title: string;
+  author: string;
+  chapterCount: number;
+  wordCount: number;
+  chapterId?: number;
+  /** 0 号章也是有效下标（后端用指针区分「没有」与「第 0 章」） */
+  chapterIdx?: number;
+  chapterTitle?: string;
+}
+
+export interface HealthIssues {
+  kind: HealthIssueKind;
+  total: number;
+  page: number;
+  size: number;
+  items: HealthIssueItem[];
+}
+
 export interface ReadingProgress {
   bookId: number;
   bookTitle: string;

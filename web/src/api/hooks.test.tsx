@@ -177,7 +177,16 @@ describe("各域取数 hook 都能拿到数据", () => {
 
     const ok = renderHook(() => hooks.useSearch("两个字"));
     await waitFor(() => expect(ok.result.current.data?.books.total).toBe(1));
-    expect(mocks.search).toHaveBeenCalledWith("两个字", { type: "all", page: 1, size: 8 }, expect.anything());
+    // 参数对象整体透传：筛选（与 /api/books 同名）不在这里逐项拆解
+    expect(mocks.search).toHaveBeenCalledWith("两个字", {}, expect.anything());
+
+    const filtered = renderHook(() => hooks.useSearch("两个字", { type: "book", rating: 5, categoryL1: "玄幻" }));
+    await waitFor(() => expect(filtered.result.current.data?.books.total).toBe(1));
+    expect(mocks.search).toHaveBeenLastCalledWith(
+      "两个字",
+      { type: "book", rating: 5, categoryL1: "玄幻" },
+      expect.anything(),
+    );
   });
 
   it("useImportJobs 与 useReadingProgress", async () => {

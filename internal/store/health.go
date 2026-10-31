@@ -75,25 +75,27 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 		defer wg.Done()
 		r.TotalBooks = s.intMetric(ctx, &r, "totalBooks", "SELECT COUNT(*) FROM books")
 	}()
+	// 四项判据都来自 health_issues.go 的同一份 WHERE：报告的数字与「查看明细」
+	// 接口列出的条数由同一条 SQL 条件保证一致，不会两处各写一套而漂移。
 	go func() {
 		defer wg.Done()
 		r.ThinBooks = s.intMetric(ctx, &r, "thinBooks",
-			"SELECT COUNT(*) FROM books WHERE chapter_count <= ?", thinBookChapters)
+			"SELECT COUNT(*) FROM books WHERE "+thinBookWhere("chapter_count"))
 	}()
 	go func() {
 		defer wg.Done()
 		r.MissingAuthor = s.intMetric(ctx, &r, "missingAuthor",
-			"SELECT COUNT(*) FROM books WHERE author_id = 0 OR author_id NOT IN (SELECT id FROM authors)")
+			"SELECT COUNT(*) FROM books WHERE "+whereMissingAuthor)
 	}()
 	go func() {
 		defer wg.Done()
 		r.MissingIntro = s.intMetric(ctx, &r, "missingIntro",
-			"SELECT COUNT(*) FROM books WHERE TRIM(intro) = ''")
+			"SELECT COUNT(*) FROM books WHERE "+whereMissingIntro)
 	}()
 	go func() {
 		defer wg.Done()
 		r.HugeChapters = s.intMetric(ctx, &r, "hugeChapters",
-			"SELECT COUNT(*) FROM chapters WHERE word_count >= ?", hugeChapterWords)
+			"SELECT COUNT(*) FROM chapters WHERE "+hugeChapterWhere("word_count"))
 	}()
 	go func() {
 		defer wg.Done()

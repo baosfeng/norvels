@@ -39,6 +39,24 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
 ```
 单项统计失败返回 `null` 并写入 `warnings`，不让整个接口 500。
 
+### GET /api/health/issues?kind=missing_author&page=1&size=20
+「库健康状况」卡的下钻明细：某一类问题具体是哪些书 / 哪些章节。
+
+- `kind` 必填，取 `missing_author` | `missing_intro` | `thin_book`（书级）、`huge_chapter`（章节级）；
+  非法或为空 → **400** `invalid_param`（不回落默认值，避免把两类问题混在一起看）。
+- `page`/`size` 与其它列表接口同口径（默认 1 / 20，`size` ≤ 200）；越界 400。
+- `total` 与 `/api/health/report` 里同名指标用**同一条 WHERE** 算出，两者恒等。
+
+```json
+{ "kind": "huge_chapter", "total": 5, "page": 1, "size": 20,
+  "items": [{ "bookId": 12, "title": "书目名", "author": "", "chapterCount": 0, "wordCount": 41234,
+              "chapterId": 88, "chapterIdx": 6, "chapterTitle": "第7章 …" }] }
+```
+
+书级条目只填 `bookId`/`title`/`author`/`chapterCount`/`wordCount`；章节级条目额外带
+`chapterId`/`chapterIdx`/`chapterTitle`，此时 `wordCount` 是**本章**字数。
+排序统一「字数多的在前」（最值得先处理的排第一页）；越界页返回 200 + 空数组。
+
 ### GET /api/stats/import-trend?days=14
 近 N 天导入量（无数据的日期补 0，前端需要连续 x 轴）。
 ```json
@@ -74,6 +92,9 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
   - 章节字数：<1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+
 - `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），
   时区取服务器本地时区，无数据日期补 0；`days` 默认 14、上限 366；
+- `GET /api/health/issues` 的四个 kind 与报告指标一一对应（`missing_author`/`missing_intro`/`thin_book`/
+  `huge_chapter`），判据（WHERE + 阈值）在 `internal/store/health_issues.go` 里只有一份，
+  报告计数与明细列表都引用它，改口径只需改一处；
 - `GET /api/authors?sort=words` 复用列表接口，`ORDER BY SUM(word_count) DESC`，`size=10` 即「字数 Top 10」；
 - 新增端点的 `limit` / `days` 越界一律 400（不静默夹紧）。
 
@@ -83,6 +104,7 @@ curl -s 'http://127.0.0.1:8080/api/reading/progress?limit=5'
 curl -s -X PUT -d '{"bookId":1,"chapterId":42,"percent":0.36}' \
      http://127.0.0.1:8080/api/reading/progress -w '%{http_code}\n'   # → 204
 curl -s 'http://127.0.0.1:8080/api/health/report'
+curl -s 'http://127.0.0.1:8080/api/health/issues?kind=huge_chapter&page=1&size=20'
 curl -s 'http://127.0.0.1:8080/api/stats/import-trend?days=14'
 curl -s 'http://127.0.0.1:8080/api/authors?sort=words&size=10'
 curl -s 'http://127.0.0.1:8080/api/stats'

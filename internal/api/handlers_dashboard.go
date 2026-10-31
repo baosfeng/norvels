@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -86,6 +87,29 @@ func decodeProgressRequest(w http.ResponseWriter, r *http.Request) (progressRequ
 // handleHealthReport 返回驾驶舱库健康报告（单项失败不整体 500）。
 func (s *Server) handleHealthReport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.st.HealthReport(r.Context()))
+}
+
+// handleHealthIssues 返回某一类库健康问题的明细（书级或章节级），供驾驶舱下钻。
+//
+// kind 与 /api/health/report 的字段一一对应：missing_author / missing_intro /
+// huge_chapter / thin_book；kind 非法返回 400（不回落默认值，避免前端把两类问题混在一起）。
+func (s *Server) handleHealthIssues(w http.ResponseWriter, r *http.Request) {
+	page, size, err := parsePagination(r)
+	if err != nil {
+		s.badRequest(w, err, codeInvalidParam)
+		return
+	}
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	out, err := s.st.HealthIssues(r.Context(), kind, page, size)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidArgument) {
+			s.failParam(w, err)
+			return
+		}
+		s.fail(w, r, err, "健康明细不可用")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleImportTrend 返回近 N 天导入量（无数据日期补 0）。

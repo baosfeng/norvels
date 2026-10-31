@@ -50,10 +50,26 @@ type ChapterQuery struct {
 
 // SearchQuery 描述书名/作者检索（不检索正文，也不检索章节标题）。
 // 没有「检索维度」开关：能搜的只有书名与作者两项，全部查一次即可。
+//
+// 筛选字段与 BookQuery **同名同口径**（/api/search 与 /api/books 一致）：零值 = 不过滤。
+// 它们最终原样并进 ListBooks 的 BookQuery，不另写 WHERE——搜索就是「带关键词的书籍列表」。
 type SearchQuery struct {
 	Q    string // 关键词，非空
 	Page int
 	Size int
+	// CategoryL1 / CategoryL2：只给 L1 = 该大分类全部；两级都给 = 精确到小分类。
+	CategoryL1 string
+	CategoryL2 string
+	// Rating 是评分筛选 1–5；0 表示不过滤（0 本身是「未评」）。
+	Rating int
+	// ReadStatus：''（不过滤）| want | reading | done。
+	ReadStatus string
+	// SerialStatus：''（不过滤）| ongoing | completed | none（= 未知）。
+	SerialStatus string
+	// AuthorID 是作者 id；0 表示不过滤。
+	AuthorID int64
+	// Tag 是标签名精确匹配；空表示不过滤。
+	Tag string
 }
 
 // ---------- 出参 ----------

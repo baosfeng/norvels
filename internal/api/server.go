@@ -175,6 +175,8 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	// 驾驶舱（docs/api.md §8）
 	mux.HandleFunc("GET /api/health/report", s.handleHealthReport)
+	// 健康卡下钻：某一类问题的书 / 章节明细（判定口径与报告同源）。
+	mux.HandleFunc("GET /api/health/issues", s.handleHealthIssues)
 	mux.HandleFunc("GET /api/stats/import-trend", s.handleImportTrend)
 	mux.HandleFunc("GET /api/reading/progress", s.handleListProgress)
 	mux.HandleFunc("PUT /api/reading/progress", s.handleSaveProgress)
