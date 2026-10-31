@@ -27,7 +27,7 @@ func TestCompressContentRoundTrip(t *testing.T) {
 		{"私用区字符（反爬站常用）", []byte("这里有私用区字符：，往返不能变。")},
 		{"纯 ASCII", bytes.Repeat([]byte("The quick brown fox jumps over the lazy dog. "), 100)},
 		{"十多万字长块", long},
-		{"接近 1 MB 的块", bytes.Repeat([]byte(strings.Repeat("长夜", 100)), 2000)},
+		{"1 MB 级块", bytes.Repeat([]byte(strings.Repeat("长夜", 100)), 2000)},
 		{"含控制字符", []byte("第一行\n\t第二行\r\n第三行\x00\x01结束")},
 		{"全空白", bytes.Repeat([]byte(" \n\t"), 200)},
 	}
@@ -77,14 +77,14 @@ func TestCompressContentAlgorithmMarker(t *testing.T) {
 		t.Errorf("未压缩载荷长度 = %d，期望 %d", len(got), len(short)+1)
 	}
 
-	// 正常的 1 MB 级块必须打 zstd 标记并被显著压小。
+	// 正常的百万字节级块必须打码本标记（0x03）并被显著压小。
 	repetitive := []byte(strings.Repeat("长夜书简的青川剑砚。", 100000))
 	big, err := compressContent(repetitive)
 	if err != nil {
 		t.Fatalf("compressContent: %v", err)
 	}
-	if big[0] != contentAlgoZstd {
-		t.Errorf("正常块首字节 = 0x%02x，期望 0x%02x（zstd）", big[0], contentAlgoZstd)
+	if big[0] != contentAlgoCodebook {
+		t.Errorf("正常块首字节 = 0x%02x，期望 0x%02x（码本 + zstd）", big[0], contentAlgoCodebook)
 	}
 	if len(big) >= len(repetitive)/5 {
 		t.Errorf("压缩后 %d 字节，原文 %d 字节——压缩未生效", len(big), len(repetitive))
@@ -208,12 +208,12 @@ func TestChapterAtSlicesBlock(t *testing.T) {
 	})
 }
 
-// TestSplitBlocksByChapterBoundary 校验块按章节边界切、目标大小 1 MB。
+// TestSplitBlocksByChapterBoundary 校验块按章节边界切、目标大小 8 MB。
 func TestSplitBlocksByChapterBoundary(t *testing.T) {
 	t.Run("空输入", func(t *testing.T) { checkSplitEmpty(t) })
 	t.Run("总量不足一块", func(t *testing.T) { checkSplitSingleBlock(t) })
-	t.Run("按 1 MB 切成多块", func(t *testing.T) { checkSplitMultiBlock(t) })
-	t.Run("单章超过 1 MB 时独占一块", func(t *testing.T) { checkSplitOversizeChapter(t) })
+	t.Run("按 8 MB 切成多块", func(t *testing.T) { checkSplitMultiBlock(t) })
+	t.Run("单章超过 8 MB 时独占一块", func(t *testing.T) { checkSplitOversizeChapter(t) })
 	t.Run("块边界必须覆盖每一章且不重叠", func(t *testing.T) { checkSplitCoverage(t) })
 }
 
@@ -225,7 +225,7 @@ func checkSplitEmpty(t *testing.T) {
 	}
 }
 
-// checkSplitSingleBlock 总量不足 1 MB 时只有一块，覆盖全部章节。
+// checkSplitSingleBlock 总量不足 8 MB 时只有一块，覆盖全部章节。
 func checkSplitSingleBlock(t *testing.T) {
 	t.Helper()
 	got := splitBlocks([]int{100, 200, 300})
@@ -234,24 +234,24 @@ func checkSplitSingleBlock(t *testing.T) {
 	}
 }
 
-// checkSplitMultiBlock 超过 1 MB 时按章节边界切成多块。
+// checkSplitMultiBlock 超过 8 MB 时按章节边界切成多块。
 func checkSplitMultiBlock(t *testing.T) {
 	t.Helper()
-	// 每章 300 KB，4 章合计 1.2 MB → 前 3 章一块（900 KB），第 4 章单独一块。
-	sizes := []int{300 << 10, 300 << 10, 300 << 10, 300 << 10}
+	// 每章 3 MB，4 章合计 12 MB → 前两章一块（6 MB），后两章一块（6 MB）。
+	sizes := []int{3 << 20, 3 << 20, 3 << 20, 3 << 20}
 	got := splitBlocks(sizes)
 	if len(got) != 2 {
 		t.Fatalf("块数 = %d，期望 2：%v", len(got), got)
 	}
-	if got[0] != [2]int{0, 2} || got[1] != [2]int{3, 3} {
-		t.Errorf("块边界 = %v，期望 [[0 2] [3 3]]", got)
+	if got[0] != [2]int{0, 1} || got[1] != [2]int{2, 3} {
+		t.Errorf("块边界 = %v，期望 [[0 1] [2 3]]", got)
 	}
 }
 
 // checkSplitOversizeChapter 单章超过目标大小时独占一块。
 func checkSplitOversizeChapter(t *testing.T) {
 	t.Helper()
-	got := splitBlocks([]int{100, 2 << 20, 100})
+	got := splitBlocks([]int{100, BlockTargetBytes + 1, 100})
 	if len(got) != 3 {
 		t.Fatalf("块数 = %d，期望 3（超长章独占）：%v", len(got), got)
 	}
@@ -263,9 +263,9 @@ func checkSplitOversizeChapter(t *testing.T) {
 // checkSplitCoverage 块边界必须无缝覆盖每一章。
 func checkSplitCoverage(t *testing.T) {
 	t.Helper()
-	sizes := make([]int, 50)
+	sizes := make([]int, 20)
 	for i := range sizes {
-		sizes[i] = 100 << 10 // 每章 100 KB，50 章 → 5 MB
+		sizes[i] = 1 << 20 // 每章 1 MB，20 章 → 20 MB，按 8 MB 目标切成三块
 	}
 	blocks := splitBlocks(sizes)
 	covered, prevLast := 0, -1

@@ -18,9 +18,9 @@ import (
 // chapter_blocks 里——读者把正文改小，/api/stats 的正文体积却只涨不降。回收口径
 // 与合并 / 删除同一套（reapOrphanBlock：无人引用才整块删并冲减 text_bytes/_raw）。
 //
-// 为什么限额 1 MiB：块以 BlockTargetBytes（1 MB）为目标，一章超过这个量就会独占
-// 一块且超出目标；同时正文来自 HTTP 请求体，跨信任边界的输入必须有上限，否则一次
-// PUT 就能把库撑大（与封面 2 MiB 上限同一取舍）。
+// 为什么限额 1 MiB：正文来自 HTTP 请求体，跨信任边界的输入必须有上限，否则一次
+// PUT 就能把库撑大（与封面 2 MiB 上限同一取舍）。块目标 BlockTargetBytes 是 8 MB，
+// 单章上限远小于它，所以整章替换永远是「一章独占一块、块内偏移恒为 0」。
 const maxChapterContentBytes = 1 << 20
 
 // UpdateChapterContent 整章替换正文；章 id、idx、卷归属都不动。
@@ -65,7 +65,7 @@ func (s *Store) UpdateChapterContent(ctx context.Context, bookID, chapterID int6
 // checkChapterContent 校验新正文：去空白后为空、超过 1 MiB 一律拒绝（fail-closed）。
 //
 // 按字节（UTF-8 编码后）而不是按字计数：限额的真实约束是「块大小」与「请求体大小」，
-// 两者都以字节计；按字算会让一万一字的生僻字正文悄悄突破块的 1 MB 目标。
+// 两者都以字节计；按字算会让一万一字的生僻字正文悄悄突破 1 MiB 上限，把请求体撑爆。
 func checkChapterContent(content string) error {
 	if strings.TrimSpace(content) == "" {
 		return fmt.Errorf("%w: 章节正文不能为空（去空白后为空）", ErrInvalidArgument)

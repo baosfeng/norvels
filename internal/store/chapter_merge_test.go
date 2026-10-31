@@ -112,13 +112,13 @@ func TestMergeChaptersSplitThenMergeWritesNewBlock(t *testing.T) {
 }
 
 // TestMergeChaptersAcrossBlocksWritesNewBlock 两章分属不同块：只能新建一块装拼接后的正文。
-// 合并结果超过 1 MB 分块目标也照写不误（一章独占一块，不为「超限」把正文截断）。
+// 合并结果超过 8 MB 分块目标也照写不误（一章独占一块，不为「超限」把正文截断）。
 func TestMergeChaptersAcrossBlocksWritesNewBlock(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	// 每章约 660 KB：超过 1 MB 块目标的一半，两章必然各占一块
-	first := strings.Repeat("甲段正文。", 44000) + "甲尾"
-	second := strings.Repeat("乙段正文。", 44000) + "乙尾"
+	// 每章约 4.2 MB：超过 8 MB 块目标的一半，两章必然各占一块
+	first := strings.Repeat("甲段正文。", 280000) + "甲尾"
+	second := strings.Repeat("乙段正文。", 280000) + "乙尾"
 	bookID, ids := seedStructBook(t, ctx, st, "merge-blocks",
 		[]model.ParsedVolume{{Idx: 0, Title: "第一卷"}}, []model.ParsedChapter{
 			{Idx: 0, VolumeIdx: 0, Title: "前章", Content: first, WordCount: 100},

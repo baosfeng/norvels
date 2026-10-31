@@ -9,7 +9,7 @@ import (
 
 // 0007 的数据搬迁步骤：把 chapters.content 的原文搬进 chapter_blocks 压缩块。
 //
-// 为什么放在 Go 里而不是纯 SQL：块边界要按「章节边界 + 1 MB 目标」切，压缩要调
+// 为什么放在 Go 里而不是纯 SQL：块边界要按「章节边界 + 8 MB 目标」切，压缩要调
 // zstd，两者都没法用 SQL 表达。放进迁移事务是为了守住「失败即整体回滚」：
 // 搬一半失败时，库必须回到 0006 状态（正文仍是原文、一个字节都没少）。
 
@@ -270,7 +270,7 @@ func loadBlock(ctx context.Context, q rowQuerier, blockID, chapterID int64) ([]b
 	return block, nil
 }
 
-// readBlockRowMetaOnly 只读块的定位元信息（不含 packed，避免为报错拉一个 1 MB 的 BLOB）。
+// readBlockRowMetaOnly 只读块的定位元信息（不含 packed，避免为报错拉一个 2 MB 级的 BLOB）。
 func readBlockRowMetaOnly(ctx context.Context, q rowQuerier, blockID int64) (blockMeta, error) {
 	var meta blockMeta
 	err := q.QueryRowContext(ctx,
