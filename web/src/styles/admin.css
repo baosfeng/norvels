@@ -18,18 +18,41 @@
   font-size: 11px;
   color: var(--muted);
 }
-.admin-books {
-  margin-top: 12px;
+/* 大/小分类平铺（起点式）：点了大分类才展开小分类，不用「禁用下拉 + 先选一个大分类」提示 */
+.admin-filter .filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 100%;
+  /* 视觉上排到「搜索 + 下拉」那行之下：分类是逐级展开的，跟着输入控件走会让首行断成三条 */
+  order: 2;
 }
+.admin-filter .filter-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.admin-filter .filter-field .chips {
+  gap: 6px;
+}
+.admin-filter .chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--fg);
+  background: var(--surface-warm);
+}
+.admin-books {
+  margin-top: 8px;
+}
+/* 行高 65 → 47：封面临时高 46 + 上下内边距 18 = 65 是首屏只露 5 行的主因。
+   封面按 3:4 收到 28×38、单元格上下内边距 9 → 4，行高 = 38 + 8 + 1 边框。 */
 .admin-table th,
 .admin-table td {
-  padding: 9px 10px;
+  padding: 3px 10px;
   vertical-align: middle;
 }
 .admin-table .c-cover .cover {
-  width: 34px;
-  height: 46px;
-  font-size: 14px;
+  width: 28px;
+  height: 38px;
+  font-size: 12px;
 }
 .admin-table .book-link {
   display: block;
@@ -351,11 +374,21 @@
   font-size: 11px;
 }
 
-/* ── 窄屏：管理页在 PC 档内也要能用（平板竖屏 768–1024） ── */
-@media (max-width: 1024px) {
+/* ── 窄屏：管理页在 PC 档内也要能用 ──
+   单书页的双栏在 1140 以下堆成单栏：左栏 372 + 右栏卡片后，章节表实测只剩 426px，
+   固定列 40/48/68/208 之外标题只剩 60px（一字一行）。1141–1279 保留双栏但左栏收窄到 300px，
+   让标题列还有 120px 以上；1280 起恢复 372 的左栏。 */
+@media (max-width: 1140px) {
   .book-admin {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+@media (min-width: 1141px) and (max-width: 1279px) {
+  .book-admin {
+    grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  }
+}
+@media (max-width: 1024px) {
   .split-wrap {
     grid-template-columns: minmax(0, 1fr);
   }

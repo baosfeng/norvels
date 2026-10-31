@@ -165,4 +165,32 @@ describe("标签管理弹窗", () => {
     renderDialog({ loading: false, error: new ApiError("http", "boom", 500) });
     expect(screen.getByTestId("tag-manage-load-error")).toBeTruthy();
   });
+
+  it("关闭在标题右侧（不再底部独占一行），新建输入与按钮同一行", () => {
+    renderDialog();
+    const close = screen.getByTestId("tag-manage-close");
+    expect(close.closest(".tag-manage-head")).not.toBeNull();
+    expect(close.getAttribute("aria-label")).toBe("关闭");
+    // 底部那块「关闭」已经没有了：弹层里只有右上角这一颗
+    expect(screen.getAllByTestId("tag-manage-close")).toHaveLength(1);
+
+    const newRow = screen.getByTestId("tag-create").parentElement as HTMLElement;
+    expect(newRow.className).toContain("tag-new-row");
+    expect(newRow.contains(screen.getByTestId("tag-new"))).toBe(true);
+  });
+
+  it("标签行用 class 收口（名称 / 书数 / 操作同一行），没有内联布局样式", () => {
+    renderDialog();
+    const list = screen.getByTestId("tag-manage-list");
+    expect(list.className).toContain("tag-manage-list");
+    expect(list.getAttribute("style")).toBeNull();
+    const row = screen.getByTestId("tag-row-1");
+    expect(row.className).toContain("tag-row");
+    expect(row.getAttribute("style")).toBeNull();
+    expect(row.querySelector(".tag-row-name")?.textContent).toBe("武侠");
+    const actions = row.querySelector(".tag-row-actions") as HTMLElement;
+    expect(actions).not.toBeNull();
+    expect(actions.querySelector('[data-testid="tag-rename-1"]')).not.toBeNull();
+    expect(actions.querySelector('[data-testid="tag-delete-1"]')).not.toBeNull();
+  });
 });

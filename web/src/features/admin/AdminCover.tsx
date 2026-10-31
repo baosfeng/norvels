@@ -63,40 +63,43 @@ export function AdminCover({
   return (
     <div className="admin-cover" data-testid="admin-cover">
       <Cover title={book.title} bookId={book.id} updatedAt={book.updatedAt} hasCover={book.hasCover} />
-      <div className="admin-cover-actions">
-        <input
-          ref={inputRef}
-          className="sr-only"
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          aria-label="选择封面图片"
-          data-testid="admin-cover-input"
-          onChange={(event) => void upload(event.target.files?.[0])}
-        />
-        <button
-          className="btn btn-sm"
-          type="button"
-          disabled={busy}
-          data-testid="admin-cover-upload"
-          data-od-id="C-46"
-          onClick={() => inputRef.current?.click()}
-        >
-          {busy ? "处理中…" : book.hasCover ? "替换封面" : "上传封面"}
-        </button>
-        {book.hasCover ? (
+      {/* 按钮与格式提示同处一列（贴着封面的右侧）：提示不再独占一行，封面卡少 35px 高 */}
+      <div className="admin-cover-side">
+        <div className="admin-cover-actions">
+          <input
+            ref={inputRef}
+            className="sr-only"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            aria-label="选择封面图片"
+            data-testid="admin-cover-input"
+            onChange={(event) => void upload(event.target.files?.[0])}
+          />
           <button
-            className="btn btn-sm btn-ghost"
+            className="btn btn-sm"
             type="button"
             disabled={busy}
-            data-testid="admin-cover-remove"
-            data-od-id="C-47"
-            onClick={() => void remove()}
+            data-testid="admin-cover-upload"
+            data-od-id="C-46"
+            onClick={() => inputRef.current?.click()}
           >
-            移除封面
+            {busy ? "处理中…" : book.hasCover ? "替换封面" : "上传封面"}
           </button>
-        ) : null}
+          {book.hasCover ? (
+            <button
+              className="btn btn-sm btn-ghost"
+              type="button"
+              disabled={busy}
+              data-testid="admin-cover-remove"
+              data-od-id="C-47"
+              onClick={() => void remove()}
+            >
+              移除封面
+            </button>
+          ) : null}
+        </div>
+        <p className="meta">JPEG / PNG / WebP / GIF，最大 2 MiB。</p>
       </div>
-      <p className="meta">JPEG / PNG / WebP / GIF，最大 2 MiB。</p>
     </div>
   );
 }

@@ -53,7 +53,7 @@ export function ChapterTable({
       <table className="chapter-table table">
         <thead>
           <tr>
-            <th className="c-check" style={{ width: 40 }}>
+            <th className="c-check">
               <label className="check-hit">
                 <input
                   type="checkbox"
@@ -67,16 +67,10 @@ export function ChapterTable({
                 />
               </label>
             </th>
-            <th className="is-num" style={{ width: 56 }}>
-              序号
-            </th>
-            <th>标题</th>
-            <th className="is-num" style={{ width: 88 }}>
-              字数
-            </th>
-            <th className="c-actions" style={{ width: 246 }}>
-              操作
-            </th>
+            <th className="is-num c-seq">序号</th>
+            <th className="c-title">标题</th>
+            <th className="is-num c-words">字数</th>
+            <th className="c-actions">操作</th>
           </tr>
         </thead>
         {volumes.map((volume) => {
@@ -153,7 +147,9 @@ export function ChapterTable({
                         </button>
                       </form>
                     ) : (
-                      <span className="ch-title-text">{titleOf(chapter)}</span>
+                      <span className="ch-title-text" title={titleOf(chapter)}>
+                        {titleOf(chapter)}
+                      </span>
                     )}
                   </td>
                   <td className="c-words is-num">{formatCount(chapter.wordCount)}</td>

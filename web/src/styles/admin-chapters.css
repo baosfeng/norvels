@@ -2,7 +2,20 @@
    单独成文件：admin.css 已经接近 400 行上限，按区块拆开比继续往上堆更好找。
    原型来源：.open-design/09-admin.html 的章节表与 merge / rename 弹窗。 */
 
-/* ── 章节表：勾选列与批量条 ── */
+/* ── 章节表：工具栏 / 勾选列 / 批量条 ── */
+/* 工具栏此前**没有 display:flex**（prototype.css 只给了 .table-toolbar flex-wrap）：
+   搜索框与三个按钮各占一整行块级排布，实测工具栏 73px 高、搜索框还溢出自己的 label。
+   现在是「搜索框占满剩余宽度 + 三个按钮贴右」的一行，实测 40px。 */
+.admin-chapters .table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.admin-chapters .table-toolbar .search-wrap {
+  flex: 1 1 200px;
+  min-width: 0;
+}
 .admin-chapters .table-toolbar .toolbar-end {
   margin-left: auto;
 }
@@ -11,11 +24,28 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ── 章节表：固定布局 + 标题单行 ──
+   以前是自动布局 + 内联列宽：宽度不够时浏览器先压「标题」列（1264 宽下实测只剩 48px，
+   一个汉字一行，行高 53→121px），而操作列仍占 246px。改成固定布局后列宽由 CSS 说了算：
+   序号 / 字数 / 操作是定值，标题吃掉剩下的全部宽度，超长标题省略号收尾（完整标题在 title 里）。
+   具体尺寸（列宽、单元格内边距）在 admin-book.css 的密度口径里，这里只管布局与折行行为。 */
+.chapter-table {
+  table-layout: fixed;
+}
 .chapter-table .c-check {
-  width: 40px;
-  padding-right: 0;
   text-align: center;
   line-height: 1;
+}
+.chapter-table .ch-title-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chapter-table .ch-row td {
+  vertical-align: middle;
 }
 .chapter-table .c-check input[type="checkbox"] {
   width: 16px;
@@ -38,35 +68,59 @@
 .chapter-table .vol-row .vol-head .meta {
   margin-left: auto;
 }
-/* 行内 4 颗操作键：一行排齐（不折行）。折成两行时每行 101px，
-   一屏只装 3 章；排齐后行高 52px，一屏 11 章。 */
+/* 行内 4 颗操作键：一行排齐（不折行）且收紧内边距 —— 246px 的操作列在窄右栏里
+   会把「标题」压到 48px（一个汉字一行，行高 53→121）。收紧后按钮组 184px、操作列 208px。 */
 .ch-actions {
   display: inline-flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+}
+.ch-actions .btn-sm {
+  min-height: 32px;
+  padding: 0 7px;
+  font-size: 12px;
 }
 
+/* 恒为一行（48px）：换行会把条高顶到 73px（1152 实测），而它下面是整张章节表。
+   0 勾选时「取消选择」不渲染（没有选择可取消），省下的 74px 正好让原因文案在 1152 也放得下；
+   再窄就把原因截断（完整句子在 title 里），宁可少一行字，也不让条子长高。 */
 .ch-batch {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
+  flex-wrap: nowrap;
+  gap: 6px 10px;
   align-items: center;
   margin-bottom: 8px;
-  padding: 9px 12px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-warm);
+}
+.ch-batch > .meta {
+  flex: none;
+  white-space: nowrap;
+}
+.ch-batch > .inline-note,
+.ch-batch > .reason {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ch-batch .reason {
   font-size: 11.5px;
   color: var(--danger-text);
 }
+/* prototype.css 的 .actions 自带 margin-bottom:12px（页面级按钮行用的）；
+   放进批量条会把条高从 46 撑到 64（实测），这里只保留 flex 排布。 */
 .ch-batch .actions {
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
+  flex-wrap: nowrap;
   gap: 6px;
   margin-left: auto;
+  margin-bottom: 0;
 }
 
 /* ── 合并面板 ── */

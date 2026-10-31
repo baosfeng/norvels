@@ -116,14 +116,28 @@ export function TagManageDialog({
     <div className="confirm-backdrop" role="presentation" onClick={() => !busy && onClose()}>
       <div
         ref={dialogRef}
-        className="confirm-dialog is-wide"
+        className="confirm-dialog tag-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tag-manage-title"
         data-testid="tag-manage-dialog"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 id="tag-manage-title">{deleting ? `删除标签「${deleting.name}」？` : "标签管理"}</h2>
+        {/* 关闭放右上角：不再在底部独占一行，弹层高度跟着内容走 */}
+        <div className="tag-manage-head">
+          <h2 id="tag-manage-title">{deleting ? `删除标签「${deleting.name}」？` : "标签管理"}</h2>
+          <button
+            className="icon-btn tag-manage-x"
+            type="button"
+            aria-label="关闭"
+            title="关闭"
+            data-testid="tag-manage-close"
+            disabled={busy}
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
 
         {errorText ? (
           <p className="meta" role="alert" data-testid="tag-manage-error">
@@ -191,21 +205,13 @@ export function TagManageDialog({
                 还没有标签。新建一个，之后在书的元信息里就能填。
               </p>
             ) : (
-              <ul
-                data-testid="tag-manage-list"
-                style={{ display: "grid", gap: 8, listStyle: "none", margin: 0, padding: 0 }}
-              >
+              <ul className="tag-manage-list" data-testid="tag-manage-list">
                 {tags.map((tag) => (
-                  <li
-                    key={tag.id}
-                    data-testid={`tag-row-${tag.id}`}
-                    style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
-                  >
+                  <li key={tag.id} className="tag-row" data-testid={`tag-row-${tag.id}`}>
                     {renaming?.id === tag.id ? (
                       <>
                         <input
-                          className="input"
-                          style={{ flex: "1 1 160px" }}
+                          className="input tag-row-input"
                           aria-label={`新标签名（${tag.name}）`}
                           data-testid="tag-rename-input"
                           value={renaming.text}
@@ -215,59 +221,63 @@ export function TagManageDialog({
                             setErrorText("");
                           }}
                         />
-                        <button
-                          className="btn btn-sm btn-primary"
-                          type="button"
-                          disabled={busy}
-                          data-testid="tag-rename-save"
-                          onClick={() => void rename(tag)}
-                        >
-                          保存
-                        </button>
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          type="button"
-                          disabled={busy}
-                          data-testid="tag-rename-cancel"
-                          onClick={() => setRenaming(null)}
-                        >
-                          取消
-                        </button>
+                        <span className="tag-row-actions">
+                          <button
+                            className="btn btn-sm btn-primary"
+                            type="button"
+                            disabled={busy}
+                            data-testid="tag-rename-save"
+                            onClick={() => void rename(tag)}
+                          >
+                            保存
+                          </button>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            disabled={busy}
+                            data-testid="tag-rename-cancel"
+                            onClick={() => setRenaming(null)}
+                          >
+                            取消
+                          </button>
+                        </span>
                       </>
                     ) : (
                       <>
-                        <strong style={{ flex: "1 1 160px" }}>{tag.name}</strong>
+                        <strong className="tag-row-name">{tag.name}</strong>
                         <span className="meta num">{tag.bookCount} 本</span>
-                        <button
-                          className="btn btn-sm"
-                          type="button"
-                          disabled={busy}
-                          data-testid={`tag-rename-${tag.id}`}
-                          data-od-id="C-77"
-                          onClick={() => {
-                            setRenaming({ id: tag.id, text: tag.name });
-                            setErrorText("");
-                          }}
-                        >
-                          改名
-                        </button>
-                        <button
-                          className="btn btn-sm btn-ghost btn-danger"
-                          type="button"
-                          disabled={busy}
-                          data-testid={`tag-delete-${tag.id}`}
-                          data-od-id="C-78"
-                          ref={(node) => {
-                            if (node) deleteRefs.current.set(tag.id, node);
-                            else deleteRefs.current.delete(tag.id);
-                          }}
-                          onClick={() => {
-                            setDeleting(tag);
-                            setErrorText("");
-                          }}
-                        >
-                          删除
-                        </button>
+                        <span className="tag-row-actions">
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            disabled={busy}
+                            data-testid={`tag-rename-${tag.id}`}
+                            data-od-id="C-77"
+                            onClick={() => {
+                              setRenaming({ id: tag.id, text: tag.name });
+                              setErrorText("");
+                            }}
+                          >
+                            改名
+                          </button>
+                          <button
+                            className="btn btn-sm btn-ghost btn-danger"
+                            type="button"
+                            disabled={busy}
+                            data-testid={`tag-delete-${tag.id}`}
+                            data-od-id="C-78"
+                            ref={(node) => {
+                              if (node) deleteRefs.current.set(tag.id, node);
+                              else deleteRefs.current.delete(tag.id);
+                            }}
+                            onClick={() => {
+                              setDeleting(tag);
+                              setErrorText("");
+                            }}
+                          >
+                            删除
+                          </button>
+                        </span>
                       </>
                     )}
                   </li>
@@ -275,23 +285,24 @@ export function TagManageDialog({
               </ul>
             )}
 
-            <div className="field-row" style={{ alignItems: "flex-end" }}>
-              <div className="field" style={{ flex: 1 }}>
-                <label htmlFor="tag-new">新建标签</label>
-                <input
-                  className="input"
-                  id="tag-new"
-                  data-testid="tag-new"
-                  data-od-id="C-79"
-                  value={name}
-                  disabled={busy}
-                  placeholder="例如 武侠；同名会直接复用已有的"
-                  onChange={(event) => {
-                    setName(event.target.value);
-                    setErrorText("");
-                  }}
-                />
-              </div>
+            {/* 输入框与「新建」同一行：不再用 label 把输入挤到单独一块、按钮落到底部 */}
+            <div className="tag-new-row">
+              <label className="sr-only" htmlFor="tag-new">
+                新建标签
+              </label>
+              <input
+                className="input"
+                id="tag-new"
+                data-testid="tag-new"
+                data-od-id="C-79"
+                value={name}
+                disabled={busy}
+                placeholder="新建标签，例如 武侠；同名会直接复用已有的"
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setErrorText("");
+                }}
+              />
               <button
                 className="btn btn-primary"
                 type="button"
@@ -301,12 +312,6 @@ export function TagManageDialog({
                 onClick={() => void create()}
               >
                 {busyWith === "create" ? "正在新建…" : "新建"}
-              </button>
-            </div>
-
-            <div className="confirm-actions">
-              <button className="btn" type="button" disabled={busy} data-testid="tag-manage-close" onClick={onClose}>
-                关闭
               </button>
             </div>
         </div>

@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookSummary } from "../../api/types";
 
-const { booksState, tagsState, seenParams, updateBook, deleteBook, batchUpdateBooks } = vi.hoisted(() => {
+const { booksState, tagsState, authorsState, seenParams, updateBook, deleteBook, batchUpdateBooks } = vi.hoisted(() => {
   const book = (id: number, title: string, serial: "" | "ongoing" | "completed"): unknown => ({
     id,
     title,
@@ -27,6 +27,12 @@ const { booksState, tagsState, seenParams, updateBook, deleteBook, batchUpdateBo
       reload: () => undefined,
     },
     tagsState: { data: { items: [{ id: 1, name: "武侠", bookCount: 2 }] }, loading: false, error: null, reload: () => undefined },
+    authorsState: {
+      data: { items: [{ id: 1, name: "示例作者", bookCount: 2, wordCount: 34000 }], total: 1, page: 1, size: 200 },
+      loading: false,
+      error: null,
+      reload: () => undefined,
+    },
     seenParams: { last: null as Record<string, unknown> | null },
     updateBook: vi.fn(),
     deleteBook: vi.fn(),
@@ -41,7 +47,7 @@ vi.mock("../../api/hooks", () => ({
   },
   useTags: () => tagsState,
   useCategories: () => ({ data: { items: [{ l1: "玄幻", count: 2, items: [{ l2: "东方玄幻", count: 2 }] }], total: 1 }, loading: false, error: null, reload: () => undefined }),
-  useAuthors: () => ({ data: { items: [{ id: 1, name: "示例作者", bookCount: 2, wordCount: 34000 }], total: 1, page: 1, size: 50 }, loading: false, error: null, reload: () => undefined }),
+  useAuthors: () => authorsState,
 }));
 
 vi.mock("../../api/client", async () => {
@@ -51,9 +57,9 @@ vi.mock("../../api/client", async () => {
 
 const { AdminBooksPage } = await import("./AdminBooksPage");
 
-function renderPage() {
+function renderPage(entries: string[] = ["/admin"]) {
   return render(
-    <MemoryRouter initialEntries={["/admin"]}>
+    <MemoryRouter initialEntries={entries}>
       <Routes>
         <Route path="/admin" element={<AdminBooksPage />} />
         <Route path="/admin/books/:bookId" element={<p>单书管理页</p>} />
@@ -198,10 +204,14 @@ describe("书籍管理列表", () => {
     await waitFor(() => expect(screen.queryByTestId("admin-batch-bar")).toBeNull());
   });
 
-  it("改连载状态筛选会把参数带进查询", () => {
+  it("连载状态是平铺 chips：点「连载中」立即按它筛，选中项 aria-pressed", () => {
     renderPage();
-    fireEvent.change(screen.getByTestId("admin-filter-serial"), { target: { value: "ongoing" } });
+    const chip = screen.getByTestId("admin-filter-serial-ongoing");
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(chip);
     expect(seenParams.last?.serialStatus).toBe("ongoing");
+    expect(screen.getByTestId("admin-filter-serial-ongoing").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("admin-filter-serial-all").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("筛选条旁能打开标签管理弹窗，列表里的标签就在里面", () => {
@@ -251,10 +261,78 @@ describe("书籍管理列表", () => {
     expect(screen.getByTestId("admin-list-empty").textContent).toContain("书库还没有书");
   });
 
+  it("筛选区五组都是 chips、没有任何原生下拉；大分类选中后小分类组出现", () => {
+    renderPage([`/admin?categoryL1=${encodeURIComponent("玄幻")}`]);
+    const form = screen.getByTestId("admin-filters");
+    expect(form.querySelectorAll("select")).toHaveLength(0);
+    for (const id of ["admin-filter-category", "admin-filter-author", "admin-filter-tag", "admin-filter-serial"]) {
+      expect(screen.getByTestId(id).getAttribute("role")).toBe("group");
+    }
+    expect(screen.getByTestId("admin-filter-subcategory")).toBeTruthy();
+  });
+
+  it("作者先平铺 12 位，其余收进「更多」；展开后能看到第 13 位", () => {
+    authorsState.data = {
+      items: Array.from({ length: 20 }, (_, index) => ({ id: index + 1, name: `作者${index + 1}`, bookCount: 20 - index, wordCount: 1000 })),
+      total: 20,
+      page: 1,
+      size: 200,
+    };
+    try {
+      renderPage();
+      const group = screen.getByTestId("admin-filter-author");
+      // chips 里是「全部 + 前 12 位」；「更多 8 项」在行尾，不跟着 chips 横向滚动
+      expect(group.querySelectorAll("button")).toHaveLength(1 + 12);
+      expect(screen.getByTestId("admin-filter-author-more").textContent).toBe("更多 8 项…");
+      expect(group.textContent).not.toContain("作者13");
+
+      fireEvent.click(screen.getByTestId("admin-filter-author-more"));
+      expect(group.querySelectorAll("button")).toHaveLength(1 + 20);
+      expect(group.textContent).toContain("作者13");
+      expect(screen.getByTestId("admin-filter-author-more").textContent).toBe("收起");
+    } finally {
+      authorsState.data = {
+        items: [{ id: 1, name: "示例作者", bookCount: 2, wordCount: 34000 }],
+        total: 1,
+        page: 1,
+        size: 200,
+      };
+    }
+  });
+
+  it("已在筛的作者即使不在前 12 位也保留一个高亮 chip", () => {
+    authorsState.data = {
+      items: Array.from({ length: 20 }, (_, index) => ({ id: index + 1, name: `作者${index + 1}`, bookCount: 20 - index, wordCount: 1000 })),
+      total: 20,
+      page: 1,
+      size: 200,
+    };
+    try {
+      renderPage(["/admin?authorId=18"]);
+      const group = screen.getByTestId("admin-filter-author");
+      expect(group.textContent).toContain("作者18");
+      expect(screen.getByTestId("admin-filter-author-18").getAttribute("aria-pressed")).toBe("true");
+    } finally {
+      authorsState.data = {
+        items: [{ id: 1, name: "示例作者", bookCount: 2, wordCount: 34000 }],
+        total: 1,
+        page: 1,
+        size: 200,
+      };
+    }
+  });
+
+  it("标签 chip 点一下就把 tag 带进查询", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-filter-tag-1"));
+    expect(seenParams.last?.tag).toBe("武侠");
+    expect(screen.getByTestId("admin-filter-tag-1").getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("有筛选但没命中时提示清除筛选", () => {
     booksState.data = { items: [], total: 0, page: 1, size: 20 } as typeof booksState.data;
     renderPage();
-    fireEvent.change(screen.getByTestId("admin-filter-serial"), { target: { value: "completed" } });
+    fireEvent.click(screen.getByTestId("admin-filter-serial-completed"));
     expect(screen.getByTestId("admin-list-nomatch")).toBeTruthy();
   });
 });

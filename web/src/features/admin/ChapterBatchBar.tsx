@@ -29,18 +29,21 @@ export function ChapterBatchBar({
         已选 <strong className="num">{count}</strong> 章
       </span>
       {empty ? (
-        <span className="inline-note" data-testid="admin-ch-batch-hint">
+        <span className="inline-note" data-testid="admin-ch-batch-hint" title={NO_PICK_HINT}>
           {NO_PICK_HINT}
         </span>
       ) : mergeReason ? (
-        <span className="reason" role="status" data-testid="admin-ch-merge-reason">
+        <span className="reason" role="status" data-testid="admin-ch-merge-reason" title={mergeReason}>
           {mergeReason}
         </span>
       ) : null}
       <div className="actions">
-        <button className="btn btn-sm" type="button" data-testid="admin-ch-clear" disabled={empty} onClick={onClear}>
-          取消选择
-        </button>
+        {/* 没有选择可取消：0 勾选时这一颗只剩禁用噪声，还会把批量条挤成两行 */}
+        {empty ? null : (
+          <button className="btn btn-sm" type="button" data-testid="admin-ch-clear" onClick={onClear}>
+            取消选择
+          </button>
+        )}
         <button
           className="btn btn-sm"
           type="button"

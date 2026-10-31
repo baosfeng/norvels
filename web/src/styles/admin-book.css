@@ -1,0 +1,120 @@
+/* 单书管理页（/admin/books/:id）的密度口径。
+   整页有 max-width（.container 1320）：宽屏下 .book-admin 停在 1256，再宽也不会更宽，
+   所以「把空间利用起来」只能从内部排布下手。实测 900 高、改前：
+   首屏可见 7 行章节、行高 53、表头 52、工具栏 41、批量条 48、左栏封面块 157px 高但封面只占 96px 宽、
+   底部操作条 78px 且盖住第 8 行。
+   本文件只放单书页专用值（含章节表的密度）：admin.css 是列表页与单书页共用的底座，不往它里面塞。 */
+
+/* ── 卡片与栏距各收一档（16/12 → 12/8，栏距 14 → 10）── */
+.book-admin .card {
+  padding: 12px;
+  gap: 8px;
+}
+.book-admin .book-col {
+  gap: 10px;
+}
+
+/* ── 封面卡：提示语挪进右列 ──
+   改前结构是「封面 + 右列按钮 + 通栏提示」：338px 的卡片里封面只占 96px，右侧 156px 全空，
+   提示语再独占一行 17px。改成「封面 | 右列（按钮 + 提示）」后封面卡 223 → 188。 */
+.admin-cover {
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+.admin-cover-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.admin-cover-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.admin-cover-side .meta {
+  margin: 0;
+  font-size: 11.5px;
+}
+
+/* ── 元信息表单：字段组间距 12 → 10，label 与控件 6 → 4 ── */
+.book-admin .admin-meta {
+  gap: 10px;
+}
+.book-admin .admin-meta .field {
+  gap: 4px;
+}
+
+/* ── 章节表：行高 53 → 45、表头 52 → 40、卷行 53 → 34 ──
+   行高 = 操作按钮 32 + 上下内边距 12 + 边框 1；表头里最高的是 32px 的「全选」热区，上下各 4px。
+   列宽按内容收：序号容 3 位数、字数容 5 位、操作列=按钮组 184 + 左右 10，剩下的全给标题。 */
+.chapter-table th {
+  padding: 4px 12px;
+  vertical-align: middle;
+}
+.chapter-table td {
+  padding: 6px 12px;
+}
+.chapter-table .vol-row td {
+  padding: 1px 12px;
+}
+.chapter-table .c-check {
+  width: 40px;
+  padding-left: 0;
+  padding-right: 0;
+}
+.chapter-table .c-title {
+  width: auto;
+}
+.chapter-table .c-seq {
+  width: 40px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.chapter-table .c-words {
+  width: 60px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.chapter-table .c-actions {
+  width: 204px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+/* 工具栏跟章节行同一档高度：32px 搜索框 + 32px 按钮（41 → 33） */
+.admin-chapters .table-toolbar .input {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+/* 批量条再收一档：4px 上下内边距（48 → 42），恒为一行 */
+.ch-batch {
+  padding: 4px 10px;
+}
+
+/* ── 底部操作条：单行、按钮 32px、去掉全局 .actions 的 margin-bottom:12（78 → 50） ── */
+.admin-actions {
+  padding: 8px 12px;
+  gap: 8px;
+}
+.admin-actions .actions {
+  margin-bottom: 0;
+}
+.admin-actions .btn {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+/* 操作条是 sticky（原型口径）：在内容流末尾留出与它同高的空间。
+   留白放在 .book-admin 的下内边距上（列表容器底部），而不是页面底部——
+   这样滚到底时操作条仍贴着视口底边，最后一行章节与「载入更多」都在它上方，
+   页面底部也不会多出一条空白带。58 = 操作条 50 + 8 间距。 */
+.book-admin {
+  padding-bottom: 58px;
+}
+
+/* ── 1280–1439 档左栏再收一档（372 → 340）：腾出的宽度全部给章节标题列 ── */
+@media (min-width: 1280px) and (max-width: 1439px) {
+  .book-admin {
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  }
+}

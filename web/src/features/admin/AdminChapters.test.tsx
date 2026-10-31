@@ -68,13 +68,17 @@ function renderChapters() {
 const pick = (id: number) => screen.getByTestId(`admin-chapter-pick-${id}`) as HTMLInputElement;
 const batchBar = () => screen.queryByTestId("admin-ch-batch");
 
-/** 未勾选时批量条仍在，但三个动作都禁用且原因常驻（契约 C-59/C-60/C-61 边界）。 */
+/**
+ * 未勾选时批量条仍在，但三个动作都禁用且原因常驻（契约 C-59/C-60/C-61 边界）。
+ * 「取消选择」此时不渲染：没有选择可取消，留着只会把批量条挤成两行（1152 实测 48 → 73px）。
+ */
 function expectBatchIdle() {
   const bar = batchBar();
   expect(bar?.textContent).toContain("已选 0 章");
   expect(bar?.textContent).toContain("先勾选章节，才能移动或删除");
   expect((screen.getByTestId("admin-ch-move") as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByTestId("admin-ch-batch-delete") as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByTestId("admin-ch-clear")).toBeNull();
 }
 
 describe("章节勾选与批量条", () => {
@@ -100,10 +104,11 @@ describe("章节勾选与批量条", () => {
     expect((screen.getByTestId("admin-chapter-search") as HTMLInputElement).value).toBe("不存在的标题");
   });
 
-  it("勾一行出现「已选 1 章」，取消选择后消失", () => {
+  it("勾一行出现「已选 1 章」与「取消选择」，取消后一起消失", () => {
     renderChapters();
     fireEvent.click(pick(10));
     expect(batchBar()?.textContent).toContain("已选 1 章");
+    expect((screen.getByTestId("admin-ch-clear") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByTestId("admin-ch-clear"));
     expectBatchIdle();
     expect(pick(10).checked).toBe(false);

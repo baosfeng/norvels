@@ -111,6 +111,17 @@ describe("单书管理页", () => {
     await waitFor(() => expect(screen.getByTestId("admin-book-banner").textContent).toContain("已保存"));
   });
 
+  it("封面卡的格式提示和按钮同处一列（贴着封面右侧），不再独占一行", () => {
+    renderPage();
+    const cover = screen.getByTestId("admin-cover");
+    const side = cover.querySelector(".admin-cover-side");
+    expect(side).not.toBeNull();
+    // 提示与两个按钮都在右列：提示不再占一整行，封面卡因此少 35px 高
+    expect(side?.querySelector(".admin-cover-actions")).not.toBeNull();
+    expect(side?.textContent).toContain("JPEG / PNG / WebP / GIF");
+    expect(cover.querySelector(":scope > .meta")).toBeNull();
+  });
+
   it("出版字段回填进表单：出版社 / 出版日期 / ISBN / 语言", () => {
     renderPage();
     expect((screen.getByTestId("admin-publisher") as HTMLInputElement).value).toBe("示例出版社");

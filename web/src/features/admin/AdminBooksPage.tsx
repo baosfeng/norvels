@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useBooks, useCategories, useTags, useAuthors } from "../../api/hooks";
 import type { BookSummary, SerialStatus } from "../../api/types";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
@@ -8,14 +8,13 @@ import { formatCount, formatDate } from "../../lib/format";
 import { useTimedNote } from "../import/useTimedNote";
 import { AdminBatchBar } from "./AdminBatchBar";
 import { AdminFilterBar, type FilterValues } from "./AdminFilterBar";
+import { Pagination } from "./Pagination";
+import { buildAdminQuery, parseAdminQuery } from "./adminQuery";
 import { AdminBatchDialog, type BatchKind } from "./AdminBatchDialog";
 import { MAX_BATCH } from "./batchLimit";
 import { TagManageDialog } from "./TagManageDialog";
 
 const PAGE_SIZE = 20;
-
-/** 空筛选值：重置与「没有条件」判断共用一份，避免两处各写一遍。 */
-const EMPTY_FILTERS: FilterValues = { query: "", categoryL1: "", categoryL2: "", authorId: "", tag: "", serial: "" };
 
 /**
  * 书籍管理列表（作者后台首页）：搜索 + 筛选 + 表格 + 多选批量条。
@@ -25,9 +24,10 @@ const EMPTY_FILTERS: FilterValues = { query: "", categoryL1: "", categoryL2: "",
  */
 export function AdminBooksPage() {
   const location = useLocation();
-  const [draftQuery, setDraftQuery] = useState("");
-  const [filters, setFilters] = useState<FilterValues>(EMPTY_FILTERS);
-  const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 筛选与页码的唯一真源是地址栏：刷新、后退、把链接发给别人都能还原同一个列表。
+  const { filters, page } = useMemo(() => parseAdminQuery(searchParams), [searchParams]);
+  const [draftQuery, setDraftQuery] = useState(() => parseAdminQuery(searchParams).filters.query);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [batch, setBatch] = useState<BatchKind | null>(null);
   const [managingTags, setManagingTags] = useState(false);
@@ -48,11 +48,22 @@ export function AdminBooksPage() {
   });
   const tags = useTags();
   const categories = useCategories();
-  const authors = useAuthors({ size: 50 });
+  // 作者「更多」里的搜索词：作者总数可能上百，本地只拿得到前 200 位（接口 size 上限），
+  // 所以带 q 去服务端查，保证 323 位里任意一位都找得到。
+  const [authorQuery, setAuthorQuery] = useState("");
+  const authors = useAuthors({ q: authorQuery.trim() || undefined, size: 200 });
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  /** 有没有任何筛选生效：页头右侧的单位跟着切换（本在库 / 本符合） */
+  const filtering =
+    filters.query !== "" ||
+    filters.categoryL1 !== "" ||
+    filters.categoryL2 !== "" ||
+    filters.authorId !== "" ||
+    filters.tag !== "" ||
+    filters.serial !== "";
   const selected = items.filter((book) => picked.has(book.id));
   const allPicked = items.length > 0 && selected.length === items.length;
 
@@ -64,29 +75,40 @@ export function AdminBooksPage() {
     headingRef.current?.focus();
   }, [location.state]);
 
+  /** 地址栏是状态载体：筛选或页码一变就写回 URL（默认值不写，空地址 = 全部书第 1 页）。 */
+  function apply(nextFilters: FilterValues, nextPage: number) {
+    setSearchParams(buildAdminQuery(nextFilters, nextPage));
+    setPicked(new Set());
+  }
+
   /** 下拉改动立即生效并回到第 1 页：停在一张空页上最容易让人以为「没有书」。 */
   function changeFilters(patch: Partial<FilterValues>) {
-    setFilters((prev) => ({ ...prev, ...patch }));
-    setPage(1);
+    apply({ ...filters, ...patch }, 1);
   }
 
   function submitSearch() {
     const next = draftQuery.trim();
     if (next === filters.query) {
       notice.show("筛选条件没变，已回到第 1 页");
-      setPage(1);
+      apply(filters, 1);
       return;
     }
-    setFilters((prev) => ({ ...prev, query: next }));
-    setPage(1);
+    apply({ ...filters, query: next }, 1);
   }
 
   function resetFilters() {
     setDraftQuery("");
-    setFilters(EMPTY_FILTERS);
-    setPage(1);
+    setSearchParams({});
     setPicked(new Set());
     keepFocusOnSearch();
+  }
+
+  // 输入框只是草稿；地址上的 q 变了（提交 / 后退 / 外部链接）才把草稿对齐过去。
+  // 渲染期派生（与 useChapterStream 同一写法）：放 effect 里会多一帧，草稿在旧值上闪一下。
+  const [syncedQuery, setSyncedQuery] = useState(filters.query);
+  if (syncedQuery !== filters.query) {
+    setSyncedQuery(filters.query);
+    setDraftQuery(filters.query);
   }
 
   /** 重置后焦点回搜索框（契约 C-33）。 */
@@ -123,11 +145,16 @@ export function AdminBooksPage() {
     <section className="ix-ops" data-testid="view:admin-books" data-od-id="admin-list">
       <div className="page-head">
         <div>
-          <p className="eyebrow">书籍管理 · {loading ? "读取中" : `${formatCount(total)} 本`}</p>
+          <p className="eyebrow">书籍管理</p>
           <h1 ref={headingRef} tabIndex={-1} data-testid="admin-list-title">
             全部书籍
           </h1>
           <p className="sub">改元信息、传封面、改章节都在这里；阅读页只负责读。</p>
+        </div>
+        {/* 右侧不再空着：库存量是这个页面唯一的「关键数字」，筛选后跟着变 */}
+        <div className="page-head-stat" data-testid="admin-head-stat">
+          <strong className="num">{loading ? "—" : formatCount(total)}</strong>
+          <span>{filtering ? "本符合" : "本在库"}</span>
         </div>
       </div>
 
@@ -148,6 +175,8 @@ export function AdminBooksPage() {
         categories={categories.data?.items ?? []}
         authors={authors.data?.items ?? []}
         tags={tags.data?.items ?? []}
+        authorQuery={authorQuery}
+        onAuthorQuery={setAuthorQuery}
       />
 
       <AdminBatchBar
@@ -214,7 +243,7 @@ export function AdminBooksPage() {
         )}
       </div>
 
-      <Pagination page={page} pages={pages} onPage={setPage} />
+      <Pagination page={page} pages={pages} onPage={(next) => apply(filters, next)} />
 
       {managingTags ? (
         <TagManageDialog
@@ -232,8 +261,7 @@ export function AdminBooksPage() {
             closeTagManage();
             // 刚删掉的正好是筛选用的那个标签：重置为全部并说明原因
             if (filters.tag !== "" && !(tags.data?.items ?? []).some((item) => item.name === filters.tag)) {
-              setFilters((prev) => ({ ...prev, tag: "" }));
-              setPage(1);
+              apply({ ...filters, tag: "" }, 1);
               notice.show("刚才筛的标签已被删除");
             }
           }}
@@ -289,40 +317,6 @@ function ListEmpty({ filtering, onReset }: { filtering: boolean; onReset: () => 
       }
       testId="admin-list-empty"
     />
-  );
-}
-
-/** 分页：只有一页时整条不出现；到头的那一侧禁用并把原因常驻在旁边（契约 C-43）。 */
-function Pagination({ page, pages, onPage }: { page: number; pages: number; onPage: (next: number) => void }) {
-  if (pages <= 1) return null;
-  const atStart = page <= 1;
-  const atEnd = page >= pages;
-  return (
-    <nav className="pagination" aria-label="分页" data-testid="admin-pagination">
-      <button
-        type="button"
-        aria-label="上一页"
-        disabled={atStart}
-        data-od-id="C-43"
-        data-testid="admin-page-prev"
-        onClick={() => onPage(Math.max(1, page - 1))}
-      >
-        ←
-      </button>
-      <span className="is-current num">{page}</span>
-      <span className="meta">/ {pages}</span>
-      <button
-        type="button"
-        aria-label="下一页"
-        disabled={atEnd}
-        data-od-id="C-43"
-        data-testid="admin-page-next"
-        onClick={() => onPage(Math.min(pages, page + 1))}
-      >
-        →
-      </button>
-      {atStart || atEnd ? <span className="inline-note">已经到头了</span> : null}
-    </nav>
   );
 }
 

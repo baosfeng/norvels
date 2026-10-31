@@ -1,0 +1,170 @@
+/* 书籍管理列表页的筛选区与标签管理弹层。
+   筛选：五组一律平铺 chips（大/小分类 + 作者 + 标签 + 连载），不再用原生下拉；
+   标签弹层：输入与新建同行、关闭在右上角、列表行紧凑。 */
+
+/* ── 筛选区：一组一行 ──
+   每行 = 小标题（固定 52px）+ chips（单行，超宽横向滚动）+ 行尾「更多」。
+   改前 4 个下拉各自撑一行 40px、分类 chips 又占两行，整块 355px；
+   现在五组各占 32px 的一行 + 搜索行 32，整块压到 ~176px（task-13 的首屏密度就靠这一步）。 */
+.admin-filter {
+  padding: 4px 0 6px;
+  gap: 2px 12px;
+}
+.admin-filter .filter-field {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  flex: 1 1 100%;
+  order: 2;
+}
+.admin-filter .filter-label {
+  font-size: 11px;
+  line-height: 1.2;
+}
+.admin-filter .filter-field .chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 4px;
+  scrollbar-width: thin;
+}
+/* 「更多」展开：折行 + 限高滚动（323 位作者全铺开会把筛选条撑成十几行） */
+.admin-filter .filter-field .chips.is-open {
+  flex-wrap: wrap;
+  max-height: 132px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.admin-filter .filter-trailing {
+  display: flex;
+  align-items: center;
+}
+.admin-filter .filter-under {
+  grid-column: 2 / -1;
+}
+/* 搜索框与 chips 同高（40 → 32）：首屏密度优先，PC 上鼠标点选不受影响 */
+.admin-filter .input {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+/* 作者搜索框只在「更多」展开时出现：本地拿不到全部作者，靠它去服务端查 */
+.admin-filter .filter-author-search {
+  max-width: 320px;
+}
+/* 「更多 N 项…」用虚线描边，和可筛项（实线 chip）区分开 */
+.admin-filter .chip.is-more {
+  border-style: dashed;
+  color: var(--accent);
+}
+/* 搜索 / 标签管理 / 搜索 / 重置：与输入框同一行，贴右 */
+.admin-filter .filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ── 标签管理弹层 ──
+   改前：「新建」与「关闭」各自块级占一行、弹层 920px 宽却只有几行内容。
+   现在：宽 560、关闭在标题右侧、新建与输入同行、列表限高滚动。 */
+.confirm-dialog.tag-dialog {
+  width: min(560px, 100%);
+}
+.tag-manage-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.tag-manage-head h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tag-manage-x {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+.tag-manage-x:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+.tag-manage-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.tag-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.tag-row .meta {
+  flex: none;
+  font-size: 11.5px;
+}
+.tag-row-input {
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: 32px;
+}
+.tag-row-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+.tag-row-actions .btn {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 12.5px;
+}
+/* 新建标签：输入占满剩余，按钮固定宽 */
+.tag-new-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tag-new-row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tag-new-row .btn {
+  flex: none;
+}
+@media (max-width: 768px) {
+  .tag-row .btn,
+  .tag-new-row .btn {
+    min-height: 44px;
+  }
+  .tag-manage-x {
+    width: 44px;
+    height: 44px;
+  }
+  .admin-filter .filter-field .chips.is-scroll {
+    max-height: 180px;
+  }
+}
