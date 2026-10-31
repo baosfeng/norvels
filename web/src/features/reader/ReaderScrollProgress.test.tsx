@@ -84,6 +84,18 @@ describe("ReaderScrollProgress", () => {
     expect(barWidth()).toBeCloseTo(49.65, 1);
   });
 
+  it("恢复提示胶囊占着底部留白带时浮标先让位，提示收起后滚动照常浮出", async () => {
+    const surface = mountSurface();
+    const { rerender } = render(<ReaderScrollProgress resetKey={46} chipSuppressed />);
+    await scrollTo(surface, 500);
+    expect(chip().className).not.toContain("is-shown");
+    // 比例本身不停更：细条仍按本章滚动走
+    expect(barWidth()).toBeCloseTo(49.65, 1);
+
+    rerender(<ReaderScrollProgress resetKey={46} chipSuppressed={false} />);
+    expect(chip().className).toContain("is-shown");
+  });
+
   it("换章（resetKey 变化）后重新量一次，上一章的比例不会留在条上", async () => {
     const surface = mountSurface();
     const { rerender } = render(<ReaderScrollProgress resetKey={46} />);

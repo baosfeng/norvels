@@ -268,6 +268,25 @@
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-soft);
 }
+/* 顶部「已显示 M / 共 N 本」：紧跟在「已选 X 本」后面，放不下时自然换行 */
+.add-books-shown {
+  margin-left: var(--space-2);
+}
+/* 列表底部状态：正在加载 / 已全部显示 / 翻页失败，都占列表最后一行，不遮住上面已加载的书 */
+.add-books-more {
+  padding: var(--space-2) 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+/* 翻页失败：一句话 + 行内「重试」，不整块换成错误面板（已加载的页照常可勾） */
+.add-books-more.is-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  text-align: left;
+}
 
 @media (max-width: 768px) {
   .collection-member .btn {
@@ -296,6 +315,9 @@
   }
   .add-books-item {
     min-height: 60px;
+  }
+  .add-books-more .btn {
+    min-height: 44px;
   }
 }
 /* 禁用态：全站没有统一的 .btn[disabled] 变淡规则，这一块自己给（否则「添加 0 本」看着仍可点） */

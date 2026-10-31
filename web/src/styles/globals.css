@@ -182,23 +182,12 @@ button {
   gap: 8px;
   padding: 8px 2px;
 }
-/* 筛选项多（排序 + 六类筛选）时弹层不顶满整屏：内容区自己滚，头与「清除筛选」钉住 */
+/* 筛选项多（排序 + 五类筛选）时弹层不顶满整屏：内容区自己滚，头与「清除筛选」钉住 */
 .sheet-scroll {
   max-height: min(68vh, 560px);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-}
-.sheet-label {
-  display: grid;
-  gap: 6px;
-  padding: 4px 12px 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.sheet-label .select {
-  min-height: 44px;
-  color: var(--fg);
 }
 .sheet-foot {
   display: flex;
@@ -271,7 +260,7 @@ body.h5-sheet-open {
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
     padding-top: calc(24px + env(safe-area-inset-top));
-    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+    /* 底部留白由外壳的留白带承担（ix-reader.css「H5 正文底部留白带」）：这里只管左右与顶部 */
     padding-left: calc(18px + env(safe-area-inset-left));
     padding-right: calc(18px + env(safe-area-inset-right));
   }

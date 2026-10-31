@@ -23,9 +23,10 @@
   min-width: 0;
 }
 
-/* ── 进度恢复提示条（C-16）：固定浮条，3 秒自动消失 ──
+/* ── 进度恢复提示条（C-16）：固定浮胶囊，3 秒自动消失 ──
    它原来是正文流里的第一条内容（margin 0 auto 18px），每次进来都把正文往下推一截；
-   现在浮在正文之上、不占正文位置。 */
+   现在浮在正文之上、不占正文位置。宽度只包住自己的文字与按钮（fit-content），
+   不做横贯屏幕的白条；窄屏落进正文底部留白带（见紧随其后的窄屏 @media 里的 bottom）。 */
 .restore-hint {
   position: fixed;
   left: 50%;
@@ -35,6 +36,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  width: fit-content;
   max-width: min(420px, calc(100vw - 24px));
   padding: 8px 12px 8px 16px;
   border: 1px solid var(--r-border);
@@ -50,7 +52,12 @@
   min-height: 32px;
 }
 @media (max-width: 768px) {
-  /* 触屏：确认按钮 ≥44，浮条仍贴在底部控制层之下（控制栏 z 46，收起时不渲染遮挡） */
+  /* 触屏：胶囊压到正文底部留白带的最低一档（细条与「本章 N%」浮标之上 10px 起），
+     浮条在 z 44，控制栏 z 46——唤出菜单时它仍在控制层之下，收起态不产生遮挡。 */
+  .restore-hint {
+    bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  /* 确认按钮 ≥44，触屏才点得准 */
   .restore-hint .btn {
     min-height: 44px;
   }
@@ -654,15 +661,16 @@
   }
 }
 
-/* ── 阅读态常驻进度：正文下沿 3px 细条（本章）+ 滚动时右下角浮层 ──
+/* ── 阅读态常驻进度：屏幕最底 3px 细条（本章）+ 滚动时右下角浮标 ──
    两者都只表示「本章读到哪」，与章末那行的「全书进度」语义不重叠。
-   fixed 贴在底栏位置之上、不吃指针事件——点击仍归三区手势；菜单唤出（.is-controls）时整组淡出，
+   细条贴屏幕最底（H5 正文占满视口，贴底即落在正文留白带内，不再横穿末行）、
+   不吃指针事件——点击仍归三区手势；菜单唤出（.is-controls）时整组淡出，
    避免与底栏章节滑条重复。配色只由 --r-fg 派生：五档背景（含纯黑）实测都能看出已读段与底纹的差异。 */
 .reader-scroll-track {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(env(safe-area-inset-bottom) + 56px);
+  bottom: env(safe-area-inset-bottom);
   z-index: 44;
   height: 3px;
   pointer-events: none;
@@ -680,7 +688,8 @@
 .reader-scroll-chip {
   position: fixed;
   right: calc(14px + env(safe-area-inset-right));
-  bottom: calc(env(safe-area-inset-bottom) + 70px);
+  /* 细条上方 7px：浮标不压末行，也不和细条自己叠在一起 */
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
   z-index: 44;
   margin: 0;
   padding: 2px 8px;
@@ -703,13 +712,33 @@
 .reader-shell.is-controls .reader-scroll-chip {
   opacity: 0;
 }
-/* PC：没有底栏占位，细条贴正文下沿；浮层抬得更高一点避开章末滑条 */
+/* PC：没有底栏占位，细条同贴视口底（与窄屏一致）；浮标比窄屏再抬 2px 避开章末滑条 */
 @media (min-width: 769px) {
-  .reader-scroll-track {
-    bottom: env(safe-area-inset-bottom);
-  }
   .reader-scroll-chip {
     bottom: calc(env(safe-area-inset-bottom) + 12px);
+  }
+}
+
+/* ── H5 正文底部留白带：提示胶囊 / 本章细条 / 本章浮标都落在这一带里，最后一行字始终在它们之上 ──
+   只给滚动容器加 padding 不够：滚到章中时文字仍铺到视口底边、压在浮层下面。
+   这里让外壳（H5 定高 100dvh、overflow hidden）用 padding-bottom 让出整条留白带，
+   滚动区随 flex 收缩到浮层之上，任何滚动位置都裁不到浮层底下。
+   收起态 96px = 胶囊高约 62 + 底距 10 + 24 呼吸；展开态 120px = 底栏约 107 + 13 呼吸。
+   留白高度只在这里定一次：globals.css 的 .reader-main 不再给底部 padding。 */
+@media (max-width: 768px) {
+  .reader-shell {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  .reader-shell.is-controls {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  }
+  /* 滚动区内部只留末行与可视区底边的呼吸；留白带本体在外壳上 */
+  .reader-main {
+    padding-bottom: 16px;
+  }
+  /* 自动滚动浮条也收进留白带：prototype.css 给的 78px 是按旧口径算的，会压在正文末行上 */
+  .reader-autoscroll {
+    bottom: calc(10px + env(safe-area-inset-bottom));
   }
 }
 @media (prefers-reduced-motion: reduce) {

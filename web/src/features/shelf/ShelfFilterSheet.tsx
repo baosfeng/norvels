@@ -44,8 +44,10 @@ const RATINGS = [5, 4, 3, 2, 1] as const;
  * 口径：PC 能筛的 H5 也能筛。分类选项与 PC 下拉同源（`useCategoryOptions`），
  * 筛出来的值同样走 `useBookFeed` 的查询参数，不存在「H5 版另起一套」的可能。
  *
- * 形态：每个分区一行标题 + **横排 chip**（排序 / 状态 / 评分单行左右滑，作者 / 书单 / 标签换行），
- * 所以七类筛选不再堆成一条要滚很久的长列表；分类仍是两个原生下拉，两级联动一步到位。
+ * 形态：每个分区一行标题 + **换行铺满的 chip**——选项少的一眼看完，不用先展开才知道有什么。
+ * 分类两级都铺开（大分类全量 + 计数，选了大分类后紧跟它的全部小分类），不占用原生下拉。
+ * 作者块在 H5 去掉：几十个作者 chip 横着滑很久也找不到人；只有地址里带着 authorId 时，
+ * 才给一行「作者：名字 ×」，让读者能就地取消（否则深链进来的作者筛选在窄屏上没有出口）。
  *
  * 交互：选中即生效（列表在背后实时更新），弹层保持打开，让用户连续调好几项；
  * 底部「查看 N 本」收工。Esc / 遮罩 / × 关闭，关闭后焦点回到入口按钮（`useFocusTrap`）。
@@ -80,6 +82,8 @@ export function ShelfFilterSheet({
   useInitialSection(sheetRef, initialSection);
   const categories = useCategoryOptions();
   const leaves = leavesOf(categories.nodes, category.l1);
+  const showLeaves = category.l1 !== null;
+  const authorName = authorId === null ? null : authorLabel(authors, authorId);
 
   return (
     <div className="sheet-backdrop" data-testid="shelf-sort-sheet" data-od-id="C-21" onClick={onClose}>
@@ -160,44 +164,55 @@ export function ShelfFilterSheet({
           </SheetSection>
 
           <SheetSection title="分类">
-            <div className="sheet-pair">
-              <label className="sheet-label">
-                大分类
-                <select
-                  className="select"
-                  value={category.l1 ?? ""}
-                  data-testid="filter-category-l1"
-                  data-od-id="C-26"
-                  onChange={(event) => onChooseCategory({ l1: event.target.value || null, l2: null })}
+            <div className="sheet-options is-wrap" data-testid="category-l1-options">
+              <Chip
+                testId="category-option-l1-all"
+                active={category.l1 === null}
+                onClick={() => onChooseCategory({ l1: null, l2: null })}
+              >
+                全部
+              </Chip>
+              {categories.nodes.map((node) => (
+                <Chip
+                  key={node.l1}
+                  testId={`category-option-l1-${node.l1}`}
+                  active={category.l1 === node.l1}
+                  onClick={() => onChooseCategory({ l1: node.l1, l2: null })}
                 >
-                  <option value="">全部分类</option>
-                  {categories.nodes.map((node) => (
-                    <option key={node.l1} value={node.l1}>
-                      {node.l1}（{node.count}）
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {leaves.length > 0 ? (
-                <label className="sheet-label">
-                  小分类
-                  <select
-                    className="select"
-                    value={category.l2 ?? ""}
-                    data-testid="filter-category-l2"
-                    data-od-id="C-27"
-                    onChange={(event) => onChooseCategory({ l1: category.l1, l2: event.target.value || null })}
-                  >
-                    <option value="">全部小分类</option>
-                    {leaves.map((leaf) => (
-                      <option key={leaf.l2} value={leaf.l2}>
-                        {leaf.l2}（{leaf.count}）
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
+                  {node.l1}（{node.count}）
+                </Chip>
+              ))}
             </div>
+            {/* 小分类从属于选中的大分类：左侧一道竖线缩进，表示它只对上面那一项生效 */}
+            {showLeaves && leaves.length > 0 ? (
+              <div className="sheet-sub" data-testid="category-l2-options">
+                <span className="sheet-sub-title">小分类</span>
+                <div className="sheet-options is-wrap">
+                  <Chip
+                    testId="category-option-l2-all"
+                    active={category.l2 === null}
+                    onClick={() => onChooseCategory({ l1: category.l1, l2: null })}
+                  >
+                    全部
+                  </Chip>
+                  {leaves.map((leaf) => (
+                    <Chip
+                      key={leaf.l2}
+                      testId={`category-option-l2-${leaf.l2}`}
+                      active={category.l2 === leaf.l2}
+                      onClick={() => onChooseCategory({ l1: category.l1, l2: leaf.l2 })}
+                    >
+                      {leaf.l2}（{leaf.count}）
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {showLeaves && leaves.length === 0 ? (
+              <p className="meta sheet-sub" data-testid="category-l2-empty">
+                该分类暂无细分
+              </p>
+            ) : null}
             {categories.error ? (
               <p className="meta" data-testid="category-hint">
                 分类暂时读不到，可以先用其它筛选。
@@ -205,25 +220,20 @@ export function ShelfFilterSheet({
             ) : null}
           </SheetSection>
 
-          {authors.length > 0 ? (
-            <SheetSection title="作者">
-              <div className="sheet-options is-row">
-                <Chip testId="author-option-all" active={authorId === null} onClick={() => onChooseAuthor(null)}>
-                  全部
-                </Chip>
-                {authors.map((author) => (
-                  <Chip
-                    key={author.id}
-                    testId={`author-option-${author.id}`}
-                    active={authorId === author.id}
-                    onClick={() => onChooseAuthor(author.id)}
-                  >
-                    {author.name || "佚名"}（{author.bookCount}）
-                  </Chip>
-                ))}
-              </div>
-            </SheetSection>
-          ) : null}
+          {/* 作者只留「已选」的清除入口：H5 上几十个作者横向滑很难找到人，候选留给 PC 工具栏 */}
+          {authorName === null ? null : (
+            <div className="sheet-selected">
+              <button
+                type="button"
+                className="sheet-option is-active"
+                data-testid="author-selected-clear"
+                aria-label={`清除作者筛选：${authorName}`}
+                onClick={() => onChooseAuthor(null)}
+              >
+                作者：{authorName} ×
+              </button>
+            </div>
+          )}
 
           {collections.length > 0 ? (
             <SheetSection title="书单">
@@ -278,6 +288,11 @@ export function ShelfFilterSheet({
       </div>
     </div>
   );
+}
+
+/** 已选作者的显示名：候选表还没回来（或该作者不在候选里）时不编名字，如实写「已选作者」。 */
+function authorLabel(authors: ShelfFilterSheetProps["authors"], authorId: number): string {
+  return authors.find((author) => author.id === authorId)?.name || "已选作者";
 }
 
 /**

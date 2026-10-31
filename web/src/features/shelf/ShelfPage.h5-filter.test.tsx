@@ -9,6 +9,12 @@ const books = vi.fn<(params: BookQuery, opts?: RequestOptions) => Promise<Page<B
 const categories = vi.fn(async (): Promise<CategoryTree> => tree());
 const tags = vi.fn(async (): Promise<{ items: TagSummary[] }> => ({ items: [] }));
 const collections = vi.fn(async () => ({ items: [], total: 0 }));
+const authors = vi.fn(async () => ({
+  items: [{ id: 1, name: "示例作者", bookCount: 3 }],
+  total: 1,
+  page: 1,
+  size: 20,
+}));
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
@@ -20,7 +26,7 @@ vi.mock("../../api/client", async () => {
       categories: () => categories(),
       tags: () => tags(),
       collections: () => collections(),
-      authors: vi.fn(async () => ({ items: [], total: 0, page: 1, size: 20 })),
+      authors: () => authors(),
       updateBook: vi.fn(async () => ({}) as BookDetail),
     },
   };
@@ -30,10 +36,12 @@ const { ShelfPage } = await import("./ShelfPage");
 
 function tree(): CategoryTree {
   return {
-    total: 5,
+    total: 7,
     items: [
       { l1: "历史", count: 1, items: [{ l2: "两宋元明", count: 1 }] },
       { l1: "玄幻", count: 4, items: [{ l2: "东方玄幻", count: 3 }, { l2: "奇幻玄幻", count: 1 }] },
+      // 没有细分的大分类：铺开时照样是大分类 chip，选中后那一行报「该分类暂无细分」
+      { l1: "悬疑", count: 2, items: [] },
       { l1: "", count: 2, items: [{ l2: "", count: 2 }] },
     ],
   };
@@ -85,6 +93,7 @@ beforeEach(() => {
   categories.mockClear();
   tags.mockClear();
   collections.mockClear();
+  authors.mockClear();
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
@@ -97,9 +106,24 @@ describe("H5 书架：分类等筛选在底部弹层里（C-21）", () => {
     fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
     const sheet = within(screen.getByTestId("shelf-sort-sheet"));
     expect(sheet.getByRole("dialog")).toBeTruthy();
-    // 分类两级在弹层里同样存在，且选项来自同一份 /api/categories
-    expect(await sheet.findByTestId("filter-category-l1")).toBeTruthy();
+    // 分类在弹层里是铺开的 chip，不再是「要点开才知道有什么」的原生下拉
+    expect(await sheet.findByTestId("category-option-l1-玄幻")).toBeTruthy();
+    expect(sheet.queryByTestId("filter-category-l1")).toBeNull();
     expect(categories).toHaveBeenCalled();
+  });
+
+  it("大分类全量铺开：chip 数 = 接口节点数 + 「全部」，未分类不进候选", async () => {
+    renderShelf();
+    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
+    const box = await screen.findByTestId("category-l1-options");
+    await waitFor(() => expect(box.querySelectorAll(".sheet-option")).toHaveLength(4)); // 全部 + 历史 + 玄幻 + 悬疑
+    // 计数直接写在 chip 上，选之前就知道各分类有几本
+    expect(box.textContent).toContain("玄幻（4）");
+    expect(box.textContent).not.toContain("未分类");
+    // 弹层里没有原生 select 可展开
+    expect(document.querySelector('[data-testid="shelf-sort-sheet"] select')).toBeNull();
   });
 
   it("选分类后列表按 categoryL1 重新取数，并把筛选写进地址", async () => {
@@ -107,9 +131,7 @@ describe("H5 书架：分类等筛选在底部弹层里（C-21）", () => {
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
     fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
-    const select = (await screen.findByTestId("filter-category-l1")) as HTMLSelectElement;
-    await waitFor(() => expect(select.querySelectorAll("option").length).toBeGreaterThan(1));
-    fireEvent.change(select, { target: { value: "玄幻" } });
+    fireEvent.click(await screen.findByTestId("category-option-l1-玄幻"));
 
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
     expect(books.mock.calls[1][0]).toMatchObject({ categoryL1: "玄幻", page: 1, size: 30 });
@@ -125,16 +147,53 @@ describe("H5 书架：分类等筛选在底部弹层里（C-21）", () => {
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
     fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
-    const l1 = (await screen.findByTestId("filter-category-l1")) as HTMLSelectElement;
-    await waitFor(() => expect(l1.querySelectorAll("option").length).toBeGreaterThan(1));
-    fireEvent.change(l1, { target: { value: "玄幻" } });
-
-    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
-    const l2 = (await screen.findByTestId("filter-category-l2")) as HTMLSelectElement;
-    fireEvent.change(l2, { target: { value: "东方玄幻" } });
+    // 大分类选中后小分类就铺在它下面，不用关掉弹层再打开一次
+    fireEvent.click(await screen.findByTestId("category-option-l1-玄幻"));
+    const l2 = await screen.findByTestId("category-l2-options");
+    expect(l2.querySelectorAll(".sheet-option")).toHaveLength(3); // 全部 + 东方玄幻 + 奇幻玄幻
+    fireEvent.click(screen.getByTestId("category-option-l2-东方玄幻"));
 
     await waitFor(() => expect(books).toHaveBeenCalledTimes(3));
     expect(books.mock.calls[2][0]).toMatchObject({ categoryL1: "玄幻", categoryL2: "东方玄幻" });
+    expect(screen.getByTestId("category-option-l2-东方玄幻").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("换大分类时小分类跟着回到「全部」", async () => {
+    renderShelf(["/?l1=玄幻&l2=东方玄幻"]);
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
+    fireEvent.click(await screen.findByTestId("category-option-l1-历史"));
+
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
+    expect(books.mock.calls[1][0]).toMatchObject({ categoryL1: "历史" });
+    expect(books.mock.calls[1][0].categoryL2).toBeUndefined();
+  });
+
+  it("没有细分的大分类：那一行说「该分类暂无细分」", async () => {
+    renderShelf();
+    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
+    fireEvent.click(await screen.findByTestId("category-option-l1-悬疑"));
+
+    expect((await screen.findByTestId("category-l2-empty")).textContent).toBe("该分类暂无细分");
+    expect(screen.queryByTestId("category-l2-options")).toBeNull();
+  });
+
+  it("作者只留「已选作者 ×」的清除入口，不再铺一屏作者 chip", async () => {
+    renderShelf(["/?author=1"]);
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
+    const clear = await screen.findByTestId("author-selected-clear");
+    // 名字来自候选表；没有候选时退成「已选作者」，不编名字
+    expect(clear.textContent).toBe("作者：示例作者 ×");
+    expect(screen.queryByTestId("author-option-all")).toBeNull();
+
+    fireEvent.click(clear);
+    await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
+    expect(books.mock.calls[1][0].authorId).toBeUndefined();
   });
 
   it("评分 / 作者 / 状态筛选在 H5 弹层里也能改变列表请求", async () => {

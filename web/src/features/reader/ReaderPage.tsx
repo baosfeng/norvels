@@ -356,10 +356,12 @@ function ReaderScreen() {
         reducedMotion={reducedMotion}
       />
 
-      {/* 进度恢复提示：固定浮条（3 秒自动消失），不进正文流、不把正文往下推 */}
+      {/* 进度恢复提示：内容自适应的浮胶囊（3 秒自动消失），不进正文流、不把正文往下推 */}
       <ReaderRestoreHint visible={restoreHintVisible} onDismiss={dismissHint} />
 
-      <ReaderScrollProgress resetKey={chapterId} />
+      {/* 恢复提示胶囊占着底部留白带时，本章浮标先让位（两个瞬时浮层不叠在一起）；
+          自动滚动浮条也在那条带里，同样让它让位 */}
+      <ReaderScrollProgress resetKey={chapterId} chipSuppressed={restoreHintVisible || settings.autoScroll} />
 
       {isH5 ? (
         <ReaderBottomBar

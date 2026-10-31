@@ -561,8 +561,8 @@
   }
 }
 
-/* 底部弹层：分区横排 chip。排序 / 状态 / 评分单行横滑，作者 / 书单 / 标签换行铺满，
-   七类筛选不再堆成一条要滚过六十多行的长列表 */
+/* 底部弹层：分区 chip。排序 / 状态 / 评分是定长集合，分类 / 书单 / 标签换行铺满，
+   筛选条件一眼看全——没有要展开才知道有什么的原生下拉 */
 .sheet .sheet-section {
   display: grid;
   /* 单列定宽：横排 chip 行是 nowrap + 横向滚动，不定宽会把整列撑出弹层右边缘 */
@@ -606,7 +606,7 @@
 .sheet-options.is-grid .sheet-option {
   padding: 0 4px;
 }
-/* 不定长集合（作者 / 书单 / 标签）单行横滑：区高固定，不随条目数增长 */
+/* 不定长集合（书单 / 标签）单行横滑：区高固定，不随条目数增长 */
 .sheet-options.is-row {
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -644,15 +644,23 @@
 .sheet .sheet-option.is-active::after {
   content: none;
 }
-.sheet-pair {
+/* 小分类从属于上面选中的大分类：左侧竖线缩进一档，一眼看出它只对大分类生效 */
+.sheet-sub {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-  padding: 0 2px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-left: 2px;
+  padding: 4px 0 0 10px;
+  border-left: 2px solid var(--border);
 }
-.sheet-pair .sheet-label {
-  padding: 0;
-  min-width: 0;
+.sheet-sub-title {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* 已选作者只剩一个清除入口：不铺候选，也不占一整个分区标题 */
+.sheet-selected {
+  display: flex;
+  padding: 0 2px 2px;
 }
 .sheet-head-actions {
   display: flex;
@@ -680,9 +688,6 @@
 @media (max-width: 768px) {
   .sheet .sheet-option {
     min-height: 44px;
-  }
-  .sheet-pair {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

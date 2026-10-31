@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, UIEvent as ReactUIEvent } from "react";
 import { api } from "../../api/client";
-import { useBooks } from "../../api/hooks";
-import type { BookQuery } from "../../api/client";
 import type { Collection } from "../../api/types";
 import { Cover } from "../../components/Cover";
-import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
+import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { showToast } from "../../lib/toastStore";
 import { fetchAllMemberIds, memberErrorText, mergeMemberIds } from "./collectionMembers";
-
-/** 选择器里一次列多少本候选书。 */
-const PICKER_PAGE_SIZE = 20;
+import { usePickerBooks } from "./usePickerBooks";
 
 /** 弹层内可聚焦的元素（按 DOM 顺序）：焦点陷阱用。 */
 function focusableIn(root: HTMLElement): HTMLElement[] {
@@ -23,10 +19,12 @@ function focusableIn(root: HTMLElement): HTMLElement[] {
 /**
  * 添加书籍弹层：搜索书库、勾选多本、确认后全量写回。
  *
- * 三个取舍：
+ * 四个取舍：
  *   - 写回前先「重取现有成员再合并」：PUT 是全量替换，直接拿前端缓存的成员会覆盖
  *     并发改动（另一台设备刚加过书）；重取走翻页，书单超过单页上限也不会被截断；
  *   - 搜索复用 GET /api/books?q=（书库列表接口），不新开端点：书名/作者都能命中；
+ *   - 候选书一页 20 本、滚到底再取下一页（见 usePickerBooks），不一次拉全库：
+ *     几百本书全量拉下来既慢又白占内存，读者多半只看前几十本；
  *   - 已选中的书在列表里保持勾选状态，换关键词也不丢——选择集是 id 集合，不是列表下标。
  */
 export function AddBooksDialog({
@@ -48,11 +46,8 @@ export function AddBooksDialog({
   const [membersUnknown, setMembersUnknown] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const keyword = q.trim();
-  const params: BookQuery = keyword
-    ? { q: keyword, page: 1, size: PICKER_PAGE_SIZE, sort: "title" }
-    : { page: 1, size: PICKER_PAGE_SIZE, sort: "updated" };
-  const { data, loading, error: loadError, reload } = useBooks(params);
-  const items = data?.items ?? [];
+  const { items, total, loadingFirst, loadingMore, hasMore, error: pageError, loadMore, retry } =
+    usePickerBooks(keyword);
 
   /** 打开时记下触发按钮，关闭后把焦点还给它（modal 语义，键盘用户不迷路）。 */
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -121,6 +116,13 @@ export function AddBooksDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  /** 列表滚到离底部 80px 以内就取下一页；重复触发由 hook 里的 loading / hasMore 守卫挡掉。 */
+  function handleListScroll(event: ReactUIEvent<HTMLDivElement>) {
+    const el = event.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 80) return;
+    loadMore();
+  }
+
   function toggle(bookId: number) {
     // 已是成员的书不可再勾（checkbox 也 disabled，这里再兜一层）
     if (members?.has(bookId)) return;
@@ -170,6 +172,9 @@ export function AddBooksDialog({
             </h2>
             <p className="meta">
               已选 <b data-testid="add-books-picked">{picked.size}</b> 本
+              <span className="add-books-shown" data-testid="add-books-shown">
+                已显示 {items.length} / 共 {total} 本
+              </span>
             </p>
           </div>
           <button className="btn btn-sm" type="button" data-testid="add-books-close" onClick={onClose}>
@@ -192,12 +197,10 @@ export function AddBooksDialog({
           />
         </label>
 
-        <div className="add-books-body">
-          {loading && !data ? (
+        <div className="add-books-body" data-testid="add-books-body" onScroll={handleListScroll}>
+          {loadingFirst ? (
             <LoadingPanel title="正在读取书库" description="稍等一下。" testId="add-books-loading" />
-          ) : loadError ? (
-            <ErrorPanel error={loadError} title="书库没能读取" onRetry={reload} testId="add-books-error" />
-          ) : items.length === 0 ? (
+          ) : items.length === 0 && !pageError ? (
             <EmptyPanel
               title={keyword ? "没有匹配的书" : "书库还是空的"}
               description={keyword ? "换个关键词试试，书名和作者都能搜。" : "先把 txt 导进来，再来挑书。"}
@@ -211,48 +214,64 @@ export function AddBooksDialog({
                 </p>
               ) : null}
               <ul className="add-books-list" data-testid="add-books-list">
-              {items.map((book) => {
-                const on = picked.has(book.id);
-                const isMember = members?.has(book.id) ?? false;
-                return (
-                  <li key={book.id}>
-                    <label
-                      className={`add-books-item${on ? " is-picked" : ""}${isMember ? " is-member" : ""}`}
-                      data-testid={`add-books-item-${book.id}`}
-                    >
-                      <input
-                        className="add-books-check"
-                        type="checkbox"
-                        checked={on}
-                        disabled={isMember || busy}
-                        data-testid={`add-books-pick-${book.id}`}
-                        onChange={() => toggle(book.id)}
-                      />
-                      <Cover
-                        title={book.title}
-                        bookId={book.id}
-                        updatedAt={book.updatedAt}
-                        hasCover={book.hasCover}
-                        className="add-books-cover"
-                        showLabel={false}
-                      />
-                      <span className="add-books-main">
-                        <b>{book.title}</b>
-                        <span className="meta">
-                          {book.authorName || "佚名"} · {book.chapterCount} 章
+                {items.map((book) => {
+                  const on = picked.has(book.id);
+                  const isMember = members?.has(book.id) ?? false;
+                  return (
+                    <li key={book.id}>
+                      <label
+                        className={`add-books-item${on ? " is-picked" : ""}${isMember ? " is-member" : ""}`}
+                        data-testid={`add-books-item-${book.id}`}
+                      >
+                        <input
+                          className="add-books-check"
+                          type="checkbox"
+                          checked={on}
+                          disabled={isMember || busy}
+                          data-testid={`add-books-pick-${book.id}`}
+                          onChange={() => toggle(book.id)}
+                        />
+                        <Cover
+                          title={book.title}
+                          bookId={book.id}
+                          updatedAt={book.updatedAt}
+                          hasCover={book.hasCover}
+                          className="add-books-cover"
+                          showLabel={false}
+                        />
+                        <span className="add-books-main">
+                          <b>{book.title}</b>
+                          <span className="meta">
+                            {book.authorName || "佚名"} · {book.chapterCount} 章
+                          </span>
                         </span>
-                      </span>
-                      {isMember ? (
-                        <span className="add-books-tag" data-testid={`add-books-member-${book.id}`}>
-                          已加入
-                        </span>
-                      ) : null}
-                    </label>
-                  </li>
-                );
-              })}
+                        {isMember ? (
+                          <span className="add-books-tag" data-testid={`add-books-member-${book.id}`}>
+                            已加入
+                          </span>
+                        ) : null}
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
-            </> 
+              {pageError ? (
+                <p className="inline-note is-error add-books-more" role="alert" data-testid="add-books-more-error">
+                  <span>还有书没能读出来，已加载的仍可勾选。</span>
+                  <button className="btn btn-sm" type="button" data-testid="add-books-more-retry" onClick={retry}>
+                    重试
+                  </button>
+                </p>
+              ) : loadingMore ? (
+                <p className="add-books-more" role="status" data-testid="add-books-more-loading">
+                  正在加载…
+                </p>
+              ) : hasMore ? null : (
+                <p className="add-books-more" role="status" data-testid="add-books-more-done">
+                  已全部显示（共 {total} 本）
+                </p>
+              )}
+            </>
           )}
         </div>
 

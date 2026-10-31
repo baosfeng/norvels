@@ -103,7 +103,7 @@ describe("H5 书架：排序与筛选是两个独立入口", () => {
     await waitFor(() => expect(document.activeElement?.getAttribute("data-testid")).toBe("sort-option-updated"));
   });
 
-  it("点「筛选」停在第一个筛选分区，六类筛选都在弹层里", async () => {
+  it("点「筛选」停在第一个筛选分区，五类筛选都在弹层里", async () => {
     renderShelf();
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
@@ -113,10 +113,12 @@ describe("H5 书架：排序与筛选是两个独立入口", () => {
     await waitFor(() => expect(document.activeElement?.getAttribute("data-testid")).toBe("read-status-option-all"));
 
     const sheet = within(screen.getByTestId("shelf-sort-sheet"));
-    // 六类：阅读状态 / 评分 / 分类 / 作者 / 书单 / 标签（排序是第七个分区，不在筛选之列）
-    for (const label of ["阅读状态筛选", "评分筛选", "分类筛选", "作者筛选", "书单筛选", "标签筛选"]) {
+    // 五类：阅读状态 / 评分 / 分类 / 书单 / 标签（作者块在 H5 去掉，只在已选作者时给一行清除入口；
+    // 排序是第六个分区，不在筛选之列）
+    for (const label of ["阅读状态筛选", "评分筛选", "分类筛选", "书单筛选", "标签筛选"]) {
       expect(sheet.getByRole("group", { name: label })).toBeTruthy();
     }
+    expect(sheet.queryByRole("group", { name: "作者筛选" })).toBeNull();
     expect(sheet.queryByRole("group", { name: "排序筛选" })).toBeTruthy();
   });
 
