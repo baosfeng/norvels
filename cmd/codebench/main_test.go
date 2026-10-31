@@ -102,7 +102,7 @@ func TestPackRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("打包失败: %v", err)
 	}
-	if blob[0] != benchZstdCode {
+	if blob[0] != storedCodebook {
 		t.Fatalf("标记应为码本流，得到 0x%02x", blob[0])
 	}
 	out, err := unpackOne(c, blob)

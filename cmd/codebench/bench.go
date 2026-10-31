@@ -47,9 +47,9 @@ type group struct {
 
 // groups 是本次实测的五组方案，顺序即报告顺序。
 var groups = []group{
-	{"plain_1mb", "① 现状基线：纯 1MB 章界块 zstd", blockTarget, false},
+	{"plain_1mb", "① 迁移前基线：纯 1MB 章界块 zstd", blockTarget, false},
 	{"code_1mb", "② 码本 + 1MB 章界块 zstd", blockTarget, true},
-	{"code_8mb", "③ 码本 + 8MB 章界块 zstd", blockTarget * 8, true},
+	{"code_8mb", "③ 码本 + 8MB 章界块 zstd（= 迁移 0017 后的库内格式）", blockTarget * 8, true},
 	{"code_book", "④ 码本 + 整本 zstd", 0, true},
 	{"plain_book", "⑤ 纯整本 zstd（对照）", 0, false},
 }

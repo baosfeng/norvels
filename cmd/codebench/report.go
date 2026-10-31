@@ -218,7 +218,7 @@ func markdown(res *Result) string {
 		}
 		for _, g := range res.Groups {
 			if g.Key == "plain_1mb" && g.DBBytes > 0 {
-				fmt.Fprintf(&b, "\n① 与库内同书 BLOB 体积对账：重压 %d 字节 vs 库内 %d 字节 = %+.2f%%\n",
+				fmt.Fprintf(&b, "\n① 与库内同书 BLOB 体积对比：重压 %d 字节 vs 库内 %d 字节 = %+.2f%%（库内已是码本格式，① 只作迁移前口径参考）\n",
 					g.PackedBytes, g.DBBytes, g.DBDeltaPct)
 			}
 		}
