@@ -1,5 +1,8 @@
 # ADR-0003：正文改为按块 zstd 压缩存储
 
+> **算法与块大小已被 [ADR-0007](0007-codebook-compressed-content.md) 取代**（2026-11-01：1 MB 块纯 zstd → 8 MB 块 + 内置字码本，34.7% → 26.4%）。
+> 本 ADR 剩下的判断仍然有效：为什么不按章压、为什么不转 GB18030、为什么不选 brotli / lzma、块边界按章节切。
+
 > 前置决策见 [ADR-002](0002-drop-fulltext-index.md)（移除正文全文索引）。
 > 本 ADR 只讨论「剩下的 4.87 GB 正文怎么存」。
 
