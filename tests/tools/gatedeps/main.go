@@ -43,6 +43,8 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/parser": {"norvels/internal/model"},
 	"norvels/internal/store":  {"norvels/internal/model", "norvels/internal/source"},
 	"norvels/internal/ebook":  {"norvels/internal/model"},
+	// 正文编码层：UTF-8 ↔ 字频码本流的无损重编码，只依赖标准库（叶子包）。
+	"norvels/internal/textcode": {},
 	// 书源规则包：纯数据模型 + 校验，只依赖标准库（叶子包）。
 	"norvels/internal/source": {},
 	// 在线抓取执行器：只依赖标准库（叶子包），不碰解析与存储。
