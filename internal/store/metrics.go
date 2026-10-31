@@ -12,7 +12,8 @@ import (
 //
 //	v1：text_bytes = chapters 的 TITLE+CONTENT 字符数（含字级分词镜像列）
 //	v2：text_bytes = chapter_blocks.packed 压缩字节之和；原文逻辑字节另记 text_bytes_raw
-const metricsVersion = 2
+//	v3：v2 同一口径，块边界改成 8 MB、格式改成 0x03（0017 重压存量块，见 rebuild.go）
+const metricsVersion = 3
 
 // store_metrics 的键位。全部是整数值，读接口只查表，毫秒级。
 const (
