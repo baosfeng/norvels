@@ -20,6 +20,8 @@ export interface HorizontalBar {
   value: number;
   widthPct: number;
   display: string;
+  /** 悬停/聚焦读数：作者 + 字数 + 占全库比例 */
+  title: string;
 }
 
 export interface DonutSegment {
@@ -29,6 +31,8 @@ export interface DonutSegment {
   color: string;
   dash: string;
   offset: number;
+  /** 悬停/聚焦读数：本数 + 占比 */
+  title: string;
 }
 
 /** 数字 → 「12.3 万 / 1.2 亿」，图表内联用，与列表页 formatCount 口径一致。 */
@@ -37,6 +41,18 @@ export function compact(value: number): string {
   if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)} 亿`.replace(".0 ", " ");
   if (value >= 10_000) return `${(value / 10_000).toFixed(1)} 万`.replace(".0 ", " ");
   return String(Math.round(value));
+}
+
+/**
+ * 占比文案：非零但不足 1% 时写「<1」。
+ *
+ * 真实库里「在读 2 本 / 838 本」四舍五入是 0%，浮层写「占全库 0%」等于说没有这本书，
+ * 所以 0.4% 这类比例统一写成「<1」。
+ */
+function shareText(value: number, total: number): string {
+  if (value <= 0 || total <= 0) return "0";
+  const rounded = Math.round((value / total) * 100);
+  return rounded === 0 ? "<1" : String(rounded);
 }
 
 function pct(value: number, max: number, floor = 2): number {
@@ -62,7 +78,12 @@ export function buildImportTrend(points: ImportTrendPoint[]): ChartModel<{ bars:
       (index % 3 === 0 && points.length - 1 - index > 1),
     value: p.books,
     heightPct: 0,
-    title: `${shortDate(p.date)}：${p.books} 本 / ${p.chapters} 章`,
+    // 悬停/聚焦读数：没有导入的那天也说清楚「没有」，不留给用户猜；
+    // 章数动辄几十万，按「万」量级写，与卡片里其它数字同一口径
+    title:
+      p.books > 0
+        ? `${fullDate(p.date)}：导入 ${compact(p.books)} 本、${compact(p.chapters)} 章`
+        : `${fullDate(p.date)}：没有导入`,
   }));
   const total = points.reduce((sum, p) => sum + p.books, 0);
   const max = Math.max(0, ...bars.map((b) => b.value));
@@ -87,6 +108,13 @@ function shortDate(date: string): string {
   return `${Number(parts[1])}/${Number(parts[2])}`;
 }
 
+/** 读数浮层用全日期（坐标轴空间不够，只能写 10/18）。 */
+function fullDate(date: string): string {
+  const parts = date.split("-");
+  if (parts.length !== 3) return date;
+  return `${Number(parts[1])} 月 ${Number(parts[2])} 日`;
+}
+
 /* ── 2 章节数分布（6 桶直方图） ── */
 export function buildChapterBuckets(buckets: Bucket[]): ChartModel<{ bars: VerticalBar[]; total: number; peak: string }> {
   const bars = buckets.map((b) => ({
@@ -94,7 +122,7 @@ export function buildChapterBuckets(buckets: Bucket[]): ChartModel<{ bars: Verti
     labelVisible: true,
     value: b.count,
     heightPct: 0,
-    title: `${b.label} 章：${b.count} 本`,
+    title: b.count > 0 ? `${b.label} 章：${b.count} 本` : `${b.label} 章：没有这样的书`,
   }));
   const total = buckets.reduce((sum, b) => sum + b.count, 0);
   const max = Math.max(0, ...bars.map((b) => b.value));
@@ -121,6 +149,10 @@ export function buildTopAuthors(
     value: a.wordCount,
     widthPct: pct(a.wordCount, max),
     display: compact(a.wordCount),
+    title:
+      totalWords > 0
+        ? `${a.name || "佚名"}：${compact(a.wordCount)} 字，占全库 ${shareText(a.wordCount, totalWords)}%`
+        : `${a.name || "佚名"}：${compact(a.wordCount)} 字`,
   }));
   const sum = top.reduce((acc, a) => acc + a.wordCount, 0);
   const sharePct = totalWords > 0 ? Math.round((sum / totalWords) * 100) : 0;
@@ -155,7 +187,7 @@ export function buildReadingDist(
     const unread = Math.max(0, buckets.unread);
     const total = finished + reading + unread;
     if (total > 0) {
-      const readPct = Math.round(((finished + reading) / total) * 100);
+      const readPct = shareText(finished + reading, total);
       return {
         empty: false,
         note: `翻过 ${finished + reading} 本，占全库 ${readPct}%${unread > 0 ? `；${unread} 本还没开始` : ""}`,
@@ -182,7 +214,7 @@ export function buildReadingDist(
   const total = finished + reading + unread;
 
   const segments = buildDonutSegments({ finished, reading, unread });
-  const readPct = total > 0 ? Math.round(((finished + reading) / total) * 100) : 0;
+  const readPct = total > 0 ? shareText(finished + reading, total) : "0";
   const note = total > 0
     ? `翻过 ${finished + reading} 本，占全库 ${readPct}%${unread > 0 ? `；${unread} 本还没开始` : ""}`
     : "还没有阅读记录";
@@ -215,6 +247,7 @@ function buildDonutSegments(counts: Record<DonutSegment["key"], number>): DonutS
       color: style.color,
       dash: `${length} ${CIRCUMFERENCE - length}`,
       offset: -offset,
+      title: `${style.label} ${counts[style.key]} 本${total > 0 ? `，占全库 ${shareText(counts[style.key], total)}%` : ""}`,
     };
     offset += length;
     return segment;
@@ -234,6 +267,8 @@ export interface StoragePart {
   widthPct: number;
   display: string;
   color: string;
+  /** 悬停/聚焦读数：档位 + 体积 + 占比 */
+  title: string;
 }
 
 export interface StorageData {
@@ -287,6 +322,7 @@ export function buildStorage(stats: Stats | null): ChartModel<StorageData> {
     widthPct: widthPct[index],
     display: formatStorage(raw[style.key]),
     color: style.color,
+    title: `${style.label} ${formatStorage(raw[style.key])}，占 ${sharePct[index].toFixed(1)}%`,
   }));
 
   // 后端把统计改成查预计算表后，可能出现「总量有了、正文/索引还没拆出来」的中间状态
@@ -365,15 +401,19 @@ export function buildChapterLength(buckets: Bucket[]): ChartModel<{ cols: Vertic
     labelVisible: true,
     value: b.count,
     heightPct: 0,
-    title: `${b.label}：${b.count} 章`,
+    title: "",
   }));
   const total = buckets.reduce((sum, b) => sum + b.count, 0);
   const max = Math.max(0, ...cols.map((c) => c.value));
+  // 占比要等 total 算完才填：读数是「本桶章数 + 占全部章节的比例」
   cols.forEach((c) => {
     c.heightPct = pct(c.value, max, 3);
+    c.title = c.value > 0
+      ? `${c.label}：${compact(c.value)} 章，占 ${shareText(c.value, total)}%`
+      : `${c.label}：没有这样的章节`;
   });
   const peak = cols.reduce<VerticalBar | null>((best, c) => (!best || c.value > best.value ? c : best), null);
-  const peakShare = peak && total > 0 ? Math.round((peak.value / total) * 100) : 0;
+  const peakShare = peak && total > 0 ? shareText(peak.value, total) : "0";
   const note = total > 0 && peak
     ? `共 ${compact(total)} 章，${peak.label}最多（${peakShare}%）`
     : "还没有章节数据";

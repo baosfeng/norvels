@@ -1,0 +1,239 @@
+/* 驾驶舱：图表读数浮层、健康卡下钻入口与明细抽屉。
+ *
+ * 三处都是「同一份语义在不同卡片上复用」，因此集中在这一个文件：
+ *   .chart-tip      六张图 + 热力图共用的读数浮层（ChartTip.tsx）
+ *   .health-entry   健康卡每项问题的明细入口（HealthCard.tsx）
+ *   .health-drawer  健康明细抽屉（HealthDrawer.tsx）
+ * 颜色全部取 tokens.css 变量，深浅主题自动跟随。
+ */
+
+/* ── 读数浮层：贴在数据点旁边，带小三角指回锚点 ── */
+.chart-tip {
+  position: fixed;
+  z-index: 45;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: nowrap;
+  pointer-events: none;
+  /* 水平中心对齐锚点中心，垂直方向整块压在锚点上方（top 由 JS 给到锚点上方 10px） */
+  transform: translate(-50%, -100%);
+  box-shadow: 0 8px 20px color-mix(in oklab, var(--fg), transparent 78%);
+}
+/* 小三角：朝下指向被指向的数据点 */
+.chart-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top-color: var(--fg);
+}
+/* 锚点贴视口顶部时翻到下方：三角朝上 */
+.chart-tip.is-below {
+  transform: translate(-50%, 0);
+}
+.chart-tip.is-below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--fg);
+}
+/* 点开的读数固定 5 秒：加一圈描边暗示「这条已固定」 */
+.chart-tip.is-pinned {
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--accent), transparent 40%),
+    0 8px 20px color-mix(in oklab, var(--fg), transparent 78%);
+}
+
+/* ── 数据点：可聚焦、可悬停，键盘与鼠标看到同一句读数 ── */
+.chart-card [data-tip="1"] {
+  cursor: help;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+.chart-card [data-tip="1"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* 悬停时整列/整行淡淡提亮：不只靠浮层告诉用户「你指的是这一根」 */
+.bar-col[data-tip="1"]:hover,
+.col-item[data-tip="1"]:hover,
+.hbar-row[data-tip="1"]:hover {
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
+  border-radius: 6px;
+}
+/* 环形图：悬停/聚焦时这一段加粗，读数与高亮指向同一段 */
+.donut-seg {
+  transition:
+    stroke-width var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+.donut-seg[data-tip="1"]:hover,
+.donut-seg[data-tip="1"]:focus-visible {
+  stroke-width: 20;
+}
+/* 堆叠条：悬停提一点饱和，配合浮层读数 */
+.stack-seg[data-tip="1"]:hover {
+  filter: saturate(1.25) brightness(1.04);
+}
+
+/* ── 热力格：悬停即描边（原先只有浮出读数后才描边，用户看不出格子可指） ── */
+.heat-cell {
+  transition:
+    outline-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+.heat-cell:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ── 健康卡：每项问题的明细入口 ── */
+.health-item .health-entry + .health-entry {
+  margin-left: var(--space-2);
+}
+.health-entry {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-2);
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.health-entry:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.health-entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* 没有这类问题：入口置灰 + 虚线框，说明这句就是结论，不是可点的按钮 */
+.health-entry.is-empty:disabled {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+/* ── 健康明细抽屉（复用 prototype.css 的 .drawer / .overlay 骨架） ── */
+.health-drawer {
+  width: min(460px, 96vw);
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+.health-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.health-drawer-head h2 {
+  margin: 2px 0 4px;
+  font-size: 18px;
+}
+.health-drawer-rule {
+  margin: 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+.health-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.health-issue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.health-issue-item + .health-issue-item {
+  border-top: 1px solid var(--border-soft);
+}
+.health-issue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: var(--space-3) 0;
+  color: inherit;
+  text-decoration: none;
+}
+.health-issue-title {
+  overflow: hidden;
+  color: var(--fg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.health-issue-row .meta {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.health-issue-go {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.health-issue-row:hover .health-issue-title,
+.health-issue-row:hover .health-issue-go {
+  color: var(--accent);
+}
+.health-issue-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.health-drawer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ── 首屏密度：卡片内边距与间距收紧（图表绘图区不动） ──
+   改前 1440×900：dash-layout 顶 118 → 图表网格顶 729，第一张图表卡 729–1001，
+   900 高的首屏一张图表卡都装不下。收紧后网格顶 ~610，第一行两张图表卡完整可见。
+   间距翻倍也是这里修的：.dash-main 是 flex 列、gap 已给 12，而 .dash-block + .dash-block 又塞 20。 */
+.dash-layout {
+  gap: 16px;
+  padding: 8px 0 32px;
+}
+.dash-main {
+  gap: 12px;
+}
+.dash-block {
+  padding: 8px 14px;
+}
+.dash-block + .dash-block {
+  margin-top: 0;
+}
+.dash-block-head {
+  margin-bottom: 6px;
+}
+.dash-block-head h2 {
+  font-size: var(--text-base);
+}
+.stat-card {
+  padding: 10px 14px;
+}

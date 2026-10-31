@@ -63,6 +63,18 @@ vi.mock("../../api/hooks", () => ({
   }),
   useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progress }),
   useReadingProgressAll: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progressAll }),
+  useHealthIssues: () => ({
+    data: {
+      kind: "missing_author",
+      total: 3,
+      page: 1,
+      size: 50,
+      items: [{ bookId: 7, title: "缺作者之书", author: "", chapterCount: 12, wordCount: 345_600 }],
+    },
+    loading: false,
+    error: null,
+    reload: reloads.health,
+  }),
 }));
 
 const { DashboardPage } = await import("./DashboardPage");
@@ -143,5 +155,48 @@ describe("回归：C-23「全部书架」要清掉上次筛选", () => {
     fireEvent.click(screen.getByText("全部书架 →"));
     await waitFor(() => expect(screen.getByTestId("shelf-state")).toBeTruthy());
     expect(screen.getByTestId("shelf-state").textContent).toContain('"resetFilters":true');
+  });
+});
+describe("健康卡下钻（新增）", () => {
+  it("四类问题各有「查看 N 本/个」入口，点开抽屉列出明细并链到单书管理页", () => {
+    renderPage();
+    expect(screen.getByTestId("health-entry-missing_author").textContent).toContain("查看 3 本");
+    expect(screen.getByTestId("health-entry-missing_intro").textContent).toContain("查看 4 本");
+    expect(screen.getByTestId("health-entry-huge_chapter").textContent).toContain("查看 1 个");
+    expect(screen.getByTestId("health-entry-thin_book").textContent).toContain("查看 2 本");
+
+    fireEvent.click(screen.getByTestId("health-entry-missing_author"));
+    expect(screen.getByTestId("health-drawer").getAttribute("data-kind")).toBe("missing_author");
+    expect(screen.getByTestId("health-drawer-title").textContent).toBe("缺作者的书");
+    // 条目标题就是入口：点进单书管理页
+    expect(screen.getByTestId("health-issue-7").getAttribute("href")).toBe("/admin/books/7");
+  });
+
+  it("关掉抽屉后回到健康卡", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("health-entry-huge_chapter"));
+    expect(screen.getByTestId("health-drawer")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("health-drawer-close"));
+    expect(screen.queryByTestId("health-drawer")).toBeNull();
+  });
+
+  it("Esc 关闭抽屉", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("health-entry-thin_book"));
+    expect(screen.getByTestId("health-drawer")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("health-drawer")).toBeNull();
+  });
+
+  it("没有这类问题时入口禁用，并给出这一类专属的一句说明", () => {
+    const saved = state.health.data;
+    state.health.data = { ...saved, missingAuthor: 0 };
+    renderPage();
+    const entry = screen.getByTestId("health-entry-missing_author") as HTMLButtonElement;
+    expect(entry.disabled).toBe(true);
+    expect(entry.textContent).toBe("没有缺作者的书");
+    // 另一类不受影响：各自一句，不共用文案
+    expect(screen.getByTestId("health-entry-missing_intro").textContent).toContain("查看 4 本");
+    state.health.data = saved;
   });
 });

@@ -44,17 +44,30 @@ describe("C-30（新增）热力图每格可点、可读", () => {
     expect(screen.queryByTestId("heat-tip")).toBeNull();
   });
 
-  it("hover 要停 120ms 才浮出，移开立即消失", async () => {
+  it("hover 立即浮出读数（不再等 120ms），移开立即消失", async () => {
     renderCard();
     const cell = screen.getByTestId("heat-cell-2026-10-20");
     fireEvent.mouseEnter(cell);
-    // 立刻查：还没到 120ms，不浮出
-    expect(screen.queryByTestId("heat-tip")).toBeNull();
-    await waitFor(() => expect(screen.getByTestId("heat-tip").textContent).toBe("10 月 20 日 · 10 分钟"), {
-      timeout: 1000,
-    });
+    // 契约改为即时：11px 的小格子上再等 120ms，快速划过时根本看不到浮层
+    expect(screen.getByTestId("heat-tip").textContent).toBe("10 月 20 日 · 10 分钟");
     fireEvent.mouseLeave(cell);
-    expect(screen.queryByTestId("heat-tip")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("heat-tip")).toBeNull());
+  });
+
+  it("换一格读数跟着换，不会停在上一格", () => {
+    renderCard();
+    fireEvent.mouseEnter(screen.getByTestId("heat-cell-2026-10-20"));
+    expect(screen.getByTestId("heat-tip").textContent).toBe("10 月 20 日 · 10 分钟");
+    fireEvent.mouseEnter(screen.getByTestId("heat-cell-2026-10-21"));
+    expect(screen.getByTestId("heat-tip").textContent).toBe("10 月 21 日 · 2 小时");
+  });
+
+  it("点开固定后再移开不收起（5 秒或 Esc 才收）", () => {
+    renderCard();
+    const cell = screen.getByTestId("heat-cell-2026-10-21");
+    fireEvent.click(cell);
+    fireEvent.mouseLeave(cell);
+    expect(screen.getByTestId("heat-tip").textContent).toBe("10 月 21 日 · 2 小时");
   });
 
   it("键盘聚焦也显示读数（与点击等效）", () => {

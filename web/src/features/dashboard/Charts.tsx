@@ -11,6 +11,8 @@ import {
   storageRatioNote,
 } from "../../lib/charts";
 import type { Bucket, ImportTrendPoint, ReadingProgress, Stats } from "../../api/types";
+import { ChartTipLayer } from "./ChartTip";
+import { useChartTip } from "./useChartTip";
 
 /**
  * 六张图：纯 SVG/CSS 手写，不引图表库（ADR-0001 §6）。
@@ -49,6 +51,8 @@ function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty
   const [attempts, setAttempts] = useState(0);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const retriedRef = useRef(false);
+  /** 重试最短可见时长的定时器：卸载时清掉，避免组件卸掉之后还 setState。 */
+  const retryTimer = useRef<number | null>(null);
 
   /** 重试成功（失败态消失）后把焦点送回卡片标题——按钮那时已经不存在了。 */
   useEffect(() => {
@@ -57,13 +61,20 @@ function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty
     titleRef.current?.focus();
   }, [failed, loading]);
 
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+    },
+    [],
+  );
+
   function retry() {
     if (retrying) return;
     setRetrying(true);
     const started = Date.now();
     onRetry();
     const wait = Math.max(0, RETRY_MIN_MS - (Date.now() - started));
-    window.setTimeout(() => {
+    retryTimer.current = window.setTimeout(() => {
       setRetrying(false);
       setAttempts((n) => n + 1);
       retriedRef.current = true;
@@ -135,17 +146,20 @@ function RetrySkeleton() {
 /* ── 1 近 14 天导入量（竖条） ── */
 export function ImportTrendChart({ points, ...state }: { points: ImportTrendPoint[] } & ChartState) {
   const model = buildImportTrend(points);
+  const tip = useChartTip();
   return (
     <ChartFrame id="trend" title="近 14 天导入量" note={model.note} isEmpty={model.empty} {...state}>
       <div className="bars">
+        {/* 整列都是读数目标：0 值那天没有柱子，但「这天没有导入」同样要能读出来 */}
         {model.data.bars.map((bar) => (
-          <div className="bar-col" key={bar.label} title={bar.title}>
+          <div className="bar-col" key={bar.label} {...tip.bind(bar.title)}>
             {/* 0 值不画柱：CSS 的 min-height 会把它渲染成一条 2px 横线，连续多天没导入时纯噪音 */}
             {bar.value > 0 ? <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} /> : null}
             <span className="bar-lbl">{bar.labelVisible ? bar.label : ""}</span>
           </div>
         ))}
       </div>
+      <ChartTipLayer tip={tip.tip} />
     </ChartFrame>
   );
 }
@@ -153,17 +167,19 @@ export function ImportTrendChart({ points, ...state }: { points: ImportTrendPoin
 /* ── 2 章节数分布（直方图） ── */
 export function ChapterBucketsChart({ buckets, ...state }: { buckets: Bucket[] } & ChartState) {
   const model = buildChapterBuckets(buckets);
+  const tip = useChartTip();
   return (
     <ChartFrame id="buckets" title="章节数分布" note={model.note} isEmpty={model.empty} {...state}>
       <div className="bars">
         {model.data.bars.map((bar) => (
-          <div className="bar-col" key={bar.label} title={bar.title}>
+          <div className="bar-col" key={bar.label} {...tip.bind(bar.title)}>
             <span className="bar-val">{bar.value}</span>
             {bar.value > 0 ? <span className="bar-fill" style={{ height: `${bar.heightPct}%` }} /> : null}
             <span className="bar-lbl">{bar.label}</span>
           </div>
         ))}
       </div>
+      <ChartTipLayer tip={tip.tip} />
     </ChartFrame>
   );
 }
@@ -175,14 +191,13 @@ export function TopAuthorsChart({
   ...state
 }: { authors: { name: string; wordCount: number }[]; totalWords: number } & ChartState) {
   const model = buildTopAuthors(authors, totalWords);
+  const tip = useChartTip();
   return (
     <ChartFrame id="authors" title="字数 Top 10 作者" note={model.note} isEmpty={model.empty} {...state}>
       <div className="hbars">
         {model.data.rows.map((row) => (
-          <div className="hbar-row" key={row.name}>
-            <span className="hbar-name" title={row.name}>
-              {row.name}
-            </span>
+          <div className="hbar-row" key={row.name} {...tip.bind(row.title)}>
+            <span className="hbar-name">{row.name}</span>
             <span className="hbar-track">
               <span className="hbar-fill" style={{ width: `${row.widthPct}%` }} />
             </span>
@@ -190,6 +205,7 @@ export function TopAuthorsChart({
           </div>
         ))}
       </div>
+      <ChartTipLayer tip={tip.tip} />
     </ChartFrame>
   );
 }
@@ -211,6 +227,7 @@ export function ReadingDistChart({
   const model = buildReadingDist(progress, totalBooks, limitReached, buckets);
   const note = model.data.partial ? `${model.note}（按最近 50 条记录聚合）` : model.note;
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const tip = useChartTip();
 
   /** 图例过滤（契约 C-26）：只改这张图的显隐，不改任何数字，也不发请求。 */
   function toggleLegend(key: string) {
@@ -241,12 +258,12 @@ export function ReadingDistChart({
                 strokeDashoffset={String(segment.offset)}
                 transform="rotate(-90 60 60)"
                 opacity={hidden.has(segment.key) ? 0.16 : 1}
-              >
-                <title>{`${segment.label} ${segment.value} 本`}</title>
-              </circle>
+                {...tip.bind(segment.title)}
+              />
             ) : null,
           )}
         </svg>
+        <ChartTipLayer tip={tip.tip} />
         <div className="donut-legend">
           {model.data.segments.map((segment) => (
             <button
@@ -277,6 +294,7 @@ export function ReadingDistChart({
 /* ── 5 库体积构成（堆叠条） ── */
 export function StorageChart({ stats, ...state }: { stats: Stats | null } & ChartState) {
   const model = buildStorage(stats);
+  const tip = useChartTip();
   return (
     <ChartFrame
       id="storage"
@@ -294,10 +312,11 @@ export function StorageChart({ stats, ...state }: { stats: Stats | null } & Char
               className="stack-seg"
               key={part.key}
               style={{ width: `${part.widthPct}%`, background: part.color }}
-              title={`${part.label} ${part.display}`}
+              {...tip.bind(part.title)}
             />
           ))}
         </div>
+        <ChartTipLayer tip={tip.tip} />
         <div className="stack-legend">
           {/* 占比不足 0.1% 的段不出图例：真实库里「其他」只有 8 KB（页头、空闲页），
               按 1024 进制四舍五入成「0.0 MB」——一行 0 字节的图例只会让人怀疑漏统计 */}
@@ -318,11 +337,12 @@ export function StorageChart({ stats, ...state }: { stats: Stats | null } & Char
 /* ── 6 章节长度分布 ── */
 export function ChapterLengthChart({ buckets, ...state }: { buckets: Bucket[] } & ChartState) {
   const model = buildChapterLength(buckets);
+  const tip = useChartTip();
   return (
     <ChartFrame id="chapterlen" title="章节长度分布" note={model.note} isEmpty={model.empty} {...state}>
       <div className="cols">
         {model.data.cols.map((col) => (
-          <div className="col-item" key={col.label} title={col.title}>
+          <div className="col-item" key={col.label} {...tip.bind(col.title)}>
             {col.value > 0 ? (
               <span
                 className={`col-fill${col.label === model.data.peak ? " is-peak" : ""}`}
@@ -333,6 +353,7 @@ export function ChapterLengthChart({ buckets, ...state }: { buckets: Bucket[] } 
           </div>
         ))}
       </div>
+      <ChartTipLayer tip={tip.tip} />
     </ChartFrame>
   );
 }

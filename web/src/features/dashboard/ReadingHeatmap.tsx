@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import type { ReadingStats } from "../../api/types";
 import { formatDurationShort } from "../../lib/format";
 import { buildHeatmap, type HeatmapDay } from "../../lib/seriesGroup";
+import { ChartTipLayer } from "./ChartTip";
+import { useChartTip } from "./useChartTip";
 
 /** 热力图 5 档底色：0 档用弱边框色，1–4 档由 --accent 与 --surface 混出，深浅主题自动跟随。 */
 const LEVEL_BG = [
@@ -15,22 +17,16 @@ const LEVEL_BG = [
 const CELL = 11;
 const GAP = 3;
 const WEEKDAY_LABELS = ["一", "三", "五"];
-/** 悬停停留多久才浮出读数（契约 C-30 hover：120ms 内移开则不浮出）。 */
-const HOVER_DELAY_MS = 120;
-/** 点开后的浮层固定显示 5 秒。 */
+/** 点开后的浮层固定显示 5 秒（C-30 原行为）。hover / 聚焦立即显示，不再等 120ms。 */
 const PIN_MS = 5000;
-
-interface TipState {
-  label: string;
-  x: number;
-  y: number;
-  pinned: boolean;
-}
 
 /**
  * 阅读时长卡（驾驶舱）：今日 / 本周 / 累计 / 连续天数 + 近 90 天日历热力图。
- * 格子用按钮自绘（不引依赖），每格自己带 aria 与浮层文案（契约 C-30，新增）；
- * 配色全部取 tokens.css 变量。
+ *
+ * 读数浮层与六张图共用 ChartTip（契约 C-30）：hover 与键盘聚焦都立即出读数，
+ * 浮层贴在格子上方并带小三角指回格子；点一下固定 5 秒，换格或 Esc 收起。
+ * 原先要 hover 停 120ms 才浮出——11px 的小格子快速划过时几乎看不到，这是
+ * 「移上去没反应」的根因之一，因此改成即时。
  */
 export function ReadingHeatmapCard({
   stats,
@@ -44,29 +40,22 @@ export function ReadingHeatmapCard({
   onRetry: () => void;
 }) {
   const model = buildHeatmap(stats?.days ?? []);
-  const [tip, setTip] = useState<TipState | null>(null);
-  const hoverTimer = useRef<number | null>(null);
+  const tip = useChartTip(PIN_MS);
 
-  /** 每次浮层读数一定来自被指向的那一格，不共享闭包里的旧值。 */
-  function point(label: string, cell: HTMLElement, pinned: boolean) {
-    const rect = cell.getBoundingClientRect();
-    setTip({ label, x: rect.left, y: rect.top, pinned });
-  }
-
-  function clearHoverTimer() {
-    if (hoverTimer.current === null) return;
-    window.clearTimeout(hoverTimer.current);
-    hoverTimer.current = null;
-  }
-
-  // 固定浮层 5 秒自散；换格或 Esc 会先一步收起。
+  /** Esc 收起当前读数（格子上按 Esc 与在抽屉里按 Esc 是同一套习惯）。 */
   useEffect(() => {
-    if (!tip?.pinned) return;
-    const timer = window.setTimeout(() => setTip(null), PIN_MS);
-    return () => window.clearTimeout(timer);
+    if (!tip.tip) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") tip.hide();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [tip]);
 
-  useEffect(() => clearHoverTimer, []);
+  /** 移开/失焦时收起读数，但已经点开固定住的那次不收起。 */
+  function dismiss() {
+    if (!tip.tip?.pinned) tip.hide();
+  }
 
   const note = loading
     ? "正在读取…"
@@ -74,7 +63,7 @@ export function ReadingHeatmapCard({
       ? "阅读时长暂时读不到。"
       : model.empty
         ? "近 90 天还没有阅读记录。"
-        : `近 ${model.days.length} 天有 ${model.activeDays} 天在读，单日最长 ${formatDurationShort(model.maxSeconds)}。`;
+        : `近 ${model.days.length} 天有 ${model.activeDays} 天在读，单日最长 ${formatDurationShort(model.maxSeconds)}。 指到格子上看当天读了多久。`;
 
   return (
     <article className="chart-card" data-chart="reading-time" data-testid="chart:reading-time" data-od-id="chart:reading-time">
@@ -126,19 +115,13 @@ export function ReadingHeatmapCard({
                         <HeatCell
                           key={day.date}
                           day={day}
-                          active={tip?.label === day.label}
-                          onEnter={(cell) => {
-                            clearHoverTimer();
-                            hoverTimer.current = window.setTimeout(() => point(day.label, cell, false), HOVER_DELAY_MS);
-                          }}
-                          onLeave={() => {
-                            clearHoverTimer();
-                            setTip((prev) => (prev?.pinned ? prev : null));
-                          }}
-                          onFocus={(cell) => point(day.label, cell, false)}
-                          onBlur={() => setTip((prev) => (prev?.pinned ? prev : null))}
-                          onPin={(cell) => point(day.label, cell, true)}
-                          onEscape={() => setTip(null)}
+                          active={tip.tip?.label === day.label}
+                          onEnter={(cell) => tip.show(cell, day.label)}
+                          onLeave={dismiss}
+                          onFocus={(cell) => tip.show(cell, day.label)}
+                          onBlur={dismiss}
+                          onPin={(cell) => tip.show(cell, day.label, true)}
+                          onEscape={tip.hide}
                         />
                       ) : (
                         <span key={`blank-${index}-${row}`} aria-hidden="true" style={{ width: CELL, height: CELL }} />
@@ -159,17 +142,7 @@ export function ReadingHeatmapCard({
         </>
       )}
 
-      {tip ? (
-        <div
-          className={`heat-tip${tip.pinned ? " is-pinned" : ""}`}
-          role="status"
-          aria-live="polite"
-          data-testid="heat-tip"
-          style={{ left: tip.x, top: Math.max(0, tip.y - 30) }}
-        >
-          {tip.label}
-        </div>
-      ) : null}
+      <ChartTipLayer tip={tip.tip} testId="heat-tip" />
     </article>
   );
 }

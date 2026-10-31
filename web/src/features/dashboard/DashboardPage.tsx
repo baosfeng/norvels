@@ -14,6 +14,7 @@ import {
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount, formatDate } from "../../lib/format";
+import { HealthCard } from "./HealthCard";
 import { ReadingHeatmapCard } from "./ReadingHeatmap";
 import {
   ChapterBucketsChart,
@@ -201,67 +202,13 @@ export function DashboardPage() {
           </div>
 
           <aside className="dash-side" data-od-id="dashboard:health">
-            <section className="dash-block" data-od-id="dashboard:health-card">
-              <div className="dash-block-head">
-                <h2>库健康状况</h2>
-              </div>
-              {health.loading ? (
-                <LoadingPanel title="正在检查书库" description="稍等一下。" />
-              ) : health.error ? (
-                <ErrorPanel error={health.error} title="健康状况没能读取" onRetry={health.reload} />
-              ) : health.data ? (
-                <>
-                  <div className="health-item">
-                    <div className="health-top">
-                      <b>章节完整</b>
-                      <span className="pill is-live">良好</span>
-                    </div>
-                    <p className="health-num num">
-                      {health.data.totalBooks - health.data.thinBooks} / {health.data.totalBooks} 本
-                    </p>
-                    <p className="meta">
-                      {health.data.thinBooks > 0
-                        ? `${health.data.thinBooks} 本书的章节数偏少，可能是原文缺少章节标记。`
-                        : "所有书都拆出了完整目录。"}
-                    </p>
-                  </div>
-                  <div className={`health-item${health.data.missingAuthor + health.data.missingIntro > 0 ? " is-warn" : ""}`}>
-                    <div className="health-top">
-                      <b>待补信息</b>
-                      <span className="pill is-warn">需处理</span>
-                    </div>
-                    <p className="health-num num">
-                      {health.data.missingAuthor} 本缺作者 · {health.data.missingIntro} 本缺简介
-                    </p>
-                    <p className="meta">补全后，在书架和搜索结果里更容易分辨。</p>
-                  </div>
-                  <div className="health-item">
-                    <div className="health-top">
-                      <b>超长章节</b>
-                      <span className="pill">留意</span>
-                    </div>
-                    <p className="health-num num">{health.data.hugeChapters} 个</p>
-                    <p className="meta">单章超过 3 万字，可能是章节分界没识别到。</p>
-                  </div>
-                  <div className="health-item">
-                    <div className="health-top">
-                      <b>最近更新</b>
-                    </div>
-                    <p className="health-num num">{formatDate(stats.data?.lastImportAt ?? null)}</p>
-                    <p className="meta">库里最新一次导入的时间。</p>
-                  </div>
-                  {/* C-27 / C-28（新增）：健康卡给出下一步入口，按指出的问题去补 */}
-                  <div className="health-actions">
-                    <Link className="btn btn-sm" to="/admin" data-od-id="C-27">
-                      去书籍管理
-                    </Link>
-                    <Link className="btn btn-sm btn-ghost" to="/import" data-od-id="C-28">
-                      去导入
-                    </Link>
-                  </div>
-                </>
-              ) : null}
-            </section>
+            <HealthCard
+              report={health.data}
+              loading={health.loading}
+              error={health.error}
+              onRetry={health.reload}
+              lastImportAt={stats.data?.lastImportAt ?? null}
+            />
           </aside>
         </div>
       )}
