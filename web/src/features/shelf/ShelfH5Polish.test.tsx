@@ -95,30 +95,36 @@ beforeEach(() => {
 });
 
 describe("H5 书架：书卡阅读进度", () => {
-  it("读过的书显示进度条与「已读 N% · 第 M 章」", async () => {
+  it("读过的书显示进度条与「第 N 章 / 共 M 章」，百分比跟在进度条那一行", async () => {
     readingProgress.mockResolvedValue({ items: [progressAt(1, { percent: 0.42, chapterIdx: 4 })] });
     renderShelf();
 
-    const bar = await screen.findByTestId("book-progress-1");
-    expect(bar.textContent).toContain("已读 42%");
-    // chapterIdx 从 0 起，显示给用户要 +1
-    expect(bar.textContent).toContain("第 5 章");
+    const line = await screen.findByTestId("book-progress-1");
+    // 章节口径与详情页 / 阅读器同一句；chapterIdx 从 0 起，显示给用户要 +1
+    expect(line.querySelector(".book-progress-text")?.textContent).toBe("第 5 章 / 共 10 章");
+    expect(line.querySelector(".book-progress-pct")?.textContent).toBe("42%");
+    expect(line.querySelector(".book-progress-bar")).not.toBeNull();
+    expect(line.getAttribute("data-read")).toBe("1");
   });
 
-  it("没读过的书不显示进度行，也不占位", async () => {
+  it("百分比为 0 时不画进度条（空进度等于坏了），章节口径照常报", async () => {
     readingProgress.mockResolvedValue({ items: [progressAt(1, { percent: 0 })] });
     renderShelf();
 
-    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
-    expect(screen.queryByTestId("book-progress-1")).toBeNull();
+    const line = await screen.findByTestId("book-progress-1");
+    expect(line.querySelector(".book-progress-text")?.textContent).toBe("第 5 章 / 共 10 章");
+    expect(line.querySelector(".book-progress-bar")).toBeNull();
+    expect(line.querySelector(".book-progress-pct")).toBeNull();
+    expect(line.getAttribute("data-read")).toBe("0");
   });
 
   it("进度接口失败时列表照常渲染，只是没有进度", async () => {
     readingProgress.mockRejectedValue(new Error("离线"));
     renderShelf();
 
-    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
-    expect(screen.queryByTestId("book-progress-1")).toBeNull();
+    const line = await screen.findByTestId("book-progress-1");
+    expect(line.querySelector(".book-progress-text")?.textContent).toBe("共 10 章");
+    expect(screen.getByTestId("shelf-live")).toBeTruthy();
   });
 });
 
@@ -174,7 +180,8 @@ describe("H5 书架：加载与骨架", () => {
     renderShelf();
 
     await waitFor(() => expect(screen.getByTestId("shelf-loading")).toBeTruthy());
-    expect(screen.getByTestId("shelf-loading").querySelectorAll(".shelf-skel-card")).toHaveLength(3);
+    // 三列两行：首屏骨架正好铺满一屏，数据回来时不跳版
+    expect(screen.getByTestId("shelf-loading").querySelectorAll(".shelf-skel-card")).toHaveLength(6);
   });
 
   it("追加下一页时底部给骨架而不是一行转圈文字", async () => {
@@ -188,7 +195,7 @@ describe("H5 书架：加载与骨架", () => {
     fireEvent.click(screen.getByTestId("shelf-load-more"));
 
     await waitFor(() => expect(screen.getByTestId("shelf-more-loading")).toBeTruthy());
-    expect(screen.getByTestId("shelf-more-loading").querySelectorAll(".shelf-skel-card")).toHaveLength(2);
+    expect(screen.getByTestId("shelf-more-loading").querySelectorAll(".shelf-skel-card")).toHaveLength(3);
     release(pageOf([bookAt(4)], 6));
     await waitFor(() => expect(screen.queryByTestId("shelf-more-loading")).toBeNull());
   });

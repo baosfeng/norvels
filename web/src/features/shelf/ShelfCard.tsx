@@ -7,12 +7,20 @@ import type { ShelfFromState } from "../../lib/shelfCache";
 import { stripTags } from "../../lib/text";
 import { CardProgress } from "./CardProgress";
 
+/** 追更角标：章数太多时「+1200」比卡片还宽，退化成「更新」两个字。 */
+function updateBadgeText(newChapters: number): string {
+  return newChapters > 99 ? "更新" : `+${newChapters}`;
+}
+
 /**
- * 书卡：阅读状态是标题行右侧的小 chip（点击区仍 44px，视觉只占一行），点一下循环切换。
- * 角标不套在链接里会破坏"整卡可点"，所以仍放在链接内容里，用 preventDefault 拦住跳转。
- * 多选模式下整张卡片变成选择按钮（同样不嵌套链接），右上角显示勾选状态。
+ * 书卡。两档同一套 DOM，只由 CSS 换形态：
+ * - PC：封面在左、书名/作者/章字/简介在右的横排卡（角标是标题行右端的小 chip，点一下循环切换状态）。
+ * - H5：三列封面网格，封面铺满格子，下面就是三要素——书名（2 行截断）、作者（1 行）、进度（1 行）。
+ *   阅读状态 chip 与追更角标都浮在封面顶角（各自 44px 热区），不占正文那三行。
  *
- * 阅读进度只在调用方给了 progress 时出现（H5）：没读过（percent=0）或读不到都不占位。
+ * 角标不套在链接里会破坏"整卡可点"，所以状态 chip 仍放在链接内容里，用 preventDefault 拦住跳转；
+ * 追更角标是纯信息，放在链接外面并 pointer-events: none，点在它上面照样进详情页。
+ * 多选模式下整张卡片变成选择按钮（同样不嵌套链接），右上角显示勾选状态，追更角标让位。
  */
 export function ShelfCard({
   book,
@@ -28,7 +36,7 @@ export function ShelfCard({
   book: BookSummary;
   compact: boolean;
   status: ReadStatus;
-  /** 本书的阅读进度（H5 才有）；没有就不显示进度行 */
+  /** 本书的阅读进度（H5 才有）；没有进度时卡片只报章数 */
   progress?: ReadingProgress;
   onCycle: () => void;
   selecting: boolean;
@@ -55,6 +63,19 @@ export function ShelfCard({
     </button>
   );
 
+  const newChapters = book.newChapters ?? 0;
+  // 追更角标只在 H5 网格卡出现：PC 卡的信息行里已经有「新章 +N」的 pill，不重复说两遍。
+  const updateBadge = compact && !selecting && newChapters > 0 ? (
+    <span
+      className="book-update-badge"
+      data-testid={`book-update-${book.id}`}
+      title={`有 ${newChapters} 章更新`}
+    >
+      <span aria-hidden="true">{updateBadgeText(newChapters)}</span>
+      <span className="sr-only">{`有 ${newChapters} 章更新`}</span>
+    </span>
+  ) : null;
+
   const content = (
     <>
       <Cover
@@ -70,17 +91,20 @@ export function ShelfCard({
           {selecting ? null : badge}
         </div>
         <p className="book-author">{book.authorName || "佚名"}</p>
-        <p className="book-meta">
-          <span className="num">{formatCount(book.chapterCount)} 章</span>
-          <span className="num">{formatCount(book.wordCount)} 字</span>
-          {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
-          {(book.newChapters ?? 0) > 0 ? (
-            <span className="pill is-live" data-testid={`book-new-chapters-${book.id}`}>
-              新章 +{book.newChapters}
-            </span>
-          ) : null}
-        </p>
-        {progress && progress.percent > 0 ? <CardProgress progress={progress} /> : null}
+        {compact ? (
+          <CardProgress bookId={book.id} chapterCount={book.chapterCount} progress={progress} />
+        ) : (
+          <p className="book-meta">
+            <span className="num">{formatCount(book.chapterCount)} 章</span>
+            <span className="num">{formatCount(book.wordCount)} 字</span>
+            {book.volumeCount > 0 ? <span>{book.volumeCount} 卷</span> : null}
+            {newChapters > 0 ? (
+              <span className="pill is-live" data-testid={`book-new-chapters-${book.id}`}>
+                新章 +{newChapters}
+              </span>
+            ) : null}
+          </p>
+        )}
         {compact ? null : <p className="book-intro">{stripTags(book.intro) || "这本书还没有简介。"}</p>}
       </div>
     </>
@@ -114,6 +138,7 @@ export function ShelfCard({
           {content}
         </Link>
       )}
+      {updateBadge}
       {selecting ? (
         <span className="book-check" aria-hidden="true">
           {selected ? "✓" : ""}

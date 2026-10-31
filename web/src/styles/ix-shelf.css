@@ -1,0 +1,242 @@
+/* ══ 书架页专属排版（.view-shelf 作用域） ══
+   两档两套形态，但只有 H5 的形态在这里定义：
+   - PC：仍是 prototype.css / ix-library.css 里的横排书卡（封面在左、章字简介在右），本文件不碰；
+   - H5（≤768）：QQ 阅读式的三列封面网格——封面 3:4 铺满格子，下面三行（书名 2 行 / 作者 1 行 / 进度 1 行），
+     阅读状态与追更角标浮在封面顶角。
+   之所以另起一个文件，是因为 ix-library.css 的书籍详情选择器正在被别人改，书架样式不进去抢同一个文件。 */
+
+/* 追更汇总条：「N 本书有更新」，点一下只看这些书。没有更新的书时组件不渲染，这里不需要空态样式 */
+.shelf-updates {
+  margin: 0 0 var(--gap-card);
+}
+.shelf-updates-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in oklab, var(--accent), var(--border) 55%);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent), var(--surface) 92%);
+  color: var(--fg);
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+.shelf-updates-btn:hover {
+  border-color: var(--accent);
+}
+.shelf-updates-btn.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-on);
+}
+.shelf-updates-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.shelf-updates-btn.is-active .shelf-updates-dot {
+  background: currentColor;
+}
+.shelf-updates-sep {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.shelf-updates-hint {
+  color: var(--muted);
+}
+.shelf-updates-btn.is-active .shelf-updates-hint {
+  color: inherit;
+  opacity: 0.82;
+}
+@media (max-width: 768px) {
+  /* 拇指区：这一条也是可点入口，热区按 44px 给 */
+  .shelf-updates-btn {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+
+  /* 页面左右留白收到 --gap-page（外壳 H5 默认 28px）：三列每格从 103px 回到 111px，
+     书名两行与「第 N 章 / 共 M 章」都能完整放下。只作用于书架这一屏。 */
+  main.container:has(> .view-shelf) {
+    --gutter: var(--gap-page);
+  }
+
+  /* 分组间距：页头那一组（标题 / 排序筛选 / 视图切换）与下面的内容组之间按 --gap-section 呼吸 */
+  .view-shelf .shelf-view-switch {
+    margin-bottom: var(--gap-section);
+  }
+  /* 三列 × 若干行；列间距用卡片间距 token，行距同宽（网格要匀） */
+  .view-shelf .book-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--gap-card);
+  }
+
+  /* 卡片退成"透明的格子"：没有描边与内边距，封面自己撑起视觉边界 */
+  .view-shelf .book-card {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .view-shelf .book-card .book-link {
+    display: flex;
+    flex-direction: column;
+    /* 竖排后必须 stretch：ix-discovery 的 H5 规则给的是 flex-start，
+       留着它正文列会缩到最长那一行的宽度，三张卡的文字列宽各不相同 */
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+  }
+  /* 封面 3:4 吃满格子宽（同时压掉 768 档的 48px 与 390 档的 36px 固定宽） */
+  .view-shelf .book-card .cover {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    border-radius: var(--radius-sm);
+  }
+  .view-shelf .book-card .cover span {
+    font-size: 34px;
+  }
+  .view-shelf .book-card-body {
+    gap: 2px;
+    min-width: 0;
+  }
+
+  /* 书名固定 2 行高：一行书名的卡与两行书名的卡，作者与进度仍然对齐成一条线 */
+  .view-shelf .book-card h3.book-title {
+    font-size: 13.5px;
+    line-height: 1.3;
+    -webkit-line-clamp: 2;
+    /* 2 行 × 行高 1.3：一行标题的卡也占两行高，作者与进度才对得齐 */
+    min-height: 2.6em;
+    overflow-wrap: anywhere;
+  }
+  /* 作者一行：多出来的用省略号，不换行把卡片撑高 */
+  .view-shelf .book-card .book-author {
+    display: block;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 阅读状态 chip：浮到封面左上角。挪出正文流，书名就能吃满整行；
+     热区仍由 ix-discovery.css 的 .book-status::after 撑到 44px。 */
+  .view-shelf .book-card .book-status {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 2;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    min-height: 0;
+  }
+  .view-shelf .book-card .book-status .book-status-chip {
+    height: 18px;
+    padding: 0 6px;
+    font-size: 10px;
+    border-color: color-mix(in oklab, var(--border), transparent 20%);
+    background: color-mix(in oklab, var(--surface), transparent 6%);
+  }
+  /* 没标记过的书占多数：别让每个封面都顶着一块白药丸，弱化成虚线的提示即可 */
+  .view-shelf .book-card .book-status[data-status=""] .book-status-chip {
+    border-style: dashed;
+    border-color: color-mix(in oklab, var(--border), transparent 45%);
+    background: color-mix(in oklab, var(--surface), transparent 45%);
+    color: var(--muted);
+  }
+
+  /* 追更角标：封面右上角，纯信息（pointer-events: none），点在它上面照样进详情页 */
+  .view-shelf .book-card .book-update-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-on);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+
+  /* 进度：百分比跟着进度条一行（宽度不够时先丢的是它），章节口径单独一行且永远完整 */
+  .view-shelf .book-progress {
+    gap: 3px;
+    margin-top: 2px;
+  }
+  .view-shelf .book-progress-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .view-shelf .book-progress-bar {
+    flex: 1 1 auto;
+    height: 3px;
+  }
+  .view-shelf .book-progress-pct {
+    flex: 0 0 auto;
+    font-size: 10px;
+    line-height: 1;
+    color: var(--meta);
+    font-variant-numeric: tabular-nums;
+  }
+  .view-shelf .book-progress-text {
+    font-size: 10px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 骨架：与三列网格同形（封面块 + 三行文字），首屏 6 张正好两行 */
+  .view-shelf .shelf-skeleton {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--gap-card);
+  }
+  .view-shelf .shelf-skel-card {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .view-shelf .shelf-skel-card .sk-cover {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    border-radius: var(--radius-sm);
+  }
+  .view-shelf .shelf-skel-card .sk-lines {
+    margin-top: 6px;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+}
+
+/* H5 档里更宽的那一段（横屏手机 / 平板）：还按 3 列就摊成三块巨型封面，
+   按"卡片至少 ~120px 宽"加列——列数变了，但卡片的排版与三要素不动。 */
+@media (min-width: 560px) and (max-width: 768px) {
+  .view-shelf .book-grid,
+  .view-shelf .shelf-skeleton {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (min-width: 720px) and (max-width: 768px) {
+  .view-shelf .book-grid,
+  .view-shelf .shelf-skeleton {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}

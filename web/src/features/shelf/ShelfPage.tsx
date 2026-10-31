@@ -13,6 +13,7 @@ import { useShelfView } from "./useShelfView";
 import { useShelfIds } from "./shelfIds";
 import { ShelfMineEmpty, ShelfMineLoginPrompt } from "./ShelfMinePanel";
 import { ShelfViewSwitch } from "./ShelfViewSwitch";
+import { ShelfUpdateSummary } from "./ShelfUpdateSummary";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { FilterHints } from "./FilterHints";
 import { ResumeCard } from "./ResumeCard";
@@ -42,11 +43,9 @@ const H5_PAGE_SIZE = 30;
  * - PC：页头下方常驻工具栏（排序 + 分类/作者/书单/评分/状态 + 标签 chips），页码分页。
  * - H5：单列书卡 + 无限滚动，全部筛选收进底部弹层（排序 / 状态 / 评分 / 分类 / 作者 / 书单 / 标签）。
  *
- * 筛选值同时写进地址（`shelfQuery.ts`）与会话缓存：地址负责刷新 / 后退 / 分享，
- * 缓存负责返回时的列表、页码与滚动位置。管理类入口（导入 / 作者 / 驾驶舱）仍是 PC 专属。
+ * 筛选值同时写进地址（`shelfQuery.ts`）与会话缓存：地址负责刷新 / 后退 / 分享，缓存负责返回时的列表、页码与滚动位置。
  *
- * 状态与副作用拆在三个地方：筛选 → `useShelfFilters`；缓存与滚动 → `useShelfScrollRestore`；
- * 本文件只管取数与渲染。
+ * 状态与副作用拆在三个地方：筛选 → `useShelfFilters`；缓存与滚动 → `useShelfScrollRestore`；本文件只管取数与渲染。
  */
 export function ShelfPage() {
   const isH5 = useIsH5();
@@ -72,6 +71,8 @@ export function ShelfPage() {
   // 从哪个入口点开的弹层：排序 → 排序分区，筛选 → 第一个筛选分区（默认按筛选算）
   const [sheetSection, setSheetSection] = useState<ShelfSheetSection>("filters");
   // 多选模式：右上角「选择」进入；选中后批量设作者（循环 PATCH，纯前端）
+  // 「只看有更新」是纯前端过滤（不新增接口参数）：书架取数口径不变，只把列表收窄
+  const [updateOnly, setUpdateOnly] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
@@ -93,8 +94,7 @@ export function ShelfPage() {
 
   const pageSize = isH5 ? H5_PAGE_SIZE : PAGE_SIZE;
   const [now] = useState(() => Date.now());
-  // 会话缓存只属于「全部书」（它记的是 /api/books 的列表、筛选与页码）：
-  // 我的书架是另一份内容，拿它恢复会出现"书架里显示着书库里没加入的书"。
+  // 会话缓存只属于「全部书」（记的是 /api/books 的列表 / 筛选 / 页码）；我的书架是另一份内容，拿它恢复会显示没加入的书。
   const restore = useMemo<BookFeedRestore | undefined>(() => {
     if (mine || !cached || cached.size !== pageSize || cached.items.length === 0) return undefined;
     return { items: cached.items, total: cached.total, page: cached.page, refresh: shouldRefresh(cached, now) };
@@ -119,6 +119,14 @@ export function ShelfPage() {
 
   const { items, total, loading, error, reload, loadMore, hasMore } = feed;
   const pages = Math.max(1, Math.ceil(total / pageSize));
+  // 追更汇总：数字只算「当前列表里」有更新的书（分页 / 无限滚动取到哪算到哪，不额外发请求）
+  const updateCount = useMemo(() => items.filter((book) => (book.newChapters ?? 0) > 0).length, [items]);
+  // 没有一本书有更新时这一条自动失效，避免停在只显示「没有符合筛选条件的书」的空列表上
+  const updatesFiltering = updateOnly && updateCount > 0;
+  const visibleItems = useMemo(
+    () => (updatesFiltering ? items.filter((book) => (book.newChapters ?? 0) > 0) : items),
+    [items, updatesFiltering],
+  );
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "";
   // 老浏览器 / 测试环境没有 IntersectionObserver：改用底部「加载更多」按钮兜底
   const canObserve = typeof IntersectionObserver !== "undefined";
@@ -210,10 +218,17 @@ export function ShelfPage() {
     feed.setPage(next);
   }
 
-  /** 清空筛选（C-29）：焦点回排序下拉。 */
+  /** 清空筛选（C-29）：连同「只看有更新」一起清，焦点回排序下拉。 */
   function clearFilters() {
     resetFilters();
+    setUpdateOnly(false);
     sortRef.current?.focus();
+    scrollToTopOfList();
+  }
+
+  /** 「N 本书有更新」：把列表收窄到有追更的书，再点回到全部。 */
+  function toggleUpdates() {
+    setUpdateOnly((prev) => !prev);
     scrollToTopOfList();
   }
 
@@ -312,7 +327,6 @@ export function ShelfPage() {
           onAuthorChange={filters.setAuthorId}
           authors={authorOptions.data?.items ?? []}
           collections={collectionOptions.data?.items ?? []}
-          onCollectionsChanged={collectionOptions.reload}
           collection={filters.collection}
           onCollectionChange={filters.setCollection}
           category={category}
@@ -330,6 +344,8 @@ export function ShelfPage() {
       {/* 筛选回显：只在 H5 且有筛选时出现，解释"为什么只剩这几本" */}
       {isH5 && !mine ? <FilterChipsRow chips={filterChips} onClearAll={clearFilters} /> : null}
 
+      <ShelfUpdateSummary count={updateCount} active={updatesFiltering} onToggle={toggleUpdates} />
+
       {mine && !shelfView.loggedIn ? (
         <ShelfMineLoginPrompt next={location.pathname + location.search} />
       ) : (
@@ -337,9 +353,9 @@ export function ShelfPage() {
           isH5={isH5}
           loading={loading}
           error={error}
-          items={items}
+          items={visibleItems}
           total={total}
-          filtering={feedFiltering}
+          filtering={feedFiltering || updatesFiltering}
           mode={mode}
           statusOverrides={statusOverrides}
           progress={progress}

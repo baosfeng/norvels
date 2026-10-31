@@ -18,8 +18,8 @@ type Feed = {
 /**
  * 书架内容区（C-37/C-38/C-39/C-40/C-41）：加载 / 错误 / 空态 / 列表 + H5 无限滚动或 PC 分页。
  *
- * 加载态用与真实书卡同尺寸的骨架（H5 三张、PC 四张），不用居中转圈——
- * 骨架先占住版面，数据回来时不跳一下。H5 追加下一页同样给骨架，只是两行。
+ * 加载态用与真实书卡同尺寸的骨架（H5 两行三张 = 6 张、PC 四张），不用居中转圈——
+ * 骨架先占住版面，数据回来时不跳一下。H5 追加下一页同样给骨架，只铺一行。
  */
 export function ShelfList({
   isH5,
@@ -76,7 +76,7 @@ export function ShelfList({
         <p className="meta shelf-loading-note" role="status">
           正在读取书目，{formatCount(total || 0) ? `${formatCount(total || 0)} 本` : "全部"}大约需要 1–2 秒。
         </p>
-        <ShelfCardSkeleton count={isH5 ? 3 : 4} />
+        <ShelfCardSkeleton count={isH5 ? 6 : 4} />
       </div>
     );
   }
@@ -140,7 +140,7 @@ export function ShelfList({
         <div className="shelf-more" data-testid="shelf-more">
           {feed.loadingMore ? (
             <div className="shelf-more-loading" role="status" data-testid="shelf-more-loading">
-              <ShelfCardSkeleton count={2} label="正在加载更多" />
+              <ShelfCardSkeleton count={3} label="正在加载更多" />
             </div>
           ) : null}
           {feed.errorMore ? (

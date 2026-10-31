@@ -38,6 +38,11 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
+  /* 排版间距纪律：页面左右边距 / 卡片间距 / 分组间距。书架页面已按这三个值排版，
+     其余页面沿用各自的既有节奏，迁移时改用 token、不新增硬编码数字。 */
+  --gap-page: 16px;
+  --gap-card: 12px;
+  --gap-section: 24px;
   --section-y-desktop: 112px;
   --section-y-tablet: 80px;
   --section-y-phone: 56px;
