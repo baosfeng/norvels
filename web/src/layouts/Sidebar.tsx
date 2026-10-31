@@ -9,7 +9,7 @@ import { SideAccount } from "./SideAccount";
 
 /**
  * 侧栏（PC 常驻 / H5 作为汉堡抽屉内容）。
- * 两档都开：首页（仅 H5）/ 书架 / 搜索 / **系列** / **阅读历史**。
+ * 两档都开：首页（仅 H5）/ 书架 / 搜索 / **系列** / **阅读历史** / **书单**。
  * 管理入口（书籍管理 / 驾驶舱 / 作者 / 导入管理）只在 PC 出现——H5 是条件渲染，不是隐藏。
  */
 export function Sidebar({
@@ -39,7 +39,7 @@ export function Sidebar({
         <span>本地中文小说库</span>
       </NavLink>
 
-      {/* 导航项与路由档位同源：两档都开的能力（首页 / 书架 / 搜索 / 系列 / 阅读历史）两档都出现，
+      {/* 导航项与路由档位同源：两档都开的能力（首页 / 书架 / 搜索 / 系列 / 阅读历史 / 书单）两档都出现，
           PC 专属的管理四项才按档位不渲染。不引入底部 tab bar——外壳重排风险大，抽屉已够用。 */}
       <nav className="side-nav" aria-label="主导航">
         {isH5 ? (
@@ -59,6 +59,10 @@ export function Sidebar({
         </NavLink>
         <NavLink to="/history" onClick={onNavigate} data-testid="nav-history" data-od-id="C-06">
           阅读历史
+        </NavLink>
+        {/* 书单管理不再藏在书架工具栏里：它有独立页，入口与筛选能力平级 */}
+        <NavLink to="/collections" onClick={onNavigate} data-testid="nav-collections">
+          书单
         </NavLink>
         {isH5 ? null : (
           <>

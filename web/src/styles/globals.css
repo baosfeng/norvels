@@ -5,6 +5,12 @@
 @import "./admin.css";
 @import "./admin-chapters.css";
 @import "./admin-volumes.css";
+/* 单书管理页的密度口径（卡片内边距 / 封面卡 / 底部操作条 / 1280 档左栏），只作用于 .book-admin 与 .admin-actions */
+@import "./admin-book.css";
+/* 书籍管理列表：五组平铺 chips + 标签管理弹层排版 */
+@import "./admin-filters.css";
+/* 全站页头压缩 + 顶栏高度收敛（只改页头壳，不动列表 / 图表 / 表单内部） */
+@import "./page-heads.css";
 
 /* 应用级补充：只在原型样式未覆盖处添加，避免与移植的 626 行规则冲突 */
 
@@ -478,6 +484,10 @@ body.h5-sheet-open {
   font-size: 12px;
   line-height: 1.45;
 }
+/* 写操作失败：与禁用原因同一位置，但用危险色区分「不能点」和「点了没成」 */
+.inline-note.is-error {
+  color: var(--danger-text);
+}
 .btn:active:not(:disabled),
 .icon-btn:active:not(:disabled) {
   background: var(--surface-warm);
@@ -512,4 +522,17 @@ body.h5-sheet-open {
 @import "./ix-reader-stream.css";
 @import "./ix-reader-toc.css";
 @import "./ix-library.css";
+/* 书架页排版（H5 三列封面网格 / 更新角标 / 追更汇总条）：排在 ix-library.css 之后，
+   同名选择器按 `.view-shelf` 提高优先级，PC 的横排书卡不受影响 */
+@import "./ix-shelf.css";
 @import "./ix-ops.css";
+/* 书单页（/collections）：书架工具栏不再承载书单管理，样式只在这一处 */
+@import "./ix-collections.css";
+/* 驾驶舱增量样式：读数浮层 .chart-tip / 健康卡入口 / 明细抽屉（原 .heat-tip 已并入 .chart-tip） */
+@import "./ix-dashboard.css";
+/* 搜索页平铺筛选区（分类 / 评分 / 阅读 / 连载 / 作者 / 标签） */
+@import "./ix-search-filters.css";
+
+/* 侧栏当前页的选中态：按 aria-current="page" 接管（prototype.css 的 .is-active 从未命中）。
+   **必须留在最后一条 @import**：它要盖住上面各表的悬停底色（navActive.ix.test.ts 守着这个位置）。 */
+@import "./ix-nav.css";

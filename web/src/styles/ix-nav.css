@@ -1,0 +1,47 @@
+/* 侧栏当前页：选中态按语义属性 `aria-current="page"` 命中。
+   React 侧的 NavLink 输出的是 class="active"（原型手写 HTML 才带 is-active 这个类），
+   所以 prototype.css:321 那条按 is-active 写的选择器从上线起就没命中过——当前页只有悬停那一档外观。
+   移植文件按「逐条一致」保持原样不动，选中态在这里接管。
+
+   层级口径（三档，逐级加重）：悬停 = 暖底 --surface-warm；当前页 = 更深一档的暖底 + 600 字重 +
+   左侧强调条 + 徽标染色。强调条用 ::before 而不是 box-shadow：ix-discovery.css 的
+   `.sidebar :focus-visible` 会整条接管 box-shadow，键盘聚焦时选中态就没了。 */
+.sidebar .side-nav a[aria-current="page"] {
+  position: relative;
+  background: color-mix(in oklab, var(--surface-warm), var(--accent) 16%);
+  color: var(--fg);
+  font-weight: 600;
+}
+.sidebar .side-nav a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+/* 当前页上再悬停：留在选中档，不退回悬停的浅底 */
+.sidebar .side-nav a[aria-current="page"]:hover,
+.sidebar .side-nav a[aria-current="page"]:active {
+  background: color-mix(in oklab, var(--surface-warm), var(--accent) 24%);
+  color: var(--fg);
+}
+.sidebar .side-nav a[aria-current="page"] .nav-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* H5 抽屉：汉堡打开的是同一份侧栏 DOM，但触屏没有悬停作对照。
+   强调条加粗到 4px、底色再压深一点，整屏一眼可辨。 */
+@media (max-width: 768px) {
+  .sidebar .side-nav a[aria-current="page"] {
+    background: color-mix(in oklab, var(--surface-warm), var(--accent) 22%);
+  }
+  .sidebar .side-nav a[aria-current="page"]::before {
+    width: 4px;
+    top: 4px;
+    bottom: 4px;
+  }
+}

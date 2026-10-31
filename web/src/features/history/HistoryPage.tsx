@@ -254,14 +254,28 @@ function HistoryTable({
   return (
     <div className="table-wrap">
       <table className="table" data-testid="history-live">
+        {/* 操作列定宽：确认态两个按钮比常态的 ✕ 宽，光靠 td 上的 width 顶不住
+            （auto 布局里它只当最小宽），确认时整表会横向抖。宽度写在 <col> 上，两态一致。 */}
+        <colgroup>
+          <col span={5} />
+          <col className="history-del-col" />
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">书</th>
             <th scope="col">最后章节</th>
-            <th scope="col">最后阅读</th>
-            <th scope="col">累计时长</th>
-            <th scope="col">阅读天数</th>
-            <th scope="col">
+            {/* 数值列的表头与数据共用 .num：右对齐 + 等宽数字，两行右边缘才对得上。
+                只给 td 加 .num 时，标签贴在列左、数值贴列右，中间空出大半列，读起来像两列。 */}
+            <th scope="col" className="num">
+              最后阅读
+            </th>
+            <th scope="col" className="num">
+              累计时长
+            </th>
+            <th scope="col" className="num">
+              阅读天数
+            </th>
+            <th scope="col" className="num">
               <span className="sr-only">操作</span>
             </th>
           </tr>

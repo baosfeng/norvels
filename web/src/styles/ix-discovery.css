@@ -868,7 +868,15 @@
 }
 
 /* ── PC 历史表格的行内删除：与 H5 卡片同一个动作，不因窗口变宽消失 ── */
-.history-row-del{width:1%;white-space:nowrap;text-align:right}
+/* 数值列的 td 与 th 都带 .num（prototype.css 的 .table td.num / th.num 右对齐），表头和数据同轴。
+   操作列同样右对齐：text-align 必须写成 .table td.xxx —— .table td 的 (0,1,1) 压得过裸类的 (0,1,0)，
+   以前这条 text-align:right 其实一直没生效。
+   宽度写在 <col class="history-del-col"> 上而不是 td 上：auto 布局里 td 的 width 只是最小宽，
+   确认态的两个按钮会把列撑开、整表跟着横向抖。定宽依据是最宽的确认态：
+   确认删除 + 取消 + 6px 间距 + 单元格左右内边距实测 152，列固定 168 留 16px 余量——
+   余量是必须的：零余量时字体/缩放差 1px 就会把确认态顶出列宽，两态又不一样宽。 */
+.table col.history-del-col{width:168px}
+.table td.history-row-del{white-space:nowrap;text-align:right}
 .history-del-btn{
   min-width:32px;min-height:32px;
   border-color:transparent;background:transparent;
@@ -876,5 +884,5 @@
 }
 .history-del-btn:hover:not(:disabled){border-color:transparent;background:transparent;color:var(--danger-text)}
 .history-del-btn:disabled{opacity:.45}
-.history-row-confirm{display:inline-flex;gap:6px}
+.history-row-confirm{display:inline-flex;gap:6px;white-space:nowrap}
 .history-row-confirm .btn{min-height:32px;padding:0 10px;font-size:13px}

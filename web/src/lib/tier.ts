@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 /**
  * H5/PC 分档：≤768 是轻量阅读器，≥1024 是全功能工作台（768–1024 归 PC，保留管理能力）。
- * H5 不是「不渲染工具栏」：书架两档同一套筛选（H5 收进底部弹层）、系列与阅读历史两档都开。
+ * H5 不是「不渲染工具栏」：书架两档同一套筛选（H5 收进底部弹层）、系列 / 阅读历史 / 书单两档都开。
  */
 export type Tier = "pc" | "h5";
 

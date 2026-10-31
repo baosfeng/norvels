@@ -65,6 +65,8 @@ describe("H5 开放系列与阅读历史（TierRoute 放行）", () => {
   it("档位表：series / history 两档都开，管理四页才是 PC 专属", () => {
     expect(routeTier("series").minTier).toBeNull();
     expect(routeTier("history").minTier).toBeNull();
+    // 书单页两档都开：书单管理不再挂在书架工具栏上，H5 也要有入口
+    expect(routeTier("collections").minTier).toBeNull();
     expect(routeTier("import").minTier).toBe("pc");
     expect(routeTier("authors").minTier).toBe("pc");
     expect(routeTier("dashboard").minTier).toBe("pc");

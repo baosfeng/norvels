@@ -1,0 +1,48 @@
+/* 全站页头（.page-head）：眉标 + 标题 + 副标题三行压紧，右侧空位放该页主操作或关键数字。
+   实测 1440：改前页头 110.4px（26/16 内边距 + 28px 标题），而「到第一条实质内容的距离」就是页头高度；
+   改后 ~74px，所有页面首屏多出约 36px。标题仍保留三行语义（可读性优先，副标题只留一行）。 */
+.page-head {
+  padding: 4px 0 6px;
+  gap: 12px;
+  align-items: center;
+}
+.page-head h1 {
+  font-size: 21px;
+  line-height: 1.2;
+}
+.page-head .eyebrow {
+  font-size: 10px;
+  margin: 0;
+}
+.page-head .sub {
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 1px 0 0;
+}
+/* 右侧的关键数字：和左侧标题同一视觉行（衬线体大数字 + 单位小字）。
+   只在页面确实有可说的数字/主操作时出现，不为了填空白硬塞。 */
+.page-head-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+  color: var(--fg-2);
+}
+.page-head-stat strong {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--fg);
+}
+.page-head-stat span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 顶栏（全局搜索）：10px 上下内边距 + 40px 输入 = 62px，收到 50px */
+.topbar {
+  padding: 4px 0;
+}
+.topbar .input {
+  min-height: 36px;
+}
