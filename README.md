@@ -150,8 +150,8 @@ docker run --rm --entrypoint /norvels \
 | 文本总量 | 4.1–4.4 GB | `du -sh` 实测 4.1 GB；`find -iname '*.txt'` 计数 865 个 |
 | 导入耗时（单机 SSD，并发 4） | 约 10 分钟 | 838 个文件 / 4.1 GB 实测 10 分 25 秒；解析 CPU 密集，1C1G 约翻倍 |
 | 导入耗时（单文件） | 数十毫秒–数秒 | 取决于文件大小（单文件最大约 42 MB） |
-| 主库体积 | **1.62 GB** | 838 本 / 42.3 万章 / 4.87 GB 正文；正文按 1 MB 块 zstd 压缩，压缩率 34.7%（[ADR-0003](docs/adr/0003-block-compressed-content.md)） |
-| 磁盘预留 | ≥ 5 GB | 主库 1.62 GB + 一份备份；**从旧库升级当次峰值 ≥ 35 GB**（迁移期间新旧数据并存） |
+| 主库体积 | **29.0 GB** → 跑完 0017 约 **22 GB** | 20,110 本 / 791 万章 / 79.49 GB 正文；正文按 **8 MB 块 + 内置字码本 zstd** 压缩，26.45%（200 本抽样，[ADR-0007](docs/adr/0007-codebook-compressed-content.md)）；老库的 1 MB 块 / 34.67% 要迁移后重压 |
+| 磁盘预留 | ≥ 主库的 2 倍 | `0017` 迁移期间新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移后必须 `VACUUM` 才真正回落 |
 
 导入后可重复执行：内容未变的文件按 SHA-256 命中直接跳过；需要重解析时加 `--force`。
 
@@ -301,6 +301,7 @@ make verify       # 完整门禁 9 项（scripts/gate-all.sh，编号与阈值�
 - [架构与数据模型](docs/architecture.md)
 - [语料画像与容量推算](docs/data-profile.md)
 - [ADR-002：移除正文全文索引](docs/adr/0002-drop-fulltext-index.md)
+- [ADR-007：正文压缩（8 MB 块 + 内置字码本）](docs/adr/0007-codebook-compressed-content.md)
 - [REST API 契约](docs/api.md)
 - [部署指南（构建参数、体积、SQLite on volume、资源建议、升级回滚）](docs/deploy.md)
 - [隐私与仓库卫生](docs/privacy.md)

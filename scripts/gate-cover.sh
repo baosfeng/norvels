@@ -25,11 +25,11 @@ cd "$ROOT_DIR" || exit 2
 # 更新规则：覆盖提升后把这里的数字调到**新实测值**（取一位小数），不允许下调。
 # 上调基线本身不需要额外审批，但下调必须有 leader 明确同意并在此处写原因。
 TARGET=85                       # 渐进目标（报告项，不判红）
-BASELINE_TOTAL=83.2             # 总行覆盖率基线（2026-10-31 实测上调：77.9 → 83.2）
-BASELINE_STORE=82.3             # internal/store（80.2 → 82.3）
-BASELINE_PARSER=88.4            # internal/parser（87.8 → 88.4，已越过 leader 口径 86.5）
-BASELINE_IMPORTER=90.4          # internal/importer（85.1 → 90.4）
-BASELINE_API=86.3               # internal/api（80.1 → 86.3）
+BASELINE_TOTAL=84.7             # 总行覆盖率基线（2026-11-01 实测上调：83.2 → 84.7，含新增 textcode 99.4% / corpusstats 85.5% / codebench 89.2%）
+BASELINE_STORE=82.5             # internal/store（82.3 → 82.5，0017 迁移步骤带上来的）
+BASELINE_PARSER=88.6            # internal/parser（88.4 → 88.6）
+BASELINE_IMPORTER=91.2          # internal/importer（90.4 → 91.2）
+BASELINE_API=86.6               # internal/api（86.3 → 86.6）
 
 DETAIL=0
 case "${1:-}" in
