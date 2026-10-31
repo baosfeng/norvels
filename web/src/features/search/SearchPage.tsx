@@ -1,6 +1,6 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
-import { useSearch } from "../../api/hooks";
+import { useAuthors, useCategories, useSearch, useTags } from "../../api/hooks";
 import { ErrorPanel } from "../../components/StatePanel";
 import { formatCount } from "../../lib/format";
 import {
@@ -12,8 +12,17 @@ import {
 import { useIsH5 } from "../../lib/tier";
 import { showToast } from "../../lib/toastStore";
 import { SearchEmpty } from "./SearchEmpty";
+import { SearchFilters } from "./SearchFilterBar";
 import { SearchResultItem } from "./SearchResultItem";
 import { SearchResultSkeleton } from "./SearchResultSkeleton";
+import {
+  EMPTY_FILTERS,
+  activeFilterCount,
+  filtersToSearchParams,
+  readFilters,
+  writeFilters,
+  type SearchFilterValues,
+} from "./searchFilters";
 import { useSearchScrollRestore } from "./useSearchScrollRestore";
 
 const SEARCH_PAGE_SIZE = 8;
@@ -37,10 +46,22 @@ export function SearchPage() {
   const [draft, setDraft] = useState(q);
   const [history, setHistory] = useState<string[]>(readSearchHistory);
   const searchBoxRef = useRef<HTMLInputElement | null>(null);
-  // type 恒为 "book"：书名 + 作者。不传 "all" 是为了让「不搜目录」在请求上也成立，而不只是嘴上说。
-  const { data, loading, error, reload } = useSearch(q, "book", page, SEARCH_PAGE_SIZE);
-
+  // 筛选只在有关键词时出现：没有关键词就不会发请求，摆一排点了没反应的 chips 是噪音
   const trimmed = q.trim();
+  const showFilters = trimmed.length > 0;
+  const filters = useMemo(() => readFilters(params), [params]);
+  const activeCount = activeFilterCount(filters);
+  // type 恒为 "book"：书名 + 作者。不传 "all" 是为了让「不搜目录」在请求上也成立，而不只是嘴上说。
+  // 筛选参数与 /api/books 同名同口径：一变就重新取数（key 进 useResource 的依赖）。
+  const { data, loading, error, reload } = useSearch(
+    q,
+    filtersToSearchParams(filters, { type: "book", page, size: SEARCH_PAGE_SIZE }),
+  );
+  // chips 的候选值：分类树 / 常用作者（按藏书数）/ 标签，全部按需取（无关键词时不发请求）
+  const categories = useCategories({ enabled: showFilters });
+  const tags = useTags({ enabled: showFilters });
+  const authors = useAuthors({ sort: "books", size: 12 }, { enabled: showFilters });
+
   const tooShort = trimmed.length > 0 && trimmed.length < 2;
   const bookCount = data?.books.total ?? 0;
   const bookItems = data?.books.items ?? [];
@@ -49,12 +70,36 @@ export function SearchPage() {
 
   useSearchScrollRestore(location.pathname + location.search, done && bookCount > 0);
 
-  /** 所有「换个关键词再搜」的入口都走这里：写历史、换地址、第 1 页。 */
+  /** 所有「换个关键词再搜」的入口都走这里：写历史、换地址、第 1 页（筛选保留）。 */
   function runSearch(keyword: string) {
     const value = keyword.trim();
     setDraft(value);
     if (value.length >= SEARCH_HISTORY_MIN_LEN) setHistory(rememberSearch(value));
-    setParams(value ? { q: value } : {});
+    const next = new URLSearchParams(params);
+    next.delete("page");
+    if (value) next.set("q", value);
+    else next.delete("q");
+    setParams(next);
+  }
+
+  /**
+   * 点一下 chip 就重查：筛选写进地址、页码回 1，不等「搜索」按钮。
+   * 分类是前置维度：把分类点回「全部」= 收起其余组并清空它们的值，
+   * 否则会留下「没有分类却带着评分」这种界面上看不见的筛选。
+   */
+  function changeFilters(patch: Partial<SearchFilterValues>) {
+    const next = { ...filters, ...patch };
+    setParams(writeFilters(params, next.categoryL1 ? next : EMPTY_FILTERS));
+  }
+
+  /** 清除筛选只清筛选：关键词与页码之外的地址栏保持干净。 */
+  function clearFilters() {
+    setParams(writeFilters(params, EMPTY_FILTERS));
+    try {
+      window.scrollTo({ top: 0 });
+    } catch {
+      /* 测试环境没有 scrollTo */
+    }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -125,12 +170,40 @@ export function SearchPage() {
           </button>
         </form>
 
+        {/* 平铺筛选区：有关键词就展开，点一下立即重查（不要求再点「搜索」） */}
+        {showFilters ? (
+          <SearchFilters
+            values={filters}
+            onChange={changeFilters}
+            activeCount={activeCount}
+            categories={categories.data?.items ?? []}
+            authors={authors.data?.items ?? []}
+            tags={tags.data?.items ?? []}
+            loading={categories.loading || tags.loading || authors.loading}
+          />
+        ) : null}
+
         {/* 计数摘要只在真的有结果时出现：0 本时下面已经是「没有匹配」的空态，
             再来一行「找到 0 本书」是把同一件事说两遍，还把空态标题挤下去一屏。 */}
         {done && bookCount > 0 ? (
           <div className="search-summary">
             <span className="meta">找到 {formatCount(bookCount)} 本书</span>
+            {activeCount > 0 ? (
+              <span className="pill search-filter-badge" data-testid="search-active-filters">
+                已选 {activeCount} 项
+              </span>
+            ) : null}
             <span className="pill">按书名、作者搜索</span>
+            {activeCount > 0 ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                data-testid="search-filters-clear"
+                onClick={clearFilters}
+              >
+                清除筛选
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -144,7 +217,14 @@ export function SearchPage() {
           <ErrorPanel error={error} title="搜索没能完成" onRetry={retry} />
         </div>
       ) : !trimmed || tooShort || bookCount === 0 ? (
-        <SearchEmpty kind={emptyKind()} history={history} onPick={runSearch} onClearHistory={clearHistory} />
+        <SearchEmpty
+          kind={emptyKind()}
+          history={history}
+          onPick={runSearch}
+          onClearHistory={clearHistory}
+          filtersActive={activeCount > 0}
+          onClearFilters={clearFilters}
+        />
       ) : (
         <div className="search-layout" style={isH5 ? { gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           <aside aria-label="书名和作者结果" data-od-id="search-books-col">

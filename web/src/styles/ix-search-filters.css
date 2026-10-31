@@ -1,0 +1,92 @@
+/* 搜索页平铺筛选区：分类（大 → 细分）/ 评分 / 阅读 / 连载 / 作者 / 标签。
+   全部默认展开、一行一个维度——点一下立即重查（逻辑在 features/search/SearchFilters.tsx），
+   所以这里只管排布：PC 折行铺满，H5 折成「标签在上、chips 在下」并横向滚动。 */
+.search-filters {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+.filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.filter-row-label {
+  flex: none;
+  min-width: 52px;
+  padding-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.filter-row .chips {
+  flex: 1 1 auto;
+  min-width: 0;
+  row-gap: 6px;
+}
+.search-filters .chip {
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+/* 选中态实心：比书籍管理页的描边更醒目——这里点一下就重查，选中了必须有回执 */
+.search-filters .chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-on);
+  font-weight: 600;
+}
+.search-filters .chip:hover:not([aria-pressed="true"]) {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.search-filters .chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.search-filters-note {
+  margin: 2px 0 0;
+}
+.search-filter-badge {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (max-width: 768px) {
+  .search-filters {
+    gap: 10px;
+  }
+  /* 六个维度在 390 宽下折成多行会把结果挤到第二屏：标签独占一行、chips 横向滚动 */
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .filter-row-label {
+    padding-top: 0;
+  }
+  .filter-row .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .filter-row .chips::-webkit-scrollbar {
+    display: none;
+  }
+  /* 触屏可点区 ≥44×44（globals 已抬 min-height，这里补横向与内边距） */
+  .search-filters .chip {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+    padding: 0 12px;
+  }
+}

@@ -36,10 +36,22 @@ const BANNED_COPY = new RegExp(["\\u5168\\u6587", "\\u6b63\\u6587\\u68c0\\u7d22"
 const BANNED_SCOPE = new RegExp("\\u7ae0\\u8282\\u6807\\u9898");
 
 const useSearch = vi.fn();
+const useCategories = vi.fn();
+const useTags = vi.fn();
+const useAuthors = vi.fn();
 
 vi.mock("../../api/hooks", () => ({
-  useSearch: (q: string, type: string) => useSearch(q, type),
+  useSearch: (q: string, params: unknown) => useSearch(q, params),
+  useCategories: () => useCategories(),
+  useTags: () => useTags(),
+  useAuthors: () => useAuthors(),
 }));
+
+/** 页面请求参数：筛选项缺省时不下发（空串 / 零值即不过滤）。 */
+function lastSearchParams(): Record<string, unknown> {
+  const calls = useSearch.mock.calls;
+  return calls[calls.length - 1][1] as Record<string, unknown>;
+}
 
 const { SearchPage } = await import("./SearchPage");
 
@@ -65,6 +77,9 @@ function expectNoChapterScope() {
 describe("搜索页：只按书名与作者搜", () => {
   beforeEach(() => {
     useSearch.mockReset();
+    useCategories.mockReset().mockReturnValue({ data: { items: [], total: 0 }, loading: false, error: null, reload: () => {} });
+    useTags.mockReset().mockReturnValue({ data: { items: [] }, loading: false, error: null, reload: () => {} });
+    useAuthors.mockReset().mockReturnValue({ data: { items: [], total: 0 }, loading: false, error: null, reload: () => {} });
   });
 
   it("请求恒传 type=book，不传 chapter ——「不搜目录」在请求上也成立", async () => {
@@ -72,8 +87,9 @@ describe("搜索页：只按书名与作者搜", () => {
     renderAt("旧城");
     await waitFor(() => expect(useSearch).toHaveBeenCalled());
     expect(useSearch.mock.calls[0][0]).toBe("旧城");
-    expect(useSearch.mock.calls[0][1]).toBe("book");
-    expect(useSearch.mock.calls.map((call) => call[1])).not.toContain("chapter");
+    // 请求参数是对象：type=book 固定，筛选默认不下发
+    expect(lastSearchParams()).toMatchObject({ type: "book", page: 1, size: 8 });
+    expect(JSON.stringify(useSearch.mock.calls.map((call) => call[1]))).not.toContain("chapter");
   });
 
   it("有命中：书名与作者结果保留，章节 tab / 章节结果整块不存在", async () => {
@@ -153,6 +169,8 @@ describe("搜索页：只按书名与作者搜", () => {
     const input = screen.getByLabelText("搜索关键词") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "青川" } });
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("青川", "book"));
+    await waitFor(() =>
+      expect(useSearch).toHaveBeenLastCalledWith("青川", expect.objectContaining({ type: "book" })),
+    );
   });
 });

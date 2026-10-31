@@ -23,8 +23,12 @@ const hit: SearchResult = { q: "夜", books: { items: [book], total: 1, page: 1,
 const empty: SearchResult = { q: "旧城", books: { items: [], total: 0, page: 1, size: 8 } };
 
 const useSearch = vi.fn();
+const emptyList = { data: { items: [], total: 0 }, loading: false, error: null, reload: () => {} };
 vi.mock("../../api/hooks", () => ({
-  useSearch: (q: string, type: string, page: number, size: number) => useSearch(q, type, page, size),
+  useSearch: (q: string, params: unknown) => useSearch(q, params),
+  useCategories: () => emptyList,
+  useTags: () => ({ data: { items: [] }, loading: false, error: null, reload: () => {} }),
+  useAuthors: () => emptyList,
 }));
 
 const { SearchPage } = await import("./SearchPage");
@@ -61,7 +65,9 @@ describe("搜索页：历史 / 高亮 / 空态 / 骨架", () => {
     const chips = await screen.findByTestId("search-history");
     expect(within(chips).getByRole("button", { name: "长夜" })).toBeTruthy();
     fireEvent.click(within(chips).getByRole("button", { name: "旧城" }));
-    await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("旧城", "book", 1, 8));
+    await waitFor(() =>
+      expect(useSearch).toHaveBeenLastCalledWith("旧城", expect.objectContaining({ type: "book", page: 1, size: 8 })),
+    );
   });
 
   it("清空要两步：先变「确认清空」，点确认才真的清掉", async () => {

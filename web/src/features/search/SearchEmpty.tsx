@@ -14,11 +14,16 @@ export function SearchEmpty({
   history,
   onPick,
   onClearHistory,
+  filtersActive = false,
+  onClearFilters,
 }: {
   kind: "idle" | "short" | "none";
   history: string[];
   onPick: (keyword: string) => void;
   onClearHistory: () => void;
+  /** 有生效的筛选项：无结果时先怪筛选，别让用户以为关键词写错了 */
+  filtersActive?: boolean;
+  onClearFilters?: () => void;
 }) {
   if (kind === "idle") {
     return (
@@ -42,6 +47,37 @@ export function SearchEmpty({
         description="按书名、作者搜索，至少输入 2 个字，才能找到有意义的匹配。"
         actions={<Link className="btn" to="/shelf">回书架逛逛</Link>}
       />
+    );
+  }
+
+  // 有关键词 + 有筛选 = 没有符合条件的书：先给「清除筛选」，再谈换关键词
+  if (filtersActive) {
+    return (
+      <div className="search-empty-wrap" data-testid="search-empty-wrap">
+        <EmptyPanel
+          title="没有符合条件的书"
+          description="关键词本身的命中被当前筛选条件排除了。清掉筛选，或放宽其中一项再看。"
+          testId="search-empty"
+          actions={
+            <>
+              <button
+                className="btn btn-primary"
+                type="button"
+                data-testid="search-empty-clear-filters"
+                onClick={onClearFilters}
+              >
+                清除筛选
+              </button>
+              <Link className="btn" to="/shelf">
+                回书架挑一本
+              </Link>
+            </>
+          }
+        />
+        {history.length > 0 ? (
+          <SearchHistoryChips items={history} title="试试你搜过的" onPick={onPick} onClear={onClearHistory} />
+        ) : null}
+      </div>
     );
   }
 
