@@ -216,6 +216,13 @@ func TestRunEndToEnd(t *testing.T) {
 		t.Fatalf("run 失败: %v", err)
 	}
 	stats := readStats(t, out)
+	assertEndToEndStats(t, stats)
+	assertEndToEndTSV(t, out, stats)
+}
+
+// assertEndToEndStats 校验聚合口径（拆出来是为了让两个断言函数各自守住圈复杂度 ≤ 10）。
+func assertEndToEndStats(t *testing.T, stats statsJSON) {
+	t.Helper()
 	if stats.TotalRune != 6 || stats.InvalidBytes != 1 || stats.Blocks != 3 || stats.DistinctRune != 4 {
 		t.Fatalf("统计不对: total=%d invalid=%d blocks=%d distinct=%d",
 			stats.TotalRune, stats.InvalidBytes, stats.Blocks, stats.DistinctRune)
@@ -228,6 +235,11 @@ func TestRunEndToEnd(t *testing.T) {
 			t.Fatalf("算法直方图 %s 期望 1，得到 %v", name, stats.AlgoHistogram)
 		}
 	}
+}
+
+// assertEndToEndTSV 校验字频表内容与行数。
+func assertEndToEndTSV(t *testing.T, out string, stats statsJSON) {
+	t.Helper()
 	tsv, err := os.ReadFile(filepath.Join(out, "corpus-freq.tsv"))
 	if err != nil {
 		t.Fatalf("读 tsv 失败: %v", err)
