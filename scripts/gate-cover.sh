@@ -7,7 +7,7 @@
 #   2) 报告项（渐进目标）：打印距 TARGET(85%) 的差距，不判红——85% 是目标不是当前基线，
 #      一次到位会挡住发布，用「基线只升不降」代替一次性达标。
 #
-# 为什么不是一次到位：见 docs/quality-gates.md「覆盖率：为什么用基线而不是一步 85%」。
+# 为什么不是一次到位：见 docs/quality-gates.md「覆盖率：基线 + 渐进目标」。
 # 防退化机制：任何改动让覆盖下降都会低于基线而红灯，所以基线只升不降 == 覆盖只增不减。
 #
 # 用法：
@@ -25,15 +25,11 @@ cd "$ROOT_DIR" || exit 2
 # 更新规则：覆盖提升后把这里的数字调到**新实测值**（取一位小数），不允许下调。
 # 上调基线本身不需要额外审批，但下调必须有 leader 明确同意并在此处写原因。
 TARGET=85                       # 渐进目标（报告项，不判红）
-BASELINE_TOTAL=77.9             # 总行覆盖率基线（2026-10-25 实测上调：77.2 → 77.9）
-BASELINE_STORE=80.2             # internal/store
-BASELINE_PARSER=87.8            # internal/parser（实测上调：86.2 → 87.8，已超 leader 口径 86.5）
-BASELINE_IMPORTER=85.1          # internal/importer
-BASELINE_API=80.1               # internal/api
-#
-# 关于 parser 基线 86.2 vs leader 给的 86.5：两个数字测于不同时点（parser 仍在重构中），
-# 门禁必须以**本机可复现的实测值**为基线，否则每次都会假红。等 parser 重构收敛后重测，
-# 若实测 ≥86.5 就把这里调到新实测值（只升不降）。
+BASELINE_TOTAL=83.2             # 总行覆盖率基线（2026-10-31 实测上调：77.9 → 83.2）
+BASELINE_STORE=82.3             # internal/store（80.2 → 82.3）
+BASELINE_PARSER=88.4            # internal/parser（87.8 → 88.4，已越过 leader 口径 86.5）
+BASELINE_IMPORTER=90.4          # internal/importer（85.1 → 90.4）
+BASELINE_API=86.3               # internal/api（80.1 → 86.3）
 
 DETAIL=0
 case "${1:-}" in

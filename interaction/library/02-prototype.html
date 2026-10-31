@@ -332,7 +332,10 @@ input[type=checkbox]:disabled::before{background:var(--border-soft);border-color
 .toast{display:flex;align-items:center;gap:10px;background:var(--fg);color:var(--bg);padding:8px 10px 8px 16px;border-radius:var(--radius-pill);font-size:var(--text-sm);box-shadow:var(--elev-raised)}
 .toast button{min-width:24px;min-height:24px}
 .toast.is-error{background:var(--danger);color:var(--accent-on)}
-.tip{position:fixed;z-index:130;pointer-events:none;background:var(--fg);color:var(--bg);padding:5px 9px;border-radius:var(--radius-sm);font-size:var(--text-xs);white-space:nowrap}
+.tip{position:fixed;z-index:130;pointer-events:none;background:var(--fg);color:var(--bg);padding:5px 9px;border-radius:8px;font-size:var(--text-xs);white-space:nowrap}
+/* 小三角：朝下指回被指向的数据点（与产品 .chart-tip::after 同一形态） */
+.tip::after{content:"";position:absolute;top:100%;left:50%;margin-left:-5px;border:5px solid transparent;border-top-color:var(--fg)}
+.tip.is-below::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:var(--fg)}
 
 /* ── 断点 ── */
 @media (max-width:1240px){
@@ -840,7 +843,7 @@ input[type=checkbox]:disabled::before{background:var(--border-soft);border-color
       <li><label class="check-row" style="flex:1 1 auto"><input type="checkbox" id="col2" data-od-id="C-17"><span>民国悬疑</span></label><span class="meta">12 本</span></li>
       <li><label class="check-row" style="flex:1 1 auto"><input type="checkbox" disabled id="col3" data-od-id="C-17"><span>长篇待读</span></label><span class="meta">成员过多，暂不支持在这里改动</span></li>
     </ul>
-    <p class="meta" id="collectionEmpty" hidden>还没有书单。到书架的筛选区点「管理书单」新建一个，再回来把书放进去。</p>
+    <p class="meta" id="collectionEmpty" hidden>还没有书单。到「书单」页新建一个，再回来把书放进去。</p>
     <p class="meta danger-text" id="collectionError" role="alert" hidden>书单暂时读不到，稍后再试。</p>
     <div class="confirm-actions"><button class="btn btn-primary" type="button" id="collectionDone" data-od-id="C-18">完成</button></div>
   </div>
@@ -1181,14 +1184,12 @@ input[type=checkbox]:disabled::before{background:var(--border-soft);border-color
     var label = (cell.date.getMonth() + 1) + ' 月 ' + cell.date.getDate() + ' 日 · '
       + (cell.sec > 0 ? fmtDur(cell.sec) : '没有阅读');
     s2.setAttribute('aria-label', label);
-    var hoverTimer = null;
     s2.addEventListener('mouseenter', function(){
       if (s2.dataset.pinned) return;
-      /* 契约 C-30 hover 行：鼠标停留 120ms 后才浮出，扫过不弹 */
-      hoverTimer = window.setTimeout(function(){ showTip(s2); }, 120);
+      /* 契约 C-30 hover 行：悬停立即浮出（11px 的小格子若还要等 120ms，快速划过时感知不到） */
+      showTip(s2);
     });
     s2.addEventListener('mouseleave', function(){
-      window.clearTimeout(hoverTimer);
       if (!s2.dataset.pinned) $('#tip').hidden = true;
     });
     s2.addEventListener('keydown', function(ev){
@@ -1244,14 +1245,22 @@ input[type=checkbox]:disabled::before{background:var(--border-soft);border-color
     var maxSec = list.reduce(function(m,x){ return Math.max(m, x.sec); }, 0);
     $('#heatNote').textContent = '近 ' + days + ' 天有 ' + active + ' 天在读，单日最长 ' + fmtDur(maxSec) + '。';
   }
-  /* 热力图浮层：格子上方 30px，左对齐不越屏；role=status 让读屏也读到 */
+  /* 热力图浮层：水平居中、贴在格子上方 10px（小三角指回格子），越屏时夹在视口内；
+     role=status 让读屏也读到 */
   function showTip(cell){
     var tip = $('#tip');
     tip.textContent = cell.getAttribute('aria-label');
     tip.hidden = false;
     var box = cell.getBoundingClientRect();
-    tip.style.left = Math.max(8, Math.min(box.left - 10, window.innerWidth - tip.offsetWidth - 8)) + 'px';
-    tip.style.top = Math.max(8, box.top - 30) + 'px';
+    var half = tip.offsetWidth / 2;
+    var centerX = box.left + box.width / 2;
+    tip.style.left = Math.max(half + 8, Math.min(centerX, window.innerWidth - half - 8)) + 'px';
+    tip.style.transform = 'translateX(-50%)';
+    /* 上方放不下（贴着视口顶部或图体上沿）就翻到格子下方 */
+    var top = box.top - 10 - tip.offsetHeight;
+    var flip = top < 8;
+    tip.style.top = (flip ? box.bottom + 10 : top) + 'px';
+    tip.classList.toggle('is-below', flip);
   }
 
   function fmtDur(sec){

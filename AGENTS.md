@@ -17,7 +17,7 @@ make build        # 前端 + 后端 → bin/norvels
 make gate         # 提交前必跑
 ```
 
-> 门禁 9 项：单元（gofmt + vet + go test）/ Gherkin / 圈复杂度 ≤10 / 函数 ≤70 行 / 文件 ≤400 行 / 依赖方向 / 覆盖率基线 / 隐私 / 前端 vitest。豁免按「函数名 + 文件」登记在 quality-gates.md。每个提交要能独立编译（`git worktree add --detach` 验证）。
+> 门禁 9 项（编号 1/2/4/5/6/7/9/10/11，事实源 `scripts/gate-all.sh`）：单元（gofmt + vet + go test）/ Gherkin 验收 / 圈复杂度 ≤10 / 模块大小（函数 ≤70 行、文件 ≤400 行）/ 依赖结构 / 覆盖率基线 / 隐私扫描 / 构建一致性 / 前端 vitest。豁免按「函数名 + 文件」登记在 [quality-gates](docs/quality-gates.md)。每个提交要能独立编译（`git worktree add --detach` 验证）。
 
 ## 关键约束
 

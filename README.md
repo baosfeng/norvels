@@ -284,7 +284,7 @@ scripts/backup.sh --keep 7          # 内部用 sqlite3 .backup 或 VACUUM INTO�
 
 ```bash
 make privacy      # scripts/privacy-scan.sh --all：本机路径 / 内网 IP / 令牌 / 本地黑名单书名
-make verify       # 完整门禁：gofmt + go vet + go test + 隐私扫描
+make verify       # 完整门禁 9 项（scripts/gate-all.sh，编号与阈值见 docs/quality-gates.md）
 ```
 
 细则（哪些进仓库、脱敏规则、历史清理）见 [docs/privacy.md](docs/privacy.md)。
