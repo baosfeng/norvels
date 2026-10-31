@@ -95,6 +95,50 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
+// userListItem 是账号列表的一行：字段与账号对象一致，只有 lastSeenAt 的
+// 「没有时间」写成 null 而不是空串（列表要按时间展示，空串容易被当成坏数据）。
+type userListItem struct {
+	ID         int64   `json:"id"`
+	Name       string  `json:"name"`
+	CreatedAt  string  `json:"createdAt"`
+	LastSeenAt *string `json:"lastSeenAt"`
+}
+
+// userListResponse 是 GET /api/auth/users 的响应：items 最多 50 条，total 是账号总数。
+type userListResponse struct {
+	Items []userListItem `json:"items"`
+	Total int            `json:"total"`
+}
+
+// handleListUsers 处理 GET /api/auth/users：登录页「选已有账号 or 新建账号」的列表。
+//
+// ---- 为什么这个端点不鉴权 ----
+// 它唯一的消费者是登录页，而登录页本身就在鉴权之外（/login 免鉴权）：
+// 要求持凭证才能拿到账号名，等于要求先登录才能选账号登录，没有入口可用。
+// 代价是未进门的人能看到「这台库上有哪些账号名」。本产品的部署前提是个人 /
+// 家庭局域网内的私有书库（见 deploy/nas 与 ADR-0001），账号无密码、账号名
+// 也不是秘密（它标识的是「这些阅读记录属于谁」），这个泄露面可以接受。
+// 要暴露到公网请先换成真正的身份系统，而不是给这里补一层鉴权。
+//
+// 返回空列表时 items 是 []、不是 null：前端直接 map 不必判空。
+func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	users, total, err := s.st.ListUsers(r.Context())
+	if err != nil {
+		s.fail(w, r, err, "账号列表不可用")
+		return
+	}
+	items := make([]userListItem, 0, len(users))
+	for _, u := range users {
+		seen := u.LastSeenAt
+		item := userListItem{ID: u.ID, Name: u.Name, CreatedAt: u.CreatedAt}
+		if seen != "" {
+			item.LastSeenAt = &seen
+		}
+		items = append(items, item)
+	}
+	writeJSON(w, http.StatusOK, userListResponse{Items: items, Total: total})
+}
+
 // startUserSession 建会话并把 token 写进 HttpOnly Cookie。
 func (s *Server) startUserSession(w http.ResponseWriter, r *http.Request, u store.User) {
 	token, err := s.st.CreateUserSession(r.Context(), u.ID)

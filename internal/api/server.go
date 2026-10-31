@@ -210,6 +210,8 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/logout", s.handleAuthLogout)
 	mux.HandleFunc("GET /api/auth/me", s.handleAuthMe)
+	// 登录页的「选账号」列表：免鉴权（理由见 handleListUsers 注释）。
+	mux.HandleFunc("GET /api/auth/users", s.handleListUsers)
 }
 
 // baseContext 返回导入任务的父 context。

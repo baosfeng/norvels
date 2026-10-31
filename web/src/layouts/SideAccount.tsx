@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { loginHrefFor, useAuth } from "../lib/auth";
-import { loginPath } from "../features/auth/authModel";
+import { loginPath, switchAccountPath } from "../features/auth/authModel";
 import { ALL_BOOKS_LINK } from "../features/shelf/shelfView";
 import { showToast } from "../lib/toastStore";
 
@@ -61,15 +61,26 @@ export function SideAccount({ onNavigate }: { onNavigate?: () => void }) {
         {auth.user.name}
       </p>
       {auth.loggedIn ? (
-        <button
-          className="btn btn-ghost side-account-logout"
-          type="button"
-          disabled={busy}
-          data-testid="side-account-logout"
-          onClick={() => void handleLogout()}
-        >
-          {busy ? "正在退出…" : "退出登录"}
-        </button>
+        <>
+          {/* 换号入口：带 ?switch=1 才不会被登录页的"已登录就跳走"挡回去 */}
+          <Link
+            className="btn btn-ghost side-account-switch"
+            to={switchAccountPath(`${location.pathname}${location.search}`)}
+            data-testid="side-account-switch"
+            onClick={onNavigate}
+          >
+            切换账号
+          </Link>
+          <button
+            className="btn btn-ghost side-account-logout"
+            type="button"
+            disabled={busy}
+            data-testid="side-account-logout"
+            onClick={() => void handleLogout()}
+          >
+            {busy ? "正在退出…" : "退出登录"}
+          </button>
+        </>
       ) : (
         <Link
           className="btn btn-ghost side-account-login"

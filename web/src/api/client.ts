@@ -36,6 +36,7 @@ import type {
   SourceProfiles,
   SourceProfileValidateResult,
   AuthUser,
+  AuthUsersResult,
   ShelfIdsResponse,
   ShelfItem,
   SeriesDetail,
@@ -608,6 +609,12 @@ export const api = {
    * 判定登录态只认这个接口——Cookie 是 HttpOnly，前端没有别的办法知道"我是谁"。
    */
   me: (opts?: RequestOptions) => request<AuthUser>("/auth/me", opts),
+
+  /**
+   * 已有账号列表：按最近活跃倒序，登录页据此渲染「选一个账号直接进」。
+   * 不需要会话——没登录的人也得先看见有哪些账号可选。
+   */
+  authUsers: (opts?: RequestOptions) => request<AuthUsersResult>("/auth/users", opts),
 
   /** 我的书架（按加入时间倒序，分页口径与 /api/books 一致）。 */
   listShelf: (params: { page?: number; size?: number } = {}, opts?: RequestOptions) =>

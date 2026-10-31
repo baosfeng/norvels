@@ -76,11 +76,20 @@ describe("侧栏 / H5 抽屉底部的账号区", () => {
     expect(screen.queryByTestId("side-account-login")).toBeNull();
   });
 
+  it("已登录：给「切换账号」入口，带 ?switch=1（否则登录页会立刻把已登录的人送走）", () => {
+    renderAccount("/shelf?view=mine", makeAuth({ user: USER, loggedIn: true }));
+    const link = screen.getByTestId("side-account-switch") as HTMLAnchorElement;
+    expect(link.textContent).toBe("切换账号");
+    expect(link.getAttribute("href")).toBe("/login?next=%2Fshelf%3Fview%3Dmine&switch=1");
+  });
+
   it("未登录：给「登录 / 注册」入口并带回跳地址（不强制拦截）", () => {
     renderAccount("/book/7", makeAuth());
     const link = screen.getByTestId("side-account-login") as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/login?next=%2Fbook%2F7");
     expect(screen.queryByTestId("side-account-logout")).toBeNull();
+    // 没登录就没有"切换"的对象
+    expect(screen.queryByTestId("side-account-switch")).toBeNull();
   });
 
   it("⑧ 退出登录：清账号态 + 回「全部书」视图（不留在空白的我的书架）", async () => {

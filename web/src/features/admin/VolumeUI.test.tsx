@@ -158,17 +158,20 @@ describe("卷管理弹窗", () => {
     reorderVolumes.mockResolvedValue(undefined);
     renderManage();
     fireEvent.click(screen.getByTestId("volume-up-2"));
-    await waitFor(() => expect(reorderVolumes).toHaveBeenCalledWith(7, [2, 1, 3]));
-    expect(onSaved).toHaveBeenCalledWith("「卷二」已上移。");
+    // 等的是「结果」而不是「调用」：调用发生在 await 之前，界面更新要晚一拍，
+    // 只等调用就断言会读到尚未渲染的旧树（全量并发时偶发红，见防复发说明）。
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("「卷二」已上移。"));
+    expect(reorderVolumes).toHaveBeenCalledWith(7, [2, 1, 3]);
   });
 
   it("下移同理，失败时不回传成功", async () => {
     reorderVolumes.mockRejectedValue(new Error("boom"));
     renderManage();
     fireEvent.click(screen.getByTestId("volume-down-1"));
-    await waitFor(() => expect(reorderVolumes).toHaveBeenCalledWith(7, [2, 1, 3]));
+    // 同上：等错误提示真的渲染出来，而不是只等接口被调用
+    await waitFor(() => expect(screen.getByTestId("volume-error").textContent).toBe("操作没能完成，稍后再试。"));
+    expect(reorderVolumes).toHaveBeenCalledWith(7, [2, 1, 3]);
     expect(onSaved).not.toHaveBeenCalled();
-    expect(screen.getByTestId("volume-error").textContent).toBe("操作没能完成，稍后再试。");
   });
 
   it("删卷确认写明卷内章数，确认后调接口并回传提示", async () => {

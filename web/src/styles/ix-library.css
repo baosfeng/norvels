@@ -476,6 +476,13 @@
   color:var(--danger-text,#b42318);font-size:13px;line-height:1.5}
 .auth-hint-action{min-height:36px;border-color:currentColor;color:inherit}
 .auth-foot{margin:0;line-height:1.6}
+/* 账号选择器：一行一个可点区域（沿用 .btn 的边框与手感），内容左对齐、拉满宽度 */
+.auth-user-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.auth-user-row{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;
+  width:100%;min-height:44px;padding:8px 12px;text-align:left}
+.auth-user-name{font-weight:600;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auth-user-seen{margin-left:auto}
+.auth-new-head{margin:0}
 
 /* 书架视图切换：两个 chip 并排，与筛选 chips 同一套视觉语言 */
 .shelf-view-switch{display:flex;gap:8px;align-items:center;margin:0 0 10px}

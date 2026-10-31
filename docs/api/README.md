@@ -23,7 +23,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 | [api-source.md](api-source.md) | 来源规则包（书源）与能力清单 capabilities |
 | [api-source-import.md](api-source-import.md) | 导入 Legado 书源 JSON（预览 + 应用） |
 | [api-dashboard.md](api-dashboard.md) | 元信息（health/stats）、驾驶舱端点、其它端点 |
-| [api-account.md](api-account.md) | 账号（注册/登录/登出/me）与我的书架；个人数据按账号隔离 |
+| [api-account.md](api-account.md) | 账号（注册/登录/登出/me/列表）与我的书架；个人数据按账号隔离 |
 
 原 `docs/api.md` 章节号对照：§1/§7/§9 → [api-dashboard.md](api-dashboard.md)；§2/§3 → [api-books.md](api-books.md)；§4/§8/§10 → 本文件；§5/§6 → [api-import.md](api-import.md)；来源规则包 → [api-source.md](api-source.md)。
 
@@ -92,7 +92,8 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 - 所有 `/api/*` 与页面要求 `Authorization: Bearer <token>` 或 Cookie
 - **账号体系（0016）是额外的一层**：口令管「能不能进门」，账号管「个人记录属于谁」；
   两者并存，配置口令后 Bearer / 旧 Cookie 语义完全不变。详见 [api-account.md](api-account.md)
-- 免鉴权路径：`/api/health`（容器健康检查）、`GET|POST /login`、`POST /logout`、`POST /api/auth/logout`
+- 免鉴权路径：`/api/health`（容器健康检查）、`GET|POST /login`、`POST /logout`、`POST /api/auth/logout`、
+  `GET /api/auth/users`（登录页的选账号列表，取舍见 [api-account.md](api-account.md#get-apiauthusers)）
 - 未通过时：`/api/*` 返回 `401 {"error":{"code":"unauthorized",…}}` 并带 `WWW-Authenticate`；
   页面请求 303 跳到 `/login?next=<原路径>`
 - `GET /login` 是服务端渲染的内联 HTML 表单；`POST /login` 用 `token` 字段提交，

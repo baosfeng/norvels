@@ -32,16 +32,21 @@ const logoutPath = "/logout"
 
 // authPublicPath 报告该路径是否免鉴权。
 //
-// 免鉴权清单刻意很小：容器健康检查（/api/health）、登录页/登录提交、两个登出。
+// 免鉴权清单刻意很小：容器健康检查（/api/health）、登录页/登录提交、两个登出、
+// 以及登录页的账号列表（GET /api/auth/users）。
 //
-// 账号端点里只有 /api/auth/logout 免鉴权：它只清 Cookie、不返回任何数据，
-// 且「会话已过期 / 从未登录」时也必须能走到登出，否则前端会被卡在登不出去。
+// 账号端点里只有 /api/auth/logout 与 GET /api/auth/users 免鉴权：
+//   - logout 只清 Cookie、不返回任何数据，且「会话已过期 / 从未登录」时也必须
+//     能走到登出，否则前端会被卡在登不出去；
+//   - users 是登录页「选账号」列表，登录页本身就在门外，要求凭证才能拿到列表
+//     等于要求先登录才能登录。取舍与代价见 handleListUsers 的注释。
+//
 // /api/auth/register、/api/auth/login、/api/auth/me 都要求先过鉴权：
 // 共享口令是「能不能进这个库」，账号是「进来之后你是谁」——口令开启时，
 // 不给未持凭证的人一个能自助建号再拿到会话 Cookie 的入口，否则口令形同虚设。
 func authPublicPath(p string) bool {
 	switch p {
-	case "/api/health", LoginPath, logoutPath, "/api/auth/logout":
+	case "/api/health", LoginPath, logoutPath, "/api/auth/logout", "/api/auth/users":
 		return true
 	}
 	return false

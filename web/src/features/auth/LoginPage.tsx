@@ -1,18 +1,35 @@
 import { useEffect, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../../lib/auth";
+import { DEFAULT_ACCOUNT_NAME, useAuth } from "../../lib/auth";
 import { useIsH5 } from "../../lib/tier";
-import { AUTH_DEFAULT_NEXT, safeNext } from "./authModel";
+import { AuthUserList } from "./AuthUserList";
+import { AUTH_DEFAULT_NEXT, isSwitchMode, safeNext, shouldLeaveLoginPage, type AuthAction } from "./authModel";
 import { useAuthForm } from "./useAuthForm";
+import { useAuthUsers } from "./useAuthUsers";
+
+/** 列表形态下的副说明：点一行就进，不用输名字。 */
+function pickSubText(isH5: boolean): string {
+  return isH5 ? "点一个账号就能进，不用再输名字。" : "点一个账号直接进去；没有你的就新建一个。没有密码。";
+}
+
+/** 没有列表时的老说明（列表为空 / 取数失败时原样保留）。 */
+function formSubText(isH5: boolean): string {
+  return isH5
+    ? "阅读记录跟着账号走。没有密码，输入账号名就能进。"
+    : "书库所有人共用，阅读记录和「我的书架」跟着账号走。没有密码——输入账号名就能进，第一次来点「注册新账号」。";
+}
 
 /**
  * 登录 / 注册页（两档同一形态，无密码）。
  *
- * 形态：**一个输入框 + 两个动作**——「进入」= 登录，「注册新账号」= 注册。
- * 不做密码框、不做确认密码：这套账号标识的是"这堆阅读记录属于谁"，
- * 不是跨不可信网络的凭据（口径见 internal/store/users.go 顶部注释）。
+ * 形态：**选一个已有账号，或者新建一个**。
+ * - 有账号列表：每行点一下直接进去，下方留「或者新建账号」；
+ * - 列表为空 / 取数失败：退回"输入名字 + 两个动作"的老表单，不阻塞。
  *
- * 交互的关键不在正常路径，而在两条失败路径都要给出可执行的下一步：
+ * `?switch=1` 是「我主动来换号」：已登录时默认立刻回来源页（保持鉴权重定向体验），
+ * 但换号场景下跳走就等于没有入口——所以带这个参数时留在本页。
+ *
+ * 两条失败路径都要给出可执行的下一步：
  * - 404「账号不存在」→ 就地给「注册新账号」，带上已输入的名字；
  * - 409「重名」→ 就地给「直接进入」（登录），同样带上已输入的名字。
  *
@@ -24,31 +41,33 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const isH5 = useIsH5();
   const next = safeNext(params.get("next"));
+  const switching = isSwitchMode(params);
   const form = useAuthForm(next);
   const { user, loggedIn } = auth;
+  const shouldLeave = shouldLeaveLoginPage(loggedIn, switching);
+  // 马上要跳走就别再取列表；换号页 / 未登录页才需要
+  const list = useAuthUsers(!shouldLeave);
 
-  // 已经登录的人打开登录页：直接回去（不做"你已登录"的中间页）
   useEffect(() => {
-    if (loggedIn) navigate(next || AUTH_DEFAULT_NEXT, { replace: true });
-  }, [loggedIn, next, navigate]);
+    if (shouldLeave) navigate(next || AUTH_DEFAULT_NEXT, { replace: true });
+  }, [shouldLeave, next, navigate]);
 
-  async function handle(action: "login" | "register") {
-    const result = await form.submit(action);
+  // 开放模式的默认账号（reader）不是"某个人"：它永远在库里，未登录时后端也把它当当前账号返回。
+  // 放进可选列表只会让人以为"我现在是 reader"，所以滤掉；未登录这件事由页脚一句话说明。
+  const visibleUsers = list.users.filter((item) => item.name !== DEFAULT_ACCOUNT_NAME);
+  // 只有确实拿到了账号才切成列表形态；加载中与失败都按"没有列表"处理
+  const pickable = !list.loading && visibleUsers.length > 0;
+  const busy = form.busy !== null;
+
+  async function handle(action: AuthAction, rawName?: string) {
+    const result = await form.submit(action, rawName);
     if (result) navigate(result.next, { replace: true });
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void handle("login");
+    void handle(pickable ? "register" : "login");
   }
-
-  const busy = form.busy !== null;
-
-  // H5 的竖屏预算：390×844 下 h1 + 三段说明会把主操作「进入」压到离顶部 500px 之外。
-  // 短版只留"这是什么 + 现在该点哪个"，长版解释留在 PC（那里空间够，也需要说清"无密码"的由来）。
-  const subText = isH5
-    ? "阅读记录跟着账号走。没有密码，输入账号名就能进。"
-    : "书库所有人共用，阅读记录和「我的书架」跟着账号走。没有密码——输入账号名就能进，第一次来点「注册新账号」。";
 
   // 错误提示紧贴输入框：H5 上它要是掉到按钮后面，读者的视线已经落在按钮上了，
   // 看不到"为什么没进去"。放在 form 内、按钮之前，两档位置一致（PC 也因此少一次视觉跳跃）。
@@ -69,24 +88,45 @@ export function LoginPage() {
     </p>
   ) : null;
 
+  // 「切换」只在真有会话时成立：开放模式兜底的默认账号不是用户自己的，谈不上切换
+  const footText =
+    switching && loggedIn && user
+      ? `当前登录的是「${user.name}」。选一个账号切换，或新建一个。`
+      : user && !loggedIn
+        ? `当前是本地默认账号「${user.name}」，不登录也能正常浏览。`
+        : "不登录也能浏览全部书，只是记录不归到任何账号。";
+
   return (
     <section className="auth-page" data-testid="view:login" data-od-id="login">
       <div className="auth-card">
         <p className="eyebrow">账号</p>
-        <h1>进入你的书架</h1>
+        <h1>{switching && loggedIn ? "切换账号" : "进入你的书架"}</h1>
         <p className="sub" data-testid="auth-sub">
-          {subText}
+          {pickable ? pickSubText(isH5) : formSubText(isH5)}
         </p>
+
+        {pickable ? (
+          <>
+            <AuthUserList
+              users={visibleUsers}
+              /* 只有真登录着才有「当前」：默认账号兜底不代表用户选了谁 */
+              current={loggedIn ? user : null}
+              busy={busy}
+              onPick={(name) => void handle("login", name)}
+            />
+            <p className="meta auth-new-head">或者新建账号</p>
+          </>
+        ) : null}
 
         <form className="auth-form" onSubmit={onSubmit} noValidate>
           <label className="auth-field">
-            <span>账号名</span>
+            <span>{pickable ? "新账号名" : "账号名"}</span>
             <input
               className="input"
               name="name"
               value={form.name}
               autoComplete="username"
-              autoFocus={!isH5}
+              autoFocus={!isH5 && !pickable}
               maxLength={64}
               placeholder="例如：夜读的人"
               aria-describedby={form.hint ? "auth-hint" : undefined}
@@ -102,30 +142,39 @@ export function LoginPage() {
           {hintNode}
 
           <div className="auth-actions">
+            {pickable ? null : (
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={busy}
+                data-testid="auth-login"
+                data-od-id="login-submit"
+              >
+                {form.busy === "login" ? "正在进入…" : "进入"}
+              </button>
+            )}
             <button
-              className="btn btn-primary"
-              type="submit"
-              disabled={busy}
-              data-testid="auth-login"
-              data-od-id="login-submit"
-            >
-              {form.busy === "login" ? "正在进入…" : "进入"}
-            </button>
-            <button
-              className="btn"
+              /* 列表形态下这是唯一动作：给主按钮样式，别让它看起来像一行链接 */
+              className={pickable ? "btn btn-primary" : "btn"}
               type="button"
               disabled={busy}
               data-testid="auth-register"
               data-od-id="register-submit"
               onClick={() => void handle("register")}
             >
-              {form.busy === "register" ? "正在注册…" : "注册新账号"}
+              {pickable
+                ? form.busy === "register"
+                  ? "正在创建…"
+                  : "注册并进入"
+                : form.busy === "register"
+                  ? "正在注册…"
+                  : "注册新账号"}
             </button>
           </div>
         </form>
 
-        <p className="meta auth-foot">
-          {user && !loggedIn ? `当前是本地默认账号「${user.name}」，不登录也能正常浏览。` : "不登录也能浏览全部书，只是记录不归到任何账号。"}
+        <p className="meta auth-foot" data-testid="auth-foot">
+          {footText}
         </p>
       </div>
     </section>

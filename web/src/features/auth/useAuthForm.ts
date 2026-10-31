@@ -1,7 +1,15 @@
 import { useCallback, useState } from "react";
 import { ApiError } from "../../api/client";
 import { useAuth } from "../../lib/auth";
-import { accountErrorHint, checkAccountName, safeNext, type AuthAction, type AuthErrorHint } from "./authModel";
+import { showToast } from "../../lib/toastStore";
+import {
+  accountErrorHint,
+  authToastText,
+  checkAccountName,
+  safeNext,
+  type AuthAction,
+  type AuthErrorHint,
+} from "./authModel";
 
 /**
  * 登录页的表单状态与提交（只有手机号式的"账号名"，没有密码）。
@@ -30,6 +38,8 @@ export function useAuthForm(next: string) {
       setBusy(action);
       try {
         const user = action === "register" ? await auth.register(checked.name) : await auth.login(checked.name);
+        // 成功要说话：跳页之后才看得见结果，没有 toast 就等于"点了没反应"
+        showToast(authToastText(action, user.name));
         return { user, next: safeNext(next) };
       } catch (error) {
         setHint(accountErrorHint(error instanceof ApiError ? error : new ApiError("network", "请求失败")));

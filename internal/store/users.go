@@ -134,6 +134,55 @@ func (s *Store) UserByID(ctx context.Context, id int64) (User, error) {
 	return scanUser(s.db.QueryRowContext(ctx, userSelectColumns+" WHERE id = ?", id))
 }
 
+// maxListUsers 是账号列表一次返回的上限。
+//
+// 封顶 50 的理由：这个列表只服务登录页的「选账号」，一个人 / 一个家庭翻不到
+// 第 51 个账号；而无上限的全量返回会让「被脚本批量建过号」的库拖慢每一次
+// 打开登录页。截断时 total 仍是账号总数，前端据此提示「还有更多」。
+const maxListUsers = 50
+
+// ListUsers 返回账号列表（最多 maxListUsers 条）与账号总数。
+//
+// 排序是「最近活跃在前」：last_seen_at 倒序；从未登录（NULL）的排最后；
+// 时间相同按 id 倒序兜底（后建的在前）。NULL 在 SQLite 的 DESC 里反而排最前，
+// 所以先用 IS NULL 分组成「有时间的一批 / 没有时间的一批」，顺序才是登录页
+// 想要的样子。不做分页参数：列表只服务登录页的「选账号」。
+func (s *Store) ListUsers(ctx context.Context) ([]User, int, error) {
+	total, err := s.countUsers(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.QueryContext(ctx,
+		userSelectColumns+" ORDER BY last_seen_at IS NULL, last_seen_at DESC, id DESC LIMIT ?",
+		maxListUsers)
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list users: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]User, 0, min(total, maxListUsers))
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("store: list users rows: %w", err)
+	}
+	return users, total, nil
+}
+
+// countUsers 数全库账号；列表被截断时 total 仍然是这个数。
+func (s *Store) countUsers(ctx context.Context) (int, error) {
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&total); err != nil {
+		return 0, fmt.Errorf("store: count users: %w", err)
+	}
+	return total, nil
+}
+
 // userByName 按「TRIM + 大小写折叠」查账号（与唯一索引同一口径）。
 func (s *Store) userByName(ctx context.Context, name string) (User, error) {
 	return scanUser(s.db.QueryRowContext(ctx,

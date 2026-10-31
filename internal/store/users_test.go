@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -177,6 +178,89 @@ func TestScopeUserIDFallsBackToDefault(t *testing.T) {
 	requireEqual(t, "未注入", ScopeUserID(context.Background()), defaultUserID)
 	requireEqual(t, "显式注入", ScopeUserID(WithUserID(context.Background(), 7)), int64(7))
 	requireEqual(t, "注入非法值", ScopeUserID(WithUserID(context.Background(), 0)), defaultUserID)
+}
+
+// TestListUsersOrdersByLastSeenWithNullLast 账号列表：最近活跃在前，从未登录的排最后。
+//
+// NULL 在 SQLite 的 DESC 里反而排最前，最容易写错的就是这一条——所以用例里既有
+// 登录过的账号，也有建号后从未登录的（含迁移建出的默认账号 reader）。
+func TestListUsersOrdersByLastSeenWithNullLast(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	// 迁移后库里只有默认账号 reader，且从未登录过。
+	users, total, err := st.ListUsers(ctx)
+	requireOK(t, "ListUsers(仅默认账号)", err)
+	requireEqual(t, "仅默认账号时的条数", len(users), 1)
+	requireEqual(t, "仅默认账号时的 total", total, 1)
+	requireEqual(t, "默认账号名", users[0].Name, defaultUserName)
+	requireEqual(t, "默认账号的 last_seen_at", users[0].LastSeenAt, "")
+
+	if _, err := st.RegisterUser(ctx, "从未登录"); err != nil {
+		t.Fatalf("RegisterUser(从未登录): %v", err)
+	}
+	earlier, err := st.RegisterUser(ctx, "早活跃")
+	requireOK(t, "RegisterUser(早活跃)", err)
+	later, err := st.RegisterUser(ctx, "新活跃")
+	requireOK(t, "RegisterUser(新活跃)", err)
+	setUserLastSeen(t, st, earlier.ID, "2026-10-30T05:26:24.041Z")
+	setUserLastSeen(t, st, later.ID, "2026-10-31T05:26:24.041Z")
+
+	users, total, err = st.ListUsers(ctx)
+	requireOK(t, "ListUsers", err)
+	requireEqual(t, "账号总数", total, 4)
+	want := []string{"新活跃", "早活跃", "从未登录", defaultUserName}
+	requireEqual(t, "条数", len(users), len(want))
+	for i, name := range want {
+		requireEqual(t, fmt.Sprintf("第 %d 条账号名", i+1), users[i].Name, name)
+	}
+}
+
+// TestListUsersSameTimeTieBreaksByIDDesc 同一时刻的多个账号按 id 倒序（后建的在前）。
+func TestListUsersSameTimeTieBreaksByIDDesc(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	first, err := st.RegisterUser(ctx, "先建")
+	requireOK(t, "RegisterUser(先建)", err)
+	second, err := st.RegisterUser(ctx, "后建")
+	requireOK(t, "RegisterUser(后建)", err)
+	setUserLastSeen(t, st, first.ID, "2026-10-31T05:26:24.041Z")
+	setUserLastSeen(t, st, second.ID, "2026-10-31T05:26:24.041Z")
+
+	users, _, err := st.ListUsers(ctx)
+	requireOK(t, "ListUsers", err)
+	requireEqual(t, "条数", len(users), 3)
+	requireEqual(t, "首条是后建的", users[0].ID, second.ID)
+	requireEqual(t, "次条是先建的", users[1].ID, first.ID)
+	requireEqual(t, "末条是默认账号", users[2].Name, defaultUserName)
+}
+
+// TestListUsersCapsAtLimit 超过上限只返回 50 条，total 仍是账号总数。
+func TestListUsersCapsAtLimit(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	const extra = 60
+	var lastID int64
+	for i := 0; i < extra; i++ {
+		u, err := st.RegisterUser(ctx, fmt.Sprintf("账号%02d", i))
+		requireOK(t, "RegisterUser", err)
+		lastID = u.ID
+	}
+	users, total, err := st.ListUsers(ctx)
+	requireOK(t, "ListUsers", err)
+	requireEqual(t, "封顶后的条数", len(users), maxListUsers)
+	requireEqual(t, "total 是账号总数", total, extra+1)
+	// 全都是从未登录的账号：按 id 倒序，首条是最后建的，末条是第 11 个建的。
+	requireEqual(t, "首条 id", users[0].ID, lastID)
+	requireEqual(t, "末条 id", users[maxListUsers-1].ID, lastID-int64(maxListUsers-1))
+}
+
+// setUserLastSeen 直接改 last_seen_at：排序断言要可控的时间，不能指望 nowUTC 的毫秒。
+func setUserLastSeen(t *testing.T, st *Store, id int64, at string) {
+	t.Helper()
+	if _, err := st.DB().ExecContext(context.Background(),
+		"UPDATE users SET last_seen_at = ? WHERE id = ?", at, id); err != nil {
+		t.Fatalf("改账号 %d 的 last_seen_at: %v", id, err)
+	}
 }
 
 // repeatRune 生成 n 个相同字符（账号名长度边界用）。

@@ -764,6 +764,18 @@ export interface AuthUser {
 }
 
 /**
+ * 账号列表里的一行（GET /api/auth/users）：与 AuthUser 同构，只有「最后活跃」的表示法不同——
+ * 列表接口用 null 表示建号后从未登录，me() 用空串。展示层把两者统一成「从未登录」。
+ */
+export type AuthUserSummary = Omit<AuthUser, "lastSeenAt"> & { lastSeenAt: string | null };
+
+/** GET /api/auth/users 的响应：items 之外只保证 total（账号总数）。 */
+export interface AuthUsersResult {
+  items: AuthUserSummary[];
+  total: number;
+}
+
+/**
  * 我的书架里的一行（GET /api/shelf）：书简介字段 + 加入时间。
  *
  * 后端取的是 BookBrief 列（比 BookSummary 少 volumeCount / intro / status 等），
