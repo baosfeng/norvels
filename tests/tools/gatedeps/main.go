@@ -41,8 +41,9 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/model":  {},
 	"norvels/internal/webui":  {},
 	"norvels/internal/parser": {"norvels/internal/model"},
-	"norvels/internal/store":  {"norvels/internal/model", "norvels/internal/source"},
-	"norvels/internal/ebook":  {"norvels/internal/model"},
+	// store 依赖 textcode 做正文压缩前的无损重编码（textcode 本身是叶子包）。
+	"norvels/internal/store": {"norvels/internal/model", "norvels/internal/source", "norvels/internal/textcode"},
+	"norvels/internal/ebook": {"norvels/internal/model"},
 	// 正文编码层：UTF-8 ↔ 字频码本流的无损重编码，只依赖标准库（叶子包）。
 	"norvels/internal/textcode": {},
 	// 书源规则包：纯数据模型 + 校验，只依赖标准库（叶子包）。

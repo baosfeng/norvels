@@ -122,8 +122,8 @@ func TestDeleteChaptersShiftsIdxAndKeepsTexts(t *testing.T) {
 func TestDeleteChaptersReapsOrphanBlock(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	// 两章各 ~660 KB（单章 > 1 MB 目标的一半，两章必然分到不同块），第三个小章并入第二块
-	big := strings.Repeat("甲乙丙丁。", 44000) // 每章约 660 KB：两章必然分到不同块
+	// 两章各 ~4.2 MB（单章 > 8 MB 目标的一半，两章必然分到不同块），第三个小章并入第二块
+	big := strings.Repeat("甲乙丙丁。", 280000) // 每章 4.2 MB：两章必然分到不同块
 	const bigWords = 176000
 	bookID, ids := seedStructBook(t, ctx, st, "delete-reap",
 		[]model.ParsedVolume{{Idx: 0, Title: "第一卷"}}, []model.ParsedChapter{

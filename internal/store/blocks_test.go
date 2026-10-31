@@ -47,7 +47,10 @@ func TestSaveBookBlocksRoundTrip(t *testing.T) {
 func TestSaveBookBlocksSplitIntoMultiple(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	book := bigBlockBook(120)
+	book := bigBlockBook(320)
+	if totalBytes(book) <= BlockTargetBytes {
+		t.Fatalf("样本 %d 字节，没超过单块目标 %d，切不出多块", totalBytes(book), BlockTargetBytes)
+	}
 	res, err := st.SaveBook(ctx, book, SaveOptions{})
 	if err != nil {
 		t.Fatalf("SaveBook: %v", err)
@@ -58,7 +61,7 @@ func TestSaveBookBlocksSplitIntoMultiple(t *testing.T) {
 		t.Fatalf("count blocks: %v", err)
 	}
 	if blocks < 2 {
-		t.Errorf("块数 = %d，期望多块（本书正文约 %d 字节，超过 1 MB 目标）", blocks, totalBytes(book))
+		t.Errorf("块数 = %d，期望多块（本书正文约 %d 字节，超过 8 MB 目标）", blocks, totalBytes(book))
 	}
 	assertBlockChain(t, ctx, st, res.BookID, len(book.Chapters))
 }
@@ -172,7 +175,7 @@ func TestForceOverwriteReplacesBlocks(t *testing.T) {
 	}
 }
 
-// bigBlockBook 造一本 n 章、合计超过 1 MB 的书（每章约 12 KB）。
+// bigBlockBook 造一本 n 章的书（每章约 27 KB；切块用例自己按 BlockTargetBytes 放大 n）。
 func bigBlockBook(n int) *model.ParsedBook {
 	book := &model.ParsedBook{
 		Title: "长夜书简", Author: "青川客", SourcePath: "/path/to/txt/big.txt",

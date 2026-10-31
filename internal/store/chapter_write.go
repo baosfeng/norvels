@@ -104,7 +104,7 @@ func insertChapterRows(ctx context.Context, tx *sql.Tx, bookID int64, chapters [
 
 // insertChapters 把一章正文按块压缩写入，并顺手累加 store_metrics 需要的聚合量。
 //
-// 写入分两步：先按「章节边界 + 1 MB 目标」把正文切成块并压进 chapter_blocks，
+// 写入分两步：先按「章节边界 + 8 MB 目标」把正文切成块并压进 chapter_blocks，
 // 再写 chapters 行（只存块寻址与标题）。两步在同一事务内，失败一起回滚。
 //
 // 导入路径本来就要遍历所有章节，在这里累加几乎零额外成本——比事后跑

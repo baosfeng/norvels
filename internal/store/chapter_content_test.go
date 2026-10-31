@@ -76,14 +76,15 @@ func TestUpdateChapterContentReplacesText(t *testing.T) {
 func TestUpdateChapterContentReapsExclusiveBlock(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	// 第一章超过单块目标 → splitBlocks 让它独占一块，第二章落到第二块。
-	big := strings.Repeat("河堤上的风。", 60000) // 1,080,000 字节 > BlockTargetBytes
+	// 两章各超过 8 MB 块目标的一半 → 必然各占一块，第一章的块只被它自己引用。
+	// 1 MiB 上限约束的是**替换后的**正文（checkChapterContent），存量正文长度不受影响。
+	big := strings.Repeat("河堤上的风。", 280000) // 5,040,000 字节
 	bookID, ids := seedContentBook(t, ctx, st, "content-reap", []model.ParsedChapter{
 		{Idx: 0, VolumeIdx: 0, Title: "长章", Content: big, WordCount: 6000},
-		{Idx: 1, VolumeIdx: 0, Title: "短章", Content: "短章正文。", WordCount: 4},
+		{Idx: 1, VolumeIdx: 0, Title: "另一长章", Content: big, WordCount: 6000},
 	})
-	if len(big) <= BlockTargetBytes {
-		t.Fatalf("样本 %d 字节没超过单块目标 %d，构造不出独占块", len(big), BlockTargetBytes)
+	if len(big) <= BlockTargetBytes/2 {
+		t.Fatalf("样本 %d 字节没超过单块目标的一半 %d，两章不会各占一块", len(big), BlockTargetBytes/2)
 	}
 	blocksBefore := blockCountOf(t, ctx, st, bookID)
 	oldBlockID := blockIDOf(t, ctx, st, bookID, ids[0])
@@ -106,14 +107,16 @@ func TestUpdateChapterContentReapsExclusiveBlock(t *testing.T) {
 		t.Fatalf("text_bytes 未下降：%d → %d（旧块没被冲减）",
 			metricsBefore.TextBytes, after.TextBytes)
 	}
-	// 原始字节：旧块 raw（1,080,000）被减掉，新正文 raw 加回
+	// 原始字节：旧块 raw（整个 big 章）被减掉，新正文 raw 加回
 	requireInt(t, "metrics text_bytes_raw 变化",
 		int(after.TextBytesRaw-metricsBefore.TextBytesRaw), len(replacement)-len(big))
 	t.Logf("回收：text_bytes %d → %d（-%d）；text_bytes_raw %d → %d；块数 %d（旧块 %d 已删）",
 		metricsBefore.TextBytes, after.TextBytes, metricsBefore.TextBytes-after.TextBytes,
 		metricsBefore.TextBytesRaw, after.TextBytesRaw, blockCountOf(t, ctx, st, bookID), oldBlockID)
-	// 短章仍在，正文没被牵连
-	requireString(t, "短章正文", mustChapter(t, ctx, st, bookID, ids[1]).Content, "短章正文。")
+	// 另一块仍在，正文没被牵连（只比长度，失败时不把整章正文刷进日志）
+	if got := mustChapter(t, ctx, st, bookID, ids[1]).Content; got != big {
+		t.Errorf("另一章正文被牵连：%d vs %d 字节", len(got), len(big))
+	}
 }
 
 // TestUpdateChapterContentValidation 入参校验：空正文 / 超 1 MiB / 章节不属于本书。

@@ -3,6 +3,8 @@ package store
 import (
 	"bytes"
 	"compress/flate"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // compressLegacyFlate 是测试专用的 flate 块构造器：模拟「骨架期写入的 0x01 块」，
@@ -21,4 +23,18 @@ func compressLegacyFlate(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// compressLegacyZstd 是测试专用的 0x02 块构造器：模拟「码本上线之前写入的 zstd 块」，
+// 用来验证读取侧仍能读出老库里的块。写入侧已不再产出这个标记。
+func compressLegacyZstd(raw []byte) ([]byte, error) {
+	enc, err := zstd.NewWriter(nil,
+		zstd.WithEncoderLevel(zstd.SpeedBestCompression),
+		zstd.WithEncoderConcurrency(1),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer enc.Close() //nolint:errcheck // 只写句柄，关闭不产生业务错误
+	return enc.EncodeAll(raw, []byte{contentAlgoZstd}), nil
 }

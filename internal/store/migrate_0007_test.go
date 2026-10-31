@@ -46,7 +46,7 @@ func insertPreBlockChapters(t *testing.T, ctx context.Context, st *Store) {
 // blockMigrationSeed 是 0007 迁移测试的章节种子。
 //
 // 覆盖：空章（验证不为空块建行）、普通章、私用区字符（验证不转码）、
-// 超长章（超过 1 MB，验证独占一块）、以及足够多的普通章（触发多块切分）。
+// 百万字节级长章（验证块不会切碎正文）、以及足够多的普通章（量级接近真实小说）。
 //
 // 正文用**多样化**的中文句子拼装（而不是同一句重复 N 遍）：这样压缩率会落在
 // 真实中文小说的量级（约 30~40%），测试顺带就能验证「压缩确实生效」；
@@ -59,7 +59,7 @@ func blockMigrationSeed() []struct{ title, content string } {
 		{"第四章 控制符", "第一行\n\t第二行\r\n第三行"},
 		{"第五章 长卷", variedProse(12000)},
 	}
-	// 再补 40 章普通内容，确保触发「按 1 MB 切多块」。
+	// 再补 40 章普通内容；多块切分口径由 splitBlocks / compress_test.go 的单测锁死，这里只求量级真实。
 	for i := 0; i < 40; i++ {
 		out = append(out, struct{ title, content string }{
 			title:   fmt.Sprintf("第%d章 后续", i+6),
