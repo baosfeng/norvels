@@ -96,8 +96,9 @@ func TestEncodeLayout(t *testing.T) {
 	}
 	// 码表外的字符：3 字节层直接是码点（U+4E01 → E0 4E 01，不是 UTF-8 的 E4 B8 81）。
 	orphan := firstUncoded(t, 0x4E01)
-	if enc := mustEncode(t, string(orphan)); !bytes.Equal(enc, []byte{0xE0, 0x4E, 0x01}) {
-		t.Fatalf("兜底字符编码成 %x，想要 e04e01", enc)
+	wantOrphan := []byte{0xE0, byte(orphan >> 8), byte(orphan)}
+	if enc := mustEncode(t, string(orphan)); !bytes.Equal(enc, wantOrphan) {
+		t.Fatalf("码表外字符 U+%04X 编码成 %x，想要 %x", orphan, enc, wantOrphan)
 	}
 	// 非法字节：转义段 = 0xFF + 段长 + 原始字节。
 	if enc := mustEncode(t, "\x80\xFF"); !bytes.Equal(enc, []byte{0xFF, 0x02, 0x80, 0xFF}) {
@@ -137,7 +138,6 @@ func TestDecodeCorrupt(t *testing.T) {
 		in   []byte
 	}{
 		{"2 字节码截断", []byte{0xC1}},
-		{"2 字节码越界", []byte{0xDF, 0xFF}},
 		{"3 字节码截断", []byte{0xE5, 0x00}},
 		{"3 字节码超出 U+10FFFF", []byte{0xF5, 0x00, 0x00}},
 		{"3 字节码落在代理区", []byte{0xE0, 0xD8, 0x00}},
@@ -156,6 +156,20 @@ func TestDecodeCorrupt(t *testing.T) {
 				t.Fatalf("错误不是 ErrCorrupt：%v", err)
 			}
 		})
+	}
+}
+
+// TestDecodeCodeOutOfRange 码位越界只有「码表不满」时才可能出现：内置表是满容量的，
+// 所以用小表钉这条分支——流与表不匹配时必须报错，不能悄悄解出别的字。
+func TestDecodeCodeOutOfRange(t *testing.T) {
+	small, err := LoadTable(rawBlob(tableVersion, singlesCap, []uint32{'a'}))
+	if err != nil {
+		t.Fatalf("构造小表失败: %v", err)
+	}
+	for _, in := range [][]byte{{0x01}, {0xC0, 0x01}} { // 1 字节码 1、2 字节码 192，都超出 1 项
+		if got, err := decodeTable(small, nil, in); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("%x 解出 %x，想要 ErrCorrupt", in, got)
+		}
 	}
 }
 
@@ -200,15 +214,21 @@ func TestRandomBytesNeverPanic(t *testing.T) {
 	}
 }
 
-// firstUncoded 从 start 起找一个不在内置码表里的字符，用来测 3 字节兜底层。
+// firstUncoded 从 start 起找一个不在内置码表里的 BMP 码点，用来测 3 字节兜底层。
+// 扫到 BMP 末尾再从头补扫：码表只占 BMP 的八分之一，两段里必有空位。
 func firstUncoded(t *testing.T, start rune) rune {
 	t.Helper()
-	for r := start; r < start+0x1000; r++ {
+	for r := start; r <= 0xFFFF; r++ {
 		if _, ok := builtin.code(r); !ok {
 			return r
 		}
 	}
-	t.Fatal("找不到码表外的字符，占位表太大，测试前提不成立")
+	for r := rune(0); r < start; r++ {
+		if _, ok := builtin.code(r); !ok {
+			return r
+		}
+	}
+	t.Fatal("BMP 里没有码表外的字符，测试前提不成立")
 	return 0
 }
 

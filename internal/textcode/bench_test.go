@@ -5,12 +5,18 @@ import (
 	"unicode/utf8"
 )
 
-// benchText 造一段「像正文」的中文：按码位顺序取内置表里的字，前 192 个走 1 字节层，
-// 其余走 2 字节层——真实语料训练出的码表也是这个分布（平均 1.36 字节/字）。
+// benchText 造一段「像正文」的中文：按全库字频的实际分布抽样——约 63% 的字落在 1 字节层、
+// 37% 落在 2 字节层、0.007% 落在表外（3 字节兜底）。这样基准测的是真实负载，
+// 而不是「整表轮转一遍」这种 1 字节层只占 2% 的假分布。
 func benchText(n int) []byte {
-	out := make([]byte, 0, 3*n)
+	out := make([]byte, 0, 2*n)
+	doubles := len(builtin.entries) - singlesCap
 	for i := 0; i < n; i++ {
-		out = utf8.AppendRune(out, builtin.entries[i%len(builtin.entries)])
+		idx := singlesCap + (i/100)%doubles // 2 字节层
+		if i%100 < 63 {
+			idx = (i / 100) % singlesCap // 1 字节层
+		}
+		out = utf8.AppendRune(out, builtin.entries[idx])
 	}
 	return out
 }

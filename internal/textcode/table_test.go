@@ -208,13 +208,4 @@ func TestLoadTableRejects(t *testing.T) {
 	}
 }
 
-// TestLoadBuiltinBlob 内置码表字节必须能被独立加载（别人拿到这份字节就能解）。
-func TestLoadBuiltinBlob(t *testing.T) {
-	tbl, err := LoadTable(builtinBlob)
-	if err != nil {
-		t.Fatalf("加载内置码表失败: %v", err)
-	}
-	if len(tbl.entries) != len(builtin.entries) {
-		t.Fatalf("项数 %d != %d", len(tbl.entries), len(builtin.entries))
-	}
-}
+// 内置码表字节的自描述与自校验见 codebook_test.go 的 TestBuiltinBlobSelfCheck。
