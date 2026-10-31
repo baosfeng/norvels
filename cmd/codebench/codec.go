@@ -11,17 +11,13 @@ import (
 	"norvels/internal/textcode"
 )
 
-// 库内块 BLOB 的算法标记，与 internal/store/compress.go 保持一致（只读侧必须认得）。
+// 库内块 BLOB 的算法标记，与 internal/store/compress.go 保持一致（只读侧必须认得全部四种，
+// 否则迁移到新格式后本工具会直接读不动库）。
 const (
-	storedRaw   byte = 0x00 // 未压缩
-	storedFlate byte = 0x01 // flate-6（历史格式，仅读）
-	storedZstd  byte = 0x02 // zstd SpeedBestCompression（当前写入格式）
-)
-
-// 本工具自己的块格式标记：1 字节标记 + 载荷；码本组用 0x03 与纯 zstd 区分。
-const (
-	benchZstd     byte = 0x02
-	benchZstdCode byte = 0x03
+	storedRaw      byte = 0x00 // 未压缩
+	storedFlate    byte = 0x01 // flate-6（历史格式，仅读）
+	storedZstd     byte = 0x02 // zstd 压在原始 UTF-8 上（码本无收益时的回退格式）
+	storedCodebook byte = 0x03 // zstd 压在 textcode.Encode 的码本流上（迁移 0017 起的写入格式）
 )
 
 // blockTarget 是「1 MB 块」的目标字节数，与 store.BlockTargetBytes 同值。
@@ -76,13 +72,13 @@ func (c *compressor) decompress(payload []byte) ([]byte, error) {
 // packOne 把一块原始 UTF-8 字节压成自包含 BLOB：[1 字节标记][载荷]。
 // useCode 为真时先过 textcode.Encode，再压码本流。
 func packOne(c *compressor, raw []byte, useCode bool) ([]byte, error) {
-	body, marker := raw, benchZstd
+	body, marker := raw, storedZstd
 	if useCode {
 		coded, err := textcode.Encode(nil, raw)
 		if err != nil {
 			return nil, fmt.Errorf("textcode 编码: %w", err)
 		}
-		body, marker = coded, benchZstdCode
+		body, marker = coded, storedCodebook
 	}
 	z := c.compress(body)
 	out := make([]byte, 0, len(z)+1)
@@ -99,7 +95,7 @@ func unpackOne(c *compressor, blob []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if blob[0] == benchZstdCode {
+	if blob[0] == storedCodebook {
 		return textcode.Decode(nil, raw)
 	}
 	return raw, nil
@@ -123,6 +119,12 @@ func decompressStored(c *compressor, packed []byte) ([]byte, error) {
 		return out, nil
 	case storedZstd:
 		return c.decompress(packed[1:])
+	case storedCodebook:
+		raw, err := c.decompress(packed[1:])
+		if err != nil {
+			return nil, err
+		}
+		return textcode.Decode(nil, raw)
 	default:
 		return nil, fmt.Errorf("未知的库内算法标记 0x%02x", packed[0])
 	}
