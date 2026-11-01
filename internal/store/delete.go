@@ -56,17 +56,7 @@ func (s *Store) DeleteBook(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	for _, table := range bookCascadeTables {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE book_id = ?", id); err != nil {
-			return fmt.Errorf("store: delete book %d from %s: %w", id, table, err)
-		}
-	}
-	if err := deleteBookRow(ctx, tx, id); err != nil {
-		return err
-	}
-	// 被这本书取代的版本（0021：审核期间隐藏的新版本 / 已替换掉的旧版本）恢复为当前版本：
-	// 取代者已经不在了，superseded_by 指向一个不存在的 id 会让那本书永远从书架消失。
-	if err := releaseSupersededBooks(ctx, tx, id); err != nil {
+	if err := deleteBookRows(ctx, tx, id); err != nil {
 		return err
 	}
 	for _, authorID := range authorIDs {
@@ -113,6 +103,24 @@ func bookAuthorIDsForDelete(ctx context.Context, tx *sql.Tx, id int64) ([]int64,
 		return nil, fmt.Errorf("store: list book authors rows %d: %w", id, err)
 	}
 	return ids, nil
+}
+
+// deleteBookRows 清掉主库侧这本书的全部行：从属子表 → books 本体 → 释放被它取代的版本。
+//
+// 单独成函数（而不是留在 DeleteBook 里）：删书是「一长串同形删除 + 收尾」的线性流程，
+// 把循环与两级错误分支收进这里，DeleteBook 只保留事务编排，圈复杂度也留在阈值内。
+func deleteBookRows(ctx context.Context, tx *sql.Tx, id int64) error {
+	for _, table := range bookCascadeTables {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE book_id = ?", id); err != nil {
+			return fmt.Errorf("store: delete book %d from %s: %w", id, table, err)
+		}
+	}
+	if err := deleteBookRow(ctx, tx, id); err != nil {
+		return err
+	}
+	// 被这本书取代的版本（0021：审核期间隐藏的新版本 / 已替换掉的旧版本）恢复为当前版本：
+	// 取代者已经不在了，superseded_by 指向一个不存在的 id 会让那本书永远从书架消失。
+	return releaseSupersededBooks(ctx, tx, id)
 }
 
 // releaseSupersededBooks 把「被 id 取代」的书恢复成当前版本（superseded_by = 0）。
