@@ -194,8 +194,8 @@ func (r *runState) recordJobFile(ctx context.Context, source, display, status, r
 // 不再进 SaveBook；「疑似相关」只加备注，照常导入。
 // Force 优先于 Update 与判重（store 的既有语义）：显式覆盖时不走追更匹配、也不判重。
 func (r *runState) saveOne(ctx context.Context, source, display string, book *model.ParsedBook, opt Options) {
-	skipped, note := r.judgeDuplicate(ctx, source, display, book, opt)
-	if skipped {
+	dec := r.judgeDuplicate(ctx, source, display, book, opt)
+	if dec.skip {
 		return
 	}
 	sr, err := r.st.SaveBook(ctx, book, store.SaveOptions{Force: opt.Force, Update: opt.Update})
@@ -205,11 +205,16 @@ func (r *runState) saveOne(ctx context.Context, source, display string, book *mo
 	case sr.Skipped:
 		r.res.Skipped++
 		r.recordJobFile(ctx, source, display, store.ImportFileStatusSkipped,
-			joinReason("库中已存在同一本书", note), 0)
+			joinReason("库中已存在同一本书", dec.note), 0)
 	default:
 		// 追更角标不由这里写：它在 SaveBook 的追更事务内累加（见 store.updateBookAfterAppend），
 		// 否则「任务已终态但角标还没落库」会在验收里偶发可见。
 		r.res.Imported = append(r.res.Imported, sr.BookID)
+		note := dec.note
+		// 升级候选：新书已入库（隐藏），这里补落审核记录（设计 §6 / §7）。
+		if dec.upgrade != nil {
+			note = r.recordUpgrade(ctx, *dec.upgrade, sr.BookID)
+		}
 		r.recordJobFile(ctx, source, display, store.ImportFileStatusImported, note, sr.BookID)
 	}
 }

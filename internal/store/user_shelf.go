@@ -38,7 +38,7 @@ func (s *Store) ListShelf(ctx context.Context, page, size int) ([]ShelfItem, int
 	}
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT "+shelfBookColumns+", sh.added_at FROM user_shelf sh "+
-			"JOIN books b ON b.id = sh.book_id "+
+			"JOIN books b ON b.id = sh.book_id AND "+activeBookCond+" "+
 			"LEFT JOIN authors a ON a.id = b.author_id "+
 			"WHERE sh.user_id = ? "+
 			"ORDER BY sh.added_at DESC, sh.book_id DESC LIMIT ? OFFSET ?",
@@ -77,11 +77,15 @@ func scanShelfItems(rows *sql.Rows, size int) ([]ShelfItem, error) {
 	return items, nil
 }
 
-// countShelf 数当前账号书架里的书。
+// countShelf 数当前账号书架里的书（与列表同口径：只数当前版本）。
+//
+// 被替换掉的旧版本仍留在 user_shelf 里（替换不动个人数据）：用户回滚之后
+// 那本书会重新出现在书架上，不需要重新加入。
 func (s *Store) countShelf(ctx context.Context, userID int64) (int, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM user_shelf WHERE user_id = ?", userID).Scan(&total); err != nil {
+		"SELECT COUNT(*) FROM user_shelf sh JOIN books b ON b.id = sh.book_id AND "+
+			activeBookCond+" WHERE sh.user_id = ?", userID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("store: count shelf: %w", err)
 	}
 	return total, nil

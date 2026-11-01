@@ -118,6 +118,30 @@ func (s *Store) DedupeThreshold(ctx context.Context) (float64, error) {
 	return v, nil
 }
 
+// SettingKeyAIEnabled 是 AI 审核开关在 settings 表里的键（设计 §6，默认 false）。
+//
+// 为什么是库里的设置项而不是环境变量：开关要能在不重启、不改部署的情况下关掉
+// （AI 只作建议，关掉之后导入与书架行为完全不变）。API key 相反——只走环境变量，
+// 永不落库（见 docs/deploy.md）。
+const SettingKeyAIEnabled = "ai.enabled"
+
+// AIEnabled 读取 AI 审核开关：未配置或值非法一律按关闭处理。
+//
+// 与去重阈值不同：阈值写错会显式报错（猜错单位的代价是所有书被判重复），
+// 而开关写错按「关」处理最安全——AI 是可选增强，读不懂的配置不该把正文外发出去。
+func (s *Store) AIEnabled(ctx context.Context) bool {
+	raw, ok, err := s.GetSetting(ctx, SettingKeyAIEnabled)
+	if err != nil || !ok {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 // SettingKeyTagRules 是词表打标规则在 settings 表里的键。
 const SettingKeyTagRules = "tag_rules"
 

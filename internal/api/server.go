@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"norvels/internal/ai"
 	"norvels/internal/ruleimport"
 	"norvels/internal/store"
 	"norvels/internal/webui"
@@ -43,6 +44,25 @@ type Config struct {
 	// RuleImportOptions 透传给 internal/ruleimport（取回 URL / legado:// 链接）：
 	// 零值用默认受限 HTTP 客户端；测试注入 Fetcher 避免真实出网。
 	RuleImportOptions ruleimport.Options
+	// ---- AI 审核（设计 §6）----
+	// APIKey 只从环境变量 NORVELS_AI_API_KEY 进内存，**永不落库、永不进日志**；
+	// 空值表示功能等同不存在（worker 把待审记录直接落 needs_manual）。
+	AIAPIKey string
+	// AIBaseURL / AIModel 是 OpenAI 兼容端点与模型名；空值用 internal/ai 的默认值
+	// （DeepSeek 官方端点 + deepseek-chat）。
+	AIBaseURL string
+	AIModel   string
+}
+
+// AIJudge 按配置构造裁决器；没有 key 时返回 nil（调用方按「功能不存在」处理）。
+//
+// 放在 api 包而不是 cmd：worker 也在这个包里，构造与使用同一处，cmd 只传配置字符串，
+// 不必为了拿一个接口值而依赖 internal/ai。
+func (c Config) AIJudge() ai.Judge {
+	if c.AIAPIKey == "" {
+		return nil
+	}
+	return ai.New(ai.Options{APIKey: c.AIAPIKey, BaseURL: c.AIBaseURL, Model: c.AIModel})
 }
 
 // AuthEnabled 报告是否启用鉴权。
@@ -171,6 +191,11 @@ func (s *Server) registerImportRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+sourceProfilesPath+"/validate", s.handleValidateSourceProfiles)
 	// Legado 书源导入（预览 + 应用）：粘贴 JSON → 适配成规则包。
 	mux.HandleFunc("POST "+sourceProfilesPath+"/import", s.handleImportLegadoSources)
+	// AI 审核（0021，设计 §6 / §7）：列表 + 替换/保留 + 回滚。
+	// 升级候选导入时就会落一条 pending 记录，替换必须人工确认，绝不自动替换。
+	mux.HandleFunc("GET /api/import/reviews", s.handleListImportReviews)
+	mux.HandleFunc("POST /api/import/reviews/{id}/decide", s.handleDecideImportReview)
+	mux.HandleFunc("POST /api/import/reviews/{id}/rollback", s.handleRollbackImportReview)
 }
 
 // registerMiscRoutes 注册健康检查、统计、设置、阅读进度与登录。

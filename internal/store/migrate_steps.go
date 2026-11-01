@@ -240,6 +240,7 @@ var migrationStepsByVersion = map[int][]migrationStep{
 		Name: "add book quality columns",
 		Run:  addBookQualityColumnsStep,
 	}},
+	21: {{Name: "create import reviews and add superseded_by", Run: createImportReviewsStep}},
 }
 
 // storeStepsByVersion 登记「需要 Store」的迁移步骤（跨库写入，拿不到连接就做不了）。

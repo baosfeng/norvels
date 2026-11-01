@@ -57,5 +57,9 @@ func bookFilter(ctx context.Context, q BookQuery) ([]string, []any) {
 	cwhere, cargs := bookCategoryFilter(q)
 	where = append(where, cwhere...)
 	args = append(args, cargs...)
+	// 版本替换（0021）：被取代的旧版本不进书架、搜索与任何书籍列表。
+	// 这是**硬条件**而不是筛选项：用户看不到「同一本书的两个版本」，
+	// 版本对照只在 AI 审核页出现（GET /api/import/reviews）。
+	where = append(where, activeBookCond)
 	return where, args
 }

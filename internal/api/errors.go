@@ -59,6 +59,9 @@ const (
 	codePayloadTooLarge = "payload_too_large"
 	codeTooManyFiles    = "too_many_files"
 	codeEncryptedEPUB   = "encrypted_epub"
+	// codeReviewState 表示 AI 审核记录的状态不允许这次操作（409）：前端提示
+	// 「刷新后看最新状态」，而不是「稍后重试」（与 conflict 分开）。
+	codeReviewState = "review_state"
 	// codeInvalidPattern 表示自定义章节规则里的正则编译失败（spec §2.2）：
 	// 与其它参数错误分开成独立码，前端才能把错误标到具体那一行正则上。
 	codeInvalidPattern = "invalid_pattern"

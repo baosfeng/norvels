@@ -85,6 +85,12 @@ func compareVersionQuality(oldQ, newQ BookQuality) VersionPick {
 	return p
 }
 
+// CompareBookQuality 是 compareVersionQuality 的导出入口。
+//
+// 给 api 的审核列表用：列表要展示「规则怎么判的」，必须与导入时的判定同一份口径，
+// 展示端不重新实现阈值（否则同一对书在导入备注与审核页上会给出不同结论）。
+func CompareBookQuality(oldQ, newQ BookQuality) VersionPick { return compareVersionQuality(oldQ, newQ) }
+
 // betterDimensions 列出显著更优的维度（顺序固定：噪声 → 乱码 → 结构）。
 func betterDimensions(oldQ, newQ BookQuality) []QualityDimension {
 	out := make([]QualityDimension, 0, 3)

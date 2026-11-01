@@ -12,5 +12,6 @@
 - [api-p3.md](api/api-p3.md)：P3 增量（评分/系列/书单/标签 CRUD/阅读时长与历史/批量与新建章节）
 - [api-category.md](api/api-category.md)：书籍分类（0015：两级分类、导入推断、`GET /api/categories`）
 - [api-account.md](api/api-account.md)：账号（0016：注册/登录/登出/me）与我的书架；个人记录按账号隔离
+- [api-reviews.md](api/api-reviews.md)：AI 审核（0021：升级候选列表 / 替换 / 保留 / 回滚；任何替换都要人工确认）
 
 原章节号对照：§1/§7/§9 → [api-dashboard.md](api/api-dashboard.md)；§2/§3 → [api-books.md](api/api-books.md)；§4/§8/§10 → [README.md](api/README.md)；§5/§6 → [api-import.md](api/api-import.md)；来源规则包 → [api-source.md](api/api-source.md)。

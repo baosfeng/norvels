@@ -21,6 +21,11 @@ type UpgradeCandidate struct {
 	New          store.BookQuality        `json:"new"`
 	Better       []store.QualityDimension `json:"better"`          // 显著更优的维度
 	Worse        []store.QualityDimension `json:"worse,omitempty"` // 恒为空（有更差就不是升级候选）
+	// NewBookID 是新版本入库后的 book id（0 = 还没入库 / 入库失败）。
+	// 0021 起升级候选照常入库但立刻隐藏，审核记录靠它指向「待确认的新版本」。
+	NewBookID int64 `json:"newBookId"`
+	// ReviewID 是这次候选对应的审核记录 id（0 = 记录没落成，审核不可用）。
+	ReviewID int64 `json:"reviewId"`
 }
 
 // upgradeCandidate 把一次判重报告翻译成升级候选；不是升级候选时返回 ok=false。

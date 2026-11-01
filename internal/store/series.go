@@ -60,9 +60,9 @@ func (s *Store) ListSeries(ctx context.Context, q string, page, size int) ([]Ser
 	return items, total, nil
 }
 
-// seriesWhere 编译系列筛选：空系列永不出现在列表里。
+// seriesWhere 编译系列筛选：空系列永不出现在列表里，被替换掉的旧版本也不参与聚合。
 func seriesWhere(q string) ([]string, []any) {
-	where := []string{"TRIM(b.series) <> ''"}
+	where := []string{"TRIM(b.series) <> ''", activeBookCond}
 	args := make([]any, 0, 1)
 	if kw := strings.TrimSpace(q); kw != "" {
 		where = append(where, "TRIM(b.series) LIKE ? ESCAPE '!'")
@@ -126,7 +126,8 @@ func (s *Store) SeriesBooks(ctx context.Context, name string) ([]BookBrief, erro
 	}
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT "+bookBriefColumns+" FROM books b LEFT JOIN authors a ON a.id = b.author_id "+
-			"WHERE TRIM(b.series) = ? ORDER BY b.series_index ASC, b.updated_at DESC, b.id ASC", trimmed)
+			"WHERE TRIM(b.series) = ? AND "+activeBookCond+
+			" ORDER BY b.series_index ASC, b.updated_at DESC, b.id ASC", trimmed)
 	if err != nil {
 		return nil, fmt.Errorf("store: list series books: %w", err)
 	}

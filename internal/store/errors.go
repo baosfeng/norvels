@@ -29,6 +29,12 @@ var (
 	// 而是「这个操作在这份目录结构上不成立」，前端应提示用户重选章节，
 	// 而不是当成表单校验错误。具体原因写在错误信息里（跨卷 / 不连续 / 少于 2 章）。
 	ErrNotMergeable = errors.New("store: chapters are not mergeable")
+	// ErrReviewState 表示 AI 审核记录的状态不允许这次操作（api 映射 409）。
+	//
+	// 独立哨兵而不是复用 ErrConflict：审核状态机是「这个操作在这条记录上不成立」
+	// （已决策的记录不能再决策、没替换过的不能回滚），重试也没用；前端据此提示
+	// 「刷新后看最新状态」，而不是「稍后重试」。
+	ErrReviewState = errors.New("store: review state does not allow this operation")
 	// ErrSchemaTooNew 表示库由更新版本迁移过：拒绝打开并写入，避免静默数据损坏。
 	// 具体版本在 *SchemaVersionError 上（errors.As 可取），见 schema_guard.go。
 	ErrSchemaTooNew = errors.New("store: database schema is newer than this binary")

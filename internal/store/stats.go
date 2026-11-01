@@ -14,7 +14,7 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		last string
 	)
 	err := s.db.QueryRowContext(ctx,
-		"SELECT (SELECT COUNT(*) FROM books), "+
+		"SELECT (SELECT COUNT(*) FROM books WHERE superseded_by = 0), "+
 			"(SELECT COUNT(*) FROM chapters), "+
 			"(SELECT COUNT(*) FROM authors), "+
 			"(SELECT COALESCE(SUM(word_count), 0) FROM books), "+
