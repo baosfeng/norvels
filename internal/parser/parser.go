@@ -208,6 +208,7 @@ func assembleBook(d *Doc, name string, sum [32]byte) *model.ParsedBook {
 		Chapters:   d.Chapters,
 		MultiBook:  detectMultiBook(d.preamble(), d.restarts, len(d.Chapters)),
 		Warnings:   dedupeWarnings(d.Warnings),
+		Quality:    computeQuality(d),
 	}
 }
 

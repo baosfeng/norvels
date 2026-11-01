@@ -146,8 +146,10 @@ func Splitters() []Splitter
 
 ## 6. 验证口径
 
-- `go test ./internal/parser/ -cover`：parser 包覆盖率 ≥ 85%（当前 85.8%）
+- `go test ./internal/parser/ -cover`：parser 包覆盖率 ≥ 85%（当前 89.0%）
 - 每个内置策略至少一条定向测试（正常 + 边界 + 放弃/降级路径）
+- 质量指标（`ParsedBook.Quality`）：口径写在 `internal/parser/quality_metrics.go` 的包注释里；
+  40 MB 正文的指标开销约 100 ms（`go test ./internal/parser/ -bench QualityMetrics40MB -benchtime=1x`）
 - 策略叠加的回归用例：同一 fixture 在不同 `ForceSplitter` / `ForceEncoding` 下结果可预期
 - 真实语料抽检仍走 `TestSampleRealCorpus`（`NORVELS_SAMPLE_DIR` 环境变量，默认跳过）
 

@@ -51,18 +51,29 @@ func findOutliers(chapters []string) []int {
 		return nil
 	}
 	lens := make([]int, len(chapters))
-	total := 0
 	for i, c := range chapters {
 		lens[i] = runeLen(c)
-		total += lens[i]
 	}
-	mean := float64(total) / float64(len(chapters))
+	return findOutliersByLen(lens)
+}
+
+// findOutliersByLen 与 findOutliers 同一判定，章长由调用方预先算好——
+// 质量指标在统计正文时已经拿到每章字符数，不必为此再遍历一遍正文。
+func findOutliersByLen(lens []int) []int {
+	if len(lens) == 0 {
+		return nil
+	}
+	total := 0
+	for _, n := range lens {
+		total += n
+	}
+	mean := float64(total) / float64(len(lens))
 	variance := 0.0
 	for _, n := range lens {
 		d := float64(n) - mean
 		variance += d * d
 	}
-	sd := math.Sqrt(variance / float64(len(chapters)))
+	sd := math.Sqrt(variance / float64(len(lens)))
 	median := medianOf(lens)
 	statLimit := mean + 2*sd
 	hardLimit := math.Max(float64(2*median), minOutlierChars)

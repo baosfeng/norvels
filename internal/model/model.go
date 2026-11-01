@@ -37,6 +37,33 @@ type ParsedBook struct {
 	AutoTags     []string
 	Cover        *CoverImage // 封面；nil 表示没有
 	SourceFormat string      // 源文件格式：txt / epub
+
+	// Quality 是可解释质量指标（txt 解析链路计算；其它来源为零值 = 未计算）。
+	// 只作诊断与版本择优的输入，不参与落库，口径见 internal/parser/quality_metrics.go。
+	Quality QualityMetrics
+}
+
+// QualityMetrics 是解析产物的可解释质量指标，供版本择优时逐项对比新旧版本。
+//
+// 比率类字段范围 0~1：除 StructureScore 外都是「越低越好」；计数类字段是原始值，
+// 用于给用户展示可核对的绝对量（如「噪声 120 行 → 3 行」）。
+type QualityMetrics struct {
+	GarbageChars        int     // 乱码字符数（按字符）
+	GarbageRatio        float64 // 乱码率 0~1
+	TotalChars          int     // 全书正文字符数（按字符）
+	RawLines            int     // 清洗器处理过的非空原始行数（按行）
+	DroppedLines        int     // 清洗器丢弃的噪声行数（按行）
+	NoiseRatio          float64 // 噪声率 0~1
+	CountSanity         float64 // 章数合理性 0~1（越大越好）
+	EmptyChapterRatio   float64 // 空章比例 0~1
+	OutlierChapterRatio float64 // 离群长章比例 0~1
+	StructureScore      float64 // 结构分 0~1（越大越好）
+	ContentBytes        int     // 全书正文字节数
+	DuplicateBytes      int     // 书内重复段落字节数
+	DuplicateRatio      float64 // 内部重复率 0~1
+	ChapterCount        int     // 章数
+	WordCount           int     // 总字数（与 ParsedBook.WordCount 同口径）
+	AvgChapterChars     int     // 平均章长（按字符）
 }
 
 // CoverImage 是随书入库的封面。
