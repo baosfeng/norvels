@@ -15,8 +15,9 @@
 ├── compose.yml
 ├── .env
 ├── update.sh
-├── data/                   # 数据库（SQLite 主库 + WAL）
-│   └── norvels.db
+├── data/                   # 数据库（主库 + 正文库，必须成对备份/恢复）
+│   ├── norvels.db
+│   └── norvels-content.db
 └── books/                  # 小说 txt 源目录（只读挂载，导入时才用）
 ```
 
@@ -83,7 +84,9 @@ sudo ./update.sh --check          # 只看本地状态
 sudo ./update.sh --check-updates  # 问上游有没有新版本（不升级、不重启）
 ```
 
-脚本按顺序做四件事：**备份数据库**（`backup/norvels-<旧版本>-<时间>.db`，默认保留 3 份，`NORVELS_BACKUP_KEEP` 可改）→ 拉镜像 → 一次性容器预跑迁移 → 重启并轮询健康。任何一步失败都会**自动把镜像版本回滚**到升级前，并提示按「备份」一节恢复数据库（schema 只前进，镜像回滚不恢复数据）。
+脚本按顺序做四件事：**成对备份数据库**（`backup/norvels-<旧版本>-<时间>.db` + 同名 `-content.db`，正文库存在时一并备份，默认保留 3 组，`NORVELS_BACKUP_KEEP` 可改）→ 拉镜像 → 一次性容器预跑迁移 → 重启并轮询健康。任何一步失败都会**自动把镜像版本回滚**到升级前，并提示按「备份」一节恢复数据库（schema 只前进，镜像回滚不恢复数据）。
+
+> **0018 之后正文在 `norvels-content.db`**：恢复备份必须两个文件一起放回，只恢复主库会得到「章节在、正文空」的半套数据；正文库缺失时服务会按未迁移库只读降级。
 
 > 想让这条命令完全免密，在 NAS 上写 `/etc/sudoers.d/norvels`：
 > `momo ALL=(ALL) NOPASSWD: /vol1/norvels/update.sh, /vol1/norvels/update.sh *`

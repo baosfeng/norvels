@@ -120,16 +120,27 @@ case "$KEEP" in (''|*[!0-9]*) die "NORVELS_BACKUP_KEEP 必须是数字" ;; esac
 
 if [ -f "$DATA_DIR/norvels.db" ]; then
   mkdir -p "$BACKUP_DIR"
-  echo "== 备份数据库（保留最近 $KEEP 份）=="
+  echo "== 备份数据库（主库 + 正文库成对备份，保留最近 $KEEP 份）=="
   docker compose stop
-  BK="$BACKUP_DIR/norvels-$OLD_VERSION-$(date +%Y%m%d-%H%M).db"
+  STAMP=$(date +%Y%m%d-%H%M)
+  BK="$BACKUP_DIR/norvels-$OLD_VERSION-$STAMP.db"
+  BK_C="$BACKUP_DIR/norvels-$OLD_VERSION-$STAMP-content.db"
   cp -a "$DATA_DIR/norvels.db" "$BK"
   SRC=$(stat -c %s "$DATA_DIR/norvels.db")
   DST=$(stat -c %s "$BK")
   [ "$SRC" = "$DST" ] || die "备份大小不一致（$SRC vs $DST），已中止"
   echo "备份完成：$BK（$DST 字节）"
-  ls -1t "$BACKUP_DIR"/norvels-*.db 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
-    rm -f "$old" && echo "  清理旧备份：$old"
+  # 0018 起正文在独立文件：少备份它，恢复时就只有半套数据（章节在、正文没了）。
+  if [ -f "$DATA_DIR/norvels-content.db" ]; then
+    cp -a "$DATA_DIR/norvels-content.db" "$BK_C"
+    SRC_C=$(stat -c %s "$DATA_DIR/norvels-content.db")
+    DST_C=$(stat -c %s "$BK_C")
+    [ "$SRC_C" = "$DST_C" ] || die "正文库备份大小不一致（$SRC_C vs $DST_C），已中止"
+    echo "正文库备份完成：$BK_C（$DST_C 字节）"
+  fi
+  # 保留策略按主库计份数；清理时连同同批次的正文库一起删（只删主库会留孤儿文件）。
+  ls -1t "$BACKUP_DIR"/norvels-*.db 2>/dev/null | grep -v -- '-content\.db$' | tail -n +$((KEEP + 1)) | while read -r old; do
+    rm -f "$old" "${old%.db}-content.db" && echo "  清理旧备份：$old"
   done
 fi
 
