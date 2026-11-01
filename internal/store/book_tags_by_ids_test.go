@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
@@ -44,15 +43,20 @@ func TestBookTagsByIDsEmptyInput(t *testing.T) {
 	}
 }
 
-func TestBookTagsByIDsRejectsTooMany(t *testing.T) {
+// TestBookTagsByIDsChunksOverLimit 断言超量入参被分段查询（不报错、不丢结果）。
+func TestBookTagsByIDsChunksOverLimit(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	ids := make([]int64, maxIDsPerQuery+1)
 	for i := range ids {
-		ids[i] = int64(i + 1)
+		ids[i] = int64(10000 + i)
 	}
-	if _, err := st.BookTagsByIDs(ctx, ids); !errors.Is(err, ErrInvalidArgument) {
-		t.Fatalf("超量应为 ErrInvalidArgument，得到 %v", err)
+	got, err := st.BookTagsByIDs(ctx, ids)
+	if err != nil {
+		t.Fatalf("超量应分段查询而不是报错: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("不存在的 id 不应出现在 map 里，得到 %v", got)
 	}
 }
 

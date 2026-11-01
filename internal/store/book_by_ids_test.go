@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
@@ -69,15 +68,25 @@ func TestBooksByIDsSkipsSuperseded(t *testing.T) {
 	}
 }
 
-func TestBooksByIDsRejectsTooMany(t *testing.T) {
+// TestBooksByIDsChunksOverLimit 断言超量入参被分段查询，而不是报错。
+//
+// 回归的是「召回候选池 520 > 单条 IN 上限 500」：分段必须对调用方完全透明，
+// 否则用户多出几个兴趣分类就拿到 500，而错误信息还指向 sqlite 而不是业务。
+func TestBooksByIDsChunksOverLimit(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
+	want := seedCategoryBook(t, ctx, st, "跨段书", "作者", "武侠", "", "chunk1")
 	ids := make([]int64, maxIDsPerQuery+1)
 	for i := range ids {
-		ids[i] = int64(i + 1)
+		ids[i] = int64(10000 + i)
 	}
-	if _, err := st.BooksByIDs(ctx, ids); !errors.Is(err, ErrInvalidArgument) {
-		t.Fatalf("超量应为 ErrInvalidArgument，得到 %v", err)
+	ids[maxIDsPerQuery] = want // 唯一命中落在第二段
+	items, err := st.BooksByIDs(ctx, ids)
+	if err != nil {
+		t.Fatalf("超量应分段查询而不是报错: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != want {
+		t.Fatalf("跨段 id 应被查到，得到 %+v", items)
 	}
 }
 
