@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"norvels/internal/recstore"
 	"norvels/internal/store"
@@ -88,7 +89,7 @@ func validateEventBatch(events []eventPayload) error {
 // validateEvent 校验单条事件的 kind / 必填字段 / 长度上限。
 func validateEvent(ev eventPayload) error {
 	if !validEventKind(ev.Kind) {
-		return badParam("kind %q 不合法（impression|click|read|view|search|shelf|rating）", ev.Kind)
+		return badParam("kind %q 不合法（可选：%s）", ev.Kind, strings.Join(recstore.EventKinds(), "|"))
 	}
 	if ev.Kind != recstore.KindSearch && ev.BookID <= 0 {
 		return badParam("%s 事件缺少 bookId", ev.Kind)
@@ -121,16 +122,9 @@ func validateEventTags(ev eventPayload) error {
 	return nil
 }
 
-// validEventKind 是 kind 白名单（与 recstore 的单一口径一致）。
-func validEventKind(kind string) bool {
-	switch kind {
-	case recstore.KindImpression, recstore.KindClick, recstore.KindRead,
-		recstore.KindView, recstore.KindSearch, recstore.KindShelf, recstore.KindRating,
-		recstore.KindDislike:
-		return true
-	}
-	return false
-}
+// validEventKind 委托给数据层的清单：白名单、报错文案、capabilities 下发的 kinds
+// 都来自 recstore.EventKinds()，加一种事件只改一处。
+func validEventKind(kind string) bool { return recstore.IsEventKind(kind) }
 
 // toRecEvents 把 API 传输结构转成数据层事件（字段一一对应，不改语义）。
 func toRecEvents(payloads []eventPayload) []recstore.Event {

@@ -133,7 +133,7 @@ func TestReasonFor(t *testing.T) {
 		{"全零", Candidate{}, contributions{}, ReasonRandom},
 	}
 	for _, c := range cases {
-		if got := reasonFor(c.cand, c.sc, interest); got != c.want {
+		if got := reasonFor(c.cand, c.sc, interest); got.Text != c.want {
 			t.Errorf("%s: reason = %q，期望 %q", c.name, got, c.want)
 		}
 	}

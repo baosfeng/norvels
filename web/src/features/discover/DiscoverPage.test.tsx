@@ -39,6 +39,8 @@ vi.mock("../../api/hooks", () => ({
     h.tab = tab;
     return h.byTab[tab] ?? h.fallback;
   },
+  // 能力清单在发现页只用来取 tab 名册；桩成「还没到」→ 页面走内置兜底名册。
+  useCapabilities: () => ({ data: null, loading: false, error: null, reload: vi.fn() }),
 }));
 
 const { DiscoverPage, RECOMMEND_LIMIT } = await import("./DiscoverPage");
@@ -131,6 +133,17 @@ describe("发现页：卡片流", () => {
     expect(impression).toHaveBeenCalledTimes(3);
     expect(impression.mock.calls.map(([payload]) => (payload as { bookId: number }).bookId)).toEqual([1, 2, 3]);
     expect((impression.mock.calls[0][0] as { extra?: string }).extra).toBe("因为你常看武侠");
+  });
+
+  it("埋点带 reasonCode 而不是文案：改措辞不该把看板的理由分布拆成两行", () => {
+    h.byTab = {
+      for_you: feed([item(1, { reasonCode: "interest:武侠" }), item(2), item(3)]),
+    };
+    renderPage();
+    const extras = impression.mock.calls.map(([payload]) => (payload as { extra?: string }).extra);
+    // 有 code 用 code；旧服务端没下发 code 时回落到文案（第一颗与后两颗各验一次）。
+    expect(extras[0]).toBe("interest:武侠");
+    expect(extras[1]).toBe("因为你常看武侠");
   });
 
   it("H5 与 PC 同一套 DOM：只在封面占位文案上分档", () => {

@@ -40,13 +40,16 @@ func (s *Server) recallSimilar(ctx context.Context, bookID int64) (*recallResult
 	return rr, nil
 }
 
-// addSimilar 收下相似候选并记下关系文案（先到先得）。
-func (rr *recallResult) addSimilar(bs store.BookSummary, reason string) {
+// addSimilar 收下相似候选并记下关系（文案 + 稳定 code，先到先得）。
+//
+// 文案给人看、code 给看板分组：两者一起存，才可能「改措辞不改统计口径」。
+func (rr *recallResult) addSimilar(bs store.BookSummary, reason recommend.Reason) {
 	if bs.ID == rr.selfID {
 		return
 	}
 	if _, ok := rr.similar[bs.ID]; !ok {
-		rr.similar[bs.ID] = reason
+		rr.similar[bs.ID] = reason.Text
+		rr.similarCodes[bs.ID] = reason.Code
 	}
 	rr.add(bs)
 }
@@ -60,7 +63,7 @@ func (s *Server) recallSameSeries(ctx context.Context, rr *recallResult, seed st
 	if err != nil {
 		return err
 	}
-	reason := recommend.SeriesReason(seed.Series)
+	reason := recommend.SeriesReasonFor(seed.Series)
 	for _, bs := range page.Items {
 		rr.addSimilar(bs, reason)
 	}
@@ -77,7 +80,7 @@ func (s *Server) recallSameAuthor(ctx context.Context, rr *recallResult, seed st
 		return err
 	}
 	for _, bs := range page.Items {
-		rr.addSimilar(bs, recommend.ReasonSameAuthor)
+		rr.addSimilar(bs, recommend.FixedReason(recommend.CodeSimilarAuthor))
 	}
 	return nil
 }
@@ -109,7 +112,7 @@ func (s *Server) recallSimilarCategory(ctx context.Context, rr *recallResult,
 		return err
 	}
 	for _, bs := range page.Items {
-		rr.addSimilar(bs, recommend.ReasonSameCategory)
+		rr.addSimilar(bs, recommend.FixedReason(recommend.CodeSimilarCategory))
 	}
 	return nil
 }

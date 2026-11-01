@@ -44,7 +44,8 @@ export function DiscoverCard({
     bookId: item.bookId,
     categoryL1: item.categoryL1,
     categoryL2: item.categoryL2,
-    extra: item.reason,
+    // 埋点带 code 而不是文案：文案改了不该把看板上的理由分布拆成两行。
+    extra: item.reasonCode || item.reason,
   };
   useImpression(cardRef, signal);
 

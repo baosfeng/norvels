@@ -102,11 +102,26 @@ body 同 GET（`profiles` 为**全量替换**，传空数组即清空）。
     "sourceProfiles": { "maxCount": 20, "maxRulesPerProfile": 30, "maxPatternRunes": 200, "maxNameRunes": 60 },
     "upload": { "maxFileBytes": 67108864, "maxTotalBytes": 268435456, "maxFiles": 20 },
     "import": { "maxWorkers": 32, "defaultMaxChapterChars": 30000, "defaultFallbackChunkChars": 8000 },
-    "dryRun": { "maxFiles": 200, "samples": 20, "errors": 50 }
-  }
+    "dryRun": { "maxFiles": 200, "samples": 20, "errors": 50 },
+    "pagination": { "maxSize": 200 }
+  },
+  "recommend": {
+    "enabled": true,
+    "tabs": [{ "id": "for_you", "label": "为你推荐" }, { "id": "resume", "label": "继续阅读" }, { "id": "random", "label": "随机发现" }],
+    "defaultLimit": 20,
+    "maxLimit": 50
+  },
+  "events": {
+    "maxBatch": 100, "maxFieldLength": 64, "maxExtraLength": 512, "maxTags": 20,
+    "kinds": ["impression", "click", "read", "view", "search", "shelf", "rating", "dislike"]
+  },
+  "ai": { "reviewAvailable": false, "curationAvailable": false }
 }
 ```
 
+- `recommend` / `events` / `ai` 是**运行时能力**（不是上限）：推荐库打不开时
+  `recommend.enabled=false`（前端整块不渲染），`events.kinds` 是合法埋点类型的唯一清单，
+  `ai.*` 只报「有没有 key」与模型名。第二个客户端接进来时从这里拿契约，不读源码。
 - `filters` 按 `priority` 升序（执行顺序），`metas` 按 `weight` 降序（投票顺位）；
 - `upload` 是本进程生效值（`Config.MaxUpload*` 注入，0 值回落默认）；
 - `dryRun` 是预检的规模上限（与 importer 的导出常量同源）：最多解析 200 个候选，

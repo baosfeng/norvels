@@ -52,19 +52,22 @@ type recallResult struct {
 	resume map[int64]float64
 	// similar 记录相似书召回里「与种子书的关系文案」；selfID 是种子书（不推荐自己）。
 	similar map[int64]string
-	selfID  int64
+	// similarCodes 是同一批关系文案的稳定 code（看板按它分组，文案改了不影响统计）。
+	similarCodes map[int64]string
+	selfID       int64
 }
 
 // newRecallResult 预分配容量（一屏召回通常几十到几百本）。
 func newRecallResult() *recallResult {
 	return &recallResult{
-		books:   make(map[int64]store.BookSummary, 64),
-		order:   make([]int64, 0, 64),
-		cooccur: make(map[int64]int, 32),
-		hot:     make(map[int64]recstore.HotBook, 32),
-		tags:    make(map[int64][]string, 64),
-		resume:  make(map[int64]float64, 16),
-		similar: make(map[int64]string, 32),
+		books:        make(map[int64]store.BookSummary, 64),
+		order:        make([]int64, 0, 64),
+		cooccur:      make(map[int64]int, 32),
+		hot:          make(map[int64]recstore.HotBook, 32),
+		tags:         make(map[int64][]string, 64),
+		resume:       make(map[int64]float64, 16),
+		similar:      make(map[int64]string, 32),
+		similarCodes: make(map[int64]string, 32),
 	}
 }
 
@@ -106,6 +109,7 @@ func (rr *recallResult) candidates(sig recallSignals) []recommend.Candidate {
 			Series:  bs.Series,
 			Resume:  rr.resume[id] > 0,
 			Similar: rr.similar[id] != "", SimilarReason: rr.similar[id],
+			SimilarReasonCode: rr.similarCodes[id],
 		})
 	}
 	return out

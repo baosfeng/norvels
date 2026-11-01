@@ -31,6 +31,32 @@ const (
 	KindDislike = "dislike"
 )
 
+// eventKinds 是全部合法 kind，**顺序即对外文档顺序**。
+//
+// 这是 kind 的唯一清单：api 的白名单校验、报错文案、capabilities 下发给前端，
+// 三处都从它派生。以前报错文案手写了一遍、白名单手写了一遍，加 dislike 时
+// 只改了白名单，用户照着报错提示改仍然 400。
+var eventKinds = []string{
+	KindImpression, KindClick, KindRead, KindView, KindSearch, KindShelf, KindRating, KindDislike,
+}
+
+// EventKinds 返回全部合法 kind 的副本（调用方可以随便排序/修改，不影响本包）。
+func EventKinds() []string {
+	out := make([]string, len(eventKinds))
+	copy(out, eventKinds)
+	return out
+}
+
+// IsEventKind 报告 kind 是否合法。
+func IsEventKind(kind string) bool {
+	for _, k := range eventKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
 // MaxEventBatch 是单次上报的条数上限（设计 §4：≤100 条/次）。
 //
 // 上限放在数据层而不是只由 api 校验：推荐库的写放大靠「一个请求一个事务」兜底，

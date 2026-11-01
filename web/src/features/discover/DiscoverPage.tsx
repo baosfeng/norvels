@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useRecommendations } from "../../api/hooks";
+import { useCapabilities, useRecommendations } from "../../api/hooks";
 import type { RecommendItem, RecommendTab } from "../../api/types";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount } from "../../lib/format";
@@ -12,8 +12,11 @@ import { DiscoverCard, type DislikeScope } from "./DiscoverCard";
 /** 一批取多少本：契约 1–50；20 是「一屏扫得完、换一批又有新鲜感」的折中。 */
 export const RECOMMEND_LIMIT = 20;
 
-/** 三个来源：id 进请求参数（tab=），label 是页面上那排 tab 的文案。 */
-const TABS: { id: RecommendTab; label: string }[] = [
+/**
+ * 三个来源的兜底名册：正常路径从 capabilities.recommend.tabs 取（服务端是唯一事实源，
+ * 多端不会各拼一套文案）；这里只在能力清单还没到 / 旧服务端不下发时顶上。
+ */
+const FALLBACK_TABS: { id: RecommendTab; label: string }[] = [
   { id: "for_you", label: "为你推荐" },
   { id: "resume", label: "继续阅读" },
   { id: "random", label: "随机发现" },
@@ -49,6 +52,12 @@ const EMPTY_COPY: Record<RecommendTab, { title: string; description: string }> =
  */
 export function DiscoverPage() {
   const isH5 = useIsH5();
+  const caps = useCapabilities();
+  const tabs: { id: RecommendTab; label: string }[] = useMemo(() => {
+    const fromServer = caps.data?.recommend?.tabs;
+    if (!fromServer || fromServer.length === 0) return FALLBACK_TABS;
+    return fromServer.map((t) => ({ id: t.id as RecommendTab, label: t.label }));
+  }, [caps.data]);
   const [tab, setTab] = useState<RecommendTab>("for_you");
   const rec = useRecommendations(RECOMMEND_LIMIT, tab);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,12 +117,12 @@ export function DiscoverPage() {
     setMenuFor(null);
     if (scope === "author" && book.authorId) {
       const authorId = book.authorId;
-      track("dislike", { bookId: book.bookId, authorId, extra: book.reason });
+      track("dislike", { bookId: book.bookId, authorId, extra: book.reasonCode || book.reason });
       setDismissedAuthors((prev) => new Set(prev).add(authorId));
       showToast("不会再推荐这个作者");
       return;
     }
-    track("dislike", { bookId: book.bookId, extra: book.reason });
+    track("dislike", { bookId: book.bookId, extra: book.reasonCode || book.reason });
     setDismissed((prev) => new Set(prev).add(book.bookId));
     showToast("不会再推荐这本");
   }
@@ -147,7 +156,7 @@ export function DiscoverPage() {
       {/* 来源切换：沿用搜索页那排轻量 tab 的版式（.search-tabs），按钮语义用 aria-pressed
           ——它是「换数据源」的开关组，不是内容分页，所以不做完整 tablist 的 roving tabindex。 */}
       <div className="search-tabs discover-tabs" role="group" aria-label="推荐来源">
-        {TABS.map((entry) => (
+        {tabs.map((entry) => (
           <button
             key={entry.id}
             type="button"

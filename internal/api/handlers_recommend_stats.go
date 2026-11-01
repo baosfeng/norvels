@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strconv"
 
+	"norvels/internal/recommend"
 	"norvels/internal/recstore"
 	"norvels/internal/store"
 )
@@ -69,7 +71,7 @@ type recommendStatsResponse struct {
 	HotBooks  []hotBookStat        `json:"hotBooks"`
 	// ReasonMix / CategoryClicks 是「推荐理由被点了几次」「分类被点了几次」，
 	// 都从 click 明细聚合（impression 不落明细，拿不到理由分布）。
-	ReasonMix      []recstore.ReasonClick   `json:"reasonMix"`
+	ReasonMix      []reasonMixStat          `json:"reasonMix"`
 	CategoryClicks []recstore.CategoryClick `json:"categoryClicks"`
 }
 
@@ -122,7 +124,7 @@ func (s *Server) handleRecommendStats(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, recommendStatsResponse{
 		Summary: summary, Daily: daily, Interests: interests, HotBooks: hot,
-		ReasonMix: reasonMix, CategoryClicks: categoryClicks,
+		ReasonMix: normalizeReasonMix(reasonMix), CategoryClicks: categoryClicks,
 	})
 }
 
@@ -205,4 +207,55 @@ func (s *Server) buildHotBooks(ctx context.Context) ([]hotBookStat, error) {
 		})
 	}
 	return rows, nil
+}
+
+// reasonMixStat 是理由分布的一行：按稳定 code 分组，文案单独给。
+type reasonMixStat struct {
+	// Reason 是分组键（稳定 code）；历史行里的中文文案会被归一化成 code。
+	Reason string `json:"reason"`
+	// Label 是当前版本的展示文案（改措辞不会拆行，只会改显示）。
+	Label  string `json:"label"`
+	Clicks int    `json:"clicks"`
+}
+
+// normalizeReasonMix 把「历史文案」与「新 code」归一到同一组。
+//
+// 改这一版之前 extra 里存的是文案本身：不归一化的话，改一个字就会把同一类理由
+// 拆成两行，旧行从此冻结。认不出的值按原样当一组（宁可多一行，也不要吞数据）。
+func normalizeReasonMix(raw []recstore.ReasonClick) []reasonMixStat {
+	out := make([]reasonMixStat, 0, len(raw))
+	index := make(map[string]int, len(raw))
+	for _, r := range raw {
+		code := recommend.CodeFromText(r.Reason)
+		if code == "" {
+			code = r.Reason
+		}
+		if i, ok := index[code]; ok {
+			out[i].Clicks += r.Clicks
+			continue
+		}
+		index[code] = len(out)
+		out = append(out, reasonMixStat{Reason: code, Label: recommend.TextOf(code), Clicks: r.Clicks})
+	}
+	sortReasonMix(out)
+	return trimReasonMix(out)
+}
+
+// sortReasonMix 按点击数降序、同分按 code 升序（与 SQL 的排序口径一致，合并后要重排）。
+func sortReasonMix(items []reasonMixStat) {
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Clicks != items[j].Clicks {
+			return items[i].Clicks > items[j].Clicks
+		}
+		return items[i].Reason < items[j].Reason
+	})
+}
+
+// trimReasonMix 合并后可能超过 topMixLimit（多条同义文案合成一行时不会超，
+// 但归一化本身不保证不减），统一裁到一屏看得完的条数。
+func trimReasonMix(items []reasonMixStat) []reasonMixStat {
+	if len(items) > 10 {
+		return items[:10]
+	}
+	return items
 }

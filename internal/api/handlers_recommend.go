@@ -50,11 +50,14 @@ type recommendItem struct {
 	AuthorName string `json:"authorName"`
 	// AuthorID 供前端「不喜欢这个作者」直接下发 dislike（缺作者时置灰）；
 	// 只给名字不给 id 的话前端还得再查一次详情才能构造事件。
-	AuthorID   int64   `json:"authorId"`
-	CategoryL1 string  `json:"categoryL1"`
-	CategoryL2 string  `json:"categoryL2"`
-	HasCover   bool    `json:"hasCover"`
-	Reason     string  `json:"reason"`
+	AuthorID   int64  `json:"authorId"`
+	CategoryL1 string `json:"categoryL1"`
+	CategoryL2 string `json:"categoryL2"`
+	HasCover   bool   `json:"hasCover"`
+	Reason     string `json:"reason"`
+	// ReasonCode 是理由的稳定标识（如 interest:武侠 / hot / similar.author），
+	// 埋点与看板分组都用它：文案可以改，code 不能改。
+	ReasonCode string  `json:"reasonCode"`
 	Score      float64 `json:"score"`
 }
 
@@ -274,7 +277,7 @@ func itemOf(sc recommend.Scored, bs store.BookSummary) recommendItem {
 		BookID: sc.BookID, Title: bs.Title, AuthorName: bs.AuthorName,
 		AuthorID:   bs.AuthorID,
 		CategoryL1: bs.CategoryL1, CategoryL2: bs.CategoryL2,
-		HasCover: bs.HasCover, Reason: sc.Reason, Score: sc.Score,
+		HasCover: bs.HasCover, Reason: sc.Reason, ReasonCode: sc.ReasonCode, Score: sc.Score,
 	}
 }
 

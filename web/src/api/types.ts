@@ -552,6 +552,32 @@ export interface Capabilities {
     upload: UploadLimit;
     import: ImportLimit;
     dryRun: DryRunLimit;
+    /** 分页上限（列表一次最多取多少行）；旧服务端不下发，取用时给默认值 */
+    pagination?: { maxSize: number };
+  };
+  /**
+   * 推荐流运行时能力：`enabled=false` 表示推荐库打不开，整块不该渲染。
+   * 标为可选是因为旧服务端（与只关心导入域的测试夹具）不下发这一组，取用时必须给默认值。
+   */
+  recommend?: {
+    enabled: boolean;
+    tabs: { id: string; label: string }[];
+    defaultLimit: number;
+    maxLimit: number;
+  };
+  /** 埋点契约：批量、字段长度、合法 kind（kind 清单唯一事实源在服务端）；同上可选 */
+  events?: {
+    maxBatch: number;
+    maxFieldLength: number;
+    maxExtraLength: number;
+    maxTags: number;
+    kinds: string[];
+  };
+  /** AI 能力可用性（有 key 才有）；模型名仅供展示；同上可选 */
+  ai?: {
+    reviewAvailable: boolean;
+    curationAvailable: boolean;
+    model?: string;
   };
 }
 
@@ -955,6 +981,12 @@ export interface RecommendItem {
   hasCover: boolean;
   /** 推荐理由：直接展示，不由前端拼装 */
   reason: string;
+  /**
+   * 理由的稳定标识（如 `interest:武侠` / `hot` / `similar.author`）。
+   * 埋点与看板分组用它而不是用文案：文案改了不该把历史统计拆成两行。
+   * 旧服务端不带这个字段，前端回落到 `reason`。
+   */
+  reasonCode?: string;
   score: number;
 }
 
@@ -1046,7 +1078,10 @@ export interface RecommendHotBook {
  * 所以后端能按理由同时给出曝光与点击；只给 clicks 时图照常出（只是不显示点击率）。
  */
 export interface RecommendReasonMix {
+  /** 分组键：稳定 code（历史数据已被后端归一化成同一形态） */
   reason: string;
+  /** 当前版本的展示文案；缺省时前端回落到 reason（旧服务端） */
+  label?: string;
   impressions?: number;
   clicks: number;
 }

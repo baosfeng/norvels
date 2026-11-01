@@ -130,10 +130,10 @@ func boolWeight(on bool, w float64) float64 {
 	return w
 }
 
-// reasonOption 是「候选理由」的一个选项：某个信号贡献了多少分、对应哪句话。
+// reasonOption 是「候选理由」的一个选项：某个信号贡献了多少分、对应哪条理由。
 type reasonOption struct {
 	value  float64
-	reason string
+	reason Reason
 }
 
 // reasonFor 挑出贡献最大的那一路信号作为推荐理由。
@@ -141,18 +141,20 @@ type reasonOption struct {
 // 用「最大贡献」而不是「命中优先级」：同一条推荐可能同时命中兴趣与热度，
 // 理由要能解释用户实际看到的那次排序，而不是永远只报兴趣（排查线上推荐时
 // 优先级写法会把真正的驱动信号藏起来）。全为 0 时退化为随机发现。
-func reasonFor(c Candidate, sc contributions, interest map[string]float64) string {
+//
+// 返回的是 Reason（code + 文案）：code 进埋点与看板分组，文案只用于展示。
+func reasonFor(c Candidate, sc contributions, interest map[string]float64) Reason {
 	opts := [...]reasonOption{
-		{sc.l1 + sc.l2 + sc.author, interestReason(c)},
-		{sc.tag, tagReason(c, interest)},
-		{sc.series, seriesReason(c)},
-		{sc.cooccur, ReasonCooccur},
-		{sc.hotReads + sc.hotClicks, ReasonHot},
-		{sc.fresh, ReasonFresh},
-		{sc.resume, ReasonResume},
+		{sc.l1 + sc.l2 + sc.author, InterestReason(c)},
+		{sc.tag, TagReason(bestTag(c.Tags, interest))},
+		{sc.series, SeriesReasonFor(c.Series)},
+		{sc.cooccur, FixedReason(CodeCooccur)},
+		{sc.hotReads + sc.hotClicks, FixedReason(CodeHot)},
+		{sc.fresh, FixedReason(CodeFresh)},
+		{sc.resume, FixedReason(CodeResume)},
 		{sc.similar, similarReason(c)},
 	}
-	best := reasonOption{reason: ReasonRandom}
+	best := reasonOption{reason: FixedReason(CodeRandom)}
 	for _, o := range opts {
 		if o.value > best.value {
 			best = o
@@ -161,41 +163,24 @@ func reasonFor(c Candidate, sc contributions, interest map[string]float64) strin
 	return best.reason
 }
 
-// tagReason 拼标签类理由；命中标签为空时退化为泛化说法（理论上走不到）。
-func tagReason(c Candidate, interest map[string]float64) string {
-	tag := bestTag(c.Tags, interest)
-	if tag == "" {
-		return ReasonDefault
-	}
-	return tagPrefix + tag + tagSuffix
-}
-
-// similarReason 用召回路径写好的关系文案；没写就退化为泛化说法。
-func similarReason(c Candidate) string {
+// similarReason 用召回路径写好的关系文案与 code；没写就退化为兜底理由。
+//
+// 兼容路径：调用方只给了文案（老代码）时用 CodeFromText 反推；反推不出就按
+// 「同一分类」归类——宁可归错一类，也不要让这条理由进不了看板。
+func similarReason(c Candidate) Reason {
 	if c.SimilarReason == "" {
-		return ReasonDefault
+		return FixedReason(CodeFallback)
 	}
-	return c.SimilarReason
-}
-
-// seriesReason 拼系列类理由；系列名缺失时退化为泛化说法。
-func seriesReason(c Candidate) string {
-	if c.Series == "" {
-		return ReasonDefault
+	code := c.SimilarReasonCode
+	if code == "" {
+		code = CodeFromText(c.SimilarReason)
 	}
-	return SeriesReason(c.Series)
+	if code == "" {
+		code = CodeSimilarCategory
+	}
+	return Reason{Code: code, Text: c.SimilarReason}
 }
 
 // SeriesReason 拼「同系列《X》」文案：相似书召回与兴趣召回应共用同一句话，
 // 两处各拼一次迟早会出现「同系列《X》」与「同系列 X」两种写法。
 func SeriesReason(series string) string { return seriesPrefix + series + seriesSuffix }
-
-// interestReason 拼兴趣类理由；分类缺失时退化为不带分类的泛化说法。
-func interestReason(c Candidate) string {
-	for _, cat := range [...]string{c.CategoryL1, c.CategoryL2} {
-		if cat != "" {
-			return interestPrefix + cat
-		}
-	}
-	return ReasonDefault
-}

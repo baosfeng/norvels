@@ -20,6 +20,51 @@ func TestCapabilities(t *testing.T) {
 	got := decodeBody[capabilitiesResponse](t, rr)
 	requireCapabilityLists(t, got)
 	requireCapabilityLimits(t, got.Limits)
+	requireRuntimeCapabilities(t, got)
+}
+
+// requireRuntimeCapabilities 断言「运行时能力」三组：推荐 tab、埋点契约、AI 可用性。
+func requireRuntimeCapabilities(t *testing.T, got capabilitiesResponse) {
+	t.Helper()
+	requireRecommendCap(t, got.Recommend)
+	requireEventsCap(t, got.Events)
+	requireAICap(t, got.AI)
+	// 必须是列表页真实生效的 size 上限（maxSize），不是分页页码的夹取范围（maxPage）：
+	// 下发一个 1000000 会让前端「按服务端上限取一页」直接把整库拉下来。
+	if got.Limits.Pagination.MaxSize != maxSize {
+		t.Fatalf("分页上限 = %d，期望 %d", got.Limits.Pagination.MaxSize, maxSize)
+	}
+}
+
+// requireRecommendCap 断言推荐 tab 名册与 limit 上下限。
+func requireRecommendCap(t *testing.T, cap recommendCap) {
+	t.Helper()
+	if cap.Enabled {
+		t.Fatal("未打开推荐库时 recommend.enabled 应为 false（前端据此整块不渲染）")
+	}
+	if len(cap.Tabs) != 3 || cap.MaxLimit <= 0 || cap.DefaultLimit <= 0 {
+		t.Fatalf("推荐能力不完整: %+v", cap)
+	}
+}
+
+// requireEventsCap 断言埋点契约完整，且 kind 清单覆盖 dislike。
+func requireEventsCap(t *testing.T, cap eventsCap) {
+	t.Helper()
+	if cap.MaxBatch == 0 || cap.MaxFieldLength == 0 || len(cap.Kinds) == 0 {
+		t.Fatalf("埋点契约不完整: %+v", cap)
+	}
+	// 以前报错文案漏了 dislike，用户照提示改仍然 400。
+	if !hasString(cap.Kinds, "dislike") {
+		t.Fatalf("events.kinds 缺 dislike: %v", cap.Kinds)
+	}
+}
+
+// requireAICap 断言没有 key 时 AI 两项都报 false。
+func requireAICap(t *testing.T, cap aiCap) {
+	t.Helper()
+	if cap.ReviewAvailable || cap.CurationAvailable {
+		t.Fatalf("没有 key 时 AI 两项都应为 false: %+v", cap)
+	}
 }
 
 // requireCapabilityLists 断言策略清单非空、含代表性内置策略、排序口径正确。

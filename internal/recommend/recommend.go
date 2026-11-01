@@ -42,6 +42,9 @@ type Candidate struct {
 	// SimilarReason 是它与种子书的关系文案，由召回路径决定。
 	Similar       bool
 	SimilarReason string
+	// SimilarReasonCode 是 SimilarReason 的稳定标识（见 reasons.go 的 CodeSimilar*）。
+	// 召回路径必须两个都给：只给文案时由 CodeFromText 反推，反推不出会归到同一分类。
+	SimilarReasonCode string
 }
 
 // Weights 是打分权重，默认值来自设计 §3；调用方可按需整体替换（例如冷启动只留热度）。
@@ -115,8 +118,11 @@ type Signals struct {
 // Scored 是一条打完分的结果：分数 + 给用户看的推荐理由。
 type Scored struct {
 	Candidate
-	Score  float64
-	Reason string
+	Score float64
+	// Reason 是给人看的文案，ReasonCode 是给机器看的稳定标识（进埋点与看板分组）。
+	// 两者必须一起给：只给文案会让「改措辞」变成「改统计口径」。
+	Reason     string
+	ReasonCode string
 }
 
 // 推荐理由文案（设计 §3 冻结）。

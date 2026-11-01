@@ -59,7 +59,8 @@ func Rank(cands []Candidate, sig Signals, rnd *rand.Rand, limit int) []Scored {
 func scoreOf(c Candidate, interest map[string]float64, w Weights, rnd *rand.Rand) Scored {
 	contrib := contributionsOf(c, interest, w)
 	score := contrib.total()*(w.JitterBase+w.JitterSpan*rnd.Float64()) + w.Explore*rnd.Float64()
-	return Scored{Candidate: c, Score: score, Reason: reasonFor(c, contrib, interest)}
+	r := reasonFor(c, contrib, interest)
+	return Scored{Candidate: c, Score: score, Reason: r.Text, ReasonCode: r.Code}
 }
 
 // withExploration 在排序结果里强制混入 n 条随机发现。
@@ -78,6 +79,7 @@ func withExploration(scored []Scored, limit int, rnd *rand.Rand, ratio float64) 
 	for _, i := range rnd.Perm(len(rest))[:n] {
 		item := rest[i]
 		item.Reason = ReasonRandom // 理由必须跟着「怎么被选出来的」走，不能报成兴趣
+		item.ReasonCode = CodeRandom
 		out = append(out, item)
 	}
 	return out

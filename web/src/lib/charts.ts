@@ -751,20 +751,23 @@ export function buildReasonMix(
   const totalClicks = sorted.reduce((sum, row) => sum + row.clicks, 0);
   const bars = sorted.map<HorizontalBar>((row) => {
     const impressions = row.impressions ?? 0;
+    // 分组键是 code，展示文案取 label（旧服务端没有 label 时回落到 code 本身）。
+    const name = row.label ?? row.reason;
     return {
-      name: row.reason,
+      name,
       value: row.clicks,
       widthPct: pct(row.clicks, max, 4),
       display: `${compact(row.clicks)} 点`,
       title:
         impressions > 0
-          ? `「${row.reason}」：点击 ${row.clicks} / 曝光 ${impressions}（点击率 ${rateText(row.clicks, impressions)}）`
-          : `「${row.reason}」：点击 ${row.clicks} 次`,
+          ? `「${name}」：点击 ${row.clicks} / 曝光 ${impressions}（点击率 ${rateText(row.clicks, impressions)}）`
+          : `「${name}」：点击 ${row.clicks} 次`,
     };
   });
   const first = sorted[0];
+  const firstName = first ? (first.label ?? first.reason) : "";
   const note = first
-    ? `最抓人的是「${first.reason}」：${first.clicks} 次点击${first.impressions ? `（点击率 ${rateText(first.clicks, first.impressions)}）` : ""}`
+    ? `最抓人的是「${firstName}」：${first.clicks} 次点击${first.impressions ? `（点击率 ${rateText(first.clicks, first.impressions)}）` : ""}`
     : "还没有带理由的点击记录";
   return { empty: bars.length === 0, note, data: { rows: bars, top: bars[0]?.name ?? "", totalClicks } };
 }

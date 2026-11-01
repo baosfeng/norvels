@@ -5,6 +5,7 @@ import (
 
 	"norvels/internal/importer"
 	"norvels/internal/parser"
+	"norvels/internal/recstore"
 	"norvels/internal/source"
 )
 
@@ -61,6 +62,11 @@ type importCap struct {
 	DefaultFallbackChunkChars int `json:"defaultFallbackChunkChars"`
 }
 
+// paginationCap 是分页上限（列表页一次最多取多少行）。
+type paginationCap struct {
+	MaxSize int `json:"maxSize"`
+}
+
 // dryRunCap 是 dry-run 预检的规模上限：与 importer 的导出常量同源，
 // 前端不再各写一份「200 / 20 / 50」。
 type dryRunCap struct {
@@ -71,12 +77,13 @@ type dryRunCap struct {
 
 // capabilitiesLimits 汇总各域上限；只读下发，不接受写入（护栏不接受配置）。
 type capabilitiesLimits struct {
-	ChapterRules   ruleLimit    `json:"chapterRules"`
-	TagRules       tagRuleLimit `json:"tagRules"`
-	SourceProfiles profileLimit `json:"sourceProfiles"`
-	Upload         uploadCap    `json:"upload"`
-	Import         importCap    `json:"import"`
-	DryRun         dryRunCap    `json:"dryRun"`
+	ChapterRules   ruleLimit     `json:"chapterRules"`
+	TagRules       tagRuleLimit  `json:"tagRules"`
+	SourceProfiles profileLimit  `json:"sourceProfiles"`
+	Upload         uploadCap     `json:"upload"`
+	Import         importCap     `json:"import"`
+	DryRun         dryRunCap     `json:"dryRun"`
+	Pagination     paginationCap `json:"pagination"`
 }
 
 // capabilitiesResponse 是 GET /api/settings/capabilities 的响应。
@@ -87,6 +94,54 @@ type capabilitiesResponse struct {
 	Metas      []namedWeight      `json:"metas"`
 	Extensions []string           `json:"extensions"`
 	Limits     capabilitiesLimits `json:"limits"`
+	// 以下三组是「运行时能力」：不是上限，而是「这台部署现在能做什么」。
+	// 前端与将来的第二个客户端都从这里拿，不再各自写死。
+	Recommend recommendCap `json:"recommend"`
+	Events    eventsCap    `json:"events"`
+	AI        aiCap        `json:"ai"`
+}
+
+// recommendTab 是一个推荐来源（id 进请求参数，label 是页面上的 tab 文案）。
+type recommendTab struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// recommendCap 是推荐流的运行时能力。
+type recommendCap struct {
+	// Enabled 为 false 表示推荐库打不开：这时 /api/recommend 返回 503，
+	// 前端应当整块不渲染，而不是让用户点进去看一个错误页。
+	Enabled      bool           `json:"enabled"`
+	Tabs         []recommendTab `json:"tabs"`
+	DefaultLimit int            `json:"defaultLimit"`
+	MaxLimit     int            `json:"maxLimit"`
+}
+
+// eventsCap 是埋点上报的契约：批量、字段长度、合法 kind。
+type eventsCap struct {
+	MaxBatch       int      `json:"maxBatch"`
+	MaxFieldLength int      `json:"maxFieldLength"`
+	MaxExtraLength int      `json:"maxExtraLength"`
+	MaxTags        int      `json:"maxTags"`
+	Kinds          []string `json:"kinds"`
+}
+
+// aiCap 是 AI 相关能力的可用性（key 只在内存，这里只报「有没有」与模型名）。
+type aiCap struct {
+	// ReviewAvailable 是 serve 的 AI 版本审核（0021）：有 key 才可能裁决。
+	ReviewAvailable bool `json:"reviewAvailable"`
+	// CurationAvailable 是导入的 --ai 上架判定：同样要求有 key。
+	CurationAvailable bool   `json:"curationAvailable"`
+	Model             string `json:"model,omitempty"`
+}
+
+// recommendTabs 是推荐来源的唯一清单（前端 tab 文案也从这里拿）。
+//
+// 文案放后端与推荐理由同一口径：多端各拼一次就会有两套措辞。
+var recommendTabs = []recommendTab{
+	{ID: recommendTabForYou, Label: "为你推荐"},
+	{ID: recommendTabResume, Label: "继续阅读"},
+	{ID: recommendTabRandom, Label: "随机发现"},
 }
 
 // handleCapabilities 处理 GET /api/settings/capabilities。
@@ -138,6 +193,25 @@ func (s *Server) capabilities() capabilitiesResponse {
 				Samples:  importer.DryRunMaxSamples,
 				Errors:   importer.DryRunMaxErrors,
 			},
+			Pagination: paginationCap{MaxSize: maxSize},
+		},
+		Recommend: recommendCap{
+			Enabled:      s.cfg.Rec != nil,
+			Tabs:         recommendTabs,
+			DefaultLimit: defaultRecommendLimit,
+			MaxLimit:     maxRecommendLimit,
+		},
+		Events: eventsCap{
+			MaxBatch:       recstore.MaxEventBatch,
+			MaxFieldLength: maxEventFieldLen,
+			MaxExtraLength: maxEventExtraLen,
+			MaxTags:        maxEventTags,
+			Kinds:          recstore.EventKinds(),
+		},
+		AI: aiCap{
+			ReviewAvailable:   s.cfg.AIAPIKey != "",
+			CurationAvailable: s.cfg.AIAPIKey != "",
+			Model:             s.cfg.AIModel,
 		},
 	}
 }

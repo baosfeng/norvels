@@ -39,12 +39,17 @@
   - `for_you`：全量召回（见下）；
   - `resume`：只拼「读到一半」的书（进度 0<percent<1），按进度倒序，热门/新鲜兜底保证非空；
   - `random`：随机池 + 热门，ε 探索比例从 10% 提到 **50%**（这个 tab 的用户就是要不一样）。
-- → 200 `{items:[{bookId,title,authorName,authorId,categoryL1,categoryL2,hasCover,reason,score}], generatedAt}`
+- → 200 `{items:[{bookId,title,authorName,authorId,categoryL1,categoryL2,hasCover,reason,reasonCode,score}], generatedAt}`
   （`authorId` 供前端「不喜欢这个作者」直接下发 dislike，缺作者时前端置灰）
 - 只读、无副作用；`items` 恒为数组（冷启动可能为空，见下）。
 - `reason` 取值：「因为你常看<分类>」/「因为你喜欢「<标签>」标签」/「同系列《<系列名>》」/
   「同一个作者」/「同一分类」/「读到一半，接着读」/「读过这本书的人也在看」/「最近很多人读」/
   「最近入库」/「随机发现」。
+- `reasonCode` 是**同一句话的稳定标识**，埋点与看板分组只用它：
+  `interest:<分类>` / `tag:<标签>` / `series:<系列>` / `cooccur` / `hot` / `fresh` /
+  `resume` / `random` / `fallback` / `similar.author` / `similar.category`。
+  **文案可以改、code 不能改**——以前 `extra` 存的是文案本身，改一个措辞就会把
+  看板上的理由分布断成两行，旧行从此冻结。
 - **读完不推**（主库 `reading_progress.percent ≥ 0.99`）、`dislike` 过的不推；
   **读过的书只降权**（`ReadPenalty` −1.0），仍然可以出现——把「读了几页」当读完会让
   候选池越用越少，真实库里几乎每本书都被 read 事件覆盖过。
@@ -75,7 +80,7 @@
                 {"dim": "category_l2", "key": "江湖", "name": "江湖", "weight": 1.6},
                 {"dim": "author", "key": "12", "name": "示例作者", "weight": 2.4}],
   "hotBooks": [{"bookId": 1, "title": "示例书", "authorName": "示例作者", "reads": 5, "clicks": 2, "seconds": 900}],
-  "reasonMix": [{"reason": "因为你常看武侠", "clicks": 12}],
+  "reasonMix": [{"reason": "interest:武侠", "label": "因为你常看武侠", "clicks": 12}],
   "categoryClicks": [{"categoryL1": "武侠", "clicks": 20}]
 }
 ```
@@ -95,6 +100,9 @@
   主库已删的书直接跳过（事件不级联删，但榜单上「未知书名」没有信息量）。
 - `reasonMix` / `categoryClicks` 是**全局口径**（同 daily），窗口 `days`、各取 top10：
   前者按 click 的 `extra`（推荐理由）分组、空 `extra` 跳过，后者按 click 的 `category_l1` 分组。
+  每行是 `{reason, label, clicks}`：`reason` 是分组键（稳定 code），`label` 是当前版本的文案。
+  **历史行里的中文文案会被就地归一化成 code**（`CodeFromText`，认不出的按原样单独成一行），
+  所以改文案不会拆行，也不需要用重建推荐库来清历史。
   只从 click 明细聚合——`impression` 不落明细（写放大护栏），拿不到曝光侧的理由分布。
 
 ## 冷启动

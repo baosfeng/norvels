@@ -174,8 +174,16 @@ func TestStatsReasonMixAndCategoryClicks(t *testing.T) {
 	if len(got.ReasonMix) != 2 {
 		t.Fatalf("理由分布 = %+v，期望 2 条", got.ReasonMix)
 	}
-	if got.ReasonMix[0].Reason != "因为你常看武侠" || got.ReasonMix[0].Clicks != 2 {
+	// 历史行里 extra 存的是文案：看板要按稳定 code 分组、文案单独给，
+	// 否则改一句措辞就会把同一类理由拆成两行。
+	if got.ReasonMix[0].Reason != "interest:武侠" || got.ReasonMix[0].Clicks != 2 {
 		t.Fatalf("理由榜首 = %+v", got.ReasonMix[0])
+	}
+	if got.ReasonMix[0].Label != "因为你常看武侠" {
+		t.Fatalf("榜首文案 = %q", got.ReasonMix[0].Label)
+	}
+	if got.ReasonMix[1].Reason != "random" {
+		t.Fatalf("第二行应归一化成随机发现的 code，得到 %+v", got.ReasonMix[1])
 	}
 	if len(got.CategoryClicks) != 1 || got.CategoryClicks[0].CategoryL1 != "武侠" ||
 		got.CategoryClicks[0].Clicks != 3 {
