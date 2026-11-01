@@ -21,6 +21,8 @@ const (
 	maxEventBatch    = recstore.MaxEventBatch
 	maxEventFieldLen = 64
 	maxEventExtraLen = 512
+	// maxEventTags 与 recstore.maxTagsPerEvent 同值（api 先拦成带下标的 400）。
+	maxEventTags = 20
 )
 
 // eventsRequest 是 POST /api/events 的请求体。
@@ -30,14 +32,16 @@ type eventsRequest struct {
 
 // eventPayload 是一条埋点（字段名与前端 telemetry SDK 一致）。
 type eventPayload struct {
-	Kind       string `json:"kind"`
-	BookID     int64  `json:"bookId"`
-	AuthorID   int64  `json:"authorId"`
-	CategoryL1 string `json:"categoryL1"`
-	CategoryL2 string `json:"categoryL2"`
-	Value      int    `json:"value"`
-	Extra      string `json:"extra"`
-	TS         string `json:"ts"`
+	Kind       string   `json:"kind"`
+	BookID     int64    `json:"bookId"`
+	AuthorID   int64    `json:"authorId"`
+	CategoryL1 string   `json:"categoryL1"`
+	CategoryL2 string   `json:"categoryL2"`
+	Tags       []string `json:"tags"`
+	Series     string   `json:"series"`
+	Value      int      `json:"value"`
+	Extra      string   `json:"extra"`
+	TS         string   `json:"ts"`
 }
 
 // handleRecordEvents 处理 POST /api/events：批量写入推荐库，返回 {accepted}。
@@ -95,6 +99,25 @@ func validateEvent(ev eventPayload) error {
 	if len(ev.Extra) > maxEventExtraLen {
 		return badParam("extra 超过 %d 字节", maxEventExtraLen)
 	}
+	return validateEventTags(ev)
+}
+
+// validateEventTags 校验系列名与标签（数量 / 单个长度）。
+//
+// 单独拆出来是为了让 validateEvent 不突破门禁 4 的圈复杂度上限：
+// 标签与系列都是「多值字段」，校验本身比其它字段多一层循环。
+func validateEventTags(ev eventPayload) error {
+	if len(ev.Series) > maxEventFieldLen {
+		return badParam("系列名超过 %d 字节", maxEventFieldLen)
+	}
+	if len(ev.Tags) > maxEventTags {
+		return badParam("单条事件最多 %d 个标签", maxEventTags)
+	}
+	for _, tag := range ev.Tags {
+		if len(tag) > maxEventFieldLen {
+			return badParam("标签名超过 %d 字节", maxEventFieldLen)
+		}
+	}
 	return nil
 }
 
@@ -102,7 +125,8 @@ func validateEvent(ev eventPayload) error {
 func validEventKind(kind string) bool {
 	switch kind {
 	case recstore.KindImpression, recstore.KindClick, recstore.KindRead,
-		recstore.KindView, recstore.KindSearch, recstore.KindShelf, recstore.KindRating:
+		recstore.KindView, recstore.KindSearch, recstore.KindShelf, recstore.KindRating,
+		recstore.KindDislike:
 		return true
 	}
 	return false
@@ -115,6 +139,7 @@ func toRecEvents(payloads []eventPayload) []recstore.Event {
 		out[i] = recstore.Event{
 			Kind: p.Kind, BookID: p.BookID, AuthorID: p.AuthorID,
 			CategoryL1: p.CategoryL1, CategoryL2: p.CategoryL2,
+			Tags: p.Tags, Series: p.Series,
 			Value: p.Value, Extra: p.Extra, TS: p.TS,
 		}
 	}
@@ -142,8 +167,14 @@ func (s *Server) enrichEvents(ctx context.Context, events []recstore.Event) []re
 	for _, bs := range books {
 		byID[bs.ID] = bs
 	}
+	tags, err := s.st.BookTagsByIDs(ctx, ids)
+	if err != nil {
+		s.logf("api: 补齐埋点标签失败（标签兴趣本次缺省）: %v", err)
+		tags = nil
+	}
 	for i := range events {
-		fillEventDims(&events[i], byID[events[i].BookID])
+		ev := &events[i]
+		fillEventDims(ev, byID[ev.BookID], tags[ev.BookID])
 	}
 	return events
 }
@@ -158,7 +189,8 @@ func missingDimsIDs(events []recstore.Event) []int64 {
 		if ev.Kind == recstore.KindImpression {
 			continue
 		}
-		if ev.BookID > 0 && (ev.AuthorID == 0 || ev.CategoryL1 == "" || ev.CategoryL2 == "") {
+		if ev.BookID > 0 && (ev.AuthorID == 0 || ev.CategoryL1 == "" || ev.CategoryL2 == "" ||
+			ev.Series == "" || len(ev.Tags) == 0) {
 			out = append(out, ev.BookID)
 		}
 	}
@@ -166,7 +198,7 @@ func missingDimsIDs(events []recstore.Event) []int64 {
 }
 
 // fillEventDims 只补空字段，不覆盖客户端已经填好的维度。
-func fillEventDims(ev *recstore.Event, bs store.BookSummary) {
+func fillEventDims(ev *recstore.Event, bs store.BookSummary, tags []string) {
 	if bs.ID <= 0 {
 		return // 书已被删除：保持原样，让事件照常归档（兴趣维度留空）
 	}
@@ -178,6 +210,12 @@ func fillEventDims(ev *recstore.Event, bs store.BookSummary) {
 	}
 	if ev.CategoryL2 == "" {
 		ev.CategoryL2 = bs.CategoryL2
+	}
+	if ev.Series == "" {
+		ev.Series = bs.Series
+	}
+	if len(ev.Tags) == 0 {
+		ev.Tags = tags
 	}
 }
 

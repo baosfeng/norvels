@@ -28,6 +28,11 @@ const (
 	recallHotLimit      = 40
 	recallFreshLimit    = 20
 	recallRandomLimit   = 20
+	recallTopTags       = 2
+	recallPerTag        = 20
+	recallTopSeries     = 2
+	recallPerSeries     = 20
+	recallResumeLimit   = 20
 	// recentShownDays 是「近期已曝光」的窗口：7 天内推过的不重复推（只扣分不硬过滤）。
 	recentShownDays = 7
 )
@@ -41,6 +46,10 @@ type recallResult struct {
 	order   []int64
 	cooccur map[int64]int
 	hot     map[int64]recstore.HotBook
+	// tags 是候选书的标签（打分与理由都要用，召回结束后一次性补齐）。
+	tags map[int64][]string
+	// resume 记录「读到一半」的书及其进度（0..1），只在该书被续读召回时存在。
+	resume map[int64]float64
 }
 
 // newRecallResult 预分配容量（一屏召回通常几十到几百本）。
@@ -50,6 +59,8 @@ func newRecallResult() *recallResult {
 		order:   make([]int64, 0, 64),
 		cooccur: make(map[int64]int, 32),
 		hot:     make(map[int64]recstore.HotBook, 32),
+		tags:    make(map[int64][]string, 64),
+		resume:  make(map[int64]float64, 16),
 	}
 }
 
@@ -67,9 +78,11 @@ func (rr *recallResult) add(bs store.BookSummary) {
 
 // recallSignals 是打分需要的用户侧信号（与召回结果一起进 candidates）。
 type recallSignals struct {
-	read   map[int64]bool
-	recent map[int64]bool
-	now    time.Time
+	// read：有过 read 事件（只降权）。finished：主库进度 ≥0.99（唯一会被过滤的读状态）。
+	read     map[int64]bool
+	finished map[int64]bool
+	recent   map[int64]bool
+	now      time.Time
 }
 
 // candidates 把召回结果转成打分输入（顺序与召回顺序一致）。
@@ -81,43 +94,98 @@ func (rr *recallResult) candidates(sig recallSignals) []recommend.Candidate {
 			BookID: bs.ID, AuthorID: bs.AuthorID,
 			CategoryL1: bs.CategoryL1, CategoryL2: bs.CategoryL2,
 			ImportedAt: bs.ImportedAt, Rating: bs.Rating,
-			Read: sig.read[id], RecentShown: sig.recent[id],
+			Read: sig.read[id], Finished: sig.finished[id], RecentShown: sig.recent[id],
 			CooccurUsers: rr.cooccur[id],
 			HotReads:     rr.hot[id].Reads, HotClicks: rr.hot[id].Clicks,
-			Fresh: recommend.Freshness(bs.ImportedAt, sig.now),
+			Fresh:  recommend.Freshness(bs.ImportedAt, sig.now),
+			Tags:   rr.tags[id],
+			Series: bs.Series,
+			Resume: rr.resume[id] > 0,
 		})
 	}
 	return out
 }
 
-// recallCandidates 依次跑完六路召回（顺序无关，缺失的库信号自然为空）。
+// recallCandidates 按 tab 跑对应召回（顺序无关，缺失的库信号自然为空）。
 func (s *Server) recallCandidates(ctx context.Context, userID int64,
-	interest map[string]float64) (*recallResult, error) {
+	interest map[string]float64, tab string) (*recallResult, error) {
 	rr := newRecallResult()
-	steps := []func() error{
-		func() error { return s.recallByInterest(ctx, rr, interest) },
-		func() error { return s.recallByCooccur(ctx, rr, userID) },
-		func() error { return s.recallByHot(ctx, rr) },
-		func() error { return s.recallByFresh(ctx, rr) },
-		func() error { return s.recallByRandom(ctx, rr) },
+	var err error
+	switch tab {
+	case recommendTabResume:
+		err = s.recallResumeOnly(ctx, rr)
+	case recommendTabRandom:
+		err = s.recallRandomOnly(ctx, rr)
+	default:
+		err = s.recallForYou(ctx, rr, userID, interest)
 	}
-	for _, step := range steps {
-		if err := step(); err != nil {
-			return nil, err
-		}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.loadCandidateTags(ctx, rr); err != nil {
+		return nil, err
 	}
 	return rr, nil
 }
 
-// recallByInterest 按兴趣分类与兴趣作者两路召回。
-func (s *Server) recallByInterest(ctx context.Context, rr *recallResult,
+// recallForYou 是默认 tab 的全量九路召回。
+func (s *Server) recallForYou(ctx context.Context, rr *recallResult,
+	userID int64, interest map[string]float64) error {
+	return runRecallSteps([]func() error{
+		func() error { return s.recallByCategories(ctx, rr, interest) },
+		func() error { return s.recallByAuthors(ctx, rr, interest) },
+		func() error { return s.recallByTags(ctx, rr, interest) },
+		func() error { return s.recallBySeries(ctx, rr, interest) },
+		func() error { return s.recallByCooccur(ctx, rr, userID) },
+		func() error { return s.recallByHot(ctx, rr) },
+		func() error { return s.recallByFresh(ctx, rr) },
+		func() error { return s.recallByRandom(ctx, rr) },
+		func() error { return s.recallByResume(ctx, rr) },
+	})
+}
+
+// recallResumeOnly 是续读 tab：只拼「读到一半」的书，热门/新鲜兜底保证非空。
+func (s *Server) recallResumeOnly(ctx context.Context, rr *recallResult) error {
+	return runRecallSteps([]func() error{
+		func() error { return s.recallByResume(ctx, rr) },
+		func() error { return s.recallByHot(ctx, rr) },
+		func() error { return s.recallByFresh(ctx, rr) },
+	})
+}
+
+// recallRandomOnly 是随机 tab：随机池 + 热门兜底（随机池可能为空）。
+func (s *Server) recallRandomOnly(ctx context.Context, rr *recallResult) error {
+	return runRecallSteps([]func() error{
+		func() error { return s.recallByRandom(ctx, rr) },
+		func() error { return s.recallByHot(ctx, rr) },
+	})
+}
+
+// runRecallSteps 顺序执行召回步骤，任一步失败即整体失败。
+func runRecallSteps(steps []func() error) error {
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// recallByCategories 按兴趣分类召回（L1/L2 合并后逐个查）。
+func (s *Server) recallByCategories(ctx context.Context, rr *recallResult,
 	interest map[string]float64) error {
 	for _, name := range interestCategoryNames(interest) {
 		if err := s.recallCategory(ctx, rr, name); err != nil {
 			return err
 		}
 	}
-	for _, raw := range topKeys(interest, "author", recallTopAuthors) {
+	return nil
+}
+
+// recallByAuthors 按兴趣作者召回。
+func (s *Server) recallByAuthors(ctx context.Context, rr *recallResult,
+	interest map[string]float64) error {
+	for _, raw := range topKeys(interest, interestDimAuthor, recallTopAuthors) {
 		authorID, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
 			continue // 作者 key 是 id 的十进制文本，坏值只可能来自脏数据，跳过即可

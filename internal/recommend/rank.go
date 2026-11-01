@@ -12,8 +12,19 @@ import (
 // 「每次结果不同」的隐藏随机源。
 const defaultSeed = 1
 
-// exploreRatio 是 ε-greedy 的探索比例（设计 §3：10%）。
-const exploreRatio = 0.1
+// defaultExploreRatio 是 ε-greedy 的默认探索比例（设计 §3：10%）。
+const defaultExploreRatio = 0.1
+
+// exploreRatioOf 取本次请求的探索比例：Signals 里越界/未填时回落默认值。
+//
+// 「随机发现」tab 会显式传 0.5；把它做成信号而不是常量，是因为同一个排序函数
+// 要同时服务「推荐要准」与「随机要野」两种互斥目标。
+func exploreRatioOf(ratio float64) float64 {
+	if ratio <= 0 || ratio > 1 {
+		return defaultExploreRatio
+	}
+	return ratio
+}
 
 // Rank 按设计 §3 打分并返回不超过 limit 条结果。
 //
@@ -29,8 +40,11 @@ func Rank(cands []Candidate, sig Signals, rnd *rand.Rand, limit int) []Scored {
 	}
 	scored := make([]Scored, 0, len(cands))
 	for _, c := range cands {
-		if c.Read {
-			continue // 已读书不推（设计 §3 重排要求），也省掉一次打分
+		// 只过滤「读完」：Read（有过 read 事件）仅参与打分降权。
+		// 早期版本按 Read 过滤，真实数据里几乎每本书都被 read 覆盖过，
+		// 候选池会被越吃越小，最后推不出书。
+		if c.Finished {
+			continue
 		}
 		scored = append(scored, scoreOf(c, sig.Interest, w, rnd))
 	}
@@ -38,23 +52,23 @@ func Rank(cands []Candidate, sig Signals, rnd *rand.Rand, limit int) []Scored {
 		return nil
 	}
 	sort.SliceStable(scored, func(i, j int) bool { return scored[i].Score > scored[j].Score })
-	return withExploration(scored, limit, rnd)
+	return withExploration(scored, limit, rnd, exploreRatioOf(sig.ExploreRatio))
 }
 
 // scoreOf 给一本书打分：raw 乘随机扰动，再加 ε 探索加分让「有分但不高」的候选有机会。
 func scoreOf(c Candidate, interest map[string]float64, w Weights, rnd *rand.Rand) Scored {
 	contrib := contributionsOf(c, interest, w)
 	score := contrib.total()*(w.JitterBase+w.JitterSpan*rnd.Float64()) + w.Explore*rnd.Float64()
-	return Scored{Candidate: c, Score: score, Reason: reasonFor(c, contrib)}
+	return Scored{Candidate: c, Score: score, Reason: reasonFor(c, contrib, interest)}
 }
 
 // withExploration 在排序结果里强制混入 n 条随机发现。
 //
 // 抽的是「排不进前 limit−n 的尾部」而不是全体候选：全体随机等于拿好结果换噪声，
 // 尾部随机才是「给冷门一次机会」——这正是 ε-greedy 在推荐流里的本意。
-func withExploration(scored []Scored, limit int, rnd *rand.Rand) []Scored {
+func withExploration(scored []Scored, limit int, rnd *rand.Rand, ratio float64) []Scored {
 	taken := min(limit, len(scored))
-	n := exploreCount(limit, len(scored))
+	n := exploreCount(limit, len(scored), ratio)
 	out := make([]Scored, 0, taken)
 	out = append(out, scored[:taken-n]...)
 	if n == 0 {
@@ -69,12 +83,12 @@ func withExploration(scored []Scored, limit int, rnd *rand.Rand) []Scored {
 	return out
 }
 
-// exploreCount 计算探索条数：10%·limit，且不超过候选数的一半。
+// exploreCount 计算探索条数：ratio·limit，且不超过候选数的一半。
 //
 // 「不超过一半」是给候选很少的场景兜底：冷启动只有 3 本书、limit=20 时，
 // 若按 10% 算会把 2 条都标成「随机发现」，理由与事实不符。
-func exploreCount(limit, pool int) int {
-	n := int(float64(limit) * exploreRatio)
+func exploreCount(limit, pool int, ratio float64) int {
+	n := int(float64(limit) * ratio)
 	if half := pool / 2; n > half {
 		n = half
 	}

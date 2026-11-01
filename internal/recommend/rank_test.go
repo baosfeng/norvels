@@ -49,22 +49,62 @@ func TestRankEmptyAndBadLimit(t *testing.T) {
 	}
 }
 
-func TestRankFiltersReadBooks(t *testing.T) {
+func TestRankKeepsReadButUnfinished(t *testing.T) {
+	// 有过 read 事件 ≠ 读完：这类书只降权，仍然可以被推荐。
 	cands := []Candidate{
 		{BookID: 1, Read: true, HotReads: 100},
 		{BookID: 2, HotReads: 1},
 		{BookID: 3, Read: true, HotReads: 100},
 	}
 	got := Rank(cands, Signals{}, rand.New(rand.NewSource(7)), 10)
-	if len(got) != 1 || got[0].BookID != 2 {
-		t.Fatalf("已读书应被过滤，得到 %v", bookIDs(got))
+	if len(got) != 3 {
+		t.Fatalf("读过的书不应被过滤，得到 %v", bookIDs(got))
+	}
+	// 降权而不是过滤：同等条件下「读过」的原始分更低。
+	w := DefaultWeights()
+	read := rawScore(Candidate{BookID: 9, HotReads: 10, Read: true}, nil, w)
+	unread := rawScore(Candidate{BookID: 9, HotReads: 10}, nil, w)
+	if read >= unread {
+		t.Fatalf("读过的书应被降权: read=%v unread=%v", read, unread)
 	}
 }
 
-func TestRankAllReadReturnsNil(t *testing.T) {
-	cands := []Candidate{{BookID: 1, Read: true}, {BookID: 2, Read: true}}
+func TestRankFiltersFinishedBooks(t *testing.T) {
+	cands := []Candidate{
+		{BookID: 1, Finished: true, HotReads: 100},
+		{BookID: 2, HotReads: 1},
+	}
+	got := Rank(cands, Signals{}, rand.New(rand.NewSource(7)), 10)
+	if len(got) != 1 || got[0].BookID != 2 {
+		t.Fatalf("读完的书应被过滤，得到 %v", bookIDs(got))
+	}
+}
+
+func TestRankAllFinishedReturnsNil(t *testing.T) {
+	cands := []Candidate{{BookID: 1, Finished: true}, {BookID: 2, Finished: true}}
 	if got := Rank(cands, Signals{}, rand.New(rand.NewSource(7)), 10); got != nil {
-		t.Fatalf("全已读应返回 nil，得到 %v", got)
+		t.Fatalf("全读完应返回 nil，得到 %v", got)
+	}
+}
+
+func TestRankKeepsResumeCandidates(t *testing.T) {
+	// 续读候选一定带 Read（有进度就有 read 事件），它们靠「Read 不再过滤」存活；
+	// 但若已经读完（Finished），续读也不该再推。
+	cands := []Candidate{
+		{BookID: 1, Read: true, Resume: false, HotReads: 1},   // 读过：留下（降权）
+		{BookID: 2, Read: true, Resume: true, HotReads: 1},    // 续读：留下且排首位（+2.0 基础分）
+		{BookID: 3, Read: true, Resume: true, Finished: true}, // 已读完：过滤
+	}
+	got := Rank(cands, Signals{}, rand.New(rand.NewSource(7)), 10)
+	if len(got) != 2 {
+		t.Fatalf("续读候选应保留、读完的应过滤，得到 %v", bookIDs(got))
+	}
+	resume := got[0]
+	if resume.BookID != 2 {
+		t.Fatalf("续读候选应占首位（基础分 2.0），得到 %+v", bookIDs(got))
+	}
+	if resume.Reason != ReasonResume {
+		t.Fatalf("续读候选理由 = %q，期望 %q", resume.Reason, ReasonResume)
 	}
 }
 
@@ -156,17 +196,52 @@ func TestRankSmallLimitSkipsExploration(t *testing.T) {
 }
 
 func TestExploreCount(t *testing.T) {
-	cases := []struct{ limit, pool, want int }{
-		{10, 20, 1},
-		{20, 100, 2},
-		{9, 100, 0},
-		{100, 3, 1}, // 不超过候选数的一半
-		{10, 1, 0},
-		{0, 10, 0},
+	cases := []struct {
+		limit, pool int
+		ratio       float64
+		want        int
+	}{
+		{10, 20, 0.1, 1},
+		{20, 100, 0.1, 2},
+		{9, 100, 0.1, 0},
+		{100, 3, 0.1, 1}, // 不超过候选数的一半
+		{10, 1, 0.1, 0},
+		{0, 10, 0.1, 0},
+		{10, 20, 0.5, 5}, // 随机 tab：50% 探索
+		{10, 4, 0.5, 2},  // 仍然受「不超过一半」约束
 	}
 	for _, c := range cases {
-		if got := exploreCount(c.limit, c.pool); got != c.want {
-			t.Errorf("exploreCount(%d,%d) = %d，期望 %d", c.limit, c.pool, got, c.want)
+		if got := exploreCount(c.limit, c.pool, c.ratio); got != c.want {
+			t.Errorf("exploreCount(%d,%d,%v) = %d，期望 %d", c.limit, c.pool, c.ratio, got, c.want)
 		}
+	}
+}
+
+func TestExploreRatioOf(t *testing.T) {
+	if got := exploreRatioOf(0); got != defaultExploreRatio {
+		t.Fatalf("未填应回落 %v，得到 %v", defaultExploreRatio, got)
+	}
+	if got := exploreRatioOf(-1); got != defaultExploreRatio {
+		t.Fatalf("负数应回落默认值，得到 %v", got)
+	}
+	if got := exploreRatioOf(2); got != defaultExploreRatio {
+		t.Fatalf(">1 应回落默认值，得到 %v", got)
+	}
+	if got := exploreRatioOf(0.5); got != 0.5 {
+		t.Fatalf("显式 0.5 应生效，得到 %v", got)
+	}
+}
+
+func TestRankRandomTabExploresHalf(t *testing.T) {
+	cands := makeCands(20)
+	got := Rank(cands, Signals{ExploreRatio: 0.5}, rand.New(rand.NewSource(11)), 10)
+	random := 0
+	for _, it := range got {
+		if it.Reason == ReasonRandom {
+			random++
+		}
+	}
+	if random != 5 {
+		t.Fatalf("50%% 探索时随机条数 = %d，期望 5", random)
 	}
 }

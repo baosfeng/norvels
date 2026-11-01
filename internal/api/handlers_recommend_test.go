@@ -90,22 +90,33 @@ func TestRecommendInterestRecallAndReason(t *testing.T) {
 	}
 }
 
-func TestRecommendSkipsReadBooks(t *testing.T) {
+// 读了一点但没读完的书：只降权，仍然可以被推荐（否则候选池会越用越小）。
+func TestRecommendKeepsPartiallyReadBooks(t *testing.T) {
 	e := newEnvWithRec(t)
-	read := e.seedBook("读过的书", "作者甲")
-	other := e.seedBook("没读过的书", "作者乙")
-	setCategory(t, e, other, "都市", "")
+	read := e.seedBook("读了几页的书", "作者甲")
+	e.seedBook("没读过的书", "作者乙")
 
 	requireStatus(t, postEvents(t, e, eventBody("read", read, "")), http.StatusOK)
 
 	items := recommendItems(t, e, 10)
-	if len(items) == 0 {
-		t.Fatal("除已读书之外仍有候选，推荐不应为空")
+	if !containsBook(items, read) {
+		t.Fatalf("只读了几页的书不应被过滤: %+v", items)
 	}
-	for _, it := range items {
-		if it.BookID == read {
-			t.Fatalf("已读书不应被推荐: %+v", items)
-		}
+}
+
+// 读完（进度 ≥0.99）的书不再推。
+func TestRecommendSkipsFinishedBooks(t *testing.T) {
+	e := newEnvWithRec(t)
+	finished := e.seedBook("读完的书", "作者甲")
+	e.seedBook("没读完的书", "作者乙")
+	saveProgress(t, e, finished, firstChapterID(t, e, finished), 1.0)
+
+	items := recommendItems(t, e, 10)
+	if len(items) == 0 {
+		t.Fatal("读完一本后仍有候选，推荐不应为空")
+	}
+	if containsBook(items, finished) {
+		t.Fatalf("读完的书不应被推荐: %+v", items)
 	}
 }
 

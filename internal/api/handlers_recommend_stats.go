@@ -36,6 +36,8 @@ const (
 	interestDimCategoryL1 = "category_l1"
 	interestDimCategoryL2 = "category_l2"
 	interestDimAuthor     = "author"
+	interestDimTag        = "tag"
+	interestDimSeries     = "series"
 )
 
 // interestStat 是兴趣榜的一行（带给人看的 name）。
@@ -121,7 +123,8 @@ func (s *Server) interestItems(ctx context.Context, rows []recstore.InterestRow)
 	out := make([]interestStat, 0, len(rows))
 	for _, row := range rows {
 		item := interestStat{Dim: row.Dim, Key: row.Key, Weight: row.Weight}
-		if row.Dim == interestDimCategoryL1 || row.Dim == interestDimCategoryL2 {
+		// 除作者外，key 本身就是展示名（分类名 / 标签名 / 系列名都给人看）。
+		if row.Dim != interestDimAuthor {
 			item.Name = row.Key
 			out = append(out, item)
 			continue

@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,17 @@ const (
 	// 重排会按作者/分类配额丢掉一部分候选，若只排 limit 条，丢完可能凑不满一屏；
 	// 排 3 倍再裁，既能撑满也不至于把整库都打一遍分。
 	rankPoolFactor = 3
+
+	// 推荐 tab（设计 §4）：默认 for_you；resume 只续读；random 主打随机发现。
+	recommendTabForYou = "for_you"
+	recommendTabResume = "resume"
+	recommendTabRandom = "random"
+
+	// randomTabExploreRatio 是随机 tab 的 ε 探索比例。
+	//
+	// 默认 10% 对「为你推荐」是合理的克制；但用户点进「随机发现」就是想要
+	// 不一样的东西，还只给 10% 等于挂了块招牌却不兑现。
+	randomTabExploreRatio = 0.5
 )
 
 // recommendItem 是推荐卡（前端不查详情即可渲染）。
@@ -59,6 +71,11 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
+	tab, err := parseRecommendTab(r)
+	if err != nil {
+		s.badRequest(w, err, codeInvalidParam)
+		return
+	}
 	ctx := r.Context()
 	userID := store.ScopeUserID(ctx)
 	interest, err := s.cfg.Rec.Interests(ctx, userID)
@@ -66,12 +83,12 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 		s.failRec(w, r, err, "推荐信号不可用")
 		return
 	}
-	recall, err := s.recallCandidates(ctx, userID, interest)
+	recall, err := s.recallCandidates(ctx, userID, interest, tab)
 	if err != nil {
 		s.fail(w, r, err, "推荐候选不可用")
 		return
 	}
-	items, err := s.buildRecommendations(ctx, userID, interest, recall, limit)
+	items, err := s.buildRecommendations(ctx, userID, interest, recall, limit, tab)
 	if err != nil {
 		s.failRec(w, r, err, "推荐排序不可用")
 		return
@@ -79,12 +96,28 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, recommendResponse{Items: items, GeneratedAt: time.Now().UTC()})
 }
 
+// parseRecommendTab 解析 tab 参数：空 = for_you，非法值 400（不静默当默认）。
+//
+// 非法值必须报错而不是回退默认：前端拼错 tab 时会一直拿到「为你推荐」，
+// 排查时看不出任何异常，只有一个不生效的按钮。
+func parseRecommendTab(r *http.Request) (string, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("tab"))
+	switch raw {
+	case "":
+		return recommendTabForYou, nil
+	case recommendTabForYou, recommendTabResume, recommendTabRandom:
+		return raw, nil
+	}
+	return "", badParam("参数 tab 必须是 %s|%s|%s",
+		recommendTabForYou, recommendTabResume, recommendTabRandom)
+}
+
 // buildRecommendations 读「已读 / 近期曝光」信号，打分后做多样性重排并装配响应。
 //
 // 已读与曝光在这里才读：召回阶段已经排过一轮，但两个集合只影响打分与过滤，
 // 一次读出即可，不必让每路召回各查一遍。
 func (s *Server) buildRecommendations(ctx context.Context, userID int64,
-	interest map[string]float64, recall *recallResult, limit int) ([]recommendItem, error) {
+	interest map[string]float64, recall *recallResult, limit int, tab string) ([]recommendItem, error) {
 	now := time.Now().UTC()
 	read, err := s.cfg.Rec.ReadBooks(ctx, userID)
 	if err != nil {
@@ -94,16 +127,93 @@ func (s *Server) buildRecommendations(ctx context.Context, userID int64,
 	if err != nil {
 		return nil, err
 	}
-	cands := recall.candidates(recallSignals{read: read, recent: recent, now: now})
-	rnd := rand.New(rand.NewSource(now.UnixNano()))
-	ranked := recommend.Rank(cands, recommend.Signals{Interest: interest}, rnd,
-		rankPool(limit, len(cands)))
-	picked := recommend.Diversify(ranked, limit, diversifyAuthorCap, diversifyCategoryCap)
+	// 「读完」来自主库进度（recommend 库只知道「读过」）：两者口径不同，必须分开读。
+	finished, err := s.st.FinishedBookIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 负反馈与「读完」同层：都是「不该出现在结果里」的硬过滤，进打分之前就剔掉。
+	negatives, err := s.cfg.Rec.NegativeItems(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	cands := recall.candidates(recallSignals{
+		read: read, finished: finished, recent: recent, now: now,
+	})
+	cands = dropNegatives(cands, negatives)
+	sig := recommend.Signals{Interest: interest, ExploreRatio: tabExploreRatio(tab)}
+	ranked := recommend.Rank(cands, sig, rand.New(rand.NewSource(now.UnixNano())),
+		rankLimitForTab(tab, limit, len(cands)))
+	picked := diversifyForTab(ranked, limit, tab)
+	if tab == recommendTabResume {
+		picked = sortResumeFirst(picked, recall.resume)
+	}
 	items := make([]recommendItem, 0, len(picked))
 	for _, sc := range picked {
 		items = append(items, itemOf(sc, recall.books[sc.BookID]))
 	}
 	return items, nil
+}
+
+// dropNegatives 剔除被标记「不感兴趣」的候选（原地过滤，省一次分配）。
+func dropNegatives(cands []recommend.Candidate, negatives map[int64]bool) []recommend.Candidate {
+	if len(negatives) == 0 {
+		return cands
+	}
+	out := cands[:0]
+	for _, c := range cands {
+		if negatives[c.BookID] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// rankLimitForTab 决定送去排序的条数。
+//
+// 随机 tab 不做超额排序：它的探索配额按「最终条数」算，多排 3 倍再截断会把
+// 追加在尾部的「随机发现」先裁掉（实测 limit=10 时只剩 4 条随机）。
+func rankLimitForTab(tab string, limit, available int) int {
+	if tab == recommendTabRandom {
+		return min(limit, available)
+	}
+	return rankPool(limit, available)
+}
+
+// tabExploreRatio 按 tab 给出探索比例（0 表示用 Rank 的默认值 10%）。
+func tabExploreRatio(tab string) float64 {
+	if tab == recommendTabRandom {
+		return randomTabExploreRatio
+	}
+	return 0
+}
+
+// diversifyForTab 做多样性重排；resume tab 不设配额。
+//
+// 续读列表全是用户自己读到一半的书，被「同作者 ≤2」藏掉一本是纯粹的损失；
+// 这个 tab 的目标是「把你没读完的还给你」，不是探索新书。
+func diversifyForTab(items []recommend.Scored, limit int, tab string) []recommend.Scored {
+	if tab == recommendTabResume {
+		return recommend.Diversify(items, limit, limit, limit)
+	}
+	return recommend.Diversify(items, limit, diversifyAuthorCap, diversifyCategoryCap)
+}
+
+// sortResumeFirst 把续读候选按进度倒序排到前面，其余保持打分顺序。
+func sortResumeFirst(items []recommend.Scored, resume map[int64]float64) []recommend.Scored {
+	sort.SliceStable(items, func(i, j int) bool {
+		pi, iResume := resume[items[i].BookID]
+		pj, jResume := resume[items[j].BookID]
+		if iResume != jResume {
+			return iResume
+		}
+		if iResume && pi != pj {
+			return pi > pj
+		}
+		return false
+	})
+	return items
 }
 
 // itemOf 把「打分结果 + 主库书目」拼成推荐卡。

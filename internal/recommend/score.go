@@ -18,18 +18,21 @@ type contributions struct {
 	l1        float64
 	l2        float64
 	author    float64
+	tag       float64
+	series    float64
 	cooccur   float64
 	hotReads  float64
 	hotClicks float64
 	fresh     float64
+	resume    float64
 	read      float64
 	recent    float64
 }
 
 // total 把各分量合成特征加权和（惩罚项按设计为负）。
 func (c contributions) total() float64 {
-	return c.l1 + c.l2 + c.author + c.cooccur + c.hotReads + c.hotClicks +
-		c.fresh - c.read - c.recent
+	return c.l1 + c.l2 + c.author + c.tag + c.series + c.cooccur + c.hotReads +
+		c.hotClicks + c.fresh + c.resume - c.read - c.recent
 }
 
 // contributionsOf 计算各分量。惩罚项在 total 里减去，这里只存正值。
@@ -42,6 +45,9 @@ func contributionsOf(c Candidate, interest map[string]float64, w Weights) contri
 		hotReads:  w.HotReads * math.Log1p(nonNegative(c.HotReads)),
 		hotClicks: w.HotClicks * math.Log1p(nonNegative(c.HotClicks)),
 		fresh:     w.Freshness * clampUnit(c.Fresh),
+		tag:       w.InterestTag * bestTagWeight(c.Tags, interest),
+		series:    w.InterestSeries * interestWeight(interest, dimSeries, c.Series),
+		resume:    boolWeight(c.Resume, w.Resume),
 		read:      boolWeight(c.Read, w.ReadPenalty),
 		recent:    boolWeight(c.RecentShown, w.RecentShownPenalty),
 	}
@@ -58,6 +64,31 @@ func interestWeight(m map[string]float64, dim, key string) float64 {
 		return 0
 	}
 	return m[dim+":"+key]
+}
+
+// bestTagWeight 取「命中标签里最大的兴趣权重」。
+//
+// 取最大值而不是求和：一本书打 5 个标签时求和会把「标签多」当成「兴趣强」，
+// 而标签数只反映编目粗细，不反映用户偏好。
+func bestTagWeight(tags []string, interest map[string]float64) float64 {
+	best := 0.0
+	for _, tag := range tags {
+		if w := interestWeight(interest, dimTag, tag); w > best {
+			best = w
+		}
+	}
+	return best
+}
+
+// bestTag 取命中兴趣最强的那个标签名（拼理由用）。
+func bestTag(tags []string, interest map[string]float64) string {
+	best, bestW := "", 0.0
+	for _, tag := range tags {
+		if w := interestWeight(interest, dimTag, tag); w > bestW {
+			best, bestW = tag, w
+		}
+	}
+	return best
 }
 
 // authorKey 把作者 id 转成兴趣 map 的 key 形式；0 表示无作者，不参与作者兴趣。
@@ -108,12 +139,15 @@ type reasonOption struct {
 // 用「最大贡献」而不是「命中优先级」：同一条推荐可能同时命中兴趣与热度，
 // 理由要能解释用户实际看到的那次排序，而不是永远只报兴趣（排查线上推荐时
 // 优先级写法会把真正的驱动信号藏起来）。全为 0 时退化为随机发现。
-func reasonFor(c Candidate, sc contributions) string {
+func reasonFor(c Candidate, sc contributions, interest map[string]float64) string {
 	opts := [...]reasonOption{
 		{sc.l1 + sc.l2 + sc.author, interestReason(c)},
+		{sc.tag, tagReason(c, interest)},
+		{sc.series, seriesReason(c)},
 		{sc.cooccur, ReasonCooccur},
 		{sc.hotReads + sc.hotClicks, ReasonHot},
 		{sc.fresh, ReasonFresh},
+		{sc.resume, ReasonResume},
 	}
 	best := reasonOption{reason: ReasonRandom}
 	for _, o := range opts {
@@ -122,6 +156,23 @@ func reasonFor(c Candidate, sc contributions) string {
 		}
 	}
 	return best.reason
+}
+
+// tagReason 拼标签类理由；命中标签为空时退化为泛化说法（理论上走不到）。
+func tagReason(c Candidate, interest map[string]float64) string {
+	tag := bestTag(c.Tags, interest)
+	if tag == "" {
+		return ReasonDefault
+	}
+	return tagPrefix + tag + tagSuffix
+}
+
+// seriesReason 拼系列类理由；系列名缺失时退化为泛化说法。
+func seriesReason(c Candidate) string {
+	if c.Series == "" {
+		return ReasonDefault
+	}
+	return seriesPrefix + c.Series + seriesSuffix
 }
 
 // interestReason 拼兴趣类理由；分类缺失时退化为不带分类的泛化说法。

@@ -10,7 +10,9 @@ import (
 // 为什么不用主库的迁移体系：本库整库可重建（设计 §1），加一列可以「删文件重来」，
 // 不需要 20 分钟不可逆的前向迁移；用 user_version 只为挡住「新库配旧程序」这种
 // 会读到错列的组合。
-const recSchemaVersion = 1
+// 版本历史：1 = 初始结构；2 = 负反馈表 negative_items（dislike 用）。
+// 升版只做「幂等建表」（所有 DDL 都是 IF NOT EXISTS），不做数据迁移。
+const recSchemaVersion = 2
 
 // recSchemaDDL 是推荐库的全部结构，只在这里声明一次。
 //
@@ -74,6 +76,14 @@ var recSchemaDDL = []string{
 	// 近期已曝光：曝光量最大，只按 (user_id, book_id) 去重保留最近一次时间，
 	// 不保留曝光次数——次数在 book_stats / book_daily 里已经聚合过了。
 	`CREATE TABLE IF NOT EXISTS recent_items (
+    user_id INTEGER NOT NULL,
+    book_id INTEGER NOT NULL,
+    ts      TEXT    NOT NULL,
+    PRIMARY KEY (user_id, book_id)
+) WITHOUT ROWID`,
+	// 负反馈（dislike）：按 (user, book) 去重只留最近一次时间，召回阶段整本剔除。
+	// 与 recent_items 同样 WITHOUT ROWID：查询永远是「某账号的整集合」。
+	`CREATE TABLE IF NOT EXISTS negative_items (
     user_id INTEGER NOT NULL,
     book_id INTEGER NOT NULL,
     ts      TEXT    NOT NULL,

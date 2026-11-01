@@ -107,6 +107,38 @@ func TestOpenPingError(t *testing.T) {
 	}
 }
 
+func TestOpenMigratesV1ToV2(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "norvels-rec.db")
+	s, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	// 造一个「v1 库」：v1 没有负反馈表，版本号也停在 1。
+	if _, err := s.db.ExecContext(context.Background(), "DROP TABLE negative_items"); err != nil {
+		t.Fatalf("删表: %v", err)
+	}
+	if _, err := s.db.ExecContext(context.Background(), "PRAGMA user_version = 1"); err != nil {
+		t.Fatalf("改版本号: %v", err)
+	}
+	closeStore(t, s)
+
+	upgraded, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("升级 Open: %v", err)
+	}
+	defer closeStore(t, upgraded)
+	if n := countRows(t, upgraded, "negative_items"); n != 0 {
+		t.Fatalf("升级后 negative_items 应为空表，得到 %d 行", n)
+	}
+	var version int
+	if err := upgraded.db.QueryRowContext(context.Background(), "PRAGMA user_version").Scan(&version); err != nil {
+		t.Fatalf("读版本: %v", err)
+	}
+	if version != recSchemaVersion {
+		t.Fatalf("升级后版本 = %d，期望 %d", version, recSchemaVersion)
+	}
+}
+
 func TestOpenRejectsNewerSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "norvels-rec.db")
 	s, err := Open(context.Background(), path)

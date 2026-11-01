@@ -3,9 +3,7 @@ package recstore
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -107,19 +105,10 @@ func normalizeAll(events []Event, now time.Time) ([]Event, error) {
 	return out, nil
 }
 
-// normalizeEvent 校验并归一化一条事件：kind 白名单、必带 book、字段长度、时间格式。
+// normalizeEvent 校验并归一化一条事件：字段校验 + 时间归一化 + 负数夹取。
 func normalizeEvent(ev Event, now time.Time) (Event, error) {
-	if !validKind(ev.Kind) {
-		return Event{}, fmt.Errorf("%w: 未知 kind %q", ErrInvalidArgument, ev.Kind)
-	}
-	if ev.Kind != KindSearch && ev.BookID <= 0 {
-		return Event{}, fmt.Errorf("%w: %s 缺少 book_id", ErrInvalidArgument, ev.Kind)
-	}
-	if len(ev.CategoryL1) > maxFieldLen || len(ev.CategoryL2) > maxFieldLen {
-		return Event{}, fmt.Errorf("%w: 分类字段超过 %d 字节", ErrInvalidArgument, maxFieldLen)
-	}
-	if len(ev.Extra) > maxExtraLen {
-		return Event{}, fmt.Errorf("%w: extra 超过 %d 字节", ErrInvalidArgument, maxExtraLen)
+	if err := validateEventPayload(ev); err != nil {
+		return Event{}, err
 	}
 	ts, err := eventTime(ev.TS, now)
 	if err != nil {
@@ -132,11 +121,45 @@ func normalizeEvent(ev Event, now time.Time) (Event, error) {
 	return ev, nil
 }
 
+// validateEventPayload 校验 kind 白名单、必带字段与各字段长度。
+func validateEventPayload(ev Event) error {
+	if !validKind(ev.Kind) {
+		return fmt.Errorf("%w: 未知 kind %q", ErrInvalidArgument, ev.Kind)
+	}
+	if ev.Kind != KindSearch && ev.BookID <= 0 {
+		return fmt.Errorf("%w: %s 缺少 book_id", ErrInvalidArgument, ev.Kind)
+	}
+	if len(ev.CategoryL1) > maxFieldLen || len(ev.CategoryL2) > maxFieldLen {
+		return fmt.Errorf("%w: 分类字段超过 %d 字节", ErrInvalidArgument, maxFieldLen)
+	}
+	if len(ev.Series) > maxFieldLen {
+		return fmt.Errorf("%w: 系列名超过 %d 字节", ErrInvalidArgument, maxFieldLen)
+	}
+	if len(ev.Extra) > maxExtraLen {
+		return fmt.Errorf("%w: extra 超过 %d 字节", ErrInvalidArgument, maxExtraLen)
+	}
+	return validateTags(ev.Tags)
+}
+
+// validateTags 校验标签数量与单个长度（标签会变成兴趣 key，脏 key 会污染召回）。
+func validateTags(tags []string) error {
+	if len(tags) > maxTagsPerEvent {
+		return fmt.Errorf("%w: 单条事件最多 %d 个标签，收到 %d 个",
+			ErrInvalidArgument, maxTagsPerEvent, len(tags))
+	}
+	for _, tag := range tags {
+		if len(tag) > maxFieldLen {
+			return fmt.Errorf("%w: 标签名超过 %d 字节", ErrInvalidArgument, maxFieldLen)
+		}
+	}
+	return nil
+}
+
 // validKind 是事件白名单。白名单而不是黑名单：新 kind 必须先在这里显式登记，
 // 否则它进不了聚合口径，落库只会制造没人消费的垃圾行。
 func validKind(kind string) bool {
 	switch kind {
-	case KindImpression, KindClick, KindRead, KindView, KindSearch, KindShelf, KindRating:
+	case KindImpression, KindClick, KindRead, KindView, KindSearch, KindShelf, KindRating, KindDislike:
 		return true
 	}
 	return false
@@ -167,6 +190,11 @@ func (s *Store) applyEvent(ctx context.Context, tx *sql.Tx, userID int64,
 		}
 		if err := s.bumpInterest(ctx, tx, userID, ev, now); err != nil {
 			return err
+		}
+		if ev.Kind == KindDislike {
+			if err := upsertNegativeItem(ctx, tx, userID, ev.BookID, ev.TS); err != nil {
+				return err
+			}
 		}
 	}
 	if err := s.bumpAggregates(ctx, tx, ev); err != nil {
@@ -226,109 +254,6 @@ func (s *Store) bumpAggregates(ctx context.Context, tx *sql.Tx, ev Event) error 
 	if _, err := tx.ExecContext(ctx, upsertBookDailySQL, ev.BookID, dayOf(ev.TS),
 		d.impressions, d.clicks, d.reads, d.seconds); err != nil {
 		return fmt.Errorf("recstore: 更新 book_daily: %w", err)
-	}
-	return nil
-}
-
-// interestDim 是兴趣的一个维度（分类名或作者 id）。
-type interestDim struct {
-	dim string
-	key string
-}
-
-// 兴趣维度：分类拆成 L1 / L2 两个维度，作者一个维度。
-//
-// 为什么不合成一个 category：同一本书的「武侠」与「江湖」分属两个层级，混在一个维度里
-// 会让看板出现「武侠 69.4 / 江湖 69.4」成对重复，召回也分不清命中凭据是大类还是细分，
-// 权重更没法按层级给（设计 §3：L1 3.0 / L2 1.5）。
-//
-// 旧键 dim=category **直接作废**：推荐库整库可重建（设计 §1），不做数据迁移；
-// 库里残留的 category 行不会再被任何读路径消费，随 90 天保留窗口自然清掉，或删库重建。
-const (
-	dimCategoryL1 = "category_l1"
-	dimCategoryL2 = "category_l2"
-	dimAuthor     = "author"
-)
-
-// interestDims 列出这条事件该加权的维度；空分类/0 作者直接跳过。
-func interestDims(ev Event) []interestDim {
-	out := make([]interestDim, 0, 3)
-	if ev.CategoryL1 != "" {
-		out = append(out, interestDim{dimCategoryL1, ev.CategoryL1})
-	}
-	if ev.CategoryL2 != "" {
-		out = append(out, interestDim{dimCategoryL2, ev.CategoryL2})
-	}
-	if ev.AuthorID > 0 {
-		out = append(out, interestDim{dimAuthor, strconv.FormatInt(ev.AuthorID, 10)})
-	}
-	return out
-}
-
-// interestDelta 把事件折算成兴趣增量（设计 §2 的 delta 表）。
-//
-// read 的增量随停留时长增长但封顶 +3：读 5 分钟才算「真读过」，读 5 小时也不该
-// 等于十几次收藏——否则把阅读器挂后台就能把单一分类拱到 top1。
-// search 不进兴趣：搜索词落在 extra 里是自由文本，直接当分类名会污染召回。
-func interestDelta(kind string, value int) float64 {
-	switch kind {
-	case KindClick:
-		return 1
-	case KindRead:
-		bonus := float64(value) / 300
-		if bonus > 3 {
-			bonus = 3
-		}
-		return 1 + bonus
-	case KindShelf:
-		return 3
-	case KindRating:
-		return 5
-	case KindView:
-		return 0.5
-	}
-	return 0
-}
-
-// bumpInterest 给这条事件涉及的每个维度累加衰减后的兴趣增量。
-func (s *Store) bumpInterest(ctx context.Context, tx *sql.Tx, userID int64,
-	ev Event, now time.Time) error {
-	delta := interestDelta(ev.Kind, ev.Value)
-	if delta <= 0 {
-		return nil
-	}
-	for _, d := range interestDims(ev) {
-		if err := addInterest(ctx, tx, userID, d, delta, now); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// addInterest 读旧权重 → 先衰减到 now → 加 delta → 写回。
-//
-// 衰减在 Go 里算而不是 SQL 的 exp()：SQLite 的数学函数是编译期开关，
-// 换驱动或降级构建时 exp() 会静默消失，而这里的公式是推荐分的基础。
-func addInterest(ctx context.Context, tx *sql.Tx, userID int64, d interestDim,
-	delta float64, now time.Time) error {
-	var weight float64
-	var updatedAt string
-	err := tx.QueryRowContext(ctx,
-		"SELECT weight, updated_at FROM user_interest WHERE user_id = ? AND dim = ? AND key = ?",
-		userID, d.dim, d.key).Scan(&weight, &updatedAt)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		weight = 0 // 首次互动：没有旧权重可衰减
-	case err != nil:
-		return fmt.Errorf("recstore: 读兴趣权重: %w", err)
-	default:
-		if prev, perr := parseTime(updatedAt); perr == nil {
-			weight = decay(weight, prev, now)
-		}
-	}
-	if _, err := tx.ExecContext(ctx, upsertInterestSQL, userID, d.dim, d.key,
-		weight+delta, formatTime(now)); err != nil {
-		return fmt.Errorf("recstore: 写兴趣权重: %w", err)
 	}
 	return nil
 }

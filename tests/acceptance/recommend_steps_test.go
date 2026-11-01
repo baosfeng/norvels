@@ -50,8 +50,11 @@ func registerRecommendSteps(sc *godog.ScenarioContext, w *world) {
 	sc.Step(`^我上报一条 (click|read) 事件$`, func(ctx context.Context, kind string) error {
 		return w.postEvent(kind, w.lastBookID)
 	})
-	sc.Step(`^我把这本书标记为已读$`, func(ctx context.Context) error {
-		return w.postEvent("read", w.lastBookID)
+	sc.Step(`^我把这本书读到最后一页$`, func(ctx context.Context) error {
+		return w.markFinished(w.lastBookID)
+	})
+	sc.Step(`^推荐结果应当包含这本书$`, func(ctx context.Context) error {
+		return w.assertRecommendContains(w.lastBookID, true)
 	})
 	sc.Step(`^我连续请求两次推荐$`, func(ctx context.Context) error {
 		return w.requestRecommendTwice()
@@ -165,6 +168,50 @@ func (w *world) postEvent(kind string, bookID int64) error {
 	}
 	if code != http.StatusOK {
 		return fmt.Errorf("POST /api/events 状态码 = %d，期望 200，body=%s", code, data)
+	}
+	return nil
+}
+
+// markFinished 把一本书的进度写到 100%（读完 → 推荐不再包含它）。
+//
+// 为什么不用 read 事件当「已读」：读了几分钟就退出是常态，真实数据里几乎每本书
+// 都被 read 覆盖过；只有阅读器上报的进度能区分「翻了几页」与「读完了」。
+func (w *world) markFinished(bookID int64) error {
+	var detail struct {
+		Volumes []struct {
+			Chapters []struct {
+				ID int64 `json:"id"`
+			} `json:"chapters"`
+		} `json:"volumes"`
+	}
+	code, data, err := w.getJSON(fmt.Sprintf("/api/books/%d", bookID), &detail)
+	if err != nil {
+		return err
+	}
+	if code != http.StatusOK {
+		return fmt.Errorf("GET /api/books/%d 状态码 = %d，body=%s", bookID, code, data)
+	}
+	var chapterID int64
+	for _, v := range detail.Volumes {
+		for _, ch := range v.Chapters {
+			chapterID = ch.ID
+		}
+	}
+	if chapterID <= 0 {
+		return fmt.Errorf("书 %d 没有章节，无法记录读完", bookID)
+	}
+	body, err := json.Marshal(map[string]any{
+		"bookId": bookID, "chapterId": chapterID, "percent": 1,
+	})
+	if err != nil {
+		return err
+	}
+	code, data, err = w.doJSON(http.MethodPut, "/api/reading/progress", string(body))
+	if err != nil {
+		return err
+	}
+	if code != http.StatusNoContent {
+		return fmt.Errorf("PUT /api/reading/progress 状态码 = %d，期望 204，body=%s", code, data)
 	}
 	return nil
 }

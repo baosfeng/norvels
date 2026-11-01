@@ -24,6 +24,17 @@ func TestRawScoreFullFormula(t *testing.T) {
 	}
 }
 
+func TestRawScoreTagSeriesResume(t *testing.T) {
+	w := DefaultWeights()
+	interest := map[string]float64{"tag:武侠": 1.5, "series:山河": 1.2}
+	c := Candidate{Tags: []string{"武侠", "群像"}, Series: "山河", Resume: true}
+	// 标签取命中最大值（1.5×2.0），系列 1.2×1.5，续读 2.0。
+	want := 1.5*2.0 + 1.2*1.5 + 2.0
+	if got := rawScore(c, interest, w); math.Abs(got-want) > 1e-9 {
+		t.Fatalf("rawScore = %v，期望 %v", got, want)
+	}
+}
+
 func TestRawScorePenalties(t *testing.T) {
 	w := DefaultWeights()
 	base := Candidate{BookID: 1, HotReads: 4}
@@ -103,6 +114,7 @@ func TestBoolWeight(t *testing.T) {
 }
 
 func TestReasonFor(t *testing.T) {
+	interest := map[string]float64{"tag:武侠": 1.5, "series:山河": 1.2}
 	cases := []struct {
 		name string
 		cand Candidate
@@ -112,14 +124,33 @@ func TestReasonFor(t *testing.T) {
 		{"兴趣最强", Candidate{CategoryL1: "武侠"}, contributions{l1: 6}, "因为你常看武侠"},
 		{"二级分类兜底", Candidate{CategoryL2: "传统"}, contributions{l2: 6}, "因为你常看传统"},
 		{"无分类时泛化", Candidate{}, contributions{author: 5}, ReasonDefault},
+		{"标签最强", Candidate{Tags: []string{"武侠", "群像"}}, contributions{tag: 3}, "因为你喜欢「武侠」标签"},
+		{"系列最强", Candidate{Series: "山河"}, contributions{series: 3}, "同系列《山河》"},
+		{"续读最强", Candidate{}, contributions{resume: 2}, ReasonResume},
 		{"共读最强", Candidate{CategoryL1: "武侠"}, contributions{l1: 1, cooccur: 5}, ReasonCooccur},
 		{"热度最强", Candidate{CategoryL1: "武侠"}, contributions{l1: 1, hotReads: 2, hotClicks: 3}, ReasonHot},
 		{"新鲜最强", Candidate{}, contributions{fresh: 3}, ReasonFresh},
 		{"全零", Candidate{}, contributions{}, ReasonRandom},
 	}
 	for _, c := range cases {
-		if got := reasonFor(c.cand, c.sc); got != c.want {
+		if got := reasonFor(c.cand, c.sc, interest); got != c.want {
 			t.Errorf("%s: reason = %q，期望 %q", c.name, got, c.want)
 		}
+	}
+}
+
+func TestBestTagWeight(t *testing.T) {
+	interest := map[string]float64{"tag:武侠": 1.5, "tag:群像": 3}
+	if got := bestTagWeight([]string{"武侠", "群像"}, interest); got != 3 {
+		t.Fatalf("应取命中标签的最大权重 3，得到 %v", got)
+	}
+	if got := bestTagWeight([]string{"科幻"}, interest); got != 0 {
+		t.Fatalf("未命中应为 0，得到 %v", got)
+	}
+	if got := bestTagWeight(nil, interest); got != 0 {
+		t.Fatalf("无标签应为 0，得到 %v", got)
+	}
+	if got := bestTag([]string{"武侠", "群像"}, interest); got != "群像" {
+		t.Fatalf("最强标签 = %q，期望 群像", got)
 	}
 }

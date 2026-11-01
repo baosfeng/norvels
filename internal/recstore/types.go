@@ -25,6 +25,10 @@ const (
 	KindSearch     = "search"
 	KindShelf      = "shelf"
 	KindRating     = "rating"
+	// KindDislike 是负反馈：不感兴趣。它同时做两件事——进 negative_items 把这本书
+	// 从后续候选里剔掉，并给相关兴趣维度记负权重（下限 0），避免刚点过「不感兴趣」
+	// 的分类继续主导召回。
+	KindDislike = "dislike"
 )
 
 // MaxEventBatch 是单次上报的条数上限（设计 §4：≤100 条/次）。
@@ -49,9 +53,13 @@ type Event struct {
 	AuthorID   int64  `json:"authorId,omitempty"`
 	CategoryL1 string `json:"categoryL1,omitempty"`
 	CategoryL2 string `json:"categoryL2,omitempty"`
-	Value      int    `json:"value,omitempty"` // read = 停留秒数，rating = 星级
-	Extra      string `json:"extra,omitempty"`
-	TS         string `json:"ts,omitempty"`
+	// Tags / Series 只用于兴趣加权，不进 events 明细表（表结构不为它们加列）：
+	// 标签与系列是可以从 book_id 复原的展示维度，没必要在事件行里再存一份快照。
+	Tags   []string `json:"tags,omitempty"`
+	Series string   `json:"series,omitempty"`
+	Value  int      `json:"value,omitempty"` // read = 停留秒数，rating = 星级
+	Extra  string   `json:"extra,omitempty"`
+	TS     string   `json:"ts,omitempty"`
 }
 
 // Cooccur 是一条共读记录：读过 BookID 的人也读过 OtherID，累计 Users 次。
@@ -96,6 +104,10 @@ const (
 	// 截断后的事件仍然落库，会让「分类名」在库里出现两个不同的半截值。
 	maxFieldLen = 64
 	maxExtraLen = 512
+
+	// maxTagsPerEvent 是单条事件携带的标签数上限：一本书的标签通常个位数，
+	// 超过这个量说明客户端把整张词表塞进来了，直接拒绝（不静默截断）。
+	maxTagsPerEvent = 20
 
 	// maxReadSeconds 是单条 read 事件的停留秒数上限（一天）。
 	// 客户端切后台没上报会导致超长停留，夹住它避免兴趣分被单条事件带飞。
