@@ -122,7 +122,7 @@ func TestAISettingsConfiguredKeyIsReported(t *testing.T) {
 }
 
 // TestAISettingsMethodNotAllowed GET 打 PUT 路径 → 405，Allow 同列 GET 与 PUT。
-// 依赖 static.go 的 apiRoutes 表：漏登记就掉 404，前端「动词用错」的分支失效。
+// 405 判定只读注册时累积的路由表（routes.go），漏登记就掉 404，前端「动词用错」的分支失效。
 func TestAISettingsMethodNotAllowed(t *testing.T) {
 	env := newEnv(t)
 	// POST 不属于该路径的任何方法：期望 405，而不是「路径不存在」的 404。
