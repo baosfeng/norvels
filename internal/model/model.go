@@ -39,7 +39,7 @@ type ParsedBook struct {
 	SourceFormat string      // 源文件格式：txt / epub
 
 	// Quality 是可解释质量指标（txt 解析链路计算；其它来源为零值 = 未计算）。
-	// 只作诊断与版本择优的输入，不参与落库，口径见 internal/parser/quality_metrics.go。
+	// 随书落库，见迁移 0020（books 七列质量分）；口径见 internal/parser/quality_metrics.go。
 	Quality QualityMetrics
 }
 

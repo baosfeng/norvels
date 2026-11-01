@@ -25,11 +25,13 @@ cd "$ROOT_DIR" || exit 2
 # 更新规则：覆盖提升后把这里的数字调到**新实测值**（取一位小数），不允许下调。
 # 上调基线本身不需要额外审批，但下调必须有 leader 明确同意并在此处写原因。
 TARGET=85                       # 渐进目标（报告项，不判红）
-BASELINE_TOTAL=84.7             # 总行覆盖率基线（2026-11-01 实测上调：83.2 → 84.7，含新增 textcode 99.4% / corpusstats 85.5% / codebench 89.2%）
-BASELINE_STORE=82.5             # internal/store（82.3 → 82.5，0017 迁移步骤带上来的）
+BASELINE_TOTAL=85.0             # 总行覆盖率基线（实测上调：83.2 → 84.7 → 85.0，0020 质量分/版本择优带上来的）
+BASELINE_STORE=82.9             # internal/store（82.3 → 82.5 → 82.9，0020 质量分与回填）
 BASELINE_PARSER=88.6            # internal/parser（88.4 → 88.6）
-BASELINE_IMPORTER=91.2          # internal/importer（90.4 → 91.2）
-BASELINE_API=86.6               # internal/api（86.3 → 86.6）
+# internal/importer 实测在 91.2~91.4 之间抖动（个别用例的覆盖路径不固定），钉 91.3 会让门禁偶发红，
+# 因此保持 91.2 这个已经稳定成立的底；只升不降的约束不受影响（没有下调）。
+BASELINE_IMPORTER=91.2
+BASELINE_API=86.9               # internal/api（86.3 → 86.6 → 86.9，升级候选出口）
 
 DETAIL=0
 case "${1:-}" in
