@@ -92,7 +92,7 @@ func (s *Store) loadBookDetailRow(ctx context.Context, id int64) (bookDetailRow,
 	row := s.db.QueryRowContext(ctx,
 		"SELECT "+bookSummaryColumns+", b.encoding, b.source_name, b.file_size, "+
 			"(SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id AND bm.user_id = ?) "+
-			"FROM books b LEFT JOIN authors a ON a.id = b.author_id WHERE b.id = ?",
+			"FROM books b LEFT JOIN authors a ON a.id = b.author_id WHERE b.id = ? AND "+activeBookCond,
 		ScopeUserID(ctx), id)
 	// 摘要列 + 详情列共用一套扫描目标：列顺序由 bookSummaryColumns 单点决定。
 	dest := append(summaryScanTargets(&out.summary, &imported, &updated),

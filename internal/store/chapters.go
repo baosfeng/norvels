@@ -28,13 +28,18 @@ func (s *Store) ListChapters(ctx context.Context, q ChapterQuery) (Page[ChapterB
 	}
 	offset := (from - 1) * limit
 
+	// 目录同样只对当前版本开放：被替换掉的旧版本整本不可读（详情先 404，
+	// 这里再挡一次，避免直接按 book_id 拉目录绕过详情）。
 	var total int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM chapters WHERE book_id = ?", q.BookID).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM chapters c JOIN books b ON b.id = c.book_id "+
+			"WHERE c.book_id = ? AND "+activeBookCond, q.BookID).Scan(&total); err != nil {
 		return Page[ChapterBrief]{}, fmt.Errorf("store: count chapters: %w", err)
 	}
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, idx, title, volume_id, word_count FROM chapters WHERE book_id = ? "+
-			"ORDER BY idx, id LIMIT ? OFFSET ?", q.BookID, limit, offset)
+		"SELECT c.id, c.idx, c.title, c.volume_id, c.word_count FROM chapters c "+
+			"JOIN books b ON b.id = c.book_id WHERE c.book_id = ? AND "+activeBookCond+
+			" ORDER BY c.idx, c.id LIMIT ? OFFSET ?", q.BookID, limit, offset)
 	if err != nil {
 		return Page[ChapterBrief]{}, fmt.Errorf("store: list chapters: %w", err)
 	}
@@ -64,9 +69,11 @@ func (s *Store) GetChapter(ctx context.Context, bookID, chapterID int64) (*Chapt
 		return nil, fmt.Errorf("%w: chapter id %d", ErrInvalidArgument, chapterID)
 	}
 
+	// JOIN 条件带 activeBookCond：读到被替换掉的旧版本时按「没找到」处理（404），
+	// 而不是让读者在书架外的地方继续读一个已经不在用的版本。
 	q := "SELECT c.book_id, b.title, c.id, c.idx, c.title, c.word_count, " +
 		"c.block_id, c.block_off, c.block_len " +
-		"FROM chapters c JOIN books b ON b.id = c.book_id WHERE c.id = ?"
+		"FROM chapters c JOIN books b ON b.id = c.book_id AND " + activeBookCond + " WHERE c.id = ?"
 	args := []any{chapterID}
 	if bookID > 0 {
 		q += " AND c.book_id = ?"

@@ -64,6 +64,11 @@ func (s *Store) DeleteBook(ctx context.Context, id int64) error {
 	if err := deleteBookRow(ctx, tx, id); err != nil {
 		return err
 	}
+	// 被这本书取代的版本（0021：审核期间隐藏的新版本 / 已替换掉的旧版本）恢复为当前版本：
+	// 取代者已经不在了，superseded_by 指向一个不存在的 id 会让那本书永远从书架消失。
+	if err := releaseSupersededBooks(ctx, tx, id); err != nil {
+		return err
+	}
 	for _, authorID := range authorIDs {
 		if err := refreshAuthorStats(ctx, tx, authorID); err != nil {
 			return err
@@ -108,6 +113,17 @@ func bookAuthorIDsForDelete(ctx context.Context, tx *sql.Tx, id int64) ([]int64,
 		return nil, fmt.Errorf("store: list book authors rows %d: %w", id, err)
 	}
 	return ids, nil
+}
+
+// releaseSupersededBooks 把「被 id 取代」的书恢复成当前版本（superseded_by = 0）。
+//
+// 删除是唯一会让 superseded_by 指向悬空 id 的路径：审核记录本身留着（历史），
+// 但那本书必须重新可见——否则用户既看不到它，也没有任何界面能把它捞回来。
+func releaseSupersededBooks(ctx context.Context, tx *sql.Tx, id int64) error {
+	if _, err := tx.ExecContext(ctx, "UPDATE books SET superseded_by = 0 WHERE superseded_by = ?", id); err != nil {
+		return fmt.Errorf("store: release superseded books of %d: %w", id, err)
+	}
+	return nil
 }
 
 // deleteBookRow 删除 books 本体；行数为 0（书不存在）返回 ErrNotFound。

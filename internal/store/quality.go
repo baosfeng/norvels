@@ -69,6 +69,20 @@ type BookQuality struct {
 	ComputedAt     time.Time `json:"-"` // 零值 = 未计算
 }
 
+// BookQualityView 是 BookQuality 的对外展示形状：多一个 computed 标志。
+//
+// 零值质量分是「没算过」而不是 0 分，前端必须能分辨（否则「零乱码零噪声」看起来
+// 像一份完美质量分）。Computed 就是 BookQuality.Computed() 的 JSON 出口。
+type BookQualityView struct {
+	BookQuality
+	Computed bool `json:"computed"`
+}
+
+// View 把质量分翻成展示形状。
+func (q BookQuality) View() BookQualityView {
+	return BookQualityView{BookQuality: q, Computed: q.Computed()}
+}
+
 // Computed 报告这份质量分是不是算过的。
 //
 // 判据是「章数 > 0 且时间戳非零」两条同时成立：只写其一是半截状态（迁移与写入都是

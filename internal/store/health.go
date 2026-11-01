@@ -82,7 +82,8 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	wg.Add(7)
 	go func() {
 		defer wg.Done()
-		r.TotalBooks = s.intMetric(ctx, &r, "totalBooks", "SELECT COUNT(*) FROM books")
+		// 只数当前版本：健康报告的书数与书架同口径，否则替换一次旧版就多出「一本书」。
+		r.TotalBooks = s.intMetric(ctx, &r, "totalBooks", "SELECT COUNT(*) FROM books WHERE superseded_by = 0")
 	}()
 	// 四项判据都来自 health_issues.go 的同一份 WHERE：报告的数字与「查看明细」
 	// 接口列出的条数由同一条 SQL 条件保证一致，不会两处各写一套而漂移。
