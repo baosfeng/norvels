@@ -49,7 +49,7 @@
 
 > 豁免不是免检：`scripts/gate-complexity.sh` 与 `scripts/gate-size.sh` 读下表，命中项在输出里**逐条点名**（含实测值与登记值）；
 > 未登记的超标项一律报错，已登记项**不允许变差**（实测超过登记值同样报错）。每条豁免写**具体理由**与**复审条件**，新增需 PR 说明 + reviewer 确认。
-> 当前 cyclo 38 条 / size-func 1 条 / size-file 0 条；门禁工具自身（gostats、gatedeps）零豁免。
+> 当前 cyclo 37 条 / size-func 1 条 / size-file 0 条（按 `scripts/gate-complexity.sh` 实测）；门禁工具自身（gostats、gatedeps）零豁免。
 > 口径：默认 ≤ 10 / ≤ 70 行；确属问题域复杂度的（中文 txt 标题与元信息的判定矩阵）逐条登记后豁免 —— 强行拆分会把判定依据散落多处，可读性更差。
 
 | 类型 | 函数/文件 | 路径 | 登记实测 | 豁免理由 | 复审条件 |

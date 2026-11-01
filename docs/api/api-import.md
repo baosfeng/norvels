@@ -22,8 +22,7 @@
 
 `dir` 可以是目录，也可以是单个 `.txt` / `.epub` / `.zip` 文件（如 `/books/某本书.epub`）：
 
-- 目录：扫描其下 txt/epub/zip，`recursive` 决定是否进子目录（缺省 true）。
-- 单个文件：只导这一本，`recursive` 被忽略；任务记录里 `sourceDir` 存该文件路径。
+- 目录：扫描其下 txt/epub/zip，`recursive` 决定是否进子目录（缺省 true）；单个文件：只导这一本，`recursive` 被忽略，任务记录里 `sourceDir` 存该文件路径。
 - 路径既不是目录也不是支持的文件 → 400 `invalid_param`，不会建任务。
 - `update`（布尔，默认 false）：追更，只追加新章节；对不上已有章节序列 → `not_appendable`，绝不覆盖。
 - `.zip` 按包内条目逐条导入，条目名为 `包名.zip:包内路径`；四道闸：条目 ≤1000、解压总量 ≤512 MiB、单条目 ≤64 MiB、拒绝绝对路径/../符号链接；嵌套 zip 按不支持条目记 `import_errors`。
@@ -69,6 +68,9 @@ zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包�
 { "files": [{ "id": 1, "source": "/books/坏.txt", "displayPath": "坏.txt", "status": "failed", "reason": "解析失败", "bookId": 0, "updatedAt": "…" }], "truncated": false }
 ```
 - `status` 取值 `imported|failed|skipped|unsupported|canceled`，其它值 → 400 `invalid_param`；不带返回全部；最多 1000 条，超出 `truncated: true`；任务不存在 → 404 `not_found`。
+- `status=skipped` 的 `reason` 分两种结局：`疑似重复：…（《书名》质量更优/持平/无质量分）` 与 `升级候选：噪声率 3.2%→0.4%、乱码率 …（旧版本《书名》质量更差，需人工确认替换）`；
+  升级候选**不入库、不替换**（设计 §7），结构化字段（旧书 id/书名、命中率、新旧质量分、逐项差异）由 `importer.Result.UpgradeCandidates` 交给调用方，服务日志逐条打印。
+
 ### POST /api/import/jobs/{id}/retry
 body `{ "sources": ["…"] }`（省略 = 重试该任务全部 `failed`）→ **202** `{ "jobId": <新任务 id> }`。
 
@@ -79,8 +81,7 @@ body `{ "sources": ["…"] }`（省略 = 重试该任务全部 `failed`）→ **
 `status` 取值：`running` / `completed` / `completed_with_errors` / `failed` / **`canceled`**（用户取消或服务退出，已入库的书保留）。
 
 ### POST /api/import/jobs/{id}/cancel
-- 任务在跑 → **202** `{ "status": "canceling" }`：取消信号已发出，终态 `canceled` 由导入收尾写入（本接口不写库）；
-- 任务不存在 → 404 `not_found`；
+- 任务在跑 → **202** `{ "status": "canceling" }`：取消信号已发出，终态 `canceled` 由导入收尾写入（本接口不写库）；任务不存在 → 404 `not_found`；
 - 任务已结束（`completed` / `completed_with_errors` / `failed` / `canceled`），或进程重启后遗留的 `running` 记录在本进程没有取消入口 → 409 `conflict`。此时回 202 会让前端一直等一个不会到来的终态。
 
 ## 设置
@@ -97,8 +98,7 @@ body 同 GET（`rules` 为**全量替换**，传空数组即清空）。
 
 - 成功 **204**，无响应体（与 `PUT /api/reading/progress` 一致，前端按「无内容」处理）；
 - 正则编译失败 → 400 `invalid_pattern`（消息里带第几条）；
-- 条数 > 20 或单条正则 > 200 字、正则为空 → 400 `invalid_param`；
-- `name` 只用于展示：留空补「规则N」，超过 60 字截断（不因此拒绝保存）。
+- 条数 > 20 或单条正则 > 200 字、正则为空 → 400 `invalid_param`；`name` 只用于展示：留空补「规则N」，超过 60 字截断（不因此拒绝保存）。
 
 ### GET /api/settings/tag-rules
 词表打标规则（标签 ← 关键词列表），导入时按它给书打 `source=auto` 的标签：
