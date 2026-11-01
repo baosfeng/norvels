@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { api, type BookQuery, type RequestOptions, type SearchParams } from "../api/client";
-import type { HealthIssueKind, ReadingSessionInput, ReviewStatusFilter } from "./types";
+import type { HealthIssueKind, ReadingSessionInput, RecommendTab, ReviewStatusFilter } from "./types";
 import { useResource } from "../lib/useResource";
 import { subscribeReadingRevision } from "../lib/readingRevision";
 import { subscribeStatsRevision } from "../lib/statsRevision";
@@ -274,11 +274,15 @@ export function useRecordReadingSession() {
 }
 
 /**
- * 为你推荐（发现页）：`limit` 是请求条数（契约 1–50），进依赖——换了条数就重取。
+ * 推荐流（发现页）：`limit` 是请求条数（契约 1–50），`tab` 是来源（为你推荐 / 继续阅读 / 随机发现），
+ * 两者进依赖——换 tab 就重取。
  * 「换一批」调 reload：key 不变所以列表不会先清空闪骨架，服务端每次都会重新随机。
  */
-export function useRecommendations(limit = 20) {
-  return useResource((signal: AbortSignal) => api.recommendations(limit, { signal }), [limit]);
+export function useRecommendations(limit = 20, tab: RecommendTab = "for_you") {
+  return useResource(
+    (signal: AbortSignal) => api.recommendations({ limit, tab }, { signal }),
+    [limit, tab],
+  );
 }
 
 /**

@@ -148,16 +148,19 @@ function isRejected(error: unknown): boolean {
 /**
  * 推荐卡的曝光：可见 ≥50% 且持续 ≥500ms 记一次 impression，每张卡只记一次。
  *
+ * `extra` 放推荐理由（「因为你常看武侠」这类文本）：后端把它存进 events.extra，
+ * 事后才能回答「哪条理由带来的曝光最有效」。理由很短（≤ 二十来字），不会撞字段上限。
+ *
  * 用 IntersectionObserver 而不是滚动事件：卡片多时滚动回调会把主线程占满。
  * 测试 / 老浏览器没有 IntersectionObserver 时直接不记（宁可没有曝光，也不要错报）。
  */
 export function useImpression(
   ref: RefObject<Element | null>,
-  payload: { bookId: number; categoryL1?: string; categoryL2?: string },
+  payload: { bookId: number; categoryL1?: string; categoryL2?: string; extra?: string },
   options: { enabled?: boolean } = {},
 ): void {
   const enabled = options.enabled ?? true;
-  const { bookId, categoryL1, categoryL2 } = payload;
+  const { bookId, categoryL1, categoryL2, extra } = payload;
 
   useEffect(() => {
     const node = ref.current;
@@ -185,7 +188,7 @@ export function useImpression(
             dwell = null;
             recorded = true;
             observer.disconnect();
-            track("impression", { bookId, categoryL1, categoryL2 });
+            track("impression", { bookId, categoryL1, categoryL2, extra });
           }, IMPRESSION_DWELL_MS);
         }
       },
@@ -196,5 +199,5 @@ export function useImpression(
       clearDwell();
       observer.disconnect();
     };
-  }, [ref, enabled, bookId, categoryL1, categoryL2]);
+  }, [ref, enabled, bookId, categoryL1, categoryL2, extra]);
 }

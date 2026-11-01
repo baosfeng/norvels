@@ -98,6 +98,86 @@
   flex-wrap: wrap;
 }
 
+
+/* ── 来源切换（为你推荐 / 继续阅读 / 随机发现）──
+   版式沿用搜索页那排 .search-tabs（下划线 tab），这里只把按钮形态补齐：
+   .search-tabs 的选择器只写了 a，按钮不被它命中，所以 padding / 下划线 / 状态色要在这里给。 */
+.discover-tabs {
+  margin: 0 0 var(--gap-card);
+}
+.discover-tabs button {
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+.discover-tabs button:hover {
+  color: var(--fg);
+}
+.discover-tabs button[aria-pressed="true"] {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.discover-tabs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ── 不感兴趣 ──
+   位置压在封面右上角（按钮是卡片链接的兄弟节点，不套在链接里：按钮套链接点一下会连带跳详情）。
+   PC：平时透明，hover / 键盘聚焦到卡片内才出现；触屏没有 hover，用 (hover: none) 常驻。
+   44px 热区由 @media (max-width: 768px) 补，不在桌面为了美观把按钮做大。 */
+.discover-dislike {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in oklab, var(--border), transparent 10%);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.discover-card:hover .discover-dislike,
+.discover-card:focus-within .discover-dislike {
+  opacity: 1;
+}
+.discover-dislike:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.discover-dislike:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+/* 触屏（笔记本触屏、平板、手机）：没有 hover 就不能靠 hover 才显示 */
+@media (hover: none) {
+  .discover-dislike {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 768px) {
   /* 与书架同一口径：页面左右留白收到 --gap-page，格子宽一点，书名与理由才放得下 */
   main.container:has(> .view-discover) {
@@ -131,5 +211,14 @@
   .view-discover .discover-head-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+  /* 触屏可点区域 ≥44px：tab 与「不感兴趣」都是独立可点元素 */
+  .discover-tabs button {
+    min-height: 44px;
+    padding: 0 2px;
+  }
+  .discover-dislike {
+    min-height: 28px;
+    padding: 0 10px;
   }
 }

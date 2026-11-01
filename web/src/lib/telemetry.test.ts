@@ -237,11 +237,11 @@ class FakeObserver {
 }
 
 describe("useImpression：可见 ≥50% 且 ≥500ms 记一次曝光", () => {
-  function mount(bookId = 21) {
+  function mount(bookId = 21, extra?: string) {
     const node = document.createElement("div");
     document.body.appendChild(node);
     const ref = { current: node };
-    const hook = renderHook(() => useImpression(ref, { bookId, categoryL1: "武侠" }));
+    const hook = renderHook(() => useImpression(ref, { bookId, categoryL1: "武侠", extra }));
     return { hook, observer: FakeObserver.all[FakeObserver.all.length - 1] };
   }
 
@@ -265,6 +265,21 @@ describe("useImpression：可见 ≥50% 且 ≥500ms 记一次曝光", () => {
     expect(pendingEvents()).toBe(1);
     await advanceToFlush();
     expect(lastBatch()[0]).toMatchObject({ kind: "impression", bookId: 21, categoryL1: "武侠" });
+  });
+
+  it("曝光带上推荐理由（extra），后端存进 events.extra 才能按理由复盘", async () => {
+    const { observer } = mount(25, "因为你常看武侠");
+    act(() => observer.fire(0.8));
+    await act(async () => {
+      vi.advanceTimersByTime(IMPRESSION_DWELL_MS);
+    });
+    await advanceToFlush();
+    expect(lastBatch()[0]).toMatchObject({
+      kind: "impression",
+      bookId: 25,
+      categoryL1: "武侠",
+      extra: "因为你常看武侠",
+    });
   });
 
   it("可见比例不足 50% 不算看见", async () => {

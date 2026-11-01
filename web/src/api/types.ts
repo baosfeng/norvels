@@ -906,7 +906,9 @@ export type TrackEventKind =
   | "read"
   | "search"
   | "shelf"
-  | "rating";
+  | "rating"
+  /** 发现页「不感兴趣」：负反馈，后端把这本书从后续推荐里压下去 */
+  | "dislike";
 
 /**
  * POST /api/events 的一条事件。字段都可缺省：埋点只带**已知**的维度，
@@ -953,6 +955,14 @@ export interface RecommendItem {
   reason: string;
   score: number;
 }
+
+/**
+ * 推荐流的三个来源（GET /api/recommend?tab=…）：
+ * - `for_you` 为你推荐：兴趣 + 共读 + 热门 + 新鲜 + 随机（设计 §3 的完整版）
+ * - `resume` 继续阅读：读到一半、还没读完的书
+ * - `random` 随机发现：均匀随机，不看兴趣（给「随便翻翻」用）
+ */
+export type RecommendTab = "for_you" | "resume" | "random";
 
 /** GET /api/recommend 的响应。`generatedAt` 用于「这一批是什么时候算的」。 */
 export interface RecommendResult {
