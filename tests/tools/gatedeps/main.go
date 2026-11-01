@@ -6,6 +6,7 @@
 //	internal/api → importer / parser / store / source / webui / model
 //	internal/importer → parser / store / source / model
 //	internal/parser, internal/store → model
+//	internal/recommend/recall → store / recstore / recommend（不得依赖 api，否则成环）
 //	internal/source → 不依赖任何内置包（规则包是纯数据，不拖解析与存储细节）
 //	internal/model, internal/webui, internal/ai → 不依赖任何其他内置包
 //
@@ -51,6 +52,9 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/recstore": {},
 	// 推荐排序纯函数：只依赖标准库（叶子包），召回（读库）与打分（纯函数）解耦。
 	"norvels/internal/recommend": {},
+	// 多路召回：读主库候选 + 推荐库信号，对上只暴露 Port / RecPort 两个接口。
+	// 它依赖 store 与 recstore（两者都是叶子），但**不允许**依赖 api——那是它的上层。
+	"norvels/internal/recommend/recall": {"norvels/internal/recommend", "norvels/internal/recstore", "norvels/internal/store"},
 	// 书源规则包：纯数据模型 + 校验，只依赖标准库（叶子包）。
 	"norvels/internal/source": {},
 	// 在线抓取执行器：只依赖标准库（叶子包），不碰解析与存储。
@@ -73,8 +77,9 @@ var allowedDeps = map[string][]string{
 		"norvels/internal/fetch", "norvels/internal/ruleimport",
 		// AI 审核（0021）：api 是裁决器的组装点（Config.AIJudge）与后台 worker 的宿主。
 		"norvels/internal/ai",
-		// 推荐系统：api 是「主库候选 + 推荐库信号 + 纯函数打分」三者的唯一组装点。
-		"norvels/internal/recstore", "norvels/internal/recommend",
+		// 推荐系统：api 是「主库候选 + 推荐库信号 + 纯函数打分」三者的唯一组装点；
+		// 召回读库的本体在 recommend/recall，api 只留 Port 适配与 tab 校验。
+		"norvels/internal/recstore", "norvels/internal/recommend", "norvels/internal/recommend/recall",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	// ai 只在这里出现：--ai 的上架判定器在 cmd 里接线（importer 只认函数类型、ai 不认识书库），

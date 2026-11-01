@@ -2,360 +2,74 @@ package api
 
 import (
 	"context"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 
-	"norvels/internal/recommend"
+	"norvels/internal/recommend/recall"
 	"norvels/internal/recstore"
 	"norvels/internal/store"
 )
 
-// 多路召回（设计 §3）：兴趣分类 / 兴趣作者 / 共读 / 热门 / 新鲜 / 随机。
+// 多路召回（设计 §3）：兴趣分类 / 兴趣作者 / 标签 / 系列 / 共读 / 热门 / 新鲜 / 随机 / 续读。
 //
-// 为什么不放在 internal/recommend：召回要读两个库（主库候选 + 推荐库信号），
-// 而 recommend 是纯函数包（只依赖标准库）。这里就是两库的组装点——
-// 也是整个功能里唯一同时认识 store 与 recstore 的地方。
-
-const (
-	recallPerCategory   = 40 // 每个兴趣分类取 40 本（设计 §3）
-	recallTopCategories = 3  // 只取用户 top3 分类：兴趣分布长尾，多取只是重复同一批书
-	recallTopAuthors    = 2
-	recallPerAuthor     = 20
-	recallCooccurLimit  = 60
-	recallHotDays       = 7
-	recallHotLimit      = 40
-	recallFreshLimit    = 20
-	recallRandomLimit   = 20
-	recallTopTags       = 2
-	recallPerTag        = 20
-	recallTopSeries     = 2
-	recallPerSeries     = 20
-	recallResumeLimit   = 20
-	// recentShownDays 是「近期已曝光」的窗口：7 天内推过的不重复推（只扣分不硬过滤）。
-	recentShownDays = 7
-)
-
-// recallResult 是各路召回的并集：书目（回主库补齐的展示字段）+ 打分信号。
+// 召回逻辑整体在 internal/recommend/recall：它同时读主库与推荐库，但不需要 Server
+// 的其它能力。这里只剩两件事——把两个库适配成 recall 的 Port / RecPort，以及保持
+// Server 原有的调用点（装配与打分仍在 handlers_recommend.go）。
 //
-// 用 map 去重 + order 保序：同一本书常被多路同时召回（兴趣 + 热度），
-// 只留第一次出现的顺序能让「随机探索」与打分的输入稳定可复现。
-type recallResult struct {
-	books   map[int64]store.BookSummary
-	order   []int64
-	cooccur map[int64]int
-	hot     map[int64]recstore.HotBook
-	// tags 是候选书的标签（打分与理由都要用，召回结束后一次性补齐）。
-	tags map[int64][]string
-	// resume 记录「读到一半」的书及其进度（0..1），只在该书被续读召回时存在。
-	resume map[int64]float64
-	// similar 记录相似书召回里「与种子书的关系文案」；selfID 是种子书（不推荐自己）。
-	similar map[int64]string
-	// similarCodes 是同一批关系文案的稳定 code（看板按它分组，文案改了不影响统计）。
-	similarCodes map[int64]string
-	selfID       int64
+// recentShownDays 是「近期已曝光」的窗口：7 天内推过的不重复推（只扣分不硬过滤）。
+const recentShownDays = 7
+
+// recallPort 把主库与推荐库适配成 recall 的查询接口。
+type recallPort struct {
+	st  *store.Store
+	rec *recstore.Store
 }
 
-// newRecallResult 预分配容量（一屏召回通常几十到几百本）。
-func newRecallResult() *recallResult {
-	return &recallResult{
-		books:        make(map[int64]store.BookSummary, 64),
-		order:        make([]int64, 0, 64),
-		cooccur:      make(map[int64]int, 32),
-		hot:          make(map[int64]recstore.HotBook, 32),
-		tags:         make(map[int64][]string, 64),
-		resume:       make(map[int64]float64, 16),
-		similar:      make(map[int64]string, 32),
-		similarCodes: make(map[int64]string, 32),
-	}
+// ports 取当前 Server 的两个库适配器（同一个值同时充当 Port 与 RecPort）。
+func (s *Server) ports() recallPort { return recallPort{st: s.st, rec: s.cfg.Rec} }
+
+// 以下方法是 recall.Port / recall.RecPort 的薄适配：store 与 recstore 的方法签名
+// 已与接口一致，这里逐字转发，不做任何类型转换或默认值补偿（否则行为会漂移）。
+
+func (p recallPort) ListBooks(ctx context.Context, q store.BookQuery) (store.Page[store.BookSummary], error) {
+	return p.st.ListBooks(ctx, q)
 }
 
-// add 收下一本书（同一本书只留第一次出现的顺序）。
-func (rr *recallResult) add(bs store.BookSummary) {
-	if bs.ID <= 0 {
-		return
-	}
-	if _, ok := rr.books[bs.ID]; ok {
-		return
-	}
-	rr.books[bs.ID] = bs
-	rr.order = append(rr.order, bs.ID)
+func (p recallPort) BooksByIDs(ctx context.Context, ids []int64) ([]store.BookSummary, error) {
+	return p.st.BooksByIDs(ctx, ids)
 }
 
-// recallSignals 是打分需要的用户侧信号（与召回结果一起进 candidates）。
-type recallSignals struct {
-	// read：有过 read 事件（只降权）。finished：主库进度 ≥0.99（唯一会被过滤的读状态）。
-	read     map[int64]bool
-	finished map[int64]bool
-	recent   map[int64]bool
-	now      time.Time
+func (p recallPort) BookTagsByIDs(ctx context.Context, ids []int64) (map[int64][]string, error) {
+	return p.st.BookTagsByIDs(ctx, ids)
 }
 
-// candidates 把召回结果转成打分输入（顺序与召回顺序一致）。
-func (rr *recallResult) candidates(sig recallSignals) []recommend.Candidate {
-	out := make([]recommend.Candidate, 0, len(rr.order))
-	for _, id := range rr.order {
-		bs := rr.books[id]
-		out = append(out, recommend.Candidate{
-			BookID: bs.ID, AuthorID: bs.AuthorID,
-			CategoryL1: bs.CategoryL1, CategoryL2: bs.CategoryL2,
-			ImportedAt: bs.ImportedAt, Rating: bs.Rating,
-			Read: sig.read[id], Finished: sig.finished[id], RecentShown: sig.recent[id],
-			CooccurUsers: rr.cooccur[id],
-			HotReads:     rr.hot[id].Reads, HotClicks: rr.hot[id].Clicks,
-			Fresh:   recommend.Freshness(bs.ImportedAt, sig.now),
-			Tags:    rr.tags[id],
-			Series:  bs.Series,
-			Resume:  rr.resume[id] > 0,
-			Similar: rr.similar[id] != "", SimilarReason: rr.similar[id],
-			SimilarReasonCode: rr.similarCodes[id],
-		})
-	}
-	return out
+func (p recallPort) ListReadingProgress(ctx context.Context, limit int) ([]store.ReadingProgress, error) {
+	return p.st.ListReadingProgress(ctx, limit)
 }
 
-// recallCandidates 按 tab 跑对应召回（顺序无关，缺失的库信号自然为空）。
+func (p recallPort) RandomBookSummaries(ctx context.Context, n int) ([]store.BookSummary, error) {
+	return p.st.RandomBookSummaries(ctx, n)
+}
+
+func (p recallPort) Cooccur(ctx context.Context, userID int64, limit int) ([]recstore.Cooccur, error) {
+	return p.rec.Cooccur(ctx, userID, limit)
+}
+
+func (p recallPort) CooccurForBook(ctx context.Context, bookID int64, limit int) ([]recstore.Cooccur, error) {
+	return p.rec.CooccurForBook(ctx, bookID, limit)
+}
+
+func (p recallPort) HotBooks(ctx context.Context, days, limit int) ([]recstore.HotBook, error) {
+	return p.rec.HotBooks(ctx, days, limit)
+}
+
+// recallCandidates 按 tab 跑对应召回（tab 的合法性已在 HTTP 层校验）。
 func (s *Server) recallCandidates(ctx context.Context, userID int64,
-	interest map[string]float64, tab string) (*recallResult, error) {
-	rr := newRecallResult()
-	var err error
-	switch tab {
-	case recommendTabResume:
-		err = s.recallResumeOnly(ctx, rr)
-	case recommendTabRandom:
-		err = s.recallRandomOnly(ctx, rr)
-	default:
-		err = s.recallForYou(ctx, rr, userID, interest)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := s.loadCandidateTags(ctx, rr); err != nil {
-		return nil, err
-	}
-	return rr, nil
+	interest map[string]float64, tab string) (*recall.Result, error) {
+	ports := s.ports()
+	return recall.Candidates(ctx, ports, ports, userID, interest, tab)
 }
 
-// recallForYou 是默认 tab 的全量九路召回。
-func (s *Server) recallForYou(ctx context.Context, rr *recallResult,
-	userID int64, interest map[string]float64) error {
-	return runRecallSteps([]func() error{
-		func() error { return s.recallByCategories(ctx, rr, interest) },
-		func() error { return s.recallByAuthors(ctx, rr, interest) },
-		func() error { return s.recallByTags(ctx, rr, interest) },
-		func() error { return s.recallBySeries(ctx, rr, interest) },
-		func() error { return s.recallByCooccur(ctx, rr, userID) },
-		func() error { return s.recallByHot(ctx, rr) },
-		func() error { return s.recallByFresh(ctx, rr) },
-		func() error { return s.recallByRandom(ctx, rr) },
-		func() error { return s.recallByResume(ctx, rr) },
-	})
-}
-
-// recallResumeOnly 是续读 tab：只拼「读到一半」的书，热门/新鲜兜底保证非空。
-func (s *Server) recallResumeOnly(ctx context.Context, rr *recallResult) error {
-	return runRecallSteps([]func() error{
-		func() error { return s.recallByResume(ctx, rr) },
-		func() error { return s.recallByHot(ctx, rr) },
-		func() error { return s.recallByFresh(ctx, rr) },
-	})
-}
-
-// recallRandomOnly 是随机 tab：随机池 + 热门兜底（随机池可能为空）。
-func (s *Server) recallRandomOnly(ctx context.Context, rr *recallResult) error {
-	return runRecallSteps([]func() error{
-		func() error { return s.recallByRandom(ctx, rr) },
-		func() error { return s.recallByHot(ctx, rr) },
-	})
-}
-
-// runRecallSteps 顺序执行召回步骤，任一步失败即整体失败。
-func runRecallSteps(steps []func() error) error {
-	for _, step := range steps {
-		if err := step(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// recallByCategories 按兴趣分类召回（L1/L2 合并后逐个查）。
-func (s *Server) recallByCategories(ctx context.Context, rr *recallResult,
-	interest map[string]float64) error {
-	for _, name := range interestCategoryNames(interest) {
-		if err := s.recallCategory(ctx, rr, name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// recallByAuthors 按兴趣作者召回。
-func (s *Server) recallByAuthors(ctx context.Context, rr *recallResult,
-	interest map[string]float64) error {
-	for _, raw := range topKeys(interest, interestDimAuthor, recallTopAuthors) {
-		authorID, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			continue // 作者 key 是 id 的十进制文本，坏值只可能来自脏数据，跳过即可
-		}
-		if err := s.recallAuthor(ctx, rr, authorID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// interestCategoryNames 合并 L1 / L2 两维的分类名（各取 top3、去重、按权重顺序）。
-//
-// 两个维度在存储上分开是为了看板能分层展示，但「按分类取书」并不在乎层级：
-// 同一个名字在两维都出现时只查一次，避免同一批书被召回两遍。
-func interestCategoryNames(interest map[string]float64) []string {
-	names := make([]string, 0, recallTopCategories*2)
-	seen := make(map[string]bool, recallTopCategories*2)
-	for _, dim := range []string{interestDimCategoryL1, interestDimCategoryL2} {
-		for _, name := range topKeys(interest, dim, recallTopCategories) {
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			names = append(names, name)
-		}
-	}
-	return names
-}
-
-// recallCategory 取某个分类下的书；先按大分类查，没命中再按小分类查。
-//
-// 合并后的名字不知道来自哪一级（L1 与 L2 的名字可能重名），所以两级都试：
-// 先 L1 后 L2 的顺序让大分类命中时少一次查询。
-func (s *Server) recallCategory(ctx context.Context, rr *recallResult, name string) error {
-	page, err := s.st.ListBooks(ctx, store.BookQuery{CategoryL1: name, Page: 1, Size: recallPerCategory})
-	if err != nil {
-		return err
-	}
-	if len(page.Items) == 0 {
-		page, err = s.st.ListBooks(ctx, store.BookQuery{CategoryL2: name, Page: 1, Size: recallPerCategory})
-		if err != nil {
-			return err
-		}
-	}
-	for _, bs := range page.Items {
-		rr.add(bs)
-	}
-	return nil
-}
-
-// recallAuthor 取某个兴趣作者的书。
-func (s *Server) recallAuthor(ctx context.Context, rr *recallResult, authorID int64) error {
-	page, err := s.st.ListBooks(ctx, store.BookQuery{AuthorID: authorID, Page: 1, Size: recallPerAuthor})
-	if err != nil {
-		return err
-	}
-	for _, bs := range page.Items {
-		rr.add(bs)
-	}
-	return nil
-}
-
-// recallByCooccur 按「读过 A 的人也在读 B」召回，并记下每本书的共读强度。
-func (s *Server) recallByCooccur(ctx context.Context, rr *recallResult, userID int64) error {
-	pairs, err := s.cfg.Rec.Cooccur(ctx, userID, recallCooccurLimit)
-	if err != nil {
-		return err
-	}
-	ids := make([]int64, 0, len(pairs))
-	for _, p := range pairs {
-		// 同一邻居书可能由多本已读书贡献：取最大共读人数（取和会把「读得多」算成「读得广」）。
-		if p.Users > rr.cooccur[p.OtherID] {
-			rr.cooccur[p.OtherID] = p.Users
-		}
-		ids = append(ids, p.OtherID)
-	}
-	return s.addBooksByIDs(ctx, rr, ids)
-}
-
-// recallByHot 按近 7 天热度召回（冷启动时这是唯一有信号的一路）。
-func (s *Server) recallByHot(ctx context.Context, rr *recallResult) error {
-	hot, err := s.cfg.Rec.HotBooks(ctx, recallHotDays, recallHotLimit)
-	if err != nil {
-		return err
-	}
-	ids := make([]int64, 0, len(hot))
-	for _, h := range hot {
-		rr.hot[h.BookID] = h
-		ids = append(ids, h.BookID)
-	}
-	return s.addBooksByIDs(ctx, rr, ids)
-}
-
-// recallByFresh 取最近入库的书。
-func (s *Server) recallByFresh(ctx context.Context, rr *recallResult) error {
-	page, err := s.st.ListBooks(ctx, store.BookQuery{Sort: "imported", Page: 1, Size: recallFreshLimit})
-	if err != nil {
-		return err
-	}
-	for _, bs := range page.Items {
-		rr.add(bs)
-	}
-	return nil
-}
-
-// recallByRandom 随机探索：保证每次请求都有「没见过的书」。
-func (s *Server) recallByRandom(ctx context.Context, rr *recallResult) error {
-	books, err := s.st.RandomBookSummaries(ctx, recallRandomLimit)
-	if err != nil {
-		return err
-	}
-	for _, bs := range books {
-		rr.add(bs)
-	}
-	return nil
-}
-
-// addBooksByIDs 把 id 批量补成书目（推荐的候选必须带回标题与封面）。
-func (s *Server) addBooksByIDs(ctx context.Context, rr *recallResult, ids []int64) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	books, err := s.st.BooksByIDs(ctx, ids)
-	if err != nil {
-		return err
-	}
-	for _, bs := range books {
-		rr.add(bs)
-	}
-	return nil
-}
-
-// topKeys 取某个兴趣维度下权重最高的前 n 个 key（去掉 "dim:" 前缀）。
-//
-// 同权重按 key 字典序：排序必须完全确定，否则同一次请求的召回集合会随
-// map 迭代顺序漂移，测试与线上排查都复现不了。
-func topKeys(interest map[string]float64, dim string, n int) []string {
-	type entry struct {
-		key    string
-		weight float64
-	}
-	prefix := dim + ":"
-	entries := make([]entry, 0, len(interest))
-	for k, w := range interest {
-		if strings.HasPrefix(k, prefix) {
-			entries = append(entries, entry{key: strings.TrimPrefix(k, prefix), weight: w})
-		}
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].weight != entries[j].weight {
-			return entries[i].weight > entries[j].weight
-		}
-		return entries[i].key < entries[j].key
-	})
-	if len(entries) > n {
-		entries = entries[:n]
-	}
-	out := make([]string, len(entries))
-	for i, e := range entries {
-		out[i] = e.key
-	}
-	return out
+// recallSimilar 取与 bookID 相似的书（排除自身，书不存在时返回 ErrNotFound）。
+func (s *Server) recallSimilar(ctx context.Context, bookID int64) (*recall.Result, error) {
+	ports := s.ports()
+	return recall.Similar(ctx, ports, ports, bookID)
 }

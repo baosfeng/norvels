@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"norvels/internal/recommend"
+	"norvels/internal/recommend/recall"
 	"norvels/internal/store"
 )
 
@@ -32,9 +33,10 @@ const (
 	rankPoolFactor = 3
 
 	// 推荐 tab（设计 §4）：默认 for_you；resume 只续读；random 主打随机发现。
-	recommendTabForYou = "for_you"
-	recommendTabResume = "resume"
-	recommendTabRandom = "random"
+	// 字面量由 recall 包持有（它按 tab 分派），api 只做 HTTP 参数到常量的校验。
+	recommendTabForYou = recall.TabForYou
+	recommendTabResume = recall.TabResume
+	recommendTabRandom = recall.TabRandom
 
 	// randomTabExploreRatio 是随机 tab 的 ε 探索比例。
 	//
@@ -99,17 +101,17 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 		s.failRec(w, r, err, "推荐信号不可用")
 		return
 	}
-	var recall *recallResult
+	var recalled *recall.Result
 	if similarID > 0 {
-		recall, err = s.recallSimilar(ctx, similarID)
+		recalled, err = s.recallSimilar(ctx, similarID)
 	} else {
-		recall, err = s.recallCandidates(ctx, userID, interest, tab)
+		recalled, err = s.recallCandidates(ctx, userID, interest, tab)
 	}
 	if err != nil {
 		s.fail(w, r, err, "推荐候选不可用")
 		return
 	}
-	items, err := s.buildRecommendations(ctx, userID, interest, recall, limit, tab)
+	items, err := s.buildRecommendations(ctx, userID, interest, recalled, limit, tab)
 	if err != nil {
 		s.failRec(w, r, err, "推荐排序不可用")
 		return
@@ -151,7 +153,7 @@ func similarQuery(r *http.Request) (int64, error) {
 // 已读与曝光在这里才读：召回阶段已经排过一轮，但两个集合只影响打分与过滤，
 // 一次读出即可，不必让每路召回各查一遍。
 func (s *Server) buildRecommendations(ctx context.Context, userID int64,
-	interest map[string]float64, recall *recallResult, limit int, tab string) ([]recommendItem, error) {
+	interest map[string]float64, recalled *recall.Result, limit int, tab string) ([]recommendItem, error) {
 	now := time.Now().UTC()
 	read, err := s.cfg.Rec.ReadBooks(ctx, userID)
 	if err != nil {
@@ -171,8 +173,8 @@ func (s *Server) buildRecommendations(ctx context.Context, userID int64,
 	if err != nil {
 		return nil, err
 	}
-	cands := recall.candidates(recallSignals{
-		read: read, finished: finished, recent: recent, now: now,
+	cands := recalled.Candidates(recall.Signals{
+		Read: read, Finished: finished, Recent: recent, Now: now,
 	})
 	cands = dropNegatives(cands, negatives)
 	// 作者级拉黑与书级同层：一次 dislike 带 authorId 时整位作者的作品都不再出现。
@@ -186,11 +188,11 @@ func (s *Server) buildRecommendations(ctx context.Context, userID int64,
 		rankLimitForTab(tab, limit, len(cands)))
 	picked := diversifyForTab(ranked, limit, tab)
 	if tab == recommendTabResume {
-		picked = sortResumeFirst(picked, recall.resume)
+		picked = sortResumeFirst(picked, recalled.Resume)
 	}
 	items := make([]recommendItem, 0, len(picked))
 	for _, sc := range picked {
-		items = append(items, itemOf(sc, recall.books[sc.BookID]))
+		items = append(items, itemOf(sc, recalled.Books[sc.BookID]))
 	}
 	return items, nil
 }
