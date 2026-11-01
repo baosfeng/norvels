@@ -528,26 +528,54 @@ export function buildEventTrend(daily: RecommendStatsDay[]): ChartModel<EventTre
 
 export interface InterestGroup {
   dim: RecommendInterestDim;
-  /** 组标题（中文短标签：「分类·大」「分类·小」「作者」） */
+  /** 组标题（中文短标签：「分类·大」「分类·小」「作者」「标签」「系列」） */
   label: string;
   rows: HorizontalBar[];
 }
 
 /**
- * 三个维度的固定展示顺序与组标题。
+ * 兴趣维度的展示表：固定顺序 + 组标题 + 浮层用词。
  *
- * 顺序是「大分类 → 小分类 → 作者」：先看他的口味大类，再看细分，最后看人。
- * 三组的权重不在同一尺度上（作者权重来自作者维度累计，分类来自分类维度），
- * 所以各自的条按**组内峰值**归一，组间不可比；这一点由组标题分开表达，不混榜。
+ * 顺序是大分类 → 小分类 → 作者 → 标签 → 系列（与后端 `interests` 的 dim 取值、文档同序）：
+ * 先看口味大类，再看细分，再看人，最后看内容自身的标记。
+ * 各组的权重不在同一尺度上（作者权重来自作者维度累计、分类来自分类维度、标签/系列同理），
+ * 所以条按**组内峰值**归一，组间不可比；这一点由组标题分开表达，不混榜。
+ *
+ * `titleStyle` 决定浮层怎么念这一行：作者维度的 name 是「id → 作者名」的翻译，
+ * 念成「作者 演示作者己」；其余维度的 name 就是 key（分类名 / 标签名 / 系列名是同一个串），
+ * 念成「标签「武侠」」——套用作者那种句式会变成「作者 武侠」这种错误归属。
  */
-const INTEREST_GROUPS: { dim: RecommendInterestDim; label: string; noun: string }[] = [
-  { dim: "category_l1", label: "分类·大", noun: "大分类" },
-  { dim: "category_l2", label: "分类·小", noun: "小分类" },
-  { dim: "author", label: "作者", noun: "作者" },
+interface InterestGroupSpec {
+  dim: RecommendInterestDim;
+  label: string;
+  noun: string;
+  titleStyle: "bare" | "quoted";
+}
+
+const INTEREST_GROUPS: InterestGroupSpec[] = [
+  { dim: "category_l1", label: "分类·大", noun: "大分类", titleStyle: "quoted" },
+  { dim: "category_l2", label: "分类·小", noun: "小分类", titleStyle: "quoted" },
+  { dim: "author", label: "作者", noun: "作者", titleStyle: "bare" },
+  { dim: "tag", label: "标签", noun: "标签", titleStyle: "quoted" },
+  { dim: "series", label: "系列", noun: "系列", titleStyle: "quoted" },
 ];
 
+/** 浮层文案：有翻译名的维度（作者）不加引号，其余维度「名词「名字」」。 */
+function interestTitle(spec: InterestGroupSpec, name: string, weight: string): string {
+  return spec.titleStyle === "bare"
+    ? `${spec.noun} ${name}：兴趣 ${weight}`
+    : `${spec.noun}「${name}」：兴趣 ${weight}`;
+}
+
+/** 结论里说「最重的那个」：作者维度念「最重的是作者「X」」，其余维度说清它在哪一组。 */
+function interestTopNote(spec: InterestGroupSpec, name: string, weight: string): string {
+  return spec.titleStyle === "bare"
+    ? `最重的是${spec.noun}「${name}」（兴趣 ${weight}）`
+    : `最重的是「${name}」（${spec.label}，兴趣 ${weight}）`;
+}
+
 /**
- * 兴趣画像：大分类 / 小分类 / 作者三组，各自排序、各自归一、各自取 top N。
+ * 兴趣画像：大分类 / 小分类 / 作者 / 标签 / 系列五组，各自排序、各自归一、各自取 top N。
  *
  * 展示名取 `name ?? key`：后端给名字（作者名 / 分类名）就用名字，没给或给了空串
  * （作者被删、库还是旧版）就退回 key —— key 是稳定标识（作者 id 的十进制文本），
@@ -558,45 +586,43 @@ export function buildInterestBars(
   interests: RecommendInterest[],
   limit = 5,
 ): ChartModel<{ groups: InterestGroup[]; top: string }> {
-  const groups: InterestGroup[] = INTEREST_GROUPS.map(({ dim, label }) => {
+  const groups: InterestGroup[] = INTEREST_GROUPS.map((spec) => {
     const rows = interests
-      .filter((item) => item.dim === dim)
+      .filter((item) => item.dim === spec.dim)
       .filter((item) => item.weight > 0 && item.key.trim() !== "")
       .sort((a, b) => b.weight - a.weight)
       .slice(0, limit);
     const max = rows[0]?.weight ?? 0;
     return {
-      dim,
-      label,
+      dim: spec.dim,
+      label: spec.label,
       rows: rows.map<HorizontalBar>((row) => {
         const name = (row.name ?? "").trim() || row.key;
-        const group = INTEREST_GROUPS.find((group) => group.dim === dim);
+        const display = row.weight.toFixed(1);
         return {
           name,
           value: row.weight,
           widthPct: pct(row.weight, max, 4),
-          display: row.weight.toFixed(1),
-          title:
-            dim === "author"
-              ? `作者 ${name}：兴趣 ${row.weight.toFixed(1)}`
-              : `${group?.noun ?? "分类"}「${name}」：兴趣 ${row.weight.toFixed(1)}`,
+          display,
+          title: interestTitle(spec, name, display),
         };
       }),
     };
   }).filter((group) => group.rows.length > 0);
 
   const best = groups
-    .flatMap((group) => group.rows.map((row) => ({ dim: group.dim, label: group.label, row })))
-    .reduce<{ dim: InterestGroup["dim"]; label: string; row: HorizontalBar } | null>(
+    .flatMap((group) => {
+      const spec = INTEREST_GROUPS.find((item) => item.dim === group.dim);
+      return spec ? group.rows.map((row) => ({ spec, row })) : [];
+    })
+    .reduce<{ spec: InterestGroupSpec; row: HorizontalBar } | null>(
       (top, item) => (!top || item.row.value > top.row.value ? item : top),
       null,
     );
-  // 三组并排时「最重的那个」要说清它在哪一组：分类名可能同名出现在大分类与小分类里
+  // 多组并排时「最重的那个」要说清它在哪一组：分类名可能同名出现在大分类与小分类里
   const note = best
-    ? best.dim === "author"
-      ? `最重的是作者「${best.row.name}」（兴趣 ${best.row.display}）`
-      : `最重的是「${best.row.name}」（${best.label}，兴趣 ${best.row.display}）`
-    : "还没有形成兴趣画像：点击、阅读几本之后这里会填上分类与作者";
+    ? interestTopNote(best.spec, best.row.name, best.row.display)
+    : "还没有形成兴趣画像：点击、阅读几本之后这里会填上分类、作者、标签与系列";
 
   return { empty: groups.length === 0, note, data: { groups, top: best?.row.name ?? "" } };
 }

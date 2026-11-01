@@ -404,7 +404,7 @@ describe("7 事件趋势", () => {
   });
 });
 
-describe("8 兴趣画像（大分类 / 小分类 / 作者三组）", () => {
+describe("8 兴趣画像（大分类 / 小分类 / 作者 / 标签 / 系列五组）", () => {
   const interests: RecommendInterest[] = [
     { dim: "category_l1", key: "武侠", name: "武侠", weight: 69.4 },
     { dim: "category_l1", key: "科幻", name: "科幻", weight: 60.1 },
@@ -415,10 +415,23 @@ describe("8 兴趣画像（大分类 / 小分类 / 作者三组）", () => {
     { dim: "category_l1", key: "悬疑", name: "悬疑", weight: 0 },
   ];
 
-  it("三组按「大分类 → 小分类 → 作者」的固定顺序分开，各自组内归一", () => {
-    const model = buildInterestBars(interests);
-    expect(model.data.groups.map((g) => g.dim)).toEqual(["category_l1", "category_l2", "author"]);
-    expect(model.data.groups.map((g) => g.label)).toEqual(["分类·大", "分类·小", "作者"]);
+  /** 五维齐活：后端 interests 里 5 种 dim 各来一行（tag/series 的 name 与 key 相同）。 */
+  const fiveDims: RecommendInterest[] = [
+    ...interests,
+    { dim: "tag", key: "武侠", name: "武侠", weight: 1.7 },
+    { dim: "series", key: "示例系列", name: "示例系列", weight: 1.2 },
+  ];
+
+  it("五维按「大分类 → 小分类 → 作者 → 标签 → 系列」的固定顺序分开，各自组内归一", () => {
+    const model = buildInterestBars(fiveDims);
+    expect(model.data.groups.map((g) => g.dim)).toEqual([
+      "category_l1",
+      "category_l2",
+      "author",
+      "tag",
+      "series",
+    ]);
+    expect(model.data.groups.map((g) => g.label)).toEqual(["分类·大", "分类·小", "作者", "标签", "系列"]);
     expect(model.data.groups[0].rows.map((r) => r.name)).toEqual(["武侠", "科幻"]);
     expect(model.data.groups[0].rows.map((r) => r.widthPct)).toEqual([100, 87]);
     // 小分类自己归一：同名不同组的「武侠 / 江湖」不会再被当成同一行
@@ -439,13 +452,53 @@ describe("8 兴趣画像（大分类 / 小分类 / 作者三组）", () => {
     expect(model.data.groups[1].rows[0].title).toBe("小分类「武侠」：兴趣 5.0");
   });
 
-  it("空组整组不渲染：没有小分类兴趣时只出两组", () => {
+  it("空组整组不渲染：没有小分类兴趣时只出两组，不留空组图例", () => {
     const model = buildInterestBars([
       { dim: "category_l1", key: "武侠", name: "武侠", weight: 3 },
       { dim: "author", key: "9", name: "演示作者己", weight: 2 },
     ]);
     expect(model.data.groups.map((g) => g.dim)).toEqual(["category_l1", "author"]);
+    expect(model.data.groups.map((g) => g.label)).toEqual(["分类·大", "作者"]);
+    expect(model.data.groups.every((g) => g.rows.length > 0)).toBe(true);
     expect(buildInterestBars([]).empty).toBe(true);
+  });
+
+  it("标签 / 系列两维与分类同形：组标题是「标签」「系列」，名取 name ?? key", () => {
+    const model = buildInterestBars([
+      { dim: "tag", key: "武侠", name: "武侠", weight: 1.7 },
+      { dim: "series", key: "示例系列", weight: 1.2 },
+    ]);
+    const tag = model.data.groups.find((g) => g.dim === "tag");
+    const series = model.data.groups.find((g) => g.dim === "series");
+    expect(tag?.label).toBe("标签");
+    expect(tag?.rows.map((r) => r.name)).toEqual(["武侠"]);
+    expect(series?.label).toBe("系列");
+    // 系列这行没给 name，退回 key
+    expect(series?.rows.map((r) => r.name)).toEqual(["示例系列"]);
+  });
+
+  it("标签 / 系列不套作者文案：浮层与结论里都不出现「作者」", () => {
+    const model = buildInterestBars([
+      { dim: "tag", key: "武侠", name: "武侠", weight: 5 },
+      { dim: "series", key: "示例系列", name: "示例系列", weight: 4 },
+    ]);
+    const [tag, series] = model.data.groups;
+    expect(tag.rows[0].title).toBe("标签「武侠」：兴趣 5.0");
+    expect(series.rows[0].title).toBe("系列「示例系列」：兴趣 4.0");
+    for (const row of model.data.groups.flatMap((g) => g.rows)) {
+      expect(row.title).not.toContain("作者");
+    }
+    // 最重的是标签那行：结论要说是哪一组，不是「最重的是作者」
+    expect(model.note).toBe("最重的是「武侠」（标签，兴趣 5.0）");
+    expect(model.note).not.toContain("作者");
+  });
+
+  it("五维都有数据时五组都渲染，结论仍按最重的那一组念", () => {
+    const model = buildInterestBars(fiveDims);
+    expect(model.data.groups).toHaveLength(5);
+    expect(model.empty).toBe(false);
+    expect(model.data.top).toBe("武侠");
+    expect(model.note).toBe("最重的是「武侠」（分类·大，兴趣 69.4）");
   });
 
   it("不认识的 dim（老后端的 category）一律忽略，不报错也不占组位", () => {
@@ -494,7 +547,7 @@ describe("8 兴趣画像（大分类 / 小分类 / 作者三组）", () => {
     const model = buildInterestBars(many);
     expect(model.data.groups[0].rows).toHaveLength(5);
     expect(model.data.groups[0].rows.map((r) => r.name)).toEqual(["类0", "类1", "类2", "类3", "类4"]);
-    // 三组并排时「最重的」要说清在哪一组：同名分类可能同时出现在大 / 小分类里
+    // 多组并排时「最重的」要说清在哪一组：同名分类可能同时出现在大 / 小分类里
     expect(model.note).toBe("最重的是「类0」（分类·大，兴趣 7.0）");
   });
 });
