@@ -101,7 +101,7 @@ events(id, user_id, kind, book_id, author_id, category_l1, category_l2, value, e
                                                  -- 只落有信号的 kind；impression 不落明细
 book_stats(book_id, impressions, clicks, reads, read_seconds, shelf_adds, last_at)
 book_daily(book_id, day, impressions, clicks, reads, seconds)  -- 按日聚合（热度窗口读它）
-user_interest(user_id, dim, key, weight, updated_at)           -- dim: category / author，14 天指数衰减
+user_interest(user_id, dim, key, weight, updated_at)           -- dim: category_l1 / category_l2 / author / tag / series，14 天指数衰减
 cooccur(book_id, other_id, users)                              -- 共读（item-item co-read），双向各一行
 recent_items(user_id, book_id, ts)                             -- 近期已曝光，按 (user, book) 去重
 ```

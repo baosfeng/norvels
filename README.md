@@ -14,7 +14,7 @@
 - **书名/作者检索**：`LIKE` 子串匹配，毫秒级返回；章节标题与正文都不参与找书，不建全文索引（见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)）。
 - **封面与元数据可编辑**：有封面的书在书架与详情页显示真实封面；书名/作者/简介/标签/系列可在详情页直接改。
 - **零运行时依赖**：前端构建产物 `go:embed` 进二进制，容器里只有两个静态可执行文件。
-- **轻量镜像**：distroless/static + 非 root，约 15.5 MiB（实测二进制 11.1 MiB + 健康检查 2.1 MiB + 基镜像约 2 MiB；前端合入后 16–18 MiB，详见 [docs/deploy.md](docs/deploy.md)）。
+- **轻量镜像**：distroless/static + 非 root，约 21.7 MiB（实测二进制 16.29 MiB，已含前端产物 + 健康检查 2.14 MiB + 基镜像解压后 3.27 MiB，详见 [docs/deploy.md](docs/deploy.md)）。
 - **数据即文件**：主库 `/data/norvels.db` + 正文库 `/data/norvels-content.db`（各带 WAL），备份/迁移就是复制这一对文件
   （`scripts/backup.sh` 成对处理，含 WAL）。
 
@@ -263,7 +263,7 @@ docker run --rm --entrypoint /norvels \
 ### 镜像为什么这么小？
 
 三阶段构建 + `CGO_ENABLED=0`（纯 Go SQLite）+ `-trimpath -ldflags "-s -w"` + distroless/static（无 shell、apt、curl）。
-体积拆解见 [docs/deploy.md](docs/deploy.md#3-镜像体积拆解)：二进制 **11.1 MiB**（linux/amd64 实测，含 x/text）、healthcheck **2.1 MiB**、distroless 基镜像约 2 MB，合计约 **15.5 MiB**；前端产物 embed 进二进制，合入后约 16–18 MiB。
+体积拆解见 [docs/deploy.md](docs/deploy.md#3-镜像体积拆解)：二进制 **16.29 MiB**（linux/amd64 实测，含 x/text 与 embed 的前端产物 —— 不含前端时为 15.38 MiB）、healthcheck **2.14 MiB**、distroless 基镜像解压后 **3.27 MiB**（压缩传输 0.82 MiB），合计约 **21.7 MiB**。
 
 ### 备份时要连 WAL 一起备吗？
 
@@ -284,7 +284,7 @@ scripts/backup.sh --keep 7          # 内部用 sqlite3 .backup 或 VACUUM INTO�
 
 - **最接近的参考实现是 zreader**：Go 单二进制 + `modernc.org/sqlite` + React SPA `go:embed`，作者自述约 23 MB 镜像，证明「Go + SQLite + 中文 txt」能在 20 MB 量级落地。
 - **正文检索已主动放弃**：早期用「字级分词镜像列 + FTS5」支持 2 字及以上正文检索，但实测它占掉全库 65% 的体积（838 本 14.84 GB 里 9.58 GB 是索引）。用户不需要按正文内容检索，因此移除正文索引，检索收敛为书名 / 作者的 `LIKE`（5 万本实测 18.4 ms）。决策与后果见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)。
-- **体积不是瓶颈，磁盘与导入耗时才是**：镜像约 15.5–18 MiB，远低于 50 MB；4.4 GB 语料的 `/data` 需要 ≥ 20 GB。
+- **体积不是瓶颈，磁盘与导入耗时才是**：镜像约 21.7 MiB，远低于 50 MB；4.4 GB 语料的 `/data` 需要 ≥ 20 GB。
 - 调研与本文都确认：本机没有容器运行时，镜像体积需在装好 Docker 的机器上用 `docker images` 对账（见 [docs/deploy.md](docs/deploy.md#23-已知限制重要)）。
 
 ## 隐私与仓库卫生
