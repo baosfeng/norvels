@@ -82,7 +82,8 @@ func (s *Store) DeleteChapter(ctx context.Context, bookID, chapterID int64) erro
 	if err := checkIDs(bookID, chapterID); err != nil {
 		return err
 	}
-	return s.inTx(ctx, "delete chapter", func(tx *sql.Tx) error {
+	return s.writeThrough(ctx, "delete chapter", func(wt *writeTx) error {
+		tx := wt.main
 		sp, err := loadChapterSpan(ctx, tx, bookID, chapterID)
 		if err != nil {
 			return err
@@ -100,10 +101,10 @@ func (s *Store) DeleteChapter(ctx context.Context, bookID, chapterID int64) erro
 		if err := bumpMetrics(ctx, tx, 0, -int64(sp.wordCount)); err != nil {
 			return err
 		}
-		if err := reapOrphanBlock(ctx, tx, sp.blockID); err != nil {
+		if err := reapOrphanBlock(ctx, wt, sp.blockID); err != nil {
 			return err
 		}
-		return refreshBlockIdxRange(ctx, tx, sp.blockID)
+		return refreshBlockIdxRange(ctx, wt, sp.blockID)
 	})
 }
 
@@ -124,12 +125,12 @@ func loadChapterSpan(ctx context.Context, tx *sql.Tx, bookID, chapterID int64) (
 	return sp, nil
 }
 
-// spanText 取出一章的正文字节（来自解压后的块）；空章或块缺失都按损坏处理。
-func spanText(ctx context.Context, tx *sql.Tx, sp chapterSpan) ([]byte, error) {
+// spanText 取出一章的正文字节（来自正文库里解压后的块）；空章或块缺失都按损坏处理。
+func spanText(ctx context.Context, c *contentTx, sp chapterSpan) ([]byte, error) {
 	if sp.blockID <= 0 {
 		return nil, fmt.Errorf("%w: 第 %d 章没有正文块", ErrBlockCorrupted, sp.idx+1)
 	}
-	block, err := loadBlock(ctx, tx, sp.blockID, sp.id)
+	block, err := c.blockText(ctx, sp.blockID, sp.id)
 	if err != nil {
 		return nil, err
 	}
@@ -189,13 +190,17 @@ func requireOneRow(res sql.Result, bookID int64) error {
 	return nil
 }
 
-// reapOrphanBlock 删掉不再被任何章节引用的正文块，并把它的体积从 metrics 里减去。
-func reapOrphanBlock(ctx context.Context, tx *sql.Tx, blockID int64) error {
+// reapOrphanBlock 回收不再被任何章节引用的正文块，并把它的体积从 metrics 里减去。
+//
+// 引用计数在主库事务里查（必须看到本事务刚做的 span 改写，换连接读会读到旧快照）；
+// 块的删除延后到主库提交之后（contentTx.scheduleReap）：正文库事务先提交，
+// 此刻真删而主库提交失败的话，旧章节会指向不存在的块。
+func reapOrphanBlock(ctx context.Context, wt *writeTx, blockID int64) error {
 	if blockID <= 0 {
 		return nil
 	}
 	var referenced int
-	if err := tx.QueryRowContext(ctx,
+	if err := wt.main.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM chapters WHERE block_id = ?", blockID).Scan(&referenced); err != nil {
 		return fmt.Errorf("store: count block refs %d: %w", blockID, err)
 	}
@@ -203,7 +208,7 @@ func reapOrphanBlock(ctx context.Context, tx *sql.Tx, blockID int64) error {
 		return nil
 	}
 	var raw, packed int64
-	if err := tx.QueryRowContext(ctx,
+	if err := wt.content.tx.QueryRowContext(ctx,
 		"SELECT raw_bytes, length(packed) FROM chapter_blocks WHERE id = ?", blockID).
 		Scan(&raw, &packed); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -211,28 +216,33 @@ func reapOrphanBlock(ctx context.Context, tx *sql.Tx, blockID int64) error {
 		}
 		return fmt.Errorf("store: read orphan block %d: %w", blockID, err)
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM chapter_blocks WHERE id = ?", blockID); err != nil {
-		return fmt.Errorf("store: delete orphan block %d: %w", blockID, err)
-	}
-	if err := bumpMetrics(ctx, tx, -packed, 0); err != nil {
+	wt.content.scheduleReap(blockID)
+	if err := bumpMetrics(ctx, wt.main, -packed, 0); err != nil {
 		return err
 	}
-	return bumpMetricKey(ctx, tx, metricTextBytesRaw, -raw)
+	return bumpMetricKey(ctx, wt.main, metricTextBytesRaw, -raw)
 }
 
 // refreshBlockIdxRange 把块的 first_idx/last_idx 校正到当前实际覆盖的章节范围。
 //
 // 这两个字段只用于块损坏时的定位文案（BlockError），但让它们随增删漂移会误导排查。
-func refreshBlockIdxRange(ctx context.Context, tx *sql.Tx, blockID int64) error {
+// 章节范围在主库、块在正文库：先在主库求 MIN/MAX(idx)，再回写正文库。
+func refreshBlockIdxRange(ctx context.Context, wt *writeTx, blockID int64) error {
 	if blockID <= 0 {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx,
-		"UPDATE chapter_blocks SET "+
-			"first_idx = COALESCE((SELECT MIN(idx) FROM chapters WHERE block_id = chapter_blocks.id), first_idx), "+
-			"last_idx = COALESCE((SELECT MAX(idx) FROM chapters WHERE block_id = chapter_blocks.id), last_idx) "+
-			"WHERE id = ?", blockID)
-	if err != nil {
+	var first, last sql.NullInt64
+	if err := wt.main.QueryRowContext(ctx,
+		"SELECT MIN(idx), MAX(idx) FROM chapters WHERE block_id = ?", blockID).
+		Scan(&first, &last); err != nil {
+		return fmt.Errorf("store: read block range %d: %w", blockID, err)
+	}
+	if !first.Valid || !last.Valid {
+		return nil // 块已无章节引用（被本次操作删空）
+	}
+	if _, err := wt.content.tx.ExecContext(ctx,
+		"UPDATE chapter_blocks SET first_idx = ?, last_idx = ? WHERE id = ?",
+		first.Int64, last.Int64, blockID); err != nil {
 		return fmt.Errorf("store: refresh block range %d: %w", blockID, err)
 	}
 	return nil

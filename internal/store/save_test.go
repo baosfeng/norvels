@@ -255,7 +255,7 @@ func assertForceOverwrite(t *testing.T, ctx context.Context, st *Store, bookID i
 	}
 	// 压缩块也必须是覆盖后的：旧块的 packed 不应留下。
 	var blocks int
-	if err := st.DB().QueryRowContext(ctx,
+	if err := st.ContentDB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE book_id = ?", bookID).Scan(&blocks); err != nil {
 		t.Fatalf("count blocks: %v", err)
 	}

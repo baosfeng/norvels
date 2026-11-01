@@ -238,6 +238,15 @@ var migrationStepsByVersion = map[int][]migrationStep{
 	}},
 }
 
+// storeStepsByVersion 登记「需要 Store」的迁移步骤（跨库写入，拿不到连接就做不了）。
+//
+// 与上面的 migrationStepsByVersion 分开：那张表的签名是 func(ctx, tx)，
+// 是不依赖连接池的纯主库步骤；0018 要把块写进正文库（另一个文件），
+// 只能在 applyMigration 里把 Store 传进来。
+var storeStepsByVersion = map[int]func(ctx context.Context, tx *sql.Tx, s *Store) error{
+	18: splitContentBlocksStep,
+}
+
 // ---------- 0013：同书卷名唯一索引 ----------
 
 // volumeTitleUniqueIndex 是 0013 建的同书卷名唯一索引名（表达式索引，TRIM(title)）。

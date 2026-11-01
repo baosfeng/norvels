@@ -16,9 +16,11 @@ import (
 //   - 书架与目录照常（它们不碰 packed）。
 
 // corruptAllBlocks 把库里所有压缩块换成解压必然失败的字节。
+//
+// 块表在**正文库**（0018 起）：主库上已经没有 chapter_blocks，走 ContentDB 才改得到。
 func (e *testEnv) corruptAllBlocks() {
 	e.t.Helper()
-	if _, err := e.st.DB().ExecContext(context.Background(),
+	if _, err := e.st.ContentDB().ExecContext(context.Background(),
 		"UPDATE chapter_blocks SET packed = x'02010203'"); err != nil {
 		e.t.Fatalf("破坏块: %v", err)
 	}

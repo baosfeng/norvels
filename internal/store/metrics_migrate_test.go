@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 )
 
@@ -86,10 +87,16 @@ func assertMetricsWritable(t *testing.T, ctx context.Context, st *Store) {
 	}
 }
 
-// columnExists 判断表上是否有某列。
+// columnExists 判断**主库**的表上是否有某列。
 func columnExists(t *testing.T, ctx context.Context, st *Store, table, column string) bool {
 	t.Helper()
-	rows, err := st.DB().QueryContext(ctx, "SELECT name FROM pragma_table_info(?)", table)
+	return columnExistsIn(t, ctx, st.db, table, column)
+}
+
+// columnExistsIn 判断指定库的表上是否有某列（正文库的块表要传 st.cdb）。
+func columnExistsIn(t *testing.T, ctx context.Context, db *sql.DB, table, column string) bool {
+	t.Helper()
+	rows, err := db.QueryContext(ctx, "SELECT name FROM pragma_table_info(?)", table)
 	if err != nil {
 		t.Fatalf("pragma_table_info: %v", err)
 	}

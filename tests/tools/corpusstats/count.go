@@ -134,6 +134,8 @@ func algoName(b byte) string {
 		return "flate"
 	case algoZstd:
 		return "zstd"
+	case algoCodebook:
+		return "codebook"
 	default:
 		return fmt.Sprintf("unknown:0x%02x", b)
 	}

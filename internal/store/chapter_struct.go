@@ -126,7 +126,7 @@ func writeChapterIdx(ctx context.Context, tx *sql.Tx, bookID int64, refs []chapt
 }
 
 // reapBlocksOf 回收这批章节涉及的、已无人引用的块，并校正存活块的章节范围。
-func reapBlocksOf(ctx context.Context, tx *sql.Tx, spans []chapterSpan) error {
+func reapBlocksOf(ctx context.Context, wt *writeTx, spans []chapterSpan) error {
 	seen := make(map[int64]struct{}, len(spans))
 	for _, sp := range spans {
 		if sp.blockID <= 0 {
@@ -136,10 +136,10 @@ func reapBlocksOf(ctx context.Context, tx *sql.Tx, spans []chapterSpan) error {
 			continue
 		}
 		seen[sp.blockID] = struct{}{}
-		if err := reapOrphanBlock(ctx, tx, sp.blockID); err != nil {
+		if err := reapOrphanBlock(ctx, wt, sp.blockID); err != nil {
 			return err
 		}
-		if err := refreshBlockIdxRange(ctx, tx, sp.blockID); err != nil {
+		if err := refreshBlockIdxRange(ctx, wt, sp.blockID); err != nil {
 			return err
 		}
 	}

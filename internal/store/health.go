@@ -31,6 +31,9 @@ type HealthReport struct {
 	// Stale 为 true 表示全库聚合值（store_metrics）尚未算好，数字可能为 0；
 	// 后台补算完成后自动转为 false。属于增量字段，前端可忽略。
 	Stale bool `json:"stale,omitempty"`
+	// Content 是正文库对账摘要（孤儿块 / 悬空引用），见 ReconcileContent。
+	// 增量字段：前端未适配时忽略即可。对账结果缓存 10 分钟，不随每次请求重跑。
+	Content *ContentHealth `json:"content,omitempty"`
 
 	// warnMu 串行化并发统计时的 Warnings 追加（指针以免 HealthReport 被复制时带走锁）。
 	warnMu *sync.Mutex
@@ -111,6 +114,17 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 
 	if snap, err := s.Metrics(ctx); err == nil {
 		r.Stale = snap.Stale
+	}
+	// 正文库对账：孤儿块 / 悬空引用是两库（没有跨库事务）唯一会漂移的地方，
+	// 必须出现在健康报告里；对账本身是全表扫描，走缓存（10 分钟）。
+	if rep, err := s.cachedReconcile(ctx); err != nil {
+		r.warn("contentReconcile", err)
+	} else {
+		r.Content = &ContentHealth{
+			OrphanBlocks: rep.OrphanBlocks, OrphanBooks: rep.OrphanBooks,
+			DanglingRefs: rep.DanglingRefs, MissingTable: rep.MissingTable,
+			CheckedAt: formatTime(rep.CheckedAt),
+		}
 	}
 	return r
 }

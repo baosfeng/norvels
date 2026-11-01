@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# norvels SQLite 数据库备份：sqlite3 .backup 或 VACUUM INTO，带时间戳与保留策略。
+# norvels 数据库备份：sqlite3 .backup 或 VACUUM INTO，带时间戳与保留策略。
 #
 # 用法:
-#   scripts/backup.sh                          # 备份 data/norvels.db 到 backups/
+#   scripts/backup.sh                          # 备份 data/norvels.db（+ 正文库）到 backups/
 #   scripts/backup.sh --keep 14                # 保留最近 14 份
 #   scripts/backup.sh --db /data/norvels.db --out /backup
 #   scripts/backup.sh --method vacuum          # 强制 VACUUM INTO（需要 SQLite >= 3.27）
 #
 # 说明:
+#   - **两个库文件成对备份**：主库 norvels.db + 正文库 norvels-content.db（0018 起）。
+#     只备份主库 = 丢全部正文，恢复时必须两份一起放回去，因此这里一次出两份、
+#     同一时间戳，保留策略也按「一份 = 一对」计算。
 #   - .backup 使用 SQLite 在线备份 API，服务运行中也能得到一致快照（WAL 会被一并读取）。
 #   - VACUUM INTO 会拿到写锁，运行中可用但会短暂阻塞写入；备份前建议暂停导入。
-#   - 备份文件落在 --out 目录（默认 <仓库>/backups），文件名 norvels-YYYYmmdd-HHMMSS.db。
+#   - 备份文件落在 --out 目录（默认 <仓库>/backups），
+#     文件名 norvels-YYYYmmdd-HHMMSS.db 与 norvels-YYYYmmdd-HHMMSS-content.db。
 set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -29,7 +33,8 @@ norvels 数据库备份脚本
   scripts/backup.sh [选项]
 
 选项:
-  --db <路径>       数据库文件，默认 <仓库>/data/norvels.db
+  --db <路径>       主库文件，默认 <仓库>/data/norvels.db
+                    （正文库按 NORVELS_CONTENT_DB 或同目录 *-content.db 自动配对）
   --out <目录>      备份输出目录，默认 <仓库>/backups
   --keep <N>        保留最近 N 份备份（默认 7，N>=1）
   --method <m>      auto | backup | vacuum，默认 auto（SQLite>=3.27 用 VACUUM INTO）
@@ -65,6 +70,27 @@ command -v sqlite3 >/dev/null 2>&1 || die "需要 sqlite3 命令（macOS 自带�
 [[ -f "$DB" ]] || die "数据库不存在: $DB"
 
 DB=$(cd -- "$(dirname -- "$DB")" && pwd -P)/$(basename -- "$DB")
+
+# 正文库（0018 起正文独立成文件）：优先用环境变量，否则按主库路径推导兄弟文件。
+if [[ -n "${NORVELS_CONTENT_DB:-}" ]]; then
+  CONTENT_DB=$NORVELS_CONTENT_DB
+else
+  DB_BASE=$(basename -- "$DB")
+  DB_EXT="${DB_BASE##*.}"
+  if [[ "$DB_EXT" == "$DB_BASE" ]]; then
+    CONTENT_DB="$(dirname -- "$DB")/${DB_BASE}-content"
+  else
+    CONTENT_DB="$(dirname -- "$DB")/${DB_BASE%.*}-content.${DB_EXT}"
+  fi
+fi
+if [[ -f "$CONTENT_DB" ]]; then
+  CONTENT_DB=$(cd -- "$(dirname -- "$CONTENT_DB")" && pwd -P)/$(basename -- "$CONTENT_DB")
+  info "正文库 $CONTENT_DB 一并备份"
+else
+  warn "未找到正文库 $CONTENT_DB：0018 之前的库没有这个文件，本次只备份主库"
+  CONTENT_DB=""
+fi
+
 mkdir -p -- "$OUT"
 OUT=$(cd -- "$OUT" && pwd -P)
 
@@ -89,41 +115,53 @@ while [[ -e "$TARGET" ]]; do
   TARGET="$OUT/norvels-$TS-$n.db"
   n=$((n + 1))
 done
-
-# sqlite3 的点命令里用单引号包裹路径；路径含单引号时按 SQL 规则转义。
-TARGET_ESC=${TARGET//\'/\'\'}
+TARGET_CONTENT="${TARGET%.db}-content.db"
 
 START_TS=$(date +%s)
 info "备份 $DB"
 info "输出 $TARGET"
 info "方式 ${METHOD}（sqlite3 ${SQLITE_VERSION}）"
 
-case "$METHOD" in
-  vacuum)
-    sqlite3 "$DB" "VACUUM INTO '$TARGET_ESC'"
-    ;;
-  backup)
-    sqlite3 "$DB" ".backup '$TARGET_ESC'"
-    ;;
-esac
+# 单个库文件的备份：先 .backup / VACUUM INTO，再就地做一次完整性检查。
+# sqlite3 的点命令里用单引号包裹路径；路径含单引号时按 SQL 规则转义。
+backup_db() {
+  local src=$1 dst=$2 esc
+  esc=${dst//\'/\'\'}
+  case "$METHOD" in
+    vacuum) sqlite3 "$src" "VACUUM INTO '$esc'" ;;
+    backup) sqlite3 "$src" ".backup '$esc'" ;;
+  esac
+  [[ -f "$dst" ]] || die "备份文件未生成: $dst"
+  local check
+  check=$(sqlite3 "$dst" "PRAGMA quick_check;" 2>&1 | head -1 || true)
+  [[ "$check" == "ok" ]] || die "备份完整性检查失败: $dst → $check"
+}
 
-[[ -f "$TARGET" ]] || die "备份文件未生成: $TARGET"
+backup_db "$DB" "$TARGET"
+if [[ -n "$CONTENT_DB" ]]; then
+  backup_db "$CONTENT_DB" "$TARGET_CONTENT"
+  info "正文库备份：$TARGET_CONTENT"
+fi
+
 END_TS=$(date +%s)
 ELAPSED=$((END_TS - START_TS))
 
-CHECK=$(sqlite3 "$TARGET" "PRAGMA quick_check;" 2>&1 | head -1 || true)
-[[ "$CHECK" == "ok" ]] || die "备份完整性检查失败: $CHECK"
-
-SIZE=$(du -h "$TARGET" | awk '{print $1}')
+if [[ -n "$CONTENT_DB" ]]; then
+  SIZE=$(du -ch "$TARGET" "$TARGET_CONTENT" | tail -1 | awk '{print $1}')
+else
+  SIZE=$(du -h "$TARGET" | awk '{print $1}')
+fi
 info "备份完成：${TARGET}（${SIZE}，耗时 ${ELAPSED}s，完整性 ok）"
 
-# 保留策略：只清理本脚本生成的 norvels-*.db，按修改时间从新到旧。
+# 保留策略：一份 = 一对（主库 + 正文库）。只清理本脚本生成的 norvels-*.db，
+# 按修改时间从新到旧；成对删除，避免留下「有主库、没正文」的半份备份。
 count=0
 while IFS= read -r old; do
   [[ -n "$old" ]] || continue
+  case "$old" in *-content.db) continue ;; esac
   count=$((count + 1))
   if ((count > KEEP)); then
-    rm -f -- "$old"
+    rm -f -- "$old" "${old%.db}-content.db"
     info "清理旧备份: $(basename -- "$old")"
   fi
 done < <(ls -1t -- "$OUT"/norvels-*.db 2>/dev/null || true)

@@ -7,7 +7,7 @@ import (
 	"fmt"
 )
 
-// bookCascadeTables 是删除一本书时必须清空的子表，按删除顺序排列。
+// bookCascadeTables 是删除一本书时必须清空的**主库**子表，按删除顺序排列。
 //
 // 这些表在 schema 上已声明 ON DELETE CASCADE（open.go 打开 foreign_keys(ON)），
 // 这里仍逐条显式删除。理由：删除不可逆，级联语义藏在 schema 里，后续改表的人
@@ -15,9 +15,11 @@ import (
 // reading_sessions / collection_books / user_shelf（0014/0016）根本没有 books 外键，
 // 只有这张清单会清它们——漏一行就是永远删不掉的孤儿数据。
 // chapters 排第一：章节行参与压缩块寻址与检索索引维护，先清干净再动别的。
+//
+// chapter_blocks 不在这张清单里：它在**正文库**（另一个文件），主库事务删不掉它，
+// 由 DeleteBook 在主库提交后单独清理（见该函数的注释）。
 var bookCascadeTables = []string{
 	"chapters",
-	"chapter_blocks",
 	"volumes",
 	"book_covers",
 	"books_authors",
@@ -29,11 +31,15 @@ var bookCascadeTables = []string{
 	"user_shelf",
 }
 
-// DeleteBook 单事务删除一本书及其全部从属数据，并刷新作者聚合列。
+// DeleteBook 单事务删除一本书及其**主库**从属数据，提交后再删正文库的块。
 //
-// 不存在返回 ErrNotFound（api 映射 404）；任一步失败整体回滚，不会留下
+// 不存在返回 ErrNotFound（api 映射 404）；主库任一步失败整体回滚，不会留下
 // 「书没了但章节还在」的半删除状态。已入库的书被删除后，同一 source_path
 // 可以重新导入（UNIQUE 约束随之释放）。
+//
+// 跨库顺序：主库先提交，再删正文库的块（best-effort）。反过来先删块而主库失败，
+// 残留的章节会指向不存在的块；现在最坏只是留孤儿块，ReconcileContent 能扫出来清掉。
+// 正文库清理失败**不让删除失败**：书已经从书架消失，重试删除只会 404。
 func (s *Store) DeleteBook(ctx context.Context, id int64) error {
 	if id <= 0 {
 		return fmt.Errorf("%w: book id %d", ErrInvalidArgument, id)
@@ -66,6 +72,7 @@ func (s *Store) DeleteBook(ctx context.Context, id int64) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: delete book commit: %w", err)
 	}
+	s.purgeBookContent(ctx, id)
 	return nil
 }
 

@@ -22,11 +22,11 @@ type blockRef struct {
 	len int
 }
 
-// writeChapterBlocks 按块压缩写入正文，返回逐章的块寻址与压缩/原始字节总量。
+// writeChapterBlocks 按块压缩写入**正文库**，返回逐章的块寻址与压缩/原始字节总量。
 //
 // 全空块不建块行：block_id 保持 0，读取侧见到 0 直接返回空正文，
 // 不必为一个空块占一行 + 一次解压。
-func writeChapterBlocks(ctx context.Context, tx *sql.Tx, bookID int64,
+func writeChapterBlocks(ctx context.Context, c *contentTx, bookID int64,
 	chapters []model.ParsedChapter, sizes []int, startSeq int) ([]blockRef, int64, int64, error) {
 	refs := make([]blockRef, len(chapters))
 	var packedTotal, rawTotal int64
@@ -49,7 +49,8 @@ func writeChapterBlocks(ctx context.Context, tx *sql.Tx, bookID int64,
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("store: compress block: %w", err)
 		}
-		id, err := insertChapterBlock(ctx, tx, bookID, startSeq+seq+1, chapters, span, raw, packed)
+		id, err := c.insertBlock(ctx, bookID, startSeq+seq+1,
+			chapters[first].Idx, chapters[last].Idx, raw, packed)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -59,24 +60,6 @@ func writeChapterBlocks(ctx context.Context, tx *sql.Tx, bookID int64,
 		}
 	}
 	return refs, packedTotal, rawTotal, nil
-}
-
-// insertChapterBlock 写入一块并返回块 id。
-func insertChapterBlock(ctx context.Context, tx *sql.Tx, bookID int64, seq int,
-	chapters []model.ParsedChapter, span [2]int, raw, packed []byte) (int64, error) {
-	first, last := span[0], span[1]
-	res, err := tx.ExecContext(ctx,
-		"INSERT INTO chapter_blocks(book_id, seq, first_idx, last_idx, raw_bytes, packed) "+
-			"VALUES (?, ?, ?, ?, ?, ?)",
-		bookID, seq, chapters[first].Idx, chapters[last].Idx, len(raw), packed)
-	if err != nil {
-		return 0, fmt.Errorf("store: save block seq=%d: %w", seq, err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("store: save block id: %w", err)
-	}
-	return id, nil
 }
 
 // insertChapterRows 批量写入章节行（只含块寻址与元信息），返回字数总和。
@@ -104,39 +87,46 @@ func insertChapterRows(ctx context.Context, tx *sql.Tx, bookID int64, chapters [
 
 // insertChapters 把一章正文按块压缩写入，并顺手累加 store_metrics 需要的聚合量。
 //
-// 写入分两步：先按「章节边界 + 8 MB 目标」把正文切成块并压进 chapter_blocks，
-// 再写 chapters 行（只存块寻址与标题）。两步在同一事务内，失败一起回滚。
+// 写入分两步：先按「章节边界 + 8 MB 目标」把正文切成块并压进**正文库**的
+// chapter_blocks，再写主库的 chapters 行（只存块寻址与标题）。两步分属两个事务，
+// 提交顺序与失败补偿由 writeThrough 保证。
 //
 // 导入路径本来就要遍历所有章节，在这里累加几乎零额外成本——比事后跑
-// SUM(length(packed))（要读全部压缩块）便宜得多。累加与章节写入在同一事务内完成，
-// 二者不会漂移。
+// SUM(length(packed))（要读全部压缩块）便宜得多。累加与章节写入在同一主库事务内
+// 完成，二者不会漂移。
 //
 // 口径：text_bytes 统计**压缩后**的 packed 字节（整数列相加），text_bytes_raw
 // 统计原文逻辑字节。两个口径都在这里累计，方便文档说明压缩比。
-func insertChapters(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook, volMap map[int]int64) error {
+func insertChapters(ctx context.Context, wt *writeTx, bookID int64, b *model.ParsedBook, volMap map[int]int64) error {
 	sizes := make([]int, len(b.Chapters))
 	for i := range b.Chapters {
 		sizes[i] = len(b.Chapters[i].Content)
 	}
 
-	refs, packedBytes, rawBytes, err := writeChapterBlocks(ctx, tx, bookID, b.Chapters, sizes, 0)
+	// seq 从本书现有块的 MAX 续写：覆盖写入（--force）时旧块要到主库提交后才回收，
+	// 此刻它们仍占着 1..N 的序号，从 0 重排会撞 UNIQUE(book_id, seq)。
+	startSeq, err := wt.content.nextSeq(ctx, bookID)
 	if err != nil {
 		return err
 	}
-	words, err := insertChapterRows(ctx, tx, bookID, b.Chapters, volMap, refs)
+	refs, packedBytes, rawBytes, err := writeChapterBlocks(ctx, wt.content, bookID, b.Chapters, sizes, startSeq)
+	if err != nil {
+		return err
+	}
+	words, err := insertChapterRows(ctx, wt.main, bookID, b.Chapters, volMap, refs)
 	if err != nil {
 		return err
 	}
 
-	if err := bumpMetrics(ctx, tx, packedBytes, words); err != nil {
+	if err := bumpMetrics(ctx, wt.main, packedBytes, words); err != nil {
 		return err
 	}
-	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, rawBytes); err != nil {
+	if err := bumpMetricKey(ctx, wt.main, metricTextBytesRaw, rawBytes); err != nil {
 		return err
 	}
 	// books 侧文本量（标题/简介/路径等）随书籍主体变化，一并增量维护，
 	// 保证「增量累加」与「全量重算」在同一个口径上（有测试守着）。
-	if _, err := bumpBookTextBytes(ctx, tx, bookID); err != nil {
+	if _, err := bumpBookTextBytes(ctx, wt.main, bookID); err != nil {
 		return err
 	}
 	return nil
@@ -174,12 +164,12 @@ func (s *Store) InsertChapter(ctx context.Context, bookID int64, ch model.Parsed
 		return 0, err
 	}
 	var newID int64
-	err = s.inTx(ctx, "insert chapter", func(tx *sql.Tx) error {
-		pos, err := insertPositionInTx(ctx, tx, bookID, afterChapterID)
+	err = s.writeThrough(ctx, "insert chapter", func(wt *writeTx) error {
+		pos, err := insertPositionInTx(ctx, wt.main, bookID, afterChapterID)
 		if err != nil {
 			return err
 		}
-		newID, err = insertChapterRowInTx(ctx, tx, bookID, pos, title, &ch)
+		newID, err = insertChapterRowInTx(ctx, wt, bookID, pos, title, &ch)
 		return err
 	})
 	if err != nil {
@@ -219,16 +209,17 @@ func insertPositionInTx(ctx context.Context, tx *sql.Tx, bookID, afterChapterID 
 	return insertPosition{idx: lastIdx + 1, volumeID: volumeID}, nil
 }
 
-// insertChapterRowInTx 写正文块与章节行，并同步三处计数。
-func insertChapterRowInTx(ctx context.Context, tx *sql.Tx, bookID int64, pos insertPosition,
+// insertChapterRowInTx 写正文块（正文库）与章节行（主库），并同步三处计数。
+func insertChapterRowInTx(ctx context.Context, wt *writeTx, bookID int64, pos insertPosition,
 	title string, ch *model.ParsedChapter) (int64, error) {
+	tx := wt.main
 	// 先把落点之后的章节整体后移，空出 idx：chapters 没有 UNIQUE(book_id, idx)，
 	// 一条 UPDATE 平移即可（与删除/拆分同一套 shiftChaptersIdx）。
 	if err := shiftChaptersIdx(ctx, tx, bookID, pos.idx-1, 1); err != nil {
 		return 0, err
 	}
 	words := chapterWordCount(ch)
-	ref, packed, raw, err := writeContentBlock(ctx, tx, bookID, chapterSpan{idx: pos.idx}, ch.Content)
+	ref, packed, raw, err := writeContentBlock(ctx, wt.content, bookID, chapterSpan{idx: pos.idx}, ch.Content)
 	if err != nil {
 		return 0, err
 	}
@@ -254,22 +245,46 @@ func insertChapterRowInTx(ctx context.Context, tx *sql.Tx, bookID int64, pos ins
 	if _, err := bumpBookTextBytes(ctx, tx, bookID); err != nil {
 		return 0, err
 	}
-	return id, refreshBookBlockRanges(ctx, tx, bookID)
+	return id, refreshBookBlockRanges(ctx, wt, bookID)
 }
 
 // refreshBookBlockRanges 校正全书各块的 first_idx/last_idx。
 //
 // 插入会让落点之后的章节 idx 整体 +1，块上记的章节范围随之失效；这两个字段只用于
-// 块损坏时的定位文案，但漂移会误导排查。逐块子查询是 O(块数 × 章数)，插入章节
-// 是低频管理操作，值这个代价。
-func refreshBookBlockRanges(ctx context.Context, tx *sql.Tx, bookID int64) error {
-	_, err := tx.ExecContext(ctx,
-		"UPDATE chapter_blocks SET "+
-			"first_idx = COALESCE((SELECT MIN(idx) FROM chapters WHERE block_id = chapter_blocks.id), first_idx), "+
-			"last_idx = COALESCE((SELECT MAX(idx) FROM chapters WHERE block_id = chapter_blocks.id), last_idx) "+
-			"WHERE book_id = ?", bookID)
+// 块损坏时的定位文案，但漂移会误导排查。逐块读章节范围（主库 GROUP BY）再回写正文库，
+// 插入章节是低频管理操作，值这个代价。
+func refreshBookBlockRanges(ctx context.Context, wt *writeTx, bookID int64) error {
+	rows, err := wt.main.QueryContext(ctx,
+		"SELECT block_id, MIN(idx), MAX(idx) FROM chapters WHERE book_id = ? AND block_id > 0 "+
+			"GROUP BY block_id", bookID)
 	if err != nil {
-		return fmt.Errorf("store: refresh block ranges of book %d: %w", bookID, err)
+		return fmt.Errorf("store: read block ranges of book %d: %w", bookID, err)
+	}
+	type blockRange struct {
+		id       int64
+		firstIdx int
+		lastIdx  int
+	}
+	ranges := make([]blockRange, 0, 16)
+	for rows.Next() {
+		var r blockRange
+		if err := rows.Scan(&r.id, &r.firstIdx, &r.lastIdx); err != nil {
+			rows.Close() //nolint:errcheck // 读取失败后关闭，错误已返回
+			return fmt.Errorf("store: scan block range: %w", err)
+		}
+		ranges = append(ranges, r)
+	}
+	err = rows.Err()
+	rows.Close() //nolint:errcheck // 同上
+	if err != nil {
+		return fmt.Errorf("store: read block ranges rows: %w", err)
+	}
+	for _, r := range ranges {
+		if _, err := wt.content.tx.ExecContext(ctx,
+			"UPDATE chapter_blocks SET first_idx = ?, last_idx = ? WHERE id = ?",
+			r.firstIdx, r.lastIdx, r.id); err != nil {
+			return fmt.Errorf("store: refresh block range %d: %w", r.id, err)
+		}
 	}
 	return nil
 }

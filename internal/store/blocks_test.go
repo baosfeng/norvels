@@ -56,7 +56,7 @@ func TestSaveBookBlocksSplitIntoMultiple(t *testing.T) {
 		t.Fatalf("SaveBook: %v", err)
 	}
 	var blocks int
-	if err := st.DB().QueryRowContext(ctx,
+	if err := st.ContentDB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE book_id = ?", res.BookID).Scan(&blocks); err != nil {
 		t.Fatalf("count blocks: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestSaveBookBlocksSplitIntoMultiple(t *testing.T) {
 // 而且是静默的——所以必须在写入侧就守住。
 func assertBlockChain(t *testing.T, ctx context.Context, st *Store, bookID int64, chapterCount int) {
 	t.Helper()
-	rows, err := st.DB().QueryContext(ctx,
+	rows, err := st.ContentDB().QueryContext(ctx,
 		"SELECT seq, first_idx, last_idx, raw_bytes FROM chapter_blocks WHERE book_id = ? ORDER BY seq",
 		bookID)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestSaveBookEmptyChaptersUseNoBlock(t *testing.T) {
 		t.Fatalf("SaveBook: %v", err)
 	}
 	var blocks int
-	if err := st.DB().QueryRowContext(ctx,
+	if err := st.ContentDB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE book_id = ?", res.BookID).Scan(&blocks); err != nil {
 		t.Fatalf("count blocks: %v", err)
 	}

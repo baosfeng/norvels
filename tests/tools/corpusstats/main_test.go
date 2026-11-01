@@ -157,42 +157,57 @@ func TestMergeSumsEverything(t *testing.T) {
 	}
 }
 
-// fixture 是测试库句柄 + 路径（含 2 本书、3 块不同算法的正文）。
+// fixture 是一对「主库 + 正文库」的句柄与路径（2 本书、3 块不同算法的正文）。
+//
+// 布局与 0018 之后的真实库一致：books 在主库、chapter_blocks 在正文库。
+// 正文库放在主库的兄弟路径上（就是 contentDBPath 的推导结果），默认推导路径因此被覆盖。
 type fixture struct {
-	db   *sql.DB
-	path string
+	main        *sql.DB
+	content     *sql.DB
+	path        string // 主库路径
+	contentPath string // 正文库路径
 }
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "fixture.db")
-	db, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatalf("建库失败: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	stmts := []string{
+	mainPath := filepath.Join(t.TempDir(), "fixture.db")
+	contentPath := contentDBPath(mainPath)
+	main := openTestDB(t, mainPath, []string{
 		"CREATE TABLE books (id INTEGER PRIMARY KEY)",
-		"CREATE TABLE chapter_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, book_id INTEGER NOT NULL, seq INTEGER NOT NULL, packed BLOB NOT NULL)",
 		"INSERT INTO books (id) VALUES (1), (2)",
-	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			t.Fatalf("准备库失败: %v", err)
-		}
-	}
+	})
+	content := openTestDB(t, contentPath, []string{
+		"CREATE TABLE chapter_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, book_id INTEGER NOT NULL, " +
+			"seq INTEGER NOT NULL, packed BLOB NOT NULL)",
+	})
 	blocks := [][]byte{
 		makePacked(t, algoRaw, []byte("甲甲")),
 		makePacked(t, algoZstd, []byte("甲乙丙")),
 		makePacked(t, algoFlate, []byte("a\xff")),
 	}
 	for i, packed := range blocks {
-		if _, err := db.Exec("INSERT INTO chapter_blocks (book_id, seq, packed) VALUES (?, ?, ?)",
+		if _, err := content.Exec("INSERT INTO chapter_blocks (book_id, seq, packed) VALUES (?, ?, ?)",
 			1+i%2, i, packed); err != nil {
 			t.Fatalf("插入块失败: %v", err)
 		}
 	}
-	return fixture{db: db, path: path}
+	return fixture{main: main, content: content, path: mainPath, contentPath: contentPath}
+}
+
+// openTestDB 建一个测试库并执行若干语句，返回连接（测试结束自动关）。
+func openTestDB(t *testing.T, path string, stmts []string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("建库失败: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("准备库失败: %v", err)
+		}
+	}
+	return db
 }
 
 // readStats 读回 corpus-stats.json。
@@ -293,15 +308,83 @@ func TestParseFlags(t *testing.T) {
 
 func TestSampleBookIDsEvenlySpaced(t *testing.T) {
 	fx := newFixture(t)
-	ids, total, err := sampleBookIDs(fx.db, 1)
+	ids, total, err := sampleBookIDs(fx.main, 1)
 	if err != nil {
 		t.Fatalf("抽样失败: %v", err)
 	}
 	if total != 2 || len(ids) != 1 || ids[0] != 1 {
 		t.Fatalf("抽样不对: ids=%v total=%d", ids, total)
 	}
-	all, total, err := sampleBookIDs(fx.db, 9)
+	all, total, err := sampleBookIDs(fx.main, 9)
 	if err != nil || total != 2 || len(all) != 2 {
 		t.Fatalf("样本数超过总数时应全取: ids=%v total=%d err=%v", all, total, err)
+	}
+}
+
+// TestContentDBPathDerivation 正文库路径推导与 store.ContentDBPath 同一规则。
+//
+// 本包按门禁约定不能 import internal/store（tests/ 下的工具只依赖标准库），
+// 所以保留了一份本地实现；这张表与 store 侧同名测试逐条一致，改规则要两边一起改。
+func TestContentDBPathDerivation(t *testing.T) {
+	t.Setenv("NORVELS_CONTENT_DB", "")
+	cases := []struct{ main, want string }{
+		{"/data/norvels.db", "/data/norvels-content.db"},
+		{"/data/library.db", "/data/library-content.db"},
+		{"/data/novel", "/data/novel-content"},
+		{"norvels.db", "norvels-content.db"},
+	}
+	for _, c := range cases {
+		if got := contentDBPath(c.main); got != c.want {
+			t.Errorf("contentDBPath(%q) = %q，期望 %q", c.main, got, c.want)
+		}
+	}
+	t.Setenv("NORVELS_CONTENT_DB", "/tmp/custom-content.db")
+	if got := contentDBPath("/data/norvels.db"); got != "/tmp/custom-content.db" {
+		t.Errorf("环境变量未生效：%q", got)
+	}
+}
+
+// TestRunExplicitContentDB 显式 -content-db：正文库可以和主库不在同一目录。
+func TestRunExplicitContentDB(t *testing.T) {
+	fx := newFixture(t)
+	moved := filepath.Join(t.TempDir(), "content-elsewhere.db")
+	if err := os.Rename(fx.contentPath, moved); err != nil {
+		t.Fatalf("搬移正文库: %v", err)
+	}
+	out := filepath.Join(t.TempDir(), "out")
+	if err := run([]string{"-db", fx.path, "-content-db", moved, "-out", out, "-all"}); err != nil {
+		t.Fatalf("显式正文库跑失败: %v", err)
+	}
+	stats := readStats(t, out)
+	if stats.Blocks != 3 {
+		t.Fatalf("块数 = %d，期望 3（显式正文库没被读到）", stats.Blocks)
+	}
+}
+
+// TestRunHintsMissingContentDB 0018 之前的老库（块表在主库）要给出可执行提示。
+func TestRunHintsMissingContentDB(t *testing.T) {
+	fx := newFixture(t)
+	if err := os.Remove(fx.contentPath); err != nil {
+		t.Fatalf("移除正文库: %v", err)
+	}
+	out := filepath.Join(t.TempDir(), "out")
+	err := run([]string{"-db", fx.path, "-out", out, "-all"})
+	if err == nil || !strings.Contains(err.Error(), "-content-db") {
+		t.Fatalf("缺正文库时应提示 -content-db，得到 %v", err)
+	}
+}
+
+// TestPlanBlocksReadsContentDB 块口径必须来自正文库：主库上根本没有这张表。
+func TestPlanBlocksReadsContentDB(t *testing.T) {
+	fx := newFixture(t)
+	p, err := planBlocks(fx.main, fx.content, config{all: true})
+	if err != nil {
+		t.Fatalf("planBlocks: %v", err)
+	}
+	if p.blocks != 3 || p.books != 2 || p.mode != "all" {
+		t.Fatalf("计划口径不对: %+v", p)
+	}
+	if _, err := countRows(fx.main, "SELECT COUNT(*) FROM chapter_blocks", nil); err == nil {
+		t.Fatal("主库不该有 chapter_blocks（用例前提被破坏）")
 	}
 }

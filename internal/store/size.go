@@ -7,23 +7,21 @@ import (
 
 // 体积构成的读路径口径（必须在毫秒级完成）：
 //
-//   - 正文类（textBytes）= chapter_blocks.packed 的**压缩后**字节（books 侧文本列另记
-//     book_text_bytes）。这是用户真正占用的磁盘量，也是「正文占多少」应当显示的数值。
-//   - 索引类（indexBytes）= 库文件大小 − 正文 − books 文本，近似容纳 btree 索引、
-//     页填充与空闲页。正文检索下线后不再有 FTS 影子表，这一项只剩 btree 与碎片。
-//   - 其他（otherBytes）= 库文件总大小 − 正文 − 索引，含表头、空闲页等。
+//   - 正文类（textBytes）= **正文库**里 chapter_blocks.packed 的压缩后字节（books 侧
+//     文本列另记 book_text_bytes）。这是用户真正占用的磁盘量，也是「正文占多少」应当
+//     显示的数值。
+//   - 索引类（indexBytes）= **主库**文件大小 − books 文本，近似容纳 chapters 的 btree、
+//     索引、页填充与空闲页。正文检索下线后不再有 FTS 影子表，这一项只剩 btree 与碎片。
+//   - 其他（otherBytes）= 两个库文件总大小 − 正文 − 索引，含正文库的表头、块索引
+//     与空闲页。
 //
-// 精确口径要扫全部压缩块（全量库 1.6 GB），放在 /api/stats 请求路径上不可接受。
+// 精确口径要扫全部压缩块（生产 27 GB BLOB），放在 /api/stats 请求路径上不可接受。
 // 因此这些值由导入时顺手累加进 store_metrics，读接口只查表；
 // 缓存缺失或口径落后时接口照常返回，但把 Estimated 标为 true。
 const (
-	// compositionSampleSize 已废弃：改为预计算，保留常量仅为兼容旧引用。
-	compositionSampleSize = "1000"
-	// bookTextSQL 是 books 侧文本字节（838 行，全表扫也是毫秒级，不必缓存）。
+	// bookTextSQL 是 books 侧文本字节（2 万行，全表扫也是毫秒级，不必缓存）。
 	bookTextSQL = "SELECT COALESCE(SUM(length(title) + length(intro) + length(source_path) + " +
 		"length(source_name) + length(encoding) + length(status)), 0) FROM books"
-	// chapterTextSampleSQL 已废弃：预计算口径下不再抽样。
-	chapterTextSampleSQL = "SELECT COALESCE(SUM(length(packed)), 0) FROM chapter_blocks WHERE id = -1"
 	// chapterCountSQL 只数行数，走 btree 扫描（实测 0.02 s）。
 	chapterCountSQL = "SELECT COUNT(*) FROM chapters"
 )
@@ -52,10 +50,15 @@ func (s *Store) Composition(ctx context.Context) (Composition, error) {
 	}, nil
 }
 
-// scalarInt64 执行单值查询（NULL 按 0）。
+// scalarInt64 在主库上执行单值查询（NULL 按 0）。
 func (s *Store) scalarInt64(ctx context.Context, query string, args ...any) (int64, error) {
+	return s.scalarOn(ctx, s.db, query, args...)
+}
+
+// scalarOn 在指定库上执行单值查询（NULL 按 0）。正文口径的聚合走 s.cdb。
+func (s *Store) scalarOn(ctx context.Context, db *sql.DB, query string, args ...any) (int64, error) {
 	var value sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&value); err != nil {
+	if err := db.QueryRowContext(ctx, query, args...).Scan(&value); err != nil {
 		return 0, err
 	}
 	return value.Int64, nil

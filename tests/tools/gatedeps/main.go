@@ -68,8 +68,20 @@ var allowedDeps = map[string][]string{
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config"},
 	"norvels/cmd/healthcheck": {},
-	// 压缩率/延迟实测工具：只读库 + 调正文编码层，不进发布二进制（Makefile 只 build ./cmd/norvels）。
-	"norvels/cmd/codebench": {"norvels/internal/textcode"},
+	// 压缩率/延迟实测工具：只读库 + 调正文编码层与路径推导，不进发布二进制（Makefile 只 build ./cmd/norvels）。
+	// store 只用来复用 ContentDBPath（正文库路径推导的唯一实现），不调用它的读写路径。
+	"norvels/cmd/codebench": {"norvels/internal/textcode", "norvels/internal/store"},
+}
+
+// testsToolAllowedDeps 是 tests/ 下少数**分析型**工具包的破例依赖（正向白名单）。
+//
+// 默认规则是「tests/ 下的工具包只依赖标准库」，避免门禁工具与业务代码耦合；
+// 例外只给分析型工具，并且必须写明「为什么不能用标准库替代」：
+//
+//	corpusstats 要解库内 0x03 码本块（0017 起的唯一写入格式）。码表由 internal/textcode
+//	embed 在二进制里，复制一份码表 + 解码器就是给自己埋一个静默漂移，故只放行这一个叶子包。
+var testsToolAllowedDeps = map[string][]string{
+	"norvels/tests/tools/corpusstats": {"norvels/internal/textcode"},
 }
 
 const modulePrefix = "norvels/"
@@ -192,12 +204,7 @@ func checkDirection(order []string, deps map[string][]string) []string {
 		// tests/ 下是门禁工具（含验收测试包），只允许标准库 + 本项目 internal 的测试依赖口径另算；
 		// 这里要求工具包本身不依赖 internal，避免工具与业务代码耦合。
 		if strings.HasPrefix(p, "norvels/tests/") {
-			if strings.HasPrefix(p, "norvels/tests/acceptance") {
-				continue // 验收测试包按端到端口径允许依赖 internal/*
-			}
-			if len(deps[p]) > 0 {
-				violations = append(violations, fmt.Sprintf("%s 依赖 %s；门禁工具包应只依赖标准库", p, strings.Join(deps[p], ", ")))
-			}
+			violations = append(violations, checkTestsPackage(p, deps[p])...)
 			continue
 		}
 		allowed, registered := allowedDeps[p]
@@ -216,6 +223,27 @@ func checkDirection(order []string, deps map[string][]string) []string {
 		}
 	}
 	return violations
+}
+
+// checkTestsPackage 校验 tests/ 下的工具包：默认只准标准库，例外见 testsToolAllowedDeps。
+func checkTestsPackage(pkg string, deps []string) []string {
+	if strings.HasPrefix(pkg, "norvels/tests/acceptance") {
+		return nil // 验收测试包按端到端口径允许依赖 internal/*
+	}
+	allowed, exceptional := testsToolAllowedDeps[pkg]
+	if !exceptional {
+		if len(deps) == 0 {
+			return nil
+		}
+		return []string{fmt.Sprintf("%s 依赖 %s；门禁工具包应只依赖标准库", pkg, strings.Join(deps, ", "))}
+	}
+	var out []string
+	for _, d := range deps {
+		if !contains(allowed, d) {
+			out = append(out, fmt.Sprintf("%s 依赖 %s；该工具只放行 [%s]", pkg, d, strings.Join(allowed, ", ")))
+		}
+	}
+	return out
 }
 
 func contains(list []string, s string) bool {

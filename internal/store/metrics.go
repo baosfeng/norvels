@@ -13,7 +13,8 @@ import (
 //	v1：text_bytes = chapters 的 TITLE+CONTENT 字符数（含字级分词镜像列）
 //	v2：text_bytes = chapter_blocks.packed 压缩字节之和；原文逻辑字节另记 text_bytes_raw
 //	v3：v2 同一口径，块边界改成 8 MB、格式改成 0x03（0017 重压存量块，见 rebuild.go）
-const metricsVersion = 3
+//	v4：v3 同一口径，但正文搬进独立库（0018）；索引类体积改成只按主库文件算
+const metricsVersion = 4
 
 // store_metrics 的键位。全部是整数值，读接口只查表，毫秒级。
 const (
@@ -43,20 +44,17 @@ const chapterWordSumSQL = "SELECT COALESCE(SUM(word_count), 0) FROM chapters"
 const bookTextBytesSQL = "SELECT COALESCE(SUM(length(title) + length(intro) + length(source_path) + " +
 	"length(source_name) + length(encoding) + length(status)), 0) FROM books"
 
-// chapterTextBytesSQL 是 chapters 侧**压缩后**的正文字节（只允许在导入与全量重算里调用）。
+// chapterTextBytesSQL 是**正文库**侧压缩后的正文字节（只允许在导入与全量重算里调用）。
 //
 // 走 SUM(length(packed)) 是扫 BLOB 列，比扫 TEXT 原文快得多（压缩后只有原文的 1/3），
 // 但仍只适合全量重算，不能放在请求路径上。
 const chapterTextBytesSQL = "SELECT COALESCE(SUM(length(packed)), 0) FROM chapter_blocks"
 
-// chapterRawBytesSQL 是 chapters 侧**压缩前**的原文逻辑字节。
+// chapterRawBytesSQL 是正文库侧压缩前的原文逻辑字节。
 const chapterRawBytesSQL = "SELECT COALESCE(SUM(raw_bytes), 0) FROM chapter_blocks"
 
-// textBytesForBookSQL 求单本书的压缩后字节、原文逻辑字节与字数（覆盖写入前先减旧值）。
-const textBytesForBookSQL = "SELECT " +
-	"COALESCE((SELECT SUM(length(packed)) FROM chapter_blocks WHERE book_id = ?), 0), " +
-	"COALESCE((SELECT SUM(raw_bytes) FROM chapter_blocks WHERE book_id = ?), 0), " +
-	"COALESCE((SELECT SUM(word_count) FROM chapters WHERE book_id = ?), 0)"
+// chapterWordSumForBookSQL 求单本书的章节字数（在主库；正文口径在正文库，见 blockSum）。
+const chapterWordSumForBookSQL = "SELECT COALESCE(SUM(word_count), 0) FROM chapters WHERE book_id = ?"
 
 // readMetrics 读出当前缓存；值缺失或口径落后时 Stale=true。
 func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
@@ -178,11 +176,18 @@ type bookStats struct {
 }
 
 // bookTextStats 求单本书当前的正文口径快照（覆盖写入前要先从 metrics 里减掉）。
-func bookTextStats(ctx context.Context, tx *sql.Tx, bookID int64) (bookStats, error) {
-	var st bookStats
-	err := tx.QueryRowContext(ctx, textBytesForBookSQL, bookID, bookID, bookID).
-		Scan(&st.packedBytes, &st.rawBytes, &st.words)
-	return st, err
+//
+// 压缩字节在正文库、字数在主库：两个库分别取（跨库 JOIN 不成立，见 content.go）。
+func bookTextStats(ctx context.Context, w *writeTx, bookID int64) (bookStats, error) {
+	sum, err := w.content.sums(ctx, bookID)
+	if err != nil {
+		return bookStats{}, err
+	}
+	st := bookStats{packedBytes: sum.packed, rawBytes: sum.raw}
+	if err := w.main.QueryRowContext(ctx, chapterWordSumForBookSQL, bookID).Scan(&st.words); err != nil {
+		return bookStats{}, fmt.Errorf("store: book word sum %d: %w", bookID, err)
+	}
+	return st, nil
 }
 
 // refreshMetrics 全表精确重算并写库（慢，运维与后台补算用）。
@@ -192,28 +197,17 @@ func bookTextStats(ctx context.Context, tx *sql.Tx, bookID int64) (bookStats, er
 //   - chapter_word_sum = SUM(chapters.word_count)（整数列，本身就快，顺手缓存）
 //   - index_bytes = 库文件大小 − text_bytes（近似：其余页填充/表头/空闲页也算进索引侧）
 func (s *Store) refreshMetrics(ctx context.Context) error {
-	bookText, err := s.scalarInt64(ctx, bookTextBytesSQL)
+	m, err := s.collectMetrics(ctx)
 	if err != nil {
-		return fmt.Errorf("store: metrics book text: %w", err)
+		return err
 	}
-	chapterText, err := s.scalarInt64(ctx, chapterTextBytesSQL)
-	if err != nil {
-		return fmt.Errorf("store: metrics chapter text: %w", err)
-	}
-	chapterRaw, err := s.scalarInt64(ctx, chapterRawBytesSQL)
-	if err != nil {
-		return fmt.Errorf("store: metrics chapter raw bytes: %w", err)
-	}
-	wordSum, err := s.scalarInt64(ctx, chapterWordSumSQL)
-	if err != nil {
-		return fmt.Errorf("store: metrics chapter word sum: %w", err)
-	}
-
-	// 口径：text_bytes 只统计 chapters 侧，与导入时的增量累加完全一致——
+	// 口径：text_bytes 只统计正文块，与导入时的增量累加完全一致——
 	// 这样「增量累加」与「全量重算」必然得到同一个数（有测试守着这条）。
-	// books 侧文本量很小（838 行实测 174 KB），单独记 book_text_bytes，读接口相加。
-	textBytes := chapterText
-	indexBytes := s.diskUsage() - textBytes - bookText
+	// books 侧文本量很小（2 万行量级），单独记 book_text_bytes，读接口相加。
+	textBytes := m.chapterText
+	// 索引类只按主库文件算：正文库的体积已在 text_bytes 里（剩下的是块索引与碎片，
+	// 统一记进 otherBytes，见 fillComposition 的三分量口径）。
+	indexBytes := s.mainBytes() - m.bookText
 	if indexBytes < 0 {
 		indexBytes = 0
 	}
@@ -229,9 +223,9 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 		value int64
 	}{
 		{metricTextBytes, textBytes},
-		{metricTextBytesRaw, chapterRaw},
-		{metricBookTextBytes, bookText},
-		{metricChapterWordSum, wordSum},
+		{metricTextBytesRaw, m.chapterRaw},
+		{metricBookTextBytes, m.bookText},
+		{metricChapterWordSum, m.wordSum},
 		{metricIndexBytes, indexBytes},
 		{metricMetricsVersion, metricsVersion},
 		{metricRefreshedAtUnix, nowUTC().Unix()},
@@ -246,7 +240,39 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 	return nil
 }
 
-// RefreshMetrics 全表精确重算库级聚合值（运维入口，13.8 GiB 库约需 2 分钟）。
+// metricsScalars 是全量重算要的四个标量：books 文本、块压缩字节、块原文字节、字数。
+//
+// 块口径在正文库（自动选库：0018 之前的库块还在主库），books/字数在主库。
+type metricsScalars struct {
+	bookText    int64
+	chapterText int64
+	chapterRaw  int64
+	wordSum     int64
+}
+
+// collectMetrics 读出四个标量；任一项失败都带上口径名返回。
+func (s *Store) collectMetrics(ctx context.Context) (metricsScalars, error) {
+	var m metricsScalars
+	q, err := s.blockDB(ctx)
+	if err != nil {
+		return m, err
+	}
+	if m.bookText, err = s.scalarInt64(ctx, bookTextBytesSQL); err != nil {
+		return m, fmt.Errorf("store: metrics book text: %w", err)
+	}
+	if m.chapterText, err = s.scalarOn(ctx, q, chapterTextBytesSQL); err != nil {
+		return m, fmt.Errorf("store: metrics chapter text: %w", err)
+	}
+	if m.chapterRaw, err = s.scalarOn(ctx, q, chapterRawBytesSQL); err != nil {
+		return m, fmt.Errorf("store: metrics chapter raw bytes: %w", err)
+	}
+	if m.wordSum, err = s.scalarInt64(ctx, chapterWordSumSQL); err != nil {
+		return m, fmt.Errorf("store: metrics chapter word sum: %w", err)
+	}
+	return m, nil
+}
+
+// RefreshMetrics 全表精确重算库级聚合值（运维入口，GB 级库约需数分钟）。
 func (s *Store) RefreshMetrics(ctx context.Context) error { return s.refreshMetrics(ctx) }
 
 // ensureMetrics 在缓存缺失或口径落后时后台补算一次，本调用立即返回。

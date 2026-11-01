@@ -20,52 +20,50 @@ const chapterInsertSQL = "INSERT INTO chapters(book_id, volume_id, idx, title, w
 //
 // 幂等语义：source_path 或 file_sha256 命中既有记录时返回 Skipped；
 // opt.Force 为 true 时保留原 id 覆盖更新（先删旧卷/章节再重写）。
+//
+// 跨库写入：正文块先进正文库、books/volumes/chapters 后进主库，提交顺序由
+// writeThrough 保证（见 content.go）；主库提交失败时按块 id 回滚这次新写的块。
 func (s *Store) SaveBook(ctx context.Context, b *model.ParsedBook, opt SaveOptions) (SaveResult, error) {
 	w, usedVols, err := prepareBookWrite(b)
 	if err != nil {
 		return SaveResult{}, err
 	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return SaveResult{}, fmt.Errorf("store: save book begin: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
-
-	existingID, oldAuthorID, err := lookupExistingBook(ctx, tx, w, opt)
+	var res SaveResult
+	err = s.writeThrough(ctx, "save book", func(wt *writeTx) error {
+		existingID, oldAuthorID, err := lookupExistingBook(ctx, wt.main, w, opt)
+		if err != nil {
+			return err
+		}
+		if existingID != 0 && !opt.Force {
+			res, err = finishExistingBook(ctx, wt, existingID, b, w, opt.Update)
+			return err
+		}
+		bookID, err := saveBookInTx(ctx, wt, b, w, usedVols, existingID, oldAuthorID)
+		if err != nil {
+			return err
+		}
+		res = SaveResult{BookID: bookID, Updated: existingID != 0}
+		return nil
+	})
 	if err != nil {
 		return SaveResult{}, err
 	}
-	if existingID != 0 && !opt.Force {
-		return finishExistingBook(ctx, tx, existingID, b, w, opt.Update)
-	}
-
-	bookID, err := saveBookInTx(ctx, tx, b, w, usedVols, existingID, oldAuthorID)
-	if err != nil {
-		return SaveResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return SaveResult{}, fmt.Errorf("store: save book commit: %w", err)
-	}
-	return SaveResult{BookID: bookID, Updated: existingID != 0}, nil
+	return res, nil
 }
 
 // finishExistingBook 处理「命中既有书且不覆盖」的两种结局：追更追加或幂等跳过。
 //
 // 追更优先于幂等跳过：Update 为真且新序列是旧序列的延伸时只追加尾部章节；
 // 对不上由 appendBookInTx 返回 ErrNotAppendable（调用方整体回滚，绝不覆盖）。
-// Force 走不到这里——显式覆盖优先于追更。
-func finishExistingBook(ctx context.Context, tx *sql.Tx, bookID int64,
+// Force 走不到这里——显式覆盖优先于追更。提交由 writeThrough 统一完成。
+func finishExistingBook(ctx context.Context, wt *writeTx, bookID int64,
 	b *model.ParsedBook, w bookWrite, update bool) (SaveResult, error) {
 	if !update {
 		return SaveResult{BookID: bookID, Skipped: true}, nil
 	}
-	appended, err := appendBookInTx(ctx, tx, bookID, b, w)
+	appended, err := appendBookInTx(ctx, wt, bookID, b, w)
 	if err != nil {
 		return SaveResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return SaveResult{}, fmt.Errorf("store: save book commit: %w", err)
 	}
 	return SaveResult{BookID: bookID, Updated: true, Appended: appended}, nil
 }
@@ -196,9 +194,14 @@ func lookupByPathOrSHA(ctx context.Context, tx *sql.Tx, sourcePath, sha string) 
 	return existingID, oldAuthorID, nil
 }
 
-// saveBookInTx 在事务内完成书籍主体、卷、章节写入与作者聚合刷新，返回书籍 id。
+// saveBookInTx 完成书籍主体、卷、章节写入与作者聚合刷新，返回书籍 id。
 // existingID 为 0 表示新建，否则为覆盖更新（保留原 id）。
-func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWrite, usedVols []int, existingID, oldAuthorID int64) (int64, error) {
+//
+// 新书的 id 必须先由主库分配（AUTOINCREMENT），正文块才能带着 book_id 进正文库：
+// 因此这里先写 books 行拿 id，再写块、最后写章节行。事务提交顺序仍是
+// 「正文库在前、主库在后」，由 writeThrough 收口。
+func saveBookInTx(ctx context.Context, wt *writeTx, b *model.ParsedBook, w bookWrite, usedVols []int, existingID, oldAuthorID int64) (int64, error) {
+	tx := wt.main
 	// books.author_id 是 NOT NULL 且列表/筛选都按它走，先按主作者把行写进去；
 	// 多作者关联（books_authors）在章节落库后由 saveBookAuthorsInTx 统一落，
 	// 它同时把 author_id 复核一遍，两处不会漂。
@@ -209,7 +212,7 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 
 	bookID := existingID
 	if bookID != 0 {
-		if err := replaceBookInTx(ctx, tx, bookID, w, authorID); err != nil {
+		if err := replaceBookInTx(ctx, wt, bookID, w, authorID); err != nil {
 			return 0, err
 		}
 	} else if bookID, err = insertBookRow(ctx, tx, w, authorID); err != nil {
@@ -220,7 +223,7 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 	if err != nil {
 		return 0, err
 	}
-	if err := insertChapters(ctx, tx, bookID, b, volMap); err != nil {
+	if err := insertChapters(ctx, wt, bookID, b, volMap); err != nil {
 		return 0, err
 	}
 	if err := saveBookExtras(ctx, tx, bookID, b); err != nil {
@@ -240,8 +243,9 @@ func saveBookInTx(ctx context.Context, tx *sql.Tx, b *model.ParsedBook, w bookWr
 //
 // 扣减顺序不能反：metrics 的旧值来自「此刻仍在库里」的块与章节，
 // 一旦 replaceBookRow 删掉它们，这些数就再也算不出来了。
-func replaceBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite, authorID int64) error {
-	old, err := bookTextStats(ctx, tx, bookID)
+func replaceBookInTx(ctx context.Context, wt *writeTx, bookID int64, w bookWrite, authorID int64) error {
+	tx := wt.main
+	old, err := bookTextStats(ctx, wt, bookID)
 	if err != nil {
 		return fmt.Errorf("store: save book old metrics: %w", err)
 	}
@@ -254,7 +258,7 @@ func replaceBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite,
 	if err := subtractBookTextBytes(ctx, tx, bookID); err != nil {
 		return err
 	}
-	return replaceBookRow(ctx, tx, bookID, w, authorID)
+	return replaceBookRow(ctx, wt, bookID, w, authorID)
 }
 
 // insertBookRow 插入书籍主体并返回新 id。
@@ -272,14 +276,21 @@ func insertBookRow(ctx context.Context, tx *sql.Tx, w bookWrite, authorID int64)
 
 // replaceBookRow 覆盖既有书籍：先清旧章节与压缩块，再清旧卷，最后更新主体。
 //
-// 块必须先于章节删除（或者说两者都必须删干净）：chapter_blocks 上有
-// UNIQUE(book_id, seq) 约束，若不删旧块，重写同一本书时会直接撞约束失败。
-func replaceBookRow(ctx context.Context, tx *sql.Tx, bookID int64, w bookWrite, authorID int64) error {
+// 旧块**不在本事务里删**：chapter_blocks 上有 UNIQUE(book_id, seq)，重写同一本书
+// 必须先腾出 seq，所以这里读旧块 id 挂到「主库提交后回收」清单（contentTx.scheduleReap）。
+// 正文库事务先于主库提交，此刻真删而主库又提交失败的话，旧章节会指向不存在的块——
+// 那比留孤儿块严重得多（见 content.go）。
+func replaceBookRow(ctx context.Context, wt *writeTx, bookID int64, w bookWrite, authorID int64) error {
+	tx := wt.main
 	if _, err := tx.ExecContext(ctx, "DELETE FROM chapters WHERE book_id = ?", bookID); err != nil {
 		return fmt.Errorf("store: save book clear chapters: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM chapter_blocks WHERE book_id = ?", bookID); err != nil {
-		return fmt.Errorf("store: save book clear blocks: %w", err)
+	oldBlocks, err := wt.content.blockIDs(ctx, bookID)
+	if err != nil {
+		return err
+	}
+	for _, id := range oldBlocks {
+		wt.content.scheduleReap(id)
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM volumes WHERE book_id = ?", bookID); err != nil {
 		return fmt.Errorf("store: save book clear volumes: %w", err)

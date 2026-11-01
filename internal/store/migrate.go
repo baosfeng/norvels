@@ -268,7 +268,7 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 			_ = tx.Rollback()
 		}
 	}()
-	if err := runMigrationSteps(ctx, tx, m); err != nil {
+	if err := runMigrationSteps(ctx, tx, m, s); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -282,7 +282,11 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 //
 // 任一步失败都返回错误，由 applyMigration 整体回滚：版本记录与已执行的结构变更
 // 一起消失，库停在迁移前状态。
-func runMigrationSteps(ctx context.Context, tx *sql.Tx, m migration) error {
+//
+// s 非 nil 时还会执行登记在 storeStepsByVersion 里的「跨库步骤」：0018 要把块写进
+// 另一个数据库文件，只有拿到 Store 的连接才做得到。跨库部分不在本事务里，
+// 它们的幂等性由各自步骤自己保证（见 migrate_0018.go）。
+func runMigrationSteps(ctx context.Context, tx *sql.Tx, m migration, s *Store) error {
 	if strings.TrimSpace(m.SQL) == "" {
 		return fmt.Errorf("store: migration %s is empty", m.Name)
 	}
@@ -292,6 +296,11 @@ func runMigrationSteps(ctx context.Context, tx *sql.Tx, m migration) error {
 	for _, step := range m.Steps {
 		if err := step.Run(ctx, tx); err != nil {
 			return fmt.Errorf("store: migration %s step %q failed: %w", m.Name, step.Name, err)
+		}
+	}
+	if fn, ok := storeStepsByVersion[m.Version]; ok && s != nil {
+		if err := fn(ctx, tx, s); err != nil {
+			return fmt.Errorf("store: migration %s store step failed: %w", m.Name, err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx,

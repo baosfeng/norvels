@@ -131,11 +131,11 @@ func attachLegacyBlock(t *testing.T, ctx context.Context, st *Store, bookID, cha
 		t.Fatalf("构造 0x02 老块: %v", err)
 	}
 	var seq int
-	if err := st.DB().QueryRowContext(ctx,
+	if err := st.ContentDB().QueryRowContext(ctx,
 		"SELECT COALESCE(MAX(seq), 0) + 1 FROM chapter_blocks WHERE book_id = ?", bookID).Scan(&seq); err != nil {
 		t.Fatalf("取块序号: %v", err)
 	}
-	res, err := st.DB().ExecContext(ctx,
+	res, err := st.ContentDB().ExecContext(ctx,
 		"INSERT INTO chapter_blocks(book_id, seq, first_idx, last_idx, raw_bytes, packed) "+
 			"VALUES (?, ?, 1, 1, ?, ?)", bookID, seq, len(raw), legacy)
 	if err != nil {
@@ -155,7 +155,7 @@ func attachLegacyBlock(t *testing.T, ctx context.Context, st *Store, bookID, cha
 // assertBothAlgoMarkers 确认库里确实混存着 0x02 与 0x03 两种块，否则这个测试没测到重点。
 func assertBothAlgoMarkers(t *testing.T, ctx context.Context, st *Store, bookID int64) {
 	t.Helper()
-	rows, err := st.DB().QueryContext(ctx,
+	rows, err := st.ContentDB().QueryContext(ctx,
 		"SELECT packed FROM chapter_blocks WHERE book_id = ? ORDER BY seq", bookID)
 	if err != nil {
 		t.Fatalf("查块标记: %v", err)
@@ -283,7 +283,7 @@ func corruptCodebookBlock(t *testing.T, ctx context.Context, st *Store, bookID i
 		t.Fatalf("zstdCompressBest: %v", err)
 	}
 	broken := append([]byte{contentAlgoCodebook}, payload...)
-	if _, err := st.DB().ExecContext(ctx,
+	if _, err := st.ContentDB().ExecContext(ctx,
 		"UPDATE chapter_blocks SET packed = ? WHERE book_id = ? AND seq = 1",
 		broken, bookID); err != nil {
 		t.Fatalf("写坏块: %v", err)

@@ -28,9 +28,9 @@ const maxChapterContentBytes = 1 << 20
 // 保留章 id / idx 的理由与合并一致：阅读进度（reading_progress）与书签按 chapter id
 // 指过来，卷归属与目录顺序是读者的位置信息，正文换了位置不能跟着换。
 //
-// 单事务：写新块 → 改 span 与 word_count → 同步三处计数 → 回收旧块，全成或全不成。
+// 跨库顺序：新块先进正文库 → 章节 span 与计数进主库 → 主库提交后回收旧块。
 // 不做版本号乐观锁（本地单用户，后写覆盖先写是设计允许的），但绝不接受
-// 「正文换了、计数没动」这类部分成功。
+// 「正文换了、计数没动」这类部分成功：主库失败会回滚本次新写的块。
 func (s *Store) UpdateChapterContent(ctx context.Context, bookID, chapterID int64, content string) error {
 	if err := checkIDs(bookID, chapterID); err != nil {
 		return err
@@ -38,27 +38,27 @@ func (s *Store) UpdateChapterContent(ctx context.Context, bookID, chapterID int6
 	if err := checkChapterContent(content); err != nil {
 		return err
 	}
-	return s.inTx(ctx, "update chapter content", func(tx *sql.Tx) error {
-		sp, err := loadChapterSpan(ctx, tx, bookID, chapterID)
+	return s.writeThrough(ctx, "update chapter content", func(wt *writeTx) error {
+		sp, err := loadChapterSpan(ctx, wt.main, bookID, chapterID)
 		if err != nil {
 			return err
 		}
 		words := countWords(content)
-		ref, packed, raw, err := writeContentBlock(ctx, tx, bookID, sp, content)
+		ref, packed, raw, err := writeContentBlock(ctx, wt.content, bookID, sp, content)
 		if err != nil {
 			return err
 		}
-		if err := rewriteChapterSpan(ctx, tx, bookID, chapterID, ref, words); err != nil {
+		if err := rewriteChapterSpan(ctx, wt.main, bookID, chapterID, ref, words); err != nil {
 			return err
 		}
-		if err := applyContentCounts(ctx, tx, bookID, words-sp.wordCount, packed, raw); err != nil {
+		if err := applyContentCounts(ctx, wt.main, bookID, words-sp.wordCount, packed, raw); err != nil {
 			return err
 		}
 		// 顺序不能反：章节还指着旧块时它当然「有人引用」，先改 span 再回收。
-		if err := reapOrphanBlock(ctx, tx, sp.blockID); err != nil {
+		if err := reapOrphanBlock(ctx, wt, sp.blockID); err != nil {
 			return err
 		}
-		return refreshBlockIdxRange(ctx, tx, ref.id)
+		return refreshBlockIdxRange(ctx, wt, ref.id)
 	})
 }
 
@@ -82,14 +82,14 @@ func checkChapterContent(content string) error {
 // 一章独占一块（不与其他章合装）：这是整章替换在寻址上省下的麻烦——块内偏移恒为 0，
 // 同块其他章节的 block_off 一个都不用动。块因此可能小于 BlockTargetBytes，可接受：
 // 块是压缩单元不是填充单元，多出来的块只在极少数「编辑过的章」上出现。
-func writeContentBlock(ctx context.Context, tx *sql.Tx, bookID int64, sp chapterSpan,
+func writeContentBlock(ctx context.Context, c *contentTx, bookID int64, sp chapterSpan,
 	content string) (blockRef, int64, int64, error) {
 	raw := []byte(content)
 	packed, err := compressContent(raw)
 	if err != nil {
 		return blockRef{}, 0, 0, fmt.Errorf("store: chapter content compress: %w", err)
 	}
-	id, err := insertTextBlock(ctx, tx, bookID, sp.idx, sp.idx, raw, packed)
+	id, err := insertTextBlock(ctx, c, bookID, sp.idx, sp.idx, raw, packed)
 	if err != nil {
 		return blockRef{}, 0, 0, err
 	}
@@ -98,26 +98,15 @@ func writeContentBlock(ctx context.Context, tx *sql.Tx, bookID int64, sp chapter
 
 // insertTextBlock 写入一块正文，返回块 id；firstIdx/lastIdx 是它覆盖的章节序号范围。
 //
-// 合并（chapter_merge.go）与整章替换共用这一处：chapter_blocks 的列（seq 取 MAX+1、
-// raw_bytes 记原文逻辑长度）只在这里写一次，两条路径不会各有一套理解。
-func insertTextBlock(ctx context.Context, tx *sql.Tx, bookID int64, firstIdx, lastIdx int,
+// 合并（chapter_merge.go）与整章替换共用这一处：seq 续写（MAX+1）与块列口径
+// 只在 content_blocks.go 实现一次，两条路径不会各有一套理解。
+func insertTextBlock(ctx context.Context, c *contentTx, bookID int64, firstIdx, lastIdx int,
 	raw, packed []byte) (int64, error) {
-	seq, err := nextBlockSeq(ctx, tx, bookID)
+	seq, err := c.nextSeq(ctx, bookID)
 	if err != nil {
 		return 0, err
 	}
-	res, err := tx.ExecContext(ctx,
-		"INSERT INTO chapter_blocks(book_id, seq, first_idx, last_idx, raw_bytes, packed) "+
-			"VALUES (?, ?, ?, ?, ?, ?)",
-		bookID, seq, firstIdx, lastIdx, len(raw), packed)
-	if err != nil {
-		return 0, fmt.Errorf("store: insert block: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("store: insert block id: %w", err)
-	}
-	return id, nil
+	return c.insertBlock(ctx, bookID, seq+1, firstIdx, lastIdx, raw, packed)
 }
 
 // rewriteChapterSpan 把这一章指向新块并写入新字数（idx / volume_id / title 不碰）。

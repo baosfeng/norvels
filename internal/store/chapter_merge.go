@@ -42,8 +42,8 @@ func (s *Store) MergeChapters(ctx context.Context, bookID int64, cids []int64) e
 	if err != nil {
 		return err
 	}
-	return s.inTx(ctx, "merge chapters", func(tx *sql.Tx) error {
-		spans, err := loadChapterSpans(ctx, tx, bookID, ids)
+	return s.writeThrough(ctx, "merge chapters", func(wt *writeTx) error {
+		spans, err := loadChapterSpans(ctx, wt.main, bookID, ids)
 		if err != nil {
 			return err
 		}
@@ -53,7 +53,7 @@ func (s *Store) MergeChapters(ctx context.Context, bookID int64, cids []int64) e
 		if err := checkMergeable(spans); err != nil {
 			return err
 		}
-		return applyMerge(ctx, tx, bookID, spans)
+		return applyMerge(ctx, wt, bookID, spans)
 	})
 }
 
@@ -90,32 +90,33 @@ func checkMergeable(spans []chapterSpan) error {
 	return nil
 }
 
-// applyMerge 落实合并：拼正文写新块 → 改写首章 → 删其余章 → 重排序号与计数 → 回收旧块。
-func applyMerge(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan) error {
-	text, err := mergeChapterText(ctx, tx, spans)
+// applyMerge 落实合并：拼正文写新块（正文库）→ 改写首章 → 删其余章 → 重排序号与计数
+// （主库）→ 回收旧块（主库提交后）。
+func applyMerge(ctx context.Context, wt *writeTx, bookID int64, spans []chapterSpan) error {
+	text, err := mergeChapterText(ctx, wt.content, spans)
 	if err != nil {
 		return err
 	}
-	ref, packed, raw, err := writeMergeBlock(ctx, tx, bookID, spans, text)
+	ref, packed, raw, err := writeMergeBlock(ctx, wt.content, bookID, spans, text)
 	if err != nil {
 		return err
 	}
-	if err := rewriteMergedHead(ctx, tx, bookID, spans, ref); err != nil {
+	if err := rewriteMergedHead(ctx, wt.main, bookID, spans, ref); err != nil {
 		return err
 	}
-	if err := deleteChapterRows(ctx, tx, bookID, tailChapterIDs(spans)); err != nil {
+	if err := deleteChapterRows(ctx, wt.main, bookID, tailChapterIDs(spans)); err != nil {
 		return err
 	}
-	if err := renumberChapterIdx(ctx, tx, bookID); err != nil {
+	if err := renumberChapterIdx(ctx, wt.main, bookID); err != nil {
 		return err
 	}
-	if err := applyMergeCounts(ctx, tx, bookID, spans, packed, raw); err != nil {
+	if err := applyMergeCounts(ctx, wt.main, bookID, spans, packed, raw); err != nil {
 		return err
 	}
-	if err := reapBlocksOf(ctx, tx, spans); err != nil {
+	if err := reapBlocksOf(ctx, wt, spans); err != nil {
 		return err
 	}
-	return refreshBlockIdxRange(ctx, tx, ref.id)
+	return refreshBlockIdxRange(ctx, wt, ref.id)
 }
 
 // mergeChapterText 按章序取出各章正文，相邻两段之间插 mergeSeparator。
@@ -123,11 +124,11 @@ func applyMerge(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSp
 // 空章（block_id=0 且长度 0）既不贡献字节也不贡献分隔符：否则合并结果会多出
 // 空行或以换行开头（空章夹在中间时），而「插入的分隔符数量 = 有正文的段数 − 1」
 // 才是不变量的真实表述。
-func mergeChapterText(ctx context.Context, tx *sql.Tx, spans []chapterSpan) ([]byte, error) {
+func mergeChapterText(ctx context.Context, c *contentTx, spans []chapterSpan) ([]byte, error) {
 	parts := make([][]byte, 0, len(spans))
 	total := 0
 	for _, sp := range spans {
-		raw, err := chapterPartText(ctx, tx, sp)
+		raw, err := chapterPartText(ctx, c, sp)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +155,7 @@ func mergeChapterText(ctx context.Context, tx *sql.Tx, spans []chapterSpan) ([]b
 //
 // 合并时把空章并进来是合法操作，但「有长度却没有块」仍是块级损坏，
 // 必须照常报错而不是静默丢字。
-func chapterPartText(ctx context.Context, tx *sql.Tx, sp chapterSpan) ([]byte, error) {
+func chapterPartText(ctx context.Context, c *contentTx, sp chapterSpan) ([]byte, error) {
 	if sp.blockID <= 0 {
 		if sp.length != 0 {
 			return nil, fmt.Errorf("%w: 第 %d 章有长度 %d 却没有正文块",
@@ -162,7 +163,7 @@ func chapterPartText(ctx context.Context, tx *sql.Tx, sp chapterSpan) ([]byte, e
 		}
 		return nil, nil
 	}
-	return spanText(ctx, tx, sp)
+	return spanText(ctx, c, sp)
 }
 
 // writeMergeBlock 把合并后的正文压成一个新块，返回首章的新 span 与字节增量。
@@ -173,7 +174,7 @@ func chapterPartText(ctx context.Context, tx *sql.Tx, sp chapterSpan) ([]byte, e
 // 一章独占一块即可（与 splitBlocks「单章超过目标就独占」同一口径）。压缩或写块失败
 // 直接返回错误，整个合并事务回滚——章节行、块行与 metrics 都停在合并前，
 // 不会出现「首章已被改写、正文只写了一半」的半章状态。
-func writeMergeBlock(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan,
+func writeMergeBlock(ctx context.Context, c *contentTx, bookID int64, spans []chapterSpan,
 	text []byte) (blockRef, int64, int64, error) {
 	raw := int64(len(text))
 	if raw == 0 {
@@ -183,33 +184,12 @@ func writeMergeBlock(ctx context.Context, tx *sql.Tx, bookID int64, spans []chap
 	if err != nil {
 		return blockRef{}, 0, 0, fmt.Errorf("store: merge compress block: %w", err)
 	}
-	id, err := insertMergeBlock(ctx, tx, bookID, spans, text, packed)
+	// 写块与整章替换共用 insertTextBlock：chapter_blocks 的列与 seq 续写只有一套口径。
+	id, err := insertTextBlock(ctx, c, bookID, spans[0].idx, spans[len(spans)-1].idx, text, packed)
 	if err != nil {
 		return blockRef{}, 0, 0, err
 	}
 	return blockRef{id: id, off: 0, len: len(text)}, int64(len(packed)), raw, nil
-}
-
-// nextBlockSeq 返回本书下一个可用块序号（chapter_blocks 上有 UNIQUE(book_id, seq)）。
-//
-// 合并会留下 seq 空洞：被回收的块不会把序号让出来。seq 只用于块级错误文案里的
-// 「第几块」，不参与寻址，取 MAX+1 比维护连续更划算。
-func nextBlockSeq(ctx context.Context, tx *sql.Tx, bookID int64) (int, error) {
-	var seq int
-	if err := tx.QueryRowContext(ctx,
-		"SELECT COALESCE(MAX(seq), 0) + 1 FROM chapter_blocks WHERE book_id = ?", bookID).Scan(&seq); err != nil {
-		return 0, fmt.Errorf("store: next block seq %d: %w", bookID, err)
-	}
-	return seq, nil
-}
-
-// insertMergeBlock 写入合并后的新块（块覆盖首章到末章的序号范围），返回块 id。
-//
-// 写块本身与整章替换共用 insertTextBlock（chapter_content.go）：chapter_blocks 的列
-// 只有一套口径，合并不会因为「自己的 SQL」而在 raw_bytes / seq 上漂移。
-func insertMergeBlock(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan,
-	raw, packed []byte) (int64, error) {
-	return insertTextBlock(ctx, tx, bookID, spans[0].idx, spans[len(spans)-1].idx, raw, packed)
 }
 
 // rewriteMergedHead 把首章指向合并后的 span，字数取各章 word_count 之和。

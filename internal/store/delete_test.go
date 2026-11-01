@@ -131,7 +131,7 @@ func seedDeletableBook(t *testing.T, ctx context.Context, st *Store) int64 {
 	seedP3DeleteRows(t, ctx, st, res.BookID, chapterID)
 	// 自检：造出来的样本确实每张子表都有行，否则上面的「清零」断言是空转。
 	for _, table := range bookCascadeTables {
-		if n := bookRowCount(t, ctx, st, table, res.BookID); n == 0 && table != "chapter_blocks" {
+		if n := bookRowCount(t, ctx, st, table, res.BookID); n == 0 {
 			t.Fatalf("%s 没有行，用例样本不成立", table)
 		}
 	}

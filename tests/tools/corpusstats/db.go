@@ -3,6 +3,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -43,14 +46,49 @@ func openReadOnly(path string) (*sql.DB, error) {
 // chunkBooks 每批放多少个 book_id 进 IN 列表（远低于 SQLite 变量上限）。
 const chunkBooks = 400
 
+// contentDBPath 由主库路径推导正文库路径（缺省同目录兄弟文件，NORVELS_CONTENT_DB 覆盖）。
+//
+// 与 internal/store.ContentDBPath 是同一规则的两份实现：门禁要求 tests/ 下的工具包
+// 只依赖标准库（见 tests/tools/gatedeps），所以不能 import store 复用。
+// 两份的用例表必须逐条一致（本包 TestContentDBPathDerivation ↔ store 同名测试）。
+func contentDBPath(mainPath string) string {
+	if v := strings.TrimSpace(os.Getenv("NORVELS_CONTENT_DB")); v != "" {
+		return v
+	}
+	dir, base := filepath.Split(mainPath)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	if stem == "" {
+		stem, ext = base, ""
+	}
+	return filepath.Join(dir, stem+"-content"+ext)
+}
+
+// resolveContentPath 定位正文库：显式给了就用，否则按主库路径推导。
+//
+// 推导出来的文件不存在时给出可执行的提示：0018 之前的库块表还在主库，
+// 直接抛 sqlite 的 "unable to open database file" 会让运维以为工具坏了。
+func resolveContentPath(dbPath, contentDB string) (string, error) {
+	if contentDB != "" {
+		return contentDB, nil
+	}
+	derived := contentDBPath(dbPath)
+	if _, err := os.Stat(derived); err != nil {
+		return "", fmt.Errorf("正文库不存在：%s（0018 之前的库块表在主库，请先迁移或显式指定 -content-db）", derived)
+	}
+	return derived, nil
+}
+
 // planBlocks 决定这次扫全库还是抽样，并把查询拆好。
-func planBlocks(db *sql.DB, cfg config) (plan, error) {
+//
+// 块数与块读取走**正文库**（0018 起 chapter_blocks 只在那里）；书数与抽样 id 走主库。
+func planBlocks(main, content *sql.DB, cfg config) (plan, error) {
 	if cfg.all {
-		n, err := countRows(db, "SELECT COUNT(*) FROM chapter_blocks", nil)
+		n, err := countRows(content, "SELECT COUNT(*) FROM chapter_blocks", nil)
 		if err != nil {
 			return plan{}, err
 		}
-		books, err := countRows(db, "SELECT COUNT(*) FROM books", nil)
+		books, err := countRows(main, "SELECT COUNT(*) FROM books", nil)
 		if err != nil {
 			return plan{}, err
 		}
@@ -64,14 +102,14 @@ func planBlocks(db *sql.DB, cfg config) (plan, error) {
 		}, nil
 	}
 
-	ids, total, err := sampleBookIDs(db, cfg.sample)
+	ids, total, err := sampleBookIDs(main, cfg.sample)
 	if err != nil {
 		return plan{}, err
 	}
 	qs := bookQueries(ids)
 	blocks := 0
 	for _, q := range qs {
-		n, err := countRows(db, "SELECT COUNT(*) FROM chapter_blocks WHERE book_id IN ("+placeholders(len(q.args))+")", q.args)
+		n, err := countRows(content, "SELECT COUNT(*) FROM chapter_blocks WHERE book_id IN ("+placeholders(len(q.args))+")", q.args)
 		if err != nil {
 			return plan{}, err
 		}

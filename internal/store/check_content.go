@@ -172,7 +172,7 @@ func (s *Store) checkOneChapter(ctx context.Context, chapterID int64, acc *conte
 
 	block, ok := cache[blockID]
 	if !ok {
-		block, err = loadBlock(ctx, s.db, blockID, chapterID)
+		block, err = s.loadBlockText(ctx, blockID, chapterID)
 		if err != nil {
 			var be *BlockError
 			if ok := asBlockError(err, &be); ok {
@@ -317,7 +317,7 @@ func (s *Store) digestChapter(ctx context.Context, chapterID int64, cache map[in
 	if blockID > 0 {
 		block, ok := cache[blockID]
 		if !ok {
-			block, err = loadBlock(ctx, s.db, blockID, chapterID)
+			block, err = s.loadBlockText(ctx, blockID, chapterID)
 			if err != nil {
 				return -1
 			}

@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+
+	"norvels/internal/store"
 )
 
 // 书大小分档（正文原始 UTF-8 字节）：<4MB / 4–16MB / 16–40MB / >40MB。
@@ -66,8 +68,14 @@ type bookResult struct {
 	ok      bool
 }
 
-// run 是全流程：开库 → 全库口径 → 抽样 → 逐组实测 → 最大书单独测 → 出报告。
-func run(dbPath string, sampleN int, outPath string, biggestID int64) error {
+// run 是全流程：开两个库 → 全库口径 → 抽样 → 逐组实测 → 最大书单独测 → 出报告。
+//
+// contentPath 为空时按主库路径推导正文库（规则见 store.ContentDBPath）。
+func run(dbPath, contentPath string, sampleN int, outPath string, biggestID int64) error {
+	cdbPath, err := resolveContentPath(dbPath, contentPath)
+	if err != nil {
+		return err
+	}
 	c, err := newCompressor()
 	if err != nil {
 		return err
@@ -77,12 +85,17 @@ func run(dbPath string, sampleN int, outPath string, biggestID int64) error {
 	ctx := context.Background()
 	db, err := openReadOnly(dbPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("主库: %w", err)
 	}
 	defer db.Close() //nolint:errcheck // 只读句柄
+	cdb, err := openReadOnly(cdbPath)
+	if err != nil {
+		return fmt.Errorf("正文库: %w", err)
+	}
+	defer cdb.Close() //nolint:errcheck // 只读句柄
 
-	fmt.Fprintln(os.Stderr, "codebench: 扫描 chapter_blocks 汇总全库口径（约 27 GB BLOB，可能需要几分钟）…")
-	lib, sizes, err := loadLibrary(ctx, db)
+	fmt.Fprintf(os.Stderr, "codebench: 扫描 %s 的 chapter_blocks 汇总全库口径（约 27 GB BLOB，可能需要几分钟）…\n", cdbPath)
+	lib, sizes, err := loadLibrary(ctx, cdb)
 	if err != nil {
 		return err
 	}
@@ -90,23 +103,39 @@ func run(dbPath string, sampleN int, outPath string, biggestID int64) error {
 		lib.Books, lib.Blocks, lib.RawBytes, lib.PackedBytes, lib.Ratio*100)
 
 	res := &Result{
-		GeneratedAt: time.Now().Format(time.RFC3339),
-		DBPath:      dbPath,
-		Sample:      sampleN,
-		Library:     lib,
+		GeneratedAt:   time.Now().Format(time.RFC3339),
+		DBPath:        dbPath,
+		ContentDBPath: cdbPath,
+		Sample:        sampleN,
+		Library:       lib,
 	}
 	ids := pickBooks(sizes, sampleN)
 	if len(ids) > 0 {
-		if res.Groups, err = benchSample(ctx, db, c, ids, sizes, lib); err != nil {
+		if res.Groups, err = benchSample(ctx, db, cdb, c, ids, sizes, lib); err != nil {
 			return err
 		}
 	}
 	if biggestID > 0 {
-		if res.Largest, err = benchLargest(ctx, db, c, biggestID); err != nil {
+		if res.Largest, err = benchLargest(ctx, db, cdb, c, biggestID); err != nil {
 			return err
 		}
 	}
 	return writeReports(res, outPath)
+}
+
+// resolveContentPath 定位正文库：显式给了就用，否则按主库路径推导。
+//
+// 推导出来的文件不存在时直接说清楚原因（0018 之前的老库块表在主库），
+// 而不是把 sqlite 的 "unable to open database file" 丢给用户。
+func resolveContentPath(dbPath, contentPath string) (string, error) {
+	if contentPath != "" {
+		return contentPath, nil
+	}
+	derived := store.ContentDBPath(dbPath)
+	if _, err := os.Stat(derived); err != nil {
+		return "", fmt.Errorf("正文库不存在：%s（0018 之前的库块表在主库，请先迁移或显式指定 -content-db）", derived)
+	}
+	return derived, nil
 }
 
 // batchBudgetBytes 是一批同时驻留内存的正文上限。
@@ -115,8 +144,8 @@ func run(dbPath string, sampleN int, outPath string, biggestID int64) error {
 // 一次性载入会直接进 swap，把吞吐测量变成磁盘测量。
 const batchBudgetBytes = 512 << 20
 
-// benchSample 分批载入抽样书、逐组实测，最后汇总成五组统计。
-func benchSample(ctx context.Context, db *sql.DB, c *compressor, ids []int64,
+// benchSample 分批载入抽样书（块在正文库、章节尺寸在主库）、逐组实测，最后汇总成五组统计。
+func benchSample(ctx context.Context, db, cdb *sql.DB, c *compressor, ids []int64,
 	sizes []BookSize, lib Library) ([]GroupStat, error) {
 	sizeOf := make(map[int64]int64, len(sizes))
 	for _, s := range sizes {
@@ -125,7 +154,7 @@ func benchSample(ctx context.Context, db *sql.DB, c *compressor, ids []int64,
 	perGroup := make([][]bookResult, len(groups))
 	for start := 0; start < len(ids); {
 		end := batchEnd(ids, sizeOf, start)
-		books, err := loadSamples(ctx, db, ids[start:end], c)
+		books, err := loadSamples(ctx, db, cdb, ids[start:end], c)
 		if err != nil {
 			return nil, err
 		}
@@ -226,8 +255,8 @@ func sha256Sum(data []byte) []byte {
 const largestRuns = 4
 
 // benchLargest 单独测最大书在「码本 + 整本 zstd」下的整本耗时与内存峰值。
-func benchLargest(ctx context.Context, db *sql.DB, c *compressor, id int64) (*LargestStat, error) {
-	b, err := loadSample(ctx, db, id, c)
+func benchLargest(ctx context.Context, db, cdb *sql.DB, c *compressor, id int64) (*LargestStat, error) {
+	b, err := loadSample(ctx, db, cdb, id, c)
 	if err != nil {
 		return nil, err
 	}
