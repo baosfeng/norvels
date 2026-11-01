@@ -77,7 +77,9 @@ var allowedDeps = map[string][]string{
 		"norvels/internal/recstore", "norvels/internal/recommend",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
-	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config", "norvels/internal/recstore"},
+	// ai 只在这里出现：--ai 的上架判定器在 cmd 里接线（importer 只认函数类型、ai 不认识书库），
+	// cmd 是两条边界的唯一翻译点，所以由它同时依赖两边。
+	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config", "norvels/internal/recstore", "norvels/internal/ai"},
 	"norvels/cmd/healthcheck": {},
 	// 压缩率/延迟实测工具：只读库 + 调正文编码层与路径推导，不进发布二进制（Makefile 只 build ./cmd/norvels）。
 	// store 只用来复用 ContentDBPath（正文库路径推导的唯一实现），不调用它的读写路径。

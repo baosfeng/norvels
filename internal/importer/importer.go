@@ -56,6 +56,10 @@ type Options struct {
 	// >0 时复用该任务（要求 status=running），0 表示由 Run 内部创建。
 	// DryRun 时不写任何任务记录，JobID 被忽略。
 	JobID int64
+	// Judge 是可选的外部上架判定（AI 选书）：非 nil 时每本书在章节门槛之后、
+	// 写库之前先过一遍，判为不入库的按 Skipped 记账并留下理由。
+	// importer 只认这个函数类型，不认任何具体实现——接线在 cmd（见 import_cmd.go）。
+	Judge Judge
 }
 
 // Progress 是一次进度回调的快照。

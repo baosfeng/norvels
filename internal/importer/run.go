@@ -133,6 +133,11 @@ func (r *runState) saveBooks(ctx context.Context, oc parseOutcome, opt Options) 
 				fmt.Sprintf("章节数不足 %d", minCh), 0)
 			continue
 		}
+		// 外部上架判定排在章节门槛之后：门槛是免费规则，先让它把明显不行的挡掉，
+		// 再花钱去问判定器。判为不入库的按 Skipped 记账，与「章节数不足」同一条路径。
+		if !r.decide(ctx, oc, book, opt) {
+			continue
+		}
 		if opt.DryRun {
 			// DryRun 不写库，这里只占位表达计数。
 			r.res.Imported = append(r.res.Imported, 0)

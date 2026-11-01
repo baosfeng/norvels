@@ -10,6 +10,7 @@
 - **编码自适应**：UTF-8 / UTF-8 BOM / GB18030 / UTF-16 / Big5 多候选解码 + CJK 命中率打分，乱码文件也能正常入库。
 - **智能切章**：识别「第X章/节/回/卷/部」「数字行」「Chapter N」「序章/楔子/番外」，支持卷/部嵌套、无标记短篇兜底；单文件多书合集按章号重置自动拆成多本。
 - **幂等导入**：按文件 SHA-256 去重，重复导入自动跳过；支持 `--force`、`--update`（追更只追加新章）、`--dry-run`、`--workers`、`--min-chapters`。
+- **AI 选书（可选）**：`--ai` 让外部模型逐本判「值不值得入库」（规则先筛：章节门槛、判重、质量分；判不准的按不入库处理）。判定口径与降级见 [AI 选书设计](docs/specs/2026-11-01-ai-curation-design.md)。
 - **书名/作者检索**：`LIKE` 子串匹配，毫秒级返回；章节标题与正文都不参与找书，不建全文索引（见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)）。
 - **封面与元数据可编辑**：有封面的书在书架与详情页显示真实封面；书名/作者/简介/标签/系列可在详情页直接改。
 - **零运行时依赖**：前端构建产物 `go:embed` 进二进制，容器里只有两个静态可执行文件。
@@ -81,6 +82,7 @@ norvels/
 ```bash
 make preview                                                        # 起预览：后端 :8080 + vite HMR :5173（缺二进制会先编译）
 ./bin/norvels import --dir "/path/to/txt" --db ./data/norvels.db     # 整目录或单个 txt
+./bin/norvels import --dir "/path/to/txt" --ai                        # 同上，入库前先让 AI 判该不该收
 make build                                                          # 生产产物 bin/norvels（前端先同步进 go:embed 目录）
 ```
 

@@ -136,13 +136,21 @@ type chatResponse struct {
 	} `json:"choices"`
 }
 
-// marshal 构造请求体：只有 system 提示词 + 渲染后的段落正文。
+// marshal 构造版本裁决的请求体。
 func (c *ChatJudge) marshal(segs []Segment, swapped bool) ([]byte, error) {
+	return c.compose(systemPrompt, renderSegments(segs, swapped))
+}
+
+// compose 用同一套请求形态组一个任意 system/user 的请求体。
+//
+// 上架判定（Curate）与版本裁决（Judge）共用它：两者只是提示词与输出契约不同，
+// 请求形态、重试、超时分类、响应外壳解析完全一致——那部分只该有一份实现。
+func (c *ChatJudge) compose(system, user string) ([]byte, error) {
 	req := chatRequest{
 		Model: c.opt.Model,
 		Messages: []chatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: renderSegments(segs, swapped)},
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
 		},
 	}
 	body, err := json.Marshal(req)
