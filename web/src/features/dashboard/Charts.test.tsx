@@ -331,7 +331,7 @@ describe("推荐与埋点四张图：四态一致", () => {
     unmount();
 
     const interest = render(<InterestBarsChart interests={recInterests} {...idle} />);
-    // 三组并排：分类·大 / 分类·小 / 作者，各一行
+    // 按 dim 分组渲染：这里三组有数据就画三组（大分类 / 小分类 / 作者），各一行
     expect(interest.container.querySelectorAll(".ibars-group")).toHaveLength(3);
     expect(interest.container.querySelectorAll(".hbar-row")).toHaveLength(3);
     for (const label of ["分类·大", "分类·小", "作者"]) {
@@ -355,6 +355,28 @@ describe("推荐与埋点四张图：四态一致", () => {
   });
 });
 
+
+  it("五维都有数据时五组都画出来：标签 / 系列不套「作者」文案", () => {
+    const { container } = render(
+      <InterestBarsChart
+        interests={[
+          ...recInterests,
+          { dim: "tag", key: "武侠", name: "武侠", weight: 2 },
+          { dim: "series", key: "示例系列", name: "示例系列", weight: 1 },
+        ]}
+        {...idle}
+      />,
+    );
+    expect(container.querySelectorAll(".ibars-group")).toHaveLength(5);
+    for (const dim of ["category_l1", "category_l2", "author", "tag", "series"]) {
+      expect(container.querySelector(`[data-testid="ibars-${dim}"]`)?.getAttribute("data-dim")).toBe(dim);
+    }
+    // 组标题「标签」「系列」都在，且浮层文案里没有「作者 武侠」这种错误归属
+    expect(container.textContent).toContain("标签");
+    expect(container.textContent).toContain("系列");
+    const tagGroup = container.querySelector('[data-testid="ibars-tag"]');
+    expect(tagGroup?.textContent).not.toContain("作者");
+  });
 
   it("某一组没有数据时整组不渲染（三组不一定都出现）", () => {
     const { container } = render(

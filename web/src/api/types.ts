@@ -1043,21 +1043,29 @@ export interface RecommendStatsDay {
 }
 
 /**
- * 兴趣维度的三个分档：大分类 / 小分类 / 作者。
+ * 兴趣维度的五个分档：大分类 / 小分类 / 作者 / 标签 / 系列。
  *
  * 大分类与小分类分开，是因为它们的 key 空间重叠（「武侠」既有可能是大分类，
  * 也有可能是某个小分类的名字）。合在一个 dim 里时看板会出现「武侠 69.4 / 江湖 69.4」
  * 这种成对重复、看起来像算重了的行。
+ *
+ * 标签与系列是后端的另外两维：取值形态与分类一致（`name` 与 `key` 相同、没有
+ * 「编号 → 名字」的翻译），所以前端只是多两组横条，不需要额外的名字映射。
  */
-export type RecommendInterestDim = "category_l1" | "category_l2" | "author";
+export type RecommendInterestDim =
+  | "category_l1"
+  | "category_l2"
+  | "author"
+  | "tag"
+  | "series";
 
 /**
  * 兴趣画像一行。
  *
- * - `dim`：三个维度之一（见 RecommendInterestDim）。老后端的 `category` 已不再出现，
+ * - `dim`：五个维度之一（见 RecommendInterestDim）。老后端的 `category` 已不再出现，
  *   前端不认识的值一律不渲染（不猜、也不会让整张图报错）。
- * - `key`：分类名，或作者 id 的十进制文本（稳定标识，不随重命名变）；
- * - `name`：给人看的名字。分类的 name = key；作者是作者名，查不到时为空串。
+ * - `key`：分类名 / 标签名 / 系列名，或作者 id 的十进制文本（稳定标识，不随重命名变）；
+ * - `name`：给人看的名字。分类、标签、系列的 name = key；作者是作者名，查不到时为空串。
  *   后端这个字段是后加的，所以类型上可选——缺省时前端退回 `key`，不猜名字。
  */
 export interface RecommendInterest {
