@@ -6,8 +6,10 @@ import {
   buildEventTrend,
   buildFunnel,
   buildHotBooks,
+  buildCategoryClicks,
   buildImportTrend,
   buildInterestBars,
+  buildReasonMix,
   buildReadingDist,
   buildStorage,
   buildTopAuthors,
@@ -19,8 +21,10 @@ import type {
   Bucket,
   ImportTrendPoint,
   ReadingProgress,
+  RecommendCategoryClicks,
   RecommendHotBook,
   RecommendInterest,
+  RecommendReasonMix,
   RecommendStatsDay,
   RecommendStatsSummary,
   Stats,
@@ -29,12 +33,13 @@ import { ChartTipLayer } from "./ChartTip";
 import { useChartTip } from "./useChartTip";
 
 /**
- * 十张图：纯 SVG/CSS 手写，不引图表库（ADR-0001 §6）。
+ * 十二张图：纯 SVG/CSS 手写，不引图表库（ADR-0001 §6）。
  * 每张图结构一致：标题 → 一句实算结论 → 图体。结论与图体由同一份转换结果生成，不会各说各话。
  * 四态由 ChartFrame 统一处理（读取中 / 失败 / 空 / 有数据），颜色全取 CSS 变量，深浅主题自动跟随。
  *
- * 前六张是库概览（导入 / 章节 / 作者 / 进度 / 体积 / 章节长度），后四张是「推荐与埋点」
- * （事件趋势 / 兴趣画像 / 热门书 / 漏斗）——后者复用同一套 ChartFrame 与读数浮层，不另起一套。
+ * 前六张是库概览（导入 / 章节 / 作者 / 进度 / 体积 / 章节长度），中间四张是「推荐与埋点」
+ * （事件趋势 / 兴趣画像 / 热门书 / 漏斗），最后两张是同一区块的分布（点击理由 / 分类点击）
+ * ——全部复用同一套 ChartFrame 与读数浮层，不另起一套。
  */
 
 export type ChartId =
@@ -47,7 +52,9 @@ export type ChartId =
   | "events"
   | "interest"
   | "hot"
-  | "funnel";
+  | "funnel"
+  | "reasonmix"
+  | "categoryclicks";
 
 /** 单张图的取数状态：与页面其它数据区同一套四态口径。 */
 export interface ChartState {
@@ -521,3 +528,62 @@ export function FunnelChart({ summary, ...state }: { summary: RecommendStatsSumm
     </ChartFrame>
   );
 }
+
+/* ── 11 点击理由分布（横向条，理由长 → 名字列给宽 + 浮层看全文） ── */
+export function ReasonMixChart({ rows, ...state }: { rows: RecommendReasonMix[] } & ChartState) {
+  const model = buildReasonMix(rows);
+  const tip = useChartTip();
+  return (
+    <ChartFrame
+      id="reasonmix"
+      title="点击理由分布"
+      note={model.note}
+      detail="条长按点击量；浮层给这条理由的曝光与点击率。"
+      isEmpty={model.empty}
+      {...state}
+    >
+      <div className="hbars reason-bars">
+        {model.data.rows.map((row) => (
+          <div className="hbar-row" key={row.name} {...tip.bind(row.title)}>
+            <span className="hbar-name">{row.name}</span>
+            <span className="hbar-track">
+              <span className="hbar-fill" style={{ width: `${row.widthPct}%` }} />
+            </span>
+            <span className="hbar-val">{row.display}</span>
+          </div>
+        ))}
+      </div>
+      <ChartTipLayer tip={tip.tip} />
+    </ChartFrame>
+  );
+}
+
+/* ── 12 分类点击分布（横向条） ── */
+export function CategoryClicksChart({ rows, ...state }: { rows: RecommendCategoryClicks[] } & ChartState) {
+  const model = buildCategoryClicks(rows);
+  const tip = useChartTip();
+  return (
+    <ChartFrame
+      id="categoryclicks"
+      title="分类点击分布"
+      note={model.note}
+      detail="只看大分类：点进来的是哪个类型，一眼看得出你最近在追什么。"
+      isEmpty={model.empty}
+      {...state}
+    >
+      <div className="hbars reason-bars">
+        {model.data.rows.map((row) => (
+          <div className="hbar-row" key={row.name} {...tip.bind(row.title)}>
+            <span className="hbar-name">{row.name}</span>
+            <span className="hbar-track">
+              <span className="hbar-fill" style={{ width: `${row.widthPct}%` }} />
+            </span>
+            <span className="hbar-val">{row.display}</span>
+          </div>
+        ))}
+      </div>
+      <ChartTipLayer tip={tip.tip} />
+    </ChartFrame>
+  );
+}
+

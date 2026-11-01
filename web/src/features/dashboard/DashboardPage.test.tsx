@@ -47,6 +47,14 @@ const state = {
         { dim: "author", key: "12", name: "演示作者甲", weight: 3 },
       ],
       hotBooks: [{ bookId: 1, title: "剑影山河", authorName: "示例作者甲", reads: 3, clicks: 5, seconds: 600 }],
+      reasonMix: [
+        { reason: "因为你常看武侠", impressions: 150, clicks: 12 },
+        { reason: "最近很多人读", impressions: 50, clicks: 6 },
+      ],
+      categoryClicks: [
+        { categoryL1: "武侠", clicks: 9 },
+        { categoryL1: "", clicks: 3 },
+      ],
     } as unknown,
     loading: false,
     error: null as unknown,
@@ -195,15 +203,37 @@ describe("推荐与埋点区块（新增）", () => {
     expect(screen.getByTestId("metric-shelf").textContent).toContain("3");
   });
 
-  it("四张图进同一个 chart-grid（与既有七张同一套卡片体系）", () => {
+  it("六张图进同一个 chart-grid（与既有七张同一套卡片体系）", () => {
     renderPage();
     const charts = screen.getByTestId("recommend-charts");
     expect(charts.className).toContain("chart-grid");
-    for (const id of ["events", "interest", "hot", "funnel"]) {
+    for (const id of ["events", "interest", "hot", "funnel", "reasonmix", "categoryclicks"]) {
       expect(screen.getByTestId(`chart:${id}`)).toBeTruthy();
     }
     // 既有区块没被挤掉：原来的七张图还在
     expect(screen.getByTestId("dashboard:charts").querySelectorAll(".chart-card")).toHaveLength(7);
+  });
+
+  it("两张分布图读出真数字：理由按点击排序、空分类归「未分类」", () => {
+    renderPage();
+    const reason = screen.getByTestId("chart:reasonmix");
+    expect(reason.textContent).toContain("最抓人的是「因为你常看武侠」");
+    expect(reason.textContent).toContain("12 点");
+    const category = screen.getByTestId("chart:categoryclicks");
+    expect(category.textContent).toContain("未分类");
+    expect(category.textContent).toContain("点得最多的分类是「武侠」");
+  });
+
+  it("后端没给 reasonMix / categoryClicks 时两张图各自空态，其它图照常出", () => {
+    const saved = state.recommend.data as Record<string, unknown>;
+    state.recommend.data = { ...saved, reasonMix: undefined, categoryClicks: undefined } as unknown;
+    renderPage();
+    expect(screen.getByTestId("chart:reasonmix:empty")).toBeTruthy();
+    expect(screen.getByTestId("chart:categoryclicks:empty")).toBeTruthy();
+    // 上面四张不受影响
+    expect(screen.getByTestId("chart:events")).toBeTruthy();
+    expect(screen.queryByTestId("chart:events:empty")).toBeNull();
+    state.recommend.data = saved;
   });
 
   it("一条埋点都没有时给整块空态 + 去发现页按钮，不画四张空图占两屏", () => {

@@ -16,6 +16,7 @@ import { useTocColumns } from "./useTocColumns";
 import { H5StickyCta } from "./H5StickyCta";
 import { ackNewChaptersIfLast } from "./newChapters";
 import { chapterLabel } from "./chapterLabel";
+import { SimilarBooks } from "./SimilarBooks";
 import { useBookView } from "./useBookView";
 
 /**
@@ -162,6 +163,8 @@ export function BookPage() {
             resumeChapterId={resume?.chapterId}
             onNavigate={openChapter}
           />
+          {/* 目录之后才是「你可能也喜欢」：目录是这本书的主内容，相似书目是出口 */}
+          <SimilarBooks bookId={book.id} />
         </div>
       </div>
 

@@ -20,6 +20,7 @@ import { buildRecommendMetrics } from "../../lib/charts";
 import { HealthCard } from "./HealthCard";
 import { ReadingHeatmapCard } from "./ReadingHeatmap";
 import {
+  CategoryClicksChart,
   ChapterBucketsChart,
   ChapterLengthChart,
   EventTrendChart,
@@ -28,6 +29,7 @@ import {
   ImportTrendChart,
   InterestBarsChart,
   ReadingDistChart,
+  ReasonMixChart,
   StorageChart,
   TopAuthorsChart,
   type ChartState,
@@ -258,6 +260,9 @@ export function DashboardPage() {
                     <InterestBarsChart interests={rec.data?.interests ?? []} {...chartState(rec)} />
                     <HotBooksChart books={rec.data?.hotBooks ?? []} {...chartState(rec)} />
                     <FunnelChart summary={recSummary} {...chartState(rec)} />
+                    {/* 两张分布图：老后端没有这两块数据时各自走空态，不影响上面四张 */}
+                    <ReasonMixChart rows={rec.data?.reasonMix ?? []} {...chartState(rec)} />
+                    <CategoryClicksChart rows={rec.data?.categoryClicks ?? []} {...chartState(rec)} />
                   </div>
                 </>
               )}

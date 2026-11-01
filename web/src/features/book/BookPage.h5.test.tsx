@@ -61,6 +61,8 @@ vi.mock("@tanstack/react-virtual", () => ({
 vi.mock("../../api/hooks", () => ({
   useBook: () => bookState,
   useReadingProgress: () => ({ data: { items: progressState.items }, loading: false, error: null, reload: vi.fn() }),
+  // 「你可能也喜欢」单独测（SimilarBooks.test.tsx）：空结果 → 整块不渲染，不影响本文件的断言
+  useSimilarRecommendations: () => ({ data: { items: [], generatedAt: "" }, loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock("../../api/client", async () => {

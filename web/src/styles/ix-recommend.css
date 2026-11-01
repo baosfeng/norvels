@@ -98,7 +98,6 @@
   flex-wrap: wrap;
 }
 
-
 /* ── 来源切换（为你推荐 / 继续阅读 / 随机发现）──
    版式沿用搜索页那排 .search-tabs（下划线 tab），这里只把按钮形态补齐：
    .search-tabs 的选择器只写了 a，按钮不被它命中，所以 padding / 下划线 / 状态色要在这里给。 */
@@ -162,6 +161,10 @@
 .discover-card:focus-within .discover-dislike {
   opacity: 1;
 }
+/* 菜单开着的时候触发按钮也要留着：鼠标一移开按钮淡出，菜单看着像凭空出现的 */
+.discover-card.is-menu-open .discover-dislike {
+  opacity: 1;
+}
 .discover-dislike:hover {
   border-color: var(--accent);
   color: var(--accent);
@@ -176,6 +179,48 @@
   .discover-dislike {
     opacity: 1;
   }
+}
+
+/* ── 不感兴趣的二级菜单（这本 / 这个作者）──
+   菜单绝对定位在触发按钮下方；点外部或 Esc 由页面统一收起（DiscoverPage 的 document 监听）。
+   键盘：打开后焦点进第一项，↑↓/Home/End 走，Esc 收起并把焦点还回触发按钮。 */
+.dislike-menu {
+  position: absolute;
+  top: 34px;
+  right: 6px;
+  z-index: 5;
+  display: grid;
+  min-width: 132px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--elev-raised);
+}
+.dislike-menu button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dislike-menu button:hover:not(:disabled) {
+  background: var(--surface-warm);
+  color: var(--fg);
+}
+.dislike-menu button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.dislike-menu button:disabled {
+  color: var(--muted);
+  cursor: default;
 }
 
 @media (max-width: 768px) {
@@ -220,5 +265,141 @@
   .discover-dislike {
     min-height: 28px;
     padding: 0 10px;
+  }
+  .dislike-menu button {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+}
+
+/* ══ 详情页「你可能也喜欢」════
+   横向一排 6 张：块内横向滚动，页面本身不出现横向滚动条。
+   卡比发现页更小（封面 3:4、正文三行），一屏能扫完 6 本。 */
+.similar-block {
+  margin-top: var(--gap-section);
+  padding-top: var(--gap-card);
+  border-top: 1px solid var(--border-soft);
+  min-width: 0;
+}
+.similar-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-card);
+  flex-wrap: wrap;
+  margin-bottom: var(--gap-card);
+}
+.similar-title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1.2;
+}
+.similar-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--gap-card);
+  width: 100%;
+  min-width: 0;
+  /* 6 张排不下时（窄屏）横向滚动，而不是把卡压扁或撑破页面 */
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.similar-card {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.similar-card .book-link {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.similar-card .cover {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-sm);
+}
+.similar-card .cover span {
+  font-size: 24px;
+}
+.similar-card .book-card-body {
+  gap: 2px;
+  min-width: 0;
+}
+.similar-card h3.book-title {
+  font-size: 13px;
+  line-height: 1.3;
+  -webkit-line-clamp: 2;
+  min-height: 2.6em;
+  overflow-wrap: anywhere;
+}
+.similar-card .book-author {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.similar-card .discover-reason {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  padding-left: 13px;
+  position: relative;
+  font-size: 11px;
+}
+.similar-card .discover-reason::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.similar-card:hover .cover {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ══ 驾驶舱：点击理由 / 分类点击两张分布图 ══
+   理由文本比书名长（「读过《长夜灯行》的人也在看」），名字列给到 46% 并单行省略，
+   全文与点击率都在读数浮层里；行高收紧，10 行也不比一张图表卡高。 */
+.reason-bars {
+  gap: 4px;
+}
+.reason-bars .hbar-row {
+  gap: 6px;
+}
+.reason-bars .hbar-name {
+  flex: 0 0 46%;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reason-bars .hbar-track {
+  height: 9px;
+}
+.reason-bars .hbar-val {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  /* 窄屏：固定卡宽 + 横向滚动（6 张等分会把每张压到 40px 宽，书名全断） */
+  .similar-row {
+    grid-auto-columns: minmax(112px, 1fr);
+  }
+  .similar-block {
+    margin-top: var(--gap-card);
+  }
+  .reason-bars .hbar-name {
+    flex: 0 0 40%;
   }
 }

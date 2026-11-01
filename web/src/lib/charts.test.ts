@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCategoryClicks,
   buildChapterBuckets,
   buildChapterLength,
   buildEventTrend,
@@ -7,6 +8,7 @@ import {
   buildHotBooks,
   buildImportTrend,
   buildInterestBars,
+  buildReasonMix,
   buildReadingDist,
   buildRecommendMetrics,
   buildStorage,
@@ -591,3 +593,62 @@ describe("指标卡行", () => {
     expect(buildRecommendMetrics(summary({ impressions: 0 }), [], today).todayImpressions).toBe(0);
   });
 });
+
+/* ── 11 点击理由分布 / 12 分类点击分布（task-11 新增两张图） ── */
+
+describe("11 点击理由分布", () => {
+  it("按点击量排序、最多 10 条，条长对最高那条归一", () => {
+    const model = buildReasonMix([
+      { reason: "因为你常看武侠", impressions: 200, clicks: 12 },
+      { reason: "最近很多人读", impressions: 40, clicks: 30 },
+      { reason: "随机发现", impressions: 10, clicks: 3 },
+    ]);
+    expect(model.data.rows.map((r) => r.name)).toEqual(["最近很多人读", "因为你常看武侠", "随机发现"]);
+    expect(model.data.rows[0].widthPct).toBe(100);
+    expect(model.data.rows[1].widthPct).toBe(40);
+    expect(model.data.totalClicks).toBe(45);
+  });
+
+  it("有曝光时浮层给点击率；只给点击时也不谎报", () => {
+    const model = buildReasonMix([
+      { reason: "因为你常看武侠", impressions: 200, clicks: 12 },
+      { reason: "最近入库", clicks: 5 },
+    ]);
+    // 按点击量降序：武侠 12 在前，最近入库 5 在后
+    expect(model.data.rows[0].title).toBe("「因为你常看武侠」：点击 12 / 曝光 200（点击率 6%）");
+    expect(model.data.rows[1].title).toBe("「最近入库」：点击 5 次");
+    // 结论只对「最抓人」那条给点击率（这条有曝光就写 6%）
+    expect(model.note).toBe("最抓人的是「因为你常看武侠」：12 次点击（点击率 6%）");
+  });
+
+  it("点击率不足 1% 写「<1%」；0 点击 / 纯空白理由不进榜", () => {
+    const model = buildReasonMix([
+      { reason: "因为你常看科幻", impressions: 900, clicks: 4 },
+      { reason: "零点击的理由", impressions: 30, clicks: 0 },
+      { reason: "   ", impressions: 10, clicks: 2 },
+    ]);
+    expect(model.data.rows.map((r) => r.name)).toEqual(["因为你常看科幻"]);
+    expect(model.data.rows[0].title).toContain("点击率 <1%");
+    expect(buildReasonMix([]).empty).toBe(true);
+  });
+});
+
+describe("12 分类点击分布", () => {
+  it("按点击排序、最多 10 条，空分类归到「未分类」", () => {
+    const model = buildCategoryClicks([
+      { categoryL1: "武侠", clicks: 8 },
+      { categoryL1: "", clicks: 20 },
+      { categoryL1: "科幻", clicks: 4 },
+    ]);
+    expect(model.data.rows.map((r) => r.name)).toEqual(["未分类", "武侠", "科幻"]);
+    expect(model.data.rows[0].widthPct).toBe(100);
+    expect(model.data.rows[0].title).toContain("占 63%");
+    expect(model.note).toBe("点得最多的分类是「未分类」：20 次，占 63%");
+  });
+
+  it("0 点击与空数组都判空", () => {
+    expect(buildCategoryClicks([{ categoryL1: "武侠", clicks: 0 }]).empty).toBe(true);
+    expect(buildCategoryClicks([]).empty).toBe(true);
+  });
+});
+

@@ -286,6 +286,19 @@ export function useRecommendations(limit = 20, tab: RecommendTab = "for_you") {
 }
 
 /**
+ * 详情页「你可能也喜欢」：`similar=<bookId>` 取 6 条，与详情页同一个 AbortSignal 生命周期。
+ * bookId 还没解析出来（NaN / 0）时不发请求——避免打一个必然 400 的接口。
+ */
+export function useSimilarRecommendations(bookId: number | null, limit = 6) {
+  const enabled = bookId !== null && Number.isFinite(bookId) && bookId > 0;
+  return useResource(
+    (signal: AbortSignal) => api.recommendations({ similar: bookId as number, limit }, { signal }),
+    [bookId, limit],
+    { enabled },
+  );
+}
+
+/**
  * 推荐看板（驾驶舱「推荐与埋点」）：窗口默认 14 天，进依赖——换窗口就重取。
  * 推荐库未启用时后端 503，这里照常是 error 态，由区块的三态面板说明「暂不可用」。
  */

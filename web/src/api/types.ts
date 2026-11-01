@@ -945,6 +945,8 @@ export interface TrackEventsResult {
 export interface RecommendItem {
   bookId: number;
   title: string;
+  /** 作者 id：发现页「不喜欢这个作者」要把它传给后端；缺省（0 / undefined）时那一项置灰 */
+  authorId?: number;
   authorName: string;
   /** 空串 = 未分类（与 BookMeta 同口径） */
   categoryL1: string;
@@ -963,6 +965,12 @@ export interface RecommendItem {
  * - `random` 随机发现：均匀随机，不看兴趣（给「随便翻翻」用）
  */
 export type RecommendTab = "for_you" | "resume" | "random";
+
+/** 详情页「你可能也喜欢」：`similar=<bookId>` 走同一份响应形状（items 带 reason）。 */
+export interface SimilarQuery {
+  similar: number;
+  limit?: number;
+}
 
 /** GET /api/recommend 的响应。`generatedAt` 用于「这一批是什么时候算的」。 */
 export interface RecommendResult {
@@ -1031,11 +1039,33 @@ export interface RecommendHotBook {
   seconds: number;
 }
 
+/**
+ * 推荐理由的点击分布（驾驶舱「点击理由分布」）。
+ *
+ * `impressions` 可选：从 task-9 起前端把理由也塞进 impression 的 extra，
+ * 所以后端能按理由同时给出曝光与点击；只给 clicks 时图照常出（只是不显示点击率）。
+ */
+export interface RecommendReasonMix {
+  reason: string;
+  impressions?: number;
+  clicks: number;
+}
+
+/** 分类维度的点击分布（驾驶舱「分类点击分布」）：categoryL1 空串 = 未分类。 */
+export interface RecommendCategoryClicks {
+  categoryL1: string;
+  clicks: number;
+}
+
 /** GET /api/recommend/stats：推荐库未启用时后端 503 unavailable。 */
 export interface RecommendStats {
   summary: RecommendStatsSummary;
   daily: RecommendStatsDay[];
   interests: RecommendInterest[];
   hotBooks: RecommendHotBook[];
+  /** 点击理由分布（可选：老后端没有时这张图走空态，不影响其它图） */
+  reasonMix?: RecommendReasonMix[];
+  /** 分类点击分布（可选，同上） */
+  categoryClicks?: RecommendCategoryClicks[];
 }
 

@@ -665,11 +665,17 @@ export const api = {
 
   /**
    * 推荐流：`limit` 夹在 1–50（后端兜底）；`tab` 选来源（为你推荐 / 继续阅读 / 随机发现，
-   * 缺省由后端按 for_you 处理）。
+   * 缺省由后端按 for_you 处理）；`similar=<bookId>` 取「和这本书像的书」（详情页那个区块）。
    * 每次调用都带随机扰动（设计 §3），「换一批」就是再取一次。
    */
-  recommendations: (params: { limit?: number; tab?: RecommendTab } = {}, opts?: RequestOptions) =>
-    request<RecommendResult>(`/recommend${query({ limit: params.limit, tab: params.tab })}`, opts),
+  recommendations: (
+    params: { limit?: number; tab?: RecommendTab; similar?: number } = {},
+    opts?: RequestOptions,
+  ) =>
+    request<RecommendResult>(
+      `/recommend${query({ limit: params.limit, tab: params.tab, similar: params.similar })}`,
+      opts,
+    ),
 
   /**
    * 推荐看板（驾驶舱）：`days` 是统计窗口（默认 14，越界由后端夹取）。

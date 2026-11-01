@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RecommendItem, RecommendResult, RecommendTab } from "../../api/types";
@@ -47,6 +47,8 @@ function item(bookId: number, overrides: Partial<RecommendItem> = {}): Recommend
   return {
     bookId,
     title: `样书${bookId}`,
+    // 作者 id 默认跟着书走；要造「同一个作者」时用 overrides 指定
+    authorId: 100 + bookId,
     authorName: `作者${bookId}`,
     categoryL1: "武侠",
     categoryL2: "江湖",
@@ -190,21 +192,93 @@ describe("发现页：三个来源的 tab", () => {
   });
 });
 
-describe("发现页：不感兴趣", () => {
-  it("点「不感兴趣」：记一条 dislike（带理由）、把这张卡摘掉、弹提示，且不整页重取", () => {
+describe("发现页：不感兴趣（菜单）", () => {
+  it("点「不感兴趣」先弹菜单，选「不喜欢这本」才记 dislike 并摘卡 + 提示", () => {
     renderPage();
-    expect(screen.getByTestId("discover-grid").children).toHaveLength(3);
+    expect(screen.queryByTestId("dislike-menu-2")).toBeNull();
 
     fireEvent.click(screen.getByTestId("dislike-2"));
+    const menu = screen.getByTestId("dislike-menu-2");
+    expect(menu.getAttribute("role")).toBe("menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((el) => el.textContent)).toEqual(["不喜欢这本", "不喜欢这个作者"]);
+    // 只是打开菜单，还没有记任何事件、也没有摘卡
+    expect(track).not.toHaveBeenCalled();
+    expect(screen.getByTestId("rec-2")).toBeTruthy();
 
+    fireEvent.click(items[0]);
     expect(track).toHaveBeenCalledWith("dislike", { bookId: 2, extra: "因为你常看武侠" });
     expect(screen.queryByTestId("rec-2")).toBeNull();
     expect(screen.getByTestId("discover-grid").children).toHaveLength(2);
-    // 其他卡不受影响
-    expect(screen.getByTestId("rec-1")).toBeTruthy();
-    // 提示「不会再推荐这本」；没有触发任何重新取数
     expect(screen.getByTestId("toast").textContent).toContain("不会再推荐这本");
     expect(h.fallback.reload).not.toHaveBeenCalled();
+  });
+
+  it("选「不喜欢这个作者」：带上作者 id，并把这个作者的卡一起摘掉", () => {
+    // 1 和 2 是同一作者，3 是另一个作者
+    h.fallback = feed([
+      item(1, { authorId: 7, authorName: "演示作者甲" }),
+      item(2, { authorId: 7, authorName: "演示作者甲" }),
+      item(3, { authorId: 9, authorName: "演示作者乙" }),
+    ]);
+    renderPage();
+    fireEvent.click(screen.getByTestId("dislike-2"));
+    fireEvent.click(within(screen.getByTestId("dislike-menu-2")).getAllByRole("menuitem")[1]);
+
+    expect(track).toHaveBeenCalledWith("dislike", { bookId: 2, authorId: 7, extra: "因为你常看武侠" });
+    // 同作者的另一本一起消失，别的作者不受影响
+    expect(screen.queryByTestId("rec-1")).toBeNull();
+    expect(screen.queryByTestId("rec-2")).toBeNull();
+    expect(screen.getByTestId("rec-3")).toBeTruthy();
+    expect(screen.getByTestId("toast").textContent).toContain("不会再推荐这个作者");
+  });
+
+  it("没有作者 id 时那一项置灰并说明原因（不做点了没反应的按钮）", () => {
+    h.fallback = feed([item(1, { authorId: undefined })]);
+    renderPage();
+    fireEvent.click(screen.getByTestId("dislike-1"));
+    const authorItem = within(screen.getByTestId("dislike-menu-1")).getAllByRole("menuitem")[1] as HTMLButtonElement;
+    expect(authorItem.disabled).toBe(true);
+    expect(authorItem.getAttribute("title")).toBe("这本书没有作者信息");
+  });
+
+  it("键盘：↓ 打开菜单并把焦点放到第一项，Esc 收起并把焦点还给触发按钮", () => {
+    renderPage();
+    const trigger = screen.getByTestId("dislike-2");
+    trigger.focus();
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const menu = screen.getByTestId("dislike-menu-2");
+    expect(menu).toBeTruthy();
+    const first = within(menu).getAllByRole("menuitem")[0];
+    expect(document.activeElement).toBe(first);
+
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[1]);
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    expect(screen.queryByTestId("dislike-menu-2")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("点菜单外面收起菜单（不记事件、不摘卡）", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("dislike-2"));
+    expect(screen.getByTestId("dislike-menu-2")).toBeTruthy();
+
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByTestId("dislike-menu-2")).toBeNull();
+    expect(track).not.toHaveBeenCalled();
+    expect(screen.getByTestId("rec-2")).toBeTruthy();
+  });
+
+  it("同一时刻只开一个菜单：点另一张卡的按钮会关掉前一个", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("dislike-1"));
+    expect(screen.getByTestId("dislike-menu-1")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("dislike-2"));
+    expect(screen.queryByTestId("dislike-menu-1")).toBeNull();
+    expect(screen.getByTestId("dislike-menu-2")).toBeTruthy();
   });
 
   it("按钮是卡片链接的兄弟节点：点它不会跳进详情页", () => {
@@ -220,11 +294,14 @@ describe("发现页：不感兴趣", () => {
 
   it("连点几本都只影响本地列表，直到换一批才清空已移除的集合", () => {
     const { rerender } = renderPage();
-    fireEvent.click(screen.getByTestId("dislike-1"));
-    fireEvent.click(screen.getByTestId("dislike-2"));
+    for (const bookId of [1, 2]) {
+      fireEvent.click(screen.getByTestId(`dislike-${bookId}`));
+      fireEvent.click(within(screen.getByTestId(`dislike-menu-${bookId}`)).getAllByRole("menuitem")[0]);
+    }
     // 还剩第 3 本：网格继续在，只是少了两张卡
     expect(screen.getByTestId("discover-grid").children).toHaveLength(1);
     fireEvent.click(screen.getByTestId("dislike-3"));
+    fireEvent.click(within(screen.getByTestId("dislike-menu-3")).getAllByRole("menuitem")[0]);
     expect(screen.queryByTestId("discover-grid")).toBeNull();
     expect(screen.getByTestId("discover-empty")).toBeTruthy();
     expect(h.fallback.reload).not.toHaveBeenCalled();
@@ -244,9 +321,15 @@ describe("发现页：不感兴趣", () => {
     expect(screen.getByTestId("discover-grid").children).toHaveLength(3);
   });
 
-  it("「不感兴趣」按钮有无障碍名（读屏能说清是哪一本）", () => {
+  it("「不感兴趣」按钮有无障碍名（读屏能说清是哪一本），菜单也带书名", () => {
     renderPage();
-    expect(screen.getByTestId("dislike-2").getAttribute("aria-label")).toBe("不再推荐《样书2》");
+    const trigger = screen.getByTestId("dislike-2");
+    expect(trigger.getAttribute("aria-label")).toBe("不再推荐《样书2》");
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("dislike-menu-2").getAttribute("aria-label")).toBe("对《样书2》不感兴趣");
   });
 });
 

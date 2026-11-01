@@ -2,20 +2,23 @@ import type {
   Bucket,
   ImportTrendPoint,
   ReadingProgress,
+  RecommendCategoryClicks,
   RecommendHotBook,
   RecommendInterest,
   RecommendInterestDim,
+  RecommendReasonMix,
   RecommendStatsDay,
   RecommendStatsSummary,
   Stats,
 } from "../api/types";
 
 /**
- * 十张图的数据转换：只做「后端数值 → 绘图几何 + 一句人话结论」，
+ * 十二张图的数据转换：只做「后端数值 → 绘图几何 + 一句人话结论」，
  * 不碰 DOM，方便单测，也保证图与结论由同一份数字算出、不会对不上。
  *
  * 前六张是驾驶舱原有的库概览（导入 / 章节 / 作者 / 进度 / 体积 / 章节长度），
- * 后四张是「推荐与埋点」区块（事件趋势 / 兴趣画像 / 热门书 / 漏斗）。
+ * 中间四张是「推荐与埋点」（事件趋势 / 兴趣画像 / 热门书 / 漏斗），
+ * 最后两张是同一区块的分布图（点击理由 / 分类点击）。
  */
 
 export interface VerticalBar {
@@ -727,3 +730,70 @@ export function buildRecommendMetrics(
     ],
   };
 }
+
+/* ── 11 推荐与埋点：点击理由分布 ── */
+
+/**
+ * 点击理由分布：哪个推荐理由真的把人点进来了。
+ *
+ * 条长按点击量（「有效」的口径）；有曝光时浮层额外给点击率——
+ * 只看点击会偏爱「曝光本来就多」的理由，点击率才说明理由本身的说服力。
+ */
+export function buildReasonMix(
+  rows: RecommendReasonMix[],
+  limit = 10,
+): ChartModel<{ rows: HorizontalBar[]; top: string; totalClicks: number }> {
+  const sorted = rows
+    .filter((row) => row.clicks > 0 && row.reason.trim() !== "")
+    .sort((a, b) => b.clicks - a.clicks)
+    .slice(0, limit);
+  const max = sorted[0]?.clicks ?? 0;
+  const totalClicks = sorted.reduce((sum, row) => sum + row.clicks, 0);
+  const bars = sorted.map<HorizontalBar>((row) => {
+    const impressions = row.impressions ?? 0;
+    return {
+      name: row.reason,
+      value: row.clicks,
+      widthPct: pct(row.clicks, max, 4),
+      display: `${compact(row.clicks)} 点`,
+      title:
+        impressions > 0
+          ? `「${row.reason}」：点击 ${row.clicks} / 曝光 ${impressions}（点击率 ${rateText(row.clicks, impressions)}）`
+          : `「${row.reason}」：点击 ${row.clicks} 次`,
+    };
+  });
+  const first = sorted[0];
+  const note = first
+    ? `最抓人的是「${first.reason}」：${first.clicks} 次点击${first.impressions ? `（点击率 ${rateText(first.clicks, first.impressions)}）` : ""}`
+    : "还没有带理由的点击记录";
+  return { empty: bars.length === 0, note, data: { rows: bars, top: bars[0]?.name ?? "", totalClicks } };
+}
+
+/* ── 12 推荐与埋点：分类点击分布 ── */
+
+/** 分类点击分布：点击都落在哪些大分类上（空串归到「未分类」）。 */
+export function buildCategoryClicks(
+  rows: RecommendCategoryClicks[],
+  limit = 10,
+): ChartModel<{ rows: HorizontalBar[]; top: string; totalClicks: number }> {
+  const sorted = rows
+    .filter((row) => row.clicks > 0)
+    .map((row) => ({ ...row, label: row.categoryL1.trim() || "未分类" }))
+    .sort((a, b) => b.clicks - a.clicks)
+    .slice(0, limit);
+  const max = sorted[0]?.clicks ?? 0;
+  const totalClicks = sorted.reduce((sum, row) => sum + row.clicks, 0);
+  const bars = sorted.map<HorizontalBar>((row) => ({
+    name: row.label,
+    value: row.clicks,
+    widthPct: pct(row.clicks, max, 4),
+    display: `${compact(row.clicks)} 点`,
+    title: `${row.label}：${row.clicks} 次点击，占 ${shareText(row.clicks, totalClicks)}%`,
+  }));
+  const first = sorted[0];
+  const note = first
+    ? `点得最多的分类是「${first.label}」：${first.clicks} 次，占 ${shareText(first.clicks, totalClicks)}%`
+    : "还没有分类维度的点击记录";
+  return { empty: bars.length === 0, note, data: { rows: bars, top: bars[0]?.name ?? "", totalClicks } };
+}
+

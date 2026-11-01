@@ -101,6 +101,9 @@ const updateBook = vi.fn<(id: number, patch: BookMetaPatch) => Promise<BookDetai
 vi.mock("../../api/hooks", () => ({
   useBook: () => bookState,
   useReadingProgress: () => ({ data: { items: progressState.items }, loading: false, error: null, reload: vi.fn() }),
+  // 详情页的「你可能也喜欢」在别的用例里单独测（SimilarBooks.test.tsx）：
+  // 这里只给一个空结果，让 BookPage 的断言不受推荐接口影响（空 → 整块不渲染）。
+  useSimilarRecommendations: () => ({ data: { items: [], generatedAt: "" }, loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock("../../api/client", async () => {
