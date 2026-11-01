@@ -334,12 +334,14 @@
   border-radius: 2px;
 }
 
-/* ── 兴趣画像：大分类 / 小分类 / 作者三组并排（组内归一，三组不共用刻度） ──
-   三组并排的前提是这张卡占整行（见 .rec-charts 的 grid-column 规则）；
-   窄屏（≤768）改成三组竖排，条才有宽度。 */
+/* ── 兴趣画像：五个维度并排（组内归一，各组不共用刻度） ──
+   维度数由后端下发决定（category_l1/l2、author、tag、series），某维无数据时整组不渲染，
+   所以列宽用 auto-fit 而不是写死 5 列：只剩 3 组时不会被拉成三根几像素宽的条。
+   并排的前提是这张卡占整行（见 .rec-charts 的 grid-column 规则）；
+   窄屏（≤768）改成单列竖排，条才有宽度。 */
 .ibars {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 4px 16px;
   width: 100%;
   /* .chart-body 是 align-items:flex-end（柱状图从底部往上长）：成排的横条与榜单要顶部对齐，
@@ -363,7 +365,8 @@
 .ibars .hbar-name {
   flex: 0 0 54px;
 }
-.ibars-group[data-dim="author"] .hbar-name {
+.ibars-group[data-dim="author"] .hbar-name,
+.ibars-group[data-dim="series"] .hbar-name {
   flex: 0 0 76px;
 }
 .ibars .hbar-track {
