@@ -49,13 +49,8 @@
 
 ## 2.2 升级模型（版本化迁移）
 
-数据库结构变更走**编号迁移**，不再每次启动跑整份 `schema.sql`：
-
-```
-internal/store/migrations/
-  0001_init.sql              初始结构（v1，原 schema.sql 原样搬入）
-  0003_reading_progress.sql  阅读进度表
-```
+数据库结构变更走**编号迁移**，不再每次启动跑整份 `schema.sql`：全部在 `internal/store/migrations/NNNN_名称.sql`
+（如 `0018_content_db.sql`、`0019_chapter_fingerprints.sql`），版本号只增不补。
 
 | 规则 | 说明 |
 |---|---|
@@ -74,10 +69,14 @@ internal/store/migrations/
 ## 2.3 双库布局与一致性
 
 WAL 下 SQLite 的原子提交只覆盖单个文件，**不依赖跨库事务**，改用「顺序 + 补偿 + 对账」：写路径统一走
-`store.writeThrough`（正文库写块 → 主库写 books/volumes/chapters → 主库失败按块 id 删掉这次新写的块）；
-删书与块回收都**延后到主库提交之后**——真删而主库失败会留悬空引用（读不出正文），留孤儿块只是体积虚高；
-漂移由 `ReconcileContent(ctx, fix)` 对账（结果进 `/api/health/report` 的 `content` 字段，缓存 10 分钟）。
-细节见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §1–§2。
+`store.writeThrough`（正文库写块 → 主库写 books/volumes/chapters → 主库失败按块 id 删这次新写的块）；删书与块回收
+**延后到主库提交之后**（真删而主库失败会留悬空引用，留孤儿块只是体积虚高）；漂移由 `ReconcileContent` 对账入 `/api/health/report`。
+
+**内容去重（章级指纹，0019）**：导入前按**正文**判重（与文件名/编码无关）——正文归一化（删空白、全角半角标点
+统一）后取 64 位 FNV-1a，指纹存正文库 `chapter_fingerprints(hash, book_id, bytes)`，命中率按字节加权；≥ 阈值
+（settings 的 `dedupe.threshold`，0019 预置 0.95，取值 (0,1]）按 Skipped 跳过并备注「疑似重复：库内已有 X% 相同
+内容（《书名》可对照）」，≥ 40% 备注「疑似相关」后照常导入，`force` 一律跳过判定。指纹在 `SaveBook` 提交后按书
+先删后写；历史书不回填，重导即补齐。分档与后续质量分见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §4–§5。
 
 ## 3. 数据模型（SQLite）
 
@@ -94,6 +93,7 @@ import_jobs(...) / import_errors(...)            -- 导入任务与失败明细
 -- 以下一张表在**正文库**（data/norvels-content.db），与主库同目录、同寿命
 chapter_blocks(id, book_id, seq, first_idx, last_idx, raw_bytes, packed)
                                                  -- 每块约 8 MB 原始正文，0x03 码本 + zstd
+chapter_fingerprints(hash, book_id, bytes)       -- 章级内容指纹（0019，WITHOUT ROWID，主键 (hash, book_id)）
 ```
 
 完整 DDL 见 `internal/store/migrations/0001_init.sql`（v1 快照仍保留在 `internal/store/schema.sql` 供阅读，启动不再执行它）；逐版本变更见 [deploy.md](deploy.md) §7.1 的迁移表。

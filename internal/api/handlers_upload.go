@@ -130,6 +130,8 @@ func (s *Server) uploadOptions(ctx context.Context, sess *uploadSession, jobID i
 		ChapterRules: rules,
 		Profiles:     withCleanRules(profiles, cleanList),
 		JobID:        jobID,
+		// 去重阈值与目录导入同源（请求线程里从 settings 读一次注入）。
+		DedupeThreshold: s.loadDedupeThreshold(ctx),
 	}
 }
 

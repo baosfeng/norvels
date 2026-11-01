@@ -492,8 +492,9 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 | 16 | `0016_users_and_shelf.sql` | 账号 `users`/`user_sessions` + 我的书架 `user_shelf`；个人记录改按 `(user_id, …)` 归属，存量归默认账号 `reader` |
 | 17 | `0017_codebook_blocks.sql` | 存量正文块重组：1 MB / 0x02 → **8 MB / 0x03（字码本 + zstd）**；块字节 27.5 GB → 约 21 GB，见 [ADR-0007](adr/0007-codebook-compressed-content.md) |
 | 18 | `0018_content_db.sql` | 正文块搬进独立文件 `norvels-content.db`，逐书流式搬运后 `DROP TABLE chapter_blocks`；`chapters.block_id` 变成跨库弱引用 |
+| 19 | `0019_chapter_fingerprints.sql` | 正文库建章级指纹 `chapter_fingerprints(hash, book_id, bytes)`（WITHOUT ROWID，主键 `(hash, book_id)`）+ 主库预置 `settings` 的 `dedupe.threshold` = 0.95；秒级、不回填历史书，见 [architecture](architecture.md) §2.3 |
 
-> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **18**。
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **19**。
 >
 > **0017 的运维前提**：单事务内新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移期间**不监听端口**，
 > 大库按 [§7.3](#73-迁移后回收空间vacuum) 用一次性容器预跑；迁移后必须 `VACUUM` 才真正回落。

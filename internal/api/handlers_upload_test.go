@@ -23,7 +23,9 @@ type uploadFile struct {
 
 // sampleTxt 造一段可被现有 parser 识别的虚构文本（三章）。
 func sampleTxt(title, author string) string {
-	para := "风从城楼上吹过，他抬头看了看天，觉得这条路还很长。\n\n"
+	// 正文里带上书名：不同样本必须是**不同内容**的书，否则章级内容去重会把它们
+	// 判成同一本书（命中率 100%），寄存器类用例就分不清「去重生效」与「夹具撞车」。
+	para := "风从城楼上吹过，" + title + "的故事仍在继续，他抬头看了看天，觉得这条路还很长。\n\n"
 	var b strings.Builder
 	b.WriteString("书名：" + title + "\n作者：" + author + "\n\n")
 	for _, heading := range []string{"第一章 起", "第二章 承", "第三章 合"} {

@@ -48,6 +48,10 @@ type Options struct {
 	// Sources 非空表示「单文件重试」：只处理这些可重放源（绝对路径 / zip 包:包内路径），
 	// 跳过目录扫描；源不可用按文件级失败记录，不中断整批。
 	Sources []string
+	// DedupeThreshold 是章级内容去重阈值（设计 §4）：章节命中率 ≥ 该值即视为同一本书，
+	// 按 Skipped 处理。0 表示用 store.DefaultDedupeThreshold（0.95）；api 从 settings 的
+	// dedupe.threshold 读出注入——importer 自己不读 settings（与 ChapterRules 同口径）。
+	DedupeThreshold float64
 	// JobID 由外部先 CreateImportJob 再传入（api 的 POST /api/import 走这条路径）。
 	// >0 时复用该任务（要求 status=running），0 表示由 Run 内部创建。
 	// DryRun 时不写任何任务记录，JobID 被忽略。

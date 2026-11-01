@@ -139,10 +139,13 @@ func TestBuildImportUnitsSkipsNonTxt(t *testing.T) {
 
 // volumeText 造一本指定章数的分卷文本（虚构书名，隐私红线）。
 func volumeText(title string, chapters int) string {
+	// 每章正文带上书名与章号：章级内容去重（设计 §4）会把正文相同、书名不同的书判成
+	// 同一本，分卷夹具必须让每本书（乃至每章）内容不同，多书用例才不会被判重复跳过。
 	var b strings.Builder
 	b.WriteString("书名：" + title + "\n作者：青川客\n\n")
 	for i := 1; i <= chapters; i++ {
 		b.WriteString("第" + strconv.Itoa(i) + "章 合成卷章\n")
+		b.WriteString("《" + title + "》第" + strconv.Itoa(i) + "章：")
 		b.WriteString(bodyA)
 		b.WriteString(bodyB)
 	}

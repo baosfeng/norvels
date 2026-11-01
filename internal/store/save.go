@@ -48,6 +48,7 @@ func (s *Store) SaveBook(ctx context.Context, b *model.ParsedBook, opt SaveOptio
 	if err != nil {
 		return SaveResult{}, err
 	}
+	s.writeBookFingerprintsAfterCommit(ctx, res, b.Chapters)
 	return res, nil
 }
 

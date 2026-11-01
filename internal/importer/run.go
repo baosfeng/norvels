@@ -188,22 +188,29 @@ func (r *runState) recordJobFile(ctx context.Context, source, display, status, r
 	}
 }
 
-// saveOne 把一本书写入库，按「新建 / 追更 / 幂等跳过 / 失败」分别计数并记文件终态。
+// saveOne 把一本书写入库，按「内容重复跳过 / 新建 / 追更 / 幂等跳过 / 失败」分别计数并记文件终态。
 //
-// Force 优先于 Update（store 的既有语义）：显式覆盖时不走追更匹配。
+// 写库前先判章级内容重复（judgeDuplicate，设计 §4）：命中率到阈值就直接按 Skipped 记账，
+// 不再进 SaveBook；「疑似相关」只加备注，照常导入。
+// Force 优先于 Update 与判重（store 的既有语义）：显式覆盖时不走追更匹配、也不判重。
 func (r *runState) saveOne(ctx context.Context, source, display string, book *model.ParsedBook, opt Options) {
+	skipped, note := r.judgeDuplicate(ctx, source, display, book, opt)
+	if skipped {
+		return
+	}
 	sr, err := r.st.SaveBook(ctx, book, store.SaveOptions{Force: opt.Force, Update: opt.Update})
 	switch {
 	case err != nil:
 		r.recordFileError(ctx, source, display, err)
 	case sr.Skipped:
 		r.res.Skipped++
-		r.recordJobFile(ctx, source, display, store.ImportFileStatusSkipped, "库中已存在同一本书", 0)
+		r.recordJobFile(ctx, source, display, store.ImportFileStatusSkipped,
+			joinReason("库中已存在同一本书", note), 0)
 	default:
 		// 追更角标不由这里写：它在 SaveBook 的追更事务内累加（见 store.updateBookAfterAppend），
 		// 否则「任务已终态但角标还没落库」会在验收里偶发可见。
 		r.res.Imported = append(r.res.Imported, sr.BookID)
-		r.recordJobFile(ctx, source, display, store.ImportFileStatusImported, "", sr.BookID)
+		r.recordJobFile(ctx, source, display, store.ImportFileStatusImported, note, sr.BookID)
 	}
 }
 
