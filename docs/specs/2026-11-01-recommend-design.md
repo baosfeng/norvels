@@ -28,6 +28,8 @@ user_interest(user_id, dim, key, weight, updated_at, PK(user_id, dim, key)) WITH
 cooccur(book_id, other_id, users, PK(book_id, other_id)) WITHOUT ROWID
 recent_items(user_id, book_id, ts, PK(user_id, book_id)) WITHOUT ROWID  -- 近期已曝光，去重
 negative_items(user_id, book_id, ts, PK(user_id, book_id)) WITHOUT ROWID -- dislike 拉黑，推荐时过滤
+negative_authors(user_id, author_id, ts, PK(user_id, author_id)) WITHOUT ROWID -- 作者级拉黑
+time_interest(user_id, slot, dim, key, weight, updated_at, PK(user_id, slot, dim, key)) -- 时段兴趣（0-5/6-11/12-17/18-23）
 ```
 
 写入口径：
@@ -52,6 +54,7 @@ negative_items(user_id, book_id, ts, PK(user_id, book_id)) WITHOUT ROWID -- disl
    - 热门：近 7 天 reads / clicks 排行（rec 库 book_daily）
    - 新鲜：最近入库
    - 随机探索：均匀随机抽样（保证每次不一样）
+   - **相似书**（`?similar=<bookId>` 专用）：同系列 → 同作者 → 同分类 → 该书共读邻居，排除自身
 2. **打分**（`internal/recommend`，纯函数）
    ```
    raw = 3.0·interest(L1) + 1.5·interest(L2) + 2.5·interest(author)
@@ -74,10 +77,10 @@ POST /api/events            # 批量上报，≤100 条/次
   {events:[{kind, bookId?, authorId?, categoryL1?, categoryL2?, tags?, series?, value?, extra?, ts?}]}
   → 200 {accepted: n}；非法 kind / 超长字段 → 400；未登录按默认账号
 
-GET  /api/recommend?limit=20&tab=for_you|resume|random
-  → 200 {items:[{bookId, title, authorName, categoryL1, categoryL2, hasCover, reason, score}], generatedAt}
+GET  /api/recommend?limit=20&tab=for_you|resume|random   # 或 ?similar=<bookId>（与 tab 互斥，similar 优先）
+  → 200 {items:[{bookId, title, authorName, authorId, categoryL1, categoryL2, hasCover, reason, score}], generatedAt}
 GET  /api/recommend/stats?days=14
-  → 200 {summary, daily, interests[{dim,key,name,weight}], hotBooks}
+  → 200 {summary, daily, interests[{dim,key,name,weight}], hotBooks, reasonMix[{reason,clicks}], categoryClicks[{categoryL1,clicks}]}
 ```
 
 - 鉴权沿用现有中间件；未启用鉴权时全部归默认账号（`store.ScopeUserID` 同一口径）。
