@@ -19,12 +19,16 @@ import type {
   HealthReport,
   ImportJob,
   ImportJobFiles,
+  ImportReview,
+  ImportReviews,
   ImportTrendPoint,
   MergeResult,
   Page,
   ReadStatus,
   RenumberBody,
   RenumberResult,
+  ReviewDecision,
+  ReviewStatusFilter,
   SerialStatus,
   ReadingHistoryResult,
   ReadingProgress,
@@ -311,6 +315,19 @@ export const api = {
       method: "POST",
       body: sources ? { sources } : {},
     }),
+  /**
+   * 升级审核列表（docs/api/api-reviews.md）：status 默认 pending，all 是全部历史；
+   * limit 默认 50、上限 200（越界后端 400）。aiEnabled 是 AI 开关的当前值，
+   * 前端据此把「等待 AI」改成「等待人工」。
+   */
+  importReviews: (params: { status?: ReviewStatusFilter; limit?: number } = {}, opts?: RequestOptions) =>
+    request<ImportReviews>(`/import/reviews${query({ ...params })}`, opts),
+  /** 人工决策：replace 换成新版 / keep 保留当前版本；返回决策后的那条记录（不必重拉列表）。 */
+  decideImportReview: (id: number, action: ReviewDecision, opts?: RequestOptions) =>
+    request<ImportReview>(`/import/reviews/${id}/decide`, { ...opts, method: "POST", body: { action } }),
+  /** 回滚：只有 confirmed_replace 能回滚，其余状态后端 409 review_state。 */
+  rollbackImportReview: (id: number, opts?: RequestOptions) =>
+    request<ImportReview>(`/import/reviews/${id}/rollback`, { ...opts, method: "POST" }),
   /** 词表规则：命中关键词即给书打标签（只增不删，不覆盖手动标签）。 */
   tagRules: (opts?: RequestOptions) => request<TagRules>("/settings/tag-rules", opts),
   /** 全量替换词表规则；条数 / 标签名 / 关键词超限或标签重名 400 invalid_param。 */
