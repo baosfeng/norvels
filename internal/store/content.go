@@ -24,11 +24,12 @@ import (
 // 路径推导：正文库必须与主库同目录同寿命，否则备份/迁移会漏一个文件）。
 const EnvContentDB = "NORVELS_CONTENT_DB"
 
-// contentSchemaDDL 是正文库的全部结构，与主库 0007 时代的 chapter_blocks 逐列一致
+// contentSchemaDDL 是正文库的全部结构：chapter_blocks 与主库 0007 时代的同名表逐列一致
 // （id / book_id / seq / first_idx / last_idx / raw_bytes / packed + 两个索引），
-// 唯一区别是**没有外键**——books 在另一个文件里，跨库外键不存在。
+// 唯一区别是**没有外键**——books 在另一个文件里，跨库外键不存在；
+// chapter_fingerprints 是 0019 的章级内容指纹（去重判定用，设计 §4）。
 //
-// 结构只在这里声明一次：0018 迁移建它，新建的库也建它，没有第二份口径。
+// 结构只在这里声明一次：0018 / 0019 迁移建它，新建的库也建它，没有第二份口径。
 var contentSchemaDDL = []string{
 	`CREATE TABLE IF NOT EXISTS chapter_blocks (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,6 +43,21 @@ var contentSchemaDDL = []string{
 )`,
 	"CREATE INDEX IF NOT EXISTS idx_chapter_blocks_range ON chapter_blocks(book_id, first_idx, last_idx)",
 	"CREATE INDEX IF NOT EXISTS idx_chapter_blocks_book  ON chapter_blocks(book_id, seq)",
+	// 章级内容指纹（0019）：一章一行，WITHOUT ROWID 只养一个聚簇索引。
+	//
+	// 主键 (hash, book_id) 就是「按 hash 查」的索引：WITHOUT ROWID 表的主键即聚簇索引，
+	// SELECT … WHERE hash IN (…) 走主键前缀查找（EXPLAIN QUERY PLAN 是 USING PRIMARY KEY，
+	// 见 dedupe_test.go），因此不再单建 (hash) 索引——那与主键完全重复。
+	//
+	// book_id 索引服务另一条热路径：覆盖/追更导入要先按书删旧指纹；主键以 hash 打头，
+	// 按 book_id 删会退化成全表扫（一本书两千行 × 库里所有书）。
+	`CREATE TABLE IF NOT EXISTS chapter_fingerprints (
+    hash    INTEGER NOT NULL,
+    book_id INTEGER NOT NULL,
+    bytes   INTEGER NOT NULL,
+    PRIMARY KEY (hash, book_id)
+) WITHOUT ROWID`,
+	"CREATE INDEX IF NOT EXISTS idx_chapter_fingerprints_book ON chapter_fingerprints(book_id)",
 }
 
 // ContentDBPath 由主库路径推导正文库路径（缺省同目录兄弟文件，NORVELS_CONTENT_DB 覆盖）。
@@ -184,7 +200,7 @@ func deleteBlockRows(ctx context.Context, tx *sql.Tx, ids []int64) error {
 	return nil
 }
 
-// purgeBookContent 删除一本书在正文库的全部块（删书的提交后动作、
+// purgeBookContent 删除一本书在正文库的全部块与正文指纹（删书的提交后动作、
 // 以及主库写失败后的补偿路径都用它）。best-effort：失败只记日志。
 func (s *Store) purgeBookContent(ctx context.Context, bookID int64) {
 	if bookID <= 0 {
@@ -197,6 +213,7 @@ func (s *Store) purgeBookContent(ctx context.Context, bookID int64) {
 	if _, err := s.cdb.ExecContext(ctx, "DELETE FROM chapter_blocks WHERE book_id = ?", bookID); err != nil {
 		log.Printf("WARN: 删除书 %d 的正文块失败（留作孤儿，可跑对账清理）: %v", bookID, err)
 	}
+	s.purgeBookFingerprints(ctx, bookID)
 }
 
 // placeholders 生成 "?,?,?"（调用方保证 n > 0）。

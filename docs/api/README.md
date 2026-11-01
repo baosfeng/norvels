@@ -19,7 +19,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 | 文件 | 内容 |
 |---|---|
 | [api-books.md](api-books.md) | 书籍（列表/详情/章节/封面/书签）与作者 |
-| [api-import.md](api-import.md) | 导入任务（dry-run 预检/上传/重试/取消）与设置（章节规则/标签规则） |
+| [api-import.md](api-import.md) | 导入任务（dry-run 预检/上传/重试/取消）与设置（章节规则/标签规则/去重阈值） |
 | [api-source.md](api-source.md) | 来源规则包（书源）与能力清单 capabilities |
 | [api-source-import.md](api-source-import.md) | 导入 Legado 书源 JSON（预览 + 应用） |
 | [api-dashboard.md](api-dashboard.md) | 元信息（health/stats）、驾驶舱端点、其它端点 |

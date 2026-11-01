@@ -87,9 +87,9 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
   `book_id` 外键 `ON DELETE CASCADE`（删书自动清进度），按 `updated_at` 倒序取最近在读；
 - `PUT /api/reading/progress` 校验顺序：JSON 形状 → `bookId`/`chapterId` 为正 → `percent ∈ [0,1]`
   → `paraIndex ≥ 0` → 章节存在且属于该书。分别返回 400 / 400 / 400 / 400 / 404，不做静默截断；
-- `GET /api/health/report` 的每项统计**独立查询**：单项失败该字段为 `null` 并追加进 `warnings`，
-  整体仍 200。返回体另有 `content` 字段是正文库对账摘要（`orphanBlocks`/`orphanBooks`/`danglingRefs`/
-  `missingTable`/`checkedAt`），10 分钟缓存一次（对账要全表扫 chapters）。分桶边界写死在 `internal/store/health.go`：
+- `GET /api/health/report` 另有 `content`（正文库对账摘要 `orphanBlocks`/`orphanBooks`/`danglingRefs`/
+  `missingTable`/`checkedAt`，10 分钟缓存）与 `fingerprints`（章级指纹覆盖率 `books`/`fingerprinted`/`missing`，
+  缺口 > 0 时 `hint` 指向 `norvels backfill-fingerprints`）。分桶边界写死在 `internal/store/health.go`：
   - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+
   - 章节字数：<1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+
 - `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），

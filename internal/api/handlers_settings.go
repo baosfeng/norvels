@@ -47,6 +47,19 @@ func (s *Server) loadChapterRules(ctx context.Context) []parser.Rule {
 	return rules
 }
 
+// loadDedupeThreshold 读取内容去重阈值（settings 的 dedupe.threshold），缺省 0.95。
+//
+// 读失败或值非法只记日志并回落缺省：一条坏配置不该让整批导入失败
+// （与 loadChapterRules 同口径）。导入 goroutine 不回头查 settings，阈值在这里读一次注入。
+func (s *Server) loadDedupeThreshold(ctx context.Context) float64 {
+	v, err := s.st.DedupeThreshold(ctx)
+	if err != nil {
+		s.logf("api: 读取去重阈值失败，本次导入用缺省 %.2f: %v", store.DefaultDedupeThreshold, err)
+		return store.DefaultDedupeThreshold
+	}
+	return v
+}
+
 // chapterRulesBody 是 GET 响应与 PUT 请求体（结构相同，全量替换）。
 type chapterRulesBody struct {
 	Rules []store.ChapterRule `json:"rules"`

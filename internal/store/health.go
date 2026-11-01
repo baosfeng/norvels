@@ -34,6 +34,9 @@ type HealthReport struct {
 	// Content 是正文库对账摘要（孤儿块 / 悬空引用），见 ReconcileContent。
 	// 增量字段：前端未适配时忽略即可。对账结果缓存 10 分钟，不随每次请求重跑。
 	Content *ContentHealth `json:"content,omitempty"`
+	// Fingerprints 是章级指纹覆盖率（0019 起）：缺口 > 0 时 Hint 指向回填命令。
+	// 增量字段：迁移未应用时为 nil。
+	Fingerprints *FingerprintHealth `json:"fingerprints,omitempty"`
 
 	// warnMu 串行化并发统计时的 Warnings 追加（指针以免 HealthReport 被复制时带走锁）。
 	warnMu *sync.Mutex
@@ -126,6 +129,8 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 			CheckedAt: formatTime(rep.CheckedAt),
 		}
 	}
+	// 指纹覆盖率：0019 之后历史书要靠 backfill-fingerprints 补齐，缺口必须可见。
+	r.Fingerprints = s.fingerprintHealth(ctx, &r)
 	return r
 }
 

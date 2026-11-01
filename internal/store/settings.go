@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -84,6 +85,37 @@ func (s *Store) SaveChapterRules(ctx context.Context, rules []ChapterRule) error
 		return fmt.Errorf("store: encode chapter rules: %w", err)
 	}
 	return s.PutSetting(ctx, SettingKeyChapterRules, string(raw))
+}
+
+// SettingKeyDedupeThreshold 是内容去重阈值在 settings 表里的键（设计 §4）。
+//
+// 存「字符串形式的数字」而不是专表列：它就是一个可被运维直接改的设置项，
+// 迁移 0019 预置 0.95，缺省值见 DefaultDedupeThreshold。
+const SettingKeyDedupeThreshold = "dedupe.threshold"
+
+// DefaultDedupeThreshold 是未配置时的去重阈值：章级命中率 ≥ 它即视为同一本书。
+const DefaultDedupeThreshold = 0.95
+
+// DedupeThreshold 读取去重阈值：未配置返回缺省值，配置非法返回错误（由调用方降级）。
+//
+// 取值域是 (0, 1]（0.95 = 95%）。写成 95 这类百分数会被判非法而不是猜单位——
+// 猜错的代价是「所有书都被判成重复」，比一次显式报错严重得多。
+func (s *Store) DedupeThreshold(ctx context.Context) (float64, error) {
+	raw, ok, err := s.GetSetting(ctx, SettingKeyDedupeThreshold)
+	if err != nil {
+		return DefaultDedupeThreshold, err
+	}
+	if !ok {
+		return DefaultDedupeThreshold, nil
+	}
+	v, perr := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if perr != nil {
+		return DefaultDedupeThreshold, fmt.Errorf("store: 去重阈值 %q 不是数字: %w", raw, perr)
+	}
+	if v <= 0 || v > 1 {
+		return DefaultDedupeThreshold, fmt.Errorf("store: 去重阈值 %q 越界（取值 (0,1]，0.95 表示 95%%）", raw)
+	}
+	return v, nil
 }
 
 // SettingKeyTagRules 是词表打标规则在 settings 表里的键。

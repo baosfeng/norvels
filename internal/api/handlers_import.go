@@ -182,6 +182,8 @@ func (s *Server) importOptions(ctx context.Context, req importRequest, dir strin
 		Profiles:     withCleanRules(profiles, cleanList),
 		ProfileID:    req.ProfileID,
 		JobID:        jobID,
+		// 去重阈值与章节/词表规则一样在请求线程里读（导入 goroutine 不查 settings）。
+		DedupeThreshold: s.loadDedupeThreshold(ctx),
 	}
 }
 

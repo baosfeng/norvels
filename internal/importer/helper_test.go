@@ -34,20 +34,24 @@ const bodyB = "梅宁城的雪下了三天三夜。秋蝉在雪里叫着，声�
 	"他说，等到春天，我们就去看海。\n\n"
 
 // sampleText 造一段带书名/作者与 3 章的待导入文本。
+//
+// 每段正文都带上书名：章级内容去重（设计 §4）会把「正文相同、书名不同」的两本书判成
+// 同一本，夹具里的不同书因此必须内容也不同，否则多书用例会被判成重复而跳过。
 func sampleText(title, author string) string {
+	para := "《" + title + "》"
 	var b strings.Builder
 	b.WriteString("书名：" + title + "\n作者：" + author + "\n\n")
 	b.WriteString("第一章 风起\n")
 	for i := 0; i < 6; i++ {
-		b.WriteString(bodyA)
+		b.WriteString(para + bodyA)
 	}
 	b.WriteString("第二章 云涌\n")
 	for i := 0; i < 6; i++ {
-		b.WriteString(bodyB)
+		b.WriteString(para + bodyB)
 	}
 	b.WriteString("第三章 归途\n")
 	for i := 0; i < 6; i++ {
-		b.WriteString(bodyA)
+		b.WriteString(para + bodyA)
 	}
 	return b.String()
 }
