@@ -1,6 +1,6 @@
 # norvels
 
-**把一大堆中文 txt / EPUB 小说变成一个可浏览、可搜索的私人书库**：单二进制 + 单 SQLite 文件 + 轻量容器镜像，无外部依赖、不联网。
+**把一大堆中文 txt / EPUB 小说变成一个可浏览、可搜索的私人书库**：单二进制 + 两个 SQLite 文件（元数据主库 + 正文库）+ 轻量容器镜像，无外部依赖、不联网。
 
 > 4.4 GB / 865 个文件的中文 txt，一次导入后得到「书架 → 目录 → 阅读 → 找书」的完整使用体验。
 
@@ -23,7 +23,7 @@
 flowchart LR
   A["txt 目录<br/>865 文件 / 4.4 GB"] --> B["importer<br/>扫描 · 并发 · 幂等"]
   B --> C["parser<br/>编码探测 · 清洗 · 切章"]
-  C --> D["store<br/>单文件 SQLite"]
+  C --> D["store<br/>SQLite 双库（主库 + 正文库）"]
   D --> E["api<br/>REST /api/*"]
   F["web（React 19 · Vite · Tailwind）<br/>构建产物 embed"] --> E
   E --> G["浏览器<br/>书架 · 目录 · 阅读器 · 搜索"]
