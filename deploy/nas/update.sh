@@ -22,12 +22,16 @@ die() { echo "错误：$*" >&2; exit 1; }
 CHECK_ONLY=0
 CHECK_UPDATES=0
 USE_LATEST=0
+VACUUM_ONLY=0
+BACKFILL_ONLY=0
 NEW_VERSION=""
 for arg in "$@"; do
   case "$arg" in
     --check) CHECK_ONLY=1 ;;
     --check-updates) CHECK_UPDATES=1 ;;
     --latest) USE_LATEST=1 ;;
+    --vacuum) VACUUM_ONLY=1 ;;
+    --backfill) BACKFILL_ONLY=1 ;;
     -* ) die "未知参数 $arg" ;;
     *  ) NEW_VERSION="$arg" ;;
   esac
@@ -77,6 +81,31 @@ DATA_DIR="${NORVELS_DATA_DIR:?请在 .env 里设置 NORVELS_DATA_DIR}"
 echo "== 当前状态 =="
 docker compose ps || true
 echo "当前版本：${NORVELS_VERSION:-latest}   数据目录：$DATA_DIR"
+
+# ---------- 维护子命令：迁移后必做的两件事 ----------
+# 单独成命令是为了能走 sudoers 白名单（只免密 /vol1/norvels/update.sh *）。
+if [ "$VACUUM_ONLY" = "1" ] || [ "$BACKFILL_ONLY" = "1" ]; then
+  IMAGE="bsfeng/norvels:${NORVELS_VERSION:-latest}"
+  if [ "$VACUUM_ONLY" = "1" ]; then
+    echo "== VACUUM 两个库（停服窗口；主库几十 GB，可能要十几分钟）=="
+    docker compose stop
+    docker pull -q keinos/sqlite3 >/dev/null
+    for f in norvels.db norvels-content.db; do
+      [ -f "$DATA_DIR/$f" ] || continue
+      echo "-- VACUUM $f"
+      docker run --rm --user 65532:65532 -v "$DATA_DIR:/data" keinos/sqlite3 "/data/$f" "VACUUM;"
+    done
+    docker compose up -d
+    echo "VACUUM 完成（两个库的 WAL 已合并，主库空洞页已回收）"
+  fi
+  if [ "$BACKFILL_ONLY" = "1" ]; then
+    echo "== 回填章级指纹（存量库几十分钟，可中断续跑）=="
+    docker run --rm --user 65532:65532 --entrypoint /norvels -v "$DATA_DIR:/data" "$IMAGE" backfill-fingerprints --db /data/norvels.db
+    echo "== 回填质量分 =="
+    docker run --rm --user 65532:65532 --entrypoint /norvels -v "$DATA_DIR:/data" "$IMAGE" backfill-quality --db /data/norvels.db
+  fi
+  exit 0
+fi
 
 if [ "$CHECK_UPDATES" = "1" ]; then
   check_updates
