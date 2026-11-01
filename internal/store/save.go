@@ -110,6 +110,7 @@ func prepareBookWrite(b *model.ParsedBook) (bookWrite, []int, error) {
 		hasCover:     boolToInt(b.Cover != nil),
 		categoryL1:   truncateRunes(strings.TrimSpace(b.CategoryL1), maxCategoryLen),
 		categoryL2:   truncateRunes(strings.TrimSpace(b.CategoryL2), maxCategoryLen),
+		quality:      qualityFromMetrics(b.Quality, nowUTC()),
 	}
 	return w, usedVols, nil
 }
@@ -264,7 +265,7 @@ func replaceBookInTx(ctx context.Context, wt *writeTx, bookID int64, w bookWrite
 
 // insertBookRow 插入书籍主体并返回新 id。
 func insertBookRow(ctx context.Context, tx *sql.Tx, w bookWrite, authorID int64) (int64, error) {
-	res, err := tx.ExecContext(ctx, bookInsertSQL, w.execArgs(authorID)...)
+	res, err := tx.ExecContext(ctx, bookInsertSQL, w.execArgsWithQuality(authorID)...)
 	if err != nil {
 		return 0, fmt.Errorf("store: save book insert: %w", err)
 	}
@@ -301,7 +302,7 @@ func replaceBookRow(ctx context.Context, wt *writeTx, bookID int64, w bookWrite,
 	if _, err := tx.ExecContext(ctx, "DELETE FROM book_covers WHERE book_id = ?", bookID); err != nil {
 		return fmt.Errorf("store: save book clear cover: %w", err)
 	}
-	args := append(w.execArgs(authorID), bookID)
+	args := append(w.execArgsWithQuality(authorID), bookID)
 	if _, err := tx.ExecContext(ctx, bookUpdateSQL, args...); err != nil {
 		return fmt.Errorf("store: save book update: %w", err)
 	}

@@ -37,6 +37,9 @@ type HealthReport struct {
 	// Fingerprints 是章级指纹覆盖率（0019 起）：缺口 > 0 时 Hint 指向回填命令。
 	// 增量字段：迁移未应用时为 nil。
 	Fingerprints *FingerprintHealth `json:"fingerprints,omitempty"`
+	// Quality 是质量分覆盖率（0020 起）：缺口 > 0 时 Hint 指向 backfill-quality。
+	// 增量字段：统计失败时为 nil。
+	Quality *QualityHealth `json:"quality,omitempty"`
 
 	// warnMu 串行化并发统计时的 Warnings 追加（指针以免 HealthReport 被复制时带走锁）。
 	warnMu *sync.Mutex
@@ -131,6 +134,8 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	}
 	// 指纹覆盖率：0019 之后历史书要靠 backfill-fingerprints 补齐，缺口必须可见。
 	r.Fingerprints = s.fingerprintHealth(ctx, &r)
+	// 质量分覆盖率：0020 之后版本择优要靠 backfill-quality 补齐历史书，缺口同样必须可见。
+	r.Quality = s.qualityHealth(ctx, &r)
 	return r
 }
 

@@ -236,6 +236,10 @@ var migrationStepsByVersion = map[int][]migrationStep{
 		Name: "rebuild blocks to 8 MB codebook format",
 		Run:  rebuildBlocksForCodebook,
 	}},
+	20: {{
+		Name: "add book quality columns",
+		Run:  addBookQualityColumnsStep,
+	}},
 }
 
 // storeStepsByVersion 登记「需要 Store」的迁移步骤（跨库写入，拿不到连接就做不了）。

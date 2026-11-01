@@ -64,7 +64,7 @@ func (s *Store) BackfillFingerprints(ctx context.Context, opt FingerprintBackfil
 			rep.Elapsed = time.Since(start)
 			return rep, err
 		}
-		reportBackfillProgress(opt.Progress, &rep, plan.total, start)
+		reportBackfillProgress(opt.Progress, rep.Books, plan.total, start)
 	}
 	rep.Elapsed = time.Since(start)
 	return rep, nil
@@ -104,10 +104,12 @@ func (s *Store) backfillPlan(ctx context.Context, batch int) (backfillPlan, erro
 }
 
 // reportBackfillProgress 打一批进度（回调为 nil 时什么都不做）。
+//
+// 两条回填命令（指纹 / 质量分）共用：进度只关心「扫了几本 / 共几本 / 用了多久」。
 func reportBackfillProgress(progress func(done, total int, elapsed time.Duration),
-	rep *FingerprintBackfillReport, total int, start time.Time) {
+	done, total int, start time.Time) {
 	if progress != nil {
-		progress(rep.Books, total, time.Since(start))
+		progress(done, total, time.Since(start))
 	}
 }
 
