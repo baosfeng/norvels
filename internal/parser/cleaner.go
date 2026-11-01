@@ -42,6 +42,30 @@ type cleaner struct {
 	rules    []inlineRule // 本文档真正可能命中的行内规则
 	checkOb  bool         // 是否存在混淆水印的可能
 	occs     []int        // 噪声词出现位置（升序，全文绝对偏移）
+	stats    *cleanStats  // 丢弃统计；nil 表示不统计（包级共享的 fullCleaner）
+}
+
+// cleanStats 是清洗器的丢弃计数，只增计数、不参与任何清洗判定。
+//
+// 每个 cleaner 独立持有，包级共享的 fullCleaner 故意留 nil——否则并发解析会
+// 在同一个实例上写计数（数据竞争）。
+type cleanStats struct {
+	raw  int // 处理过的非空原始行数
+	drop int // 被判为噪声丢弃的行数（含分隔线、版权声明、混淆水印）
+}
+
+// countRaw 记一行非空原始行。
+func (c *cleaner) countRaw() {
+	if c.stats != nil {
+		c.stats.raw++
+	}
+}
+
+// countDrop 记一行被丢弃。
+func (c *cleaner) countDrop() {
+	if c.stats != nil {
+		c.stats.drop++
+	}
 }
 
 // newCleaner 扫描整篇文本，得出这篇文档真正需要启用的噪声规则。
@@ -49,7 +73,7 @@ type cleaner struct {
 // 为了控制大文件的开销：先在前/中/后若干采样块里判断「哪些噪声词出现过」，
 // 再只对出现过的那几个词做全文扫描，记下出现位置。
 func newCleaner(text string) *cleaner {
-	c := &cleaner{}
+	c := &cleaner{stats: &cleanStats{}}
 	regions := sampleRegions(len(text))
 	present := func(tok string) bool {
 		for _, r := range regions {
@@ -237,7 +261,9 @@ func (c *cleaner) cleanContentAt(s string, base int) string {
 		if line == "" {
 			continue
 		}
+		c.countRaw()
 		if isSepLine(line) {
+			c.countDrop()
 			continue
 		}
 		noisy := base < 0
@@ -249,24 +275,31 @@ func (c *cleaner) cleanContentAt(s string, base int) string {
 		}
 		if noisy {
 			if len(line) <= 600 && c.hasLineNoise(line) {
+				c.countDrop()
 				continue
 			}
 			if strings.Contains(line, "本作品来自互联网") || strings.Contains(line, "作品仅供读者预览") ||
 				strings.Contains(line, "请支持正版") || strings.Contains(line, "版权归原作者") {
+				c.countDrop()
 				continue
 			}
 			if len(line) <= 120 && reCopyright.MatchString(line) {
+				c.countDrop()
 				continue
 			}
 			if c.checkOb && looksObfuscated(line) {
+				c.countDrop()
 				continue
 			}
-			if t := c.stripInline(line); t != "" {
-				if b.Len() > 0 {
-					b.WriteByte('\n')
-				}
-				b.WriteString(t)
+			t := c.stripInline(line)
+			if t == "" {
+				c.countDrop()
+				continue
 			}
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(t)
 			continue
 		}
 		if b.Len() > 0 {
