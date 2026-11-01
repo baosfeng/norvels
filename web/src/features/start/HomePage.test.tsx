@@ -150,7 +150,9 @@ describe("H5 首页：最近入库的四态", () => {
     h.books = { data: null, loading: false, error: { kind: "http", status: 503 }, reload };
     renderHome();
     const panel = screen.getByTestId("home:recent-error");
-    expect(panel.textContent).toContain("数据库暂时不可用");
+    // 503 不再一律说成「数据库不可用」：没有 code 时只给最小口径，不指向整库故障
+    expect(panel.textContent).toContain("服务暂时不可用");
+    expect(panel.textContent).not.toContain("数据库");
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(reload).toHaveBeenCalledTimes(1);
   });

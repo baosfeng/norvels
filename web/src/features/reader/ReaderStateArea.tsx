@@ -1,14 +1,21 @@
 import type { ApiError } from "../../api/client";
 import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import type { ChapterBrief } from "../../api/types";
+import { codeToText, effectiveCode, levelOf } from "../../api/errorText";
 
 /** 连续重试失败 3 次后给的兜底出口文案。 */
 const FAILED_HINT = "还是打不开，可以先读下一章";
+/** 非本章故障时的出口：整章坏了就直说跳过，别把用户留在一页打不开的正文上。 */
+const CHAPTER_FALLBACK = "读取时出了点问题。可以重试，或者先读下一章。";
 
+/**
+ * 文案按错误码分流：503 不等于「数据库不可用」（单章正文损坏也是 503）。
+ * 本章级故障只说这一章的事；连 code 都没有的未知失败，才退回章节页的通用口径。
+ */
 function errorText(error: ApiError | null): string {
-  if (error?.kind === "timeout") return "读取超时了。稍等片刻再试一次，已经导入的书目不会丢失。";
-  if (error?.status === 503) return "数据库暂时不可用，请稍后再试。";
-  return "读取时出了点问题。可以重试，或者先读下一章。";
+  const code = effectiveCode(error);
+  if (levelOf(code) === "chapter") return codeToText(code, error?.status);
+  return code ? codeToText(code, error?.status) : CHAPTER_FALLBACK;
 }
 
 /**
