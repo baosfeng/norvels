@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ApiError } from "../api/client";
+import { codeToText, effectiveCode, LOGIN_PATH, levelOf } from "../api/errorText";
 
 interface PanelProps {
   mark: ReactNode;
@@ -49,12 +50,11 @@ export function ErrorPanel({
   extraAction?: ReactNode;
   testId?: string;
 }) {
-  const description =
-    error?.kind === "timeout"
-      ? "读取超时了。稍等片刻再试一次，已经导入的书目不会丢失。"
-      : error?.status === 503
-        ? "数据库暂时不可用，请稍后再试。"
-        : "读取时出了点问题。可以重试，或者稍后再回来看。";
+  // 文案按错误码分流：503 不再一律说成「数据库不可用」（单章损坏、推荐库未启用都是 503）
+  const code = effectiveCode(error);
+  const description = codeToText(code, error?.status);
+  // 整页层级（身份失效）重试没有意义：把主操作换成去登录，其余层级照旧给重试。
+  const pageLevel = levelOf(code) === "page";
   return (
     <StatePanel
       mark="!"
@@ -63,12 +63,18 @@ export function ErrorPanel({
       description={description}
       testId={testId ?? "state:error"}
       actions={
-        <>
-          <button className="btn btn-primary" type="button" onClick={onRetry}>
-            重试
-          </button>
-          {extraAction}
-        </>
+        pageLevel ? (
+          <a className="btn btn-primary" href={LOGIN_PATH} data-testid="state:login">
+            去登录
+          </a>
+        ) : (
+          <>
+            <button className="btn btn-primary" type="button" onClick={onRetry}>
+              重试
+            </button>
+            {extraAction}
+          </>
+        )
       }
     />
   );
