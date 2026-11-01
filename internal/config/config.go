@@ -10,7 +10,9 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +28,15 @@ const (
 	EnvAIAPIKey  = "NORVELS_AI_API_KEY"
 	EnvAIBaseURL = "NORVELS_AI_BASE_URL"
 	EnvAIModel   = "NORVELS_AI_MODEL"
+	// 开发期开关：默认全关，只在本机前后端分离开发时打开。
+	EnvEnableCORS = "NORVELS_ENABLE_CORS"
+	EnvRequestID  = "NORVELS_REQUEST_ID"
+	// 推荐打分权重的三项可选覆盖（P4-8）：未设置 = 沿用设计 §3 的默认权重。
+	// 只开放三个最常调的旋钮（兴趣 L1 / 近期阅读热度 / 新鲜度），其余维度保持默认：
+	// 16 个数字全开既难校验也难解释，而运营真正会动的就是这三项。
+	EnvRecWeightInterestL1 = "NORVELS_REC_W_INTEREST_L1"
+	EnvRecWeightHotReads   = "NORVELS_REC_W_HOT_READS"
+	EnvRecWeightFreshness  = "NORVELS_REC_W_FRESHNESS"
 )
 
 // 默认值。
@@ -47,6 +58,16 @@ type Config struct {
 	AIAPIKey  string
 	AIBaseURL string
 	AIModel   string
+	// EnableCORS / RequestID 是开发期开关，默认关：生产部署同源，跨域头与
+	// 请求 ID 头都属于「开了才有用、忘了关会多出信息」的那一类。
+	EnableCORS bool
+	RequestID  bool
+	// 推荐打分权重的可选覆盖：nil = 沿用默认权重的原值，非 nil = 覆盖该维。
+	// 用指针而不是 float64 是为了让「显式设成 0」（关掉这一路信号）与
+	// 「没设置」区分开——两者都写成零值时，配置会静默失效。
+	RecWeightInterestL1 *float64
+	RecWeightHotReads   *float64
+	RecWeightFreshness  *float64
 }
 
 // FromEnv 读取环境变量并填默认值。非法值（例如未知日志级别）直接报错，
@@ -61,6 +82,22 @@ func FromEnv() (Config, error) {
 		AIAPIKey:  strings.TrimSpace(os.Getenv(EnvAIAPIKey)),
 		AIBaseURL: strings.TrimSpace(os.Getenv(EnvAIBaseURL)),
 		AIModel:   strings.TrimSpace(os.Getenv(EnvAIModel)),
+	}
+	var err error
+	if c.EnableCORS, err = envBool(EnvEnableCORS); err != nil {
+		return Config{}, err
+	}
+	if c.RequestID, err = envBool(EnvRequestID); err != nil {
+		return Config{}, err
+	}
+	if c.RecWeightInterestL1, err = envWeight(EnvRecWeightInterestL1); err != nil {
+		return Config{}, err
+	}
+	if c.RecWeightHotReads, err = envWeight(EnvRecWeightHotReads); err != nil {
+		return Config{}, err
+	}
+	if c.RecWeightFreshness, err = envWeight(EnvRecWeightFreshness); err != nil {
+		return Config{}, err
 	}
 	if err := c.Validate(); err != nil {
 		return Config{}, err
@@ -112,6 +149,39 @@ func (c Config) AuthEnabled() bool { return c.AuthToken != "" }
 
 // AIEnabled 报告是否配置了 AI key（有 key 才有裁决器；开关另由 settings 控制）。
 func (c Config) AIEnabled() bool { return c.AIAPIKey != "" }
+
+// envBool 读布尔环境变量：空值 = false（开关默认关），非法取值直接报错，
+// 不静默降级——"NORVELS_ENABLE_CORS=yes" 若被当成 false，开发者会以为开关坏了。
+func envBool(key string) (bool, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return false, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("config: %s 只支持 true|false（当前 %q）", key, raw)
+	}
+	return v, nil
+}
+
+// envWeight 读权重覆盖环境变量：未设置返回 nil（沿用默认权重）。
+//
+// 非数字、NaN、Inf、负数一律报错而不是回落默认：权重是量纲意义上的乘数，
+// 打错一个字符就静默回到默认值，等于让人以为「调了但没生效」。
+func envWeight(key string) (*float64, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil, nil
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+		return nil, fmt.Errorf("config: %s 必须是有限的非负数字（当前 %q）", key, raw)
+	}
+	if v < 0 {
+		return nil, fmt.Errorf("config: %s 不能为负数（当前 %q）", key, raw)
+	}
+	return &v, nil
+}
 
 // envOr 读环境变量，空值回落默认值。
 func envOr(key, def string) string {

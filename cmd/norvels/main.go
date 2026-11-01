@@ -70,6 +70,8 @@ backfill-quality 给存量书补算质量分（升级到 0020 后跑一次）：
   NORVELS_AUTH_TOKEN   非空则启用鉴权（Bearer Token / 登录 Cookie）；空 = 开放模式
   NORVELS_LOG_LEVEL    debug|info|warn|error（默认 info）
   NORVELS_BOOKS_DIR    导入源目录（默认 /books，容器内只读挂载点）
+  NORVELS_ENABLE_CORS / NORVELS_REQUEST_ID   开发期开关（默认关；CORS 只放行 :5173）
+  NORVELS_REC_W_INTEREST_L1 / _HOT_READS / _FRESHNESS  推荐权重覆盖（默认设计 §3 值）
 `
 
 func main() {
@@ -351,6 +353,13 @@ func buildAPIConfig(cfg config.Config, ctx context.Context, token, dbPath string
 		AIAPIKey:  cfg.AIAPIKey,
 		AIBaseURL: cfg.AIBaseURL,
 		AIModel:   cfg.AIModel,
+		// 开发期开关与推荐权重覆盖：默认全关 / 全 nil，行为与不带这些配置时一致。
+		// cmd 只传标量，权重类型留在 internal/api 叠加，避免 cmd 多依赖一条边。
+		EnableCORS:          cfg.EnableCORS,
+		RequestID:           cfg.RequestID,
+		RecWeightInterestL1: cfg.RecWeightInterestL1,
+		RecWeightHotReads:   cfg.RecWeightHotReads,
+		RecWeightFreshness:  cfg.RecWeightFreshness,
 	}
 }
 

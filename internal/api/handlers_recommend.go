@@ -183,7 +183,10 @@ func (s *Server) buildRecommendations(ctx context.Context, userID int64,
 		return nil, err
 	}
 	cands = dropNegativeAuthors(cands, negAuthors)
-	sig := recommend.Signals{Interest: interest, ExploreRatio: tabExploreRatio(tab)}
+	sig := recommend.Signals{
+		Interest: interest, ExploreRatio: tabExploreRatio(tab),
+		Weights: s.rankWeights(),
+	}
 	ranked := recommend.Rank(cands, sig, rand.New(rand.NewSource(now.UnixNano())),
 		rankLimitForTab(tab, limit, len(cands)))
 	picked := diversifyForTab(ranked, limit, tab)
@@ -236,6 +239,25 @@ func rankLimitForTab(tab string, limit, available int) int {
 		return min(limit, available)
 	}
 	return rankPool(limit, available)
+}
+
+// rankWeights 把 Config 里的三项可选覆盖叠到设计 §3 的默认权重上。
+//
+// 未配置（nil）时返回 DefaultWeights()，与引入开关前逐位一致；配了才覆盖对应维度。
+// 三项之外（共读 / 曝光惩罚 / 扰动幅度等）刻意不开放：它们互相有量纲关系，
+// 单个数字乱调会让排序退化成热榜，调权的收益远小于解释成本。
+func (s *Server) rankWeights() recommend.Weights {
+	w := recommend.DefaultWeights()
+	if s.cfg.RecWeightInterestL1 != nil {
+		w.InterestL1 = *s.cfg.RecWeightInterestL1
+	}
+	if s.cfg.RecWeightHotReads != nil {
+		w.HotReads = *s.cfg.RecWeightHotReads
+	}
+	if s.cfg.RecWeightFreshness != nil {
+		w.Freshness = *s.cfg.RecWeightFreshness
+	}
+	return w
 }
 
 // tabExploreRatio 按 tab 给出探索比例（0 表示用 Rank 的默认值 10%）。

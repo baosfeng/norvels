@@ -20,10 +20,12 @@ import (
 
 // Config 是服务端配置。
 type Config struct {
-	Version    string // 版本号，注入 /api/health 与 /api/version
-	Commit     string
-	BuiltAt    string
-	EnableCORS bool // 开发期前后端分离时开启（仅放行 localhost:5173）
+	Version string // 版本号，注入 /api/health 与 /api/version
+	Commit  string
+	BuiltAt string
+	// EnableCORS 开发期前后端分离时开启（仅放行 localhost:5173，见 middleware.go）。
+	// 生产默认关：部署是同源的内嵌前端，跨域头只会多暴露信息。
+	EnableCORS bool
 	// RequestID 为 true 时生成 X-Request-Id 响应头并写入访问日志。
 	RequestID bool
 	// DisableAccessLog 关闭访问日志（测试或需要完全安静的场景）。
@@ -53,6 +55,12 @@ type Config struct {
 	// （DeepSeek 官方端点 + deepseek-chat）。
 	AIBaseURL string
 	AIModel   string
+	// ---- 推荐打分权重（P4-8）----
+	// 三项可选覆盖，nil = 沿用 recommend.DefaultWeights() 的原值：
+	// 未设置时推荐行为与引入本字段前逐位一致。非 nil 才覆盖对应维度。
+	RecWeightInterestL1 *float64
+	RecWeightHotReads   *float64
+	RecWeightFreshness  *float64
 	// ---- 推荐系统（设计 §1）----
 	// Rec 是独立的推荐库（norvels-rec.db）。为 nil 时 /api/events 与
 	// /api/recommend 返回 503，其余端点完全不受影响——推荐是辅助能力，
