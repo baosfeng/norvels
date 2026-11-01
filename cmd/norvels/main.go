@@ -35,6 +35,7 @@ const usage = `norvels — 本地中文小说库
   norvels stats   [--db ...]
   norvels check-content [--db ...] [--all | --sample N]
   norvels reconcile-content [--db ...] [--fix]
+  norvels backfill-fingerprints [--db ...] [--batch N]
   norvels migrate [--db ...] [--dry-run] [--to N]
   norvels version
 
@@ -50,6 +51,10 @@ check-content 校验章节正文可读（迁移后自查用）：
 reconcile-content 对账主库与正文库（0018 起正文独立成文件）：
   报孤儿块（正文库有、主库没这本书）与悬空引用（章节指向不存在的块）；
   --fix        删除孤儿块（悬空引用只报不修：缺的正文只能从备份/重导恢复）。
+
+backfill-fingerprints 给存量书补写章级内容指纹（升级到 0019 后跑一次）：
+  0019 只建表、不回填历史数据，而导入判重只认指纹；已有指纹的书整本跳过，
+  中断后重跑从断点继续。生产 79.5 GB 正文约几十分钟，--batch 控制进度打印粒度。
 
 优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:
   NORVELS_ADDR         serve 监听地址（默认 :8080）
@@ -83,18 +88,19 @@ func main() {
 // 用表而不是 switch 是有意的：每加一个子命令就往 switch 里添一个 case，
 // 圈复杂度会线性涨上去（加法本身没有分支复杂度），而这张表是平的、可数的。
 var commands = map[string]func([]string) error{
-	"serve":             cmdServe,
-	"import":            cmdImport,
-	"stats":             cmdStats,
-	"check-content":     cmdCheckContent,
-	"reconcile-content": cmdReconcileContent,
-	"migrate":           cmdMigrate,
-	"version":           cmdVersion,
-	"-v":                cmdVersion,
-	"--version":         cmdVersion,
-	"help":              cmdHelp,
-	"-h":                cmdHelp,
-	"--help":            cmdHelp,
+	"serve":                 cmdServe,
+	"import":                cmdImport,
+	"stats":                 cmdStats,
+	"check-content":         cmdCheckContent,
+	"reconcile-content":     cmdReconcileContent,
+	"backfill-fingerprints": cmdBackfillFingerprints,
+	"migrate":               cmdMigrate,
+	"version":               cmdVersion,
+	"-v":                    cmdVersion,
+	"--version":             cmdVersion,
+	"help":                  cmdHelp,
+	"-h":                    cmdHelp,
+	"--help":                cmdHelp,
 }
 
 // cmdVersion 打印版本信息（构建期由 -ldflags 注入）。

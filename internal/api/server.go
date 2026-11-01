@@ -186,6 +186,9 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/settings/replace-rules", s.handlePutReplaceRules)
 	mux.HandleFunc("POST /api/settings/replace-rules/preview", s.handlePreviewReplaceRules)
 	mux.HandleFunc("PUT /api/settings/tag-rules", s.handlePutTagRules)
+	// 内容去重阈值（0019 起）：章节命中率 ≥ 阈值视为同一本书。
+	mux.HandleFunc("GET /api/settings/dedupe", s.handleGetDedupeSettings)
+	mux.HandleFunc("PUT /api/settings/dedupe", s.handlePutDedupeSettings)
 	// 能力清单（策略注册表 + 上限）：前端硬编码上限的唯一来源。
 	mux.HandleFunc("GET "+capabilitiesPath, s.handleCapabilities)
 	mux.HandleFunc("GET /api/version", s.handleVersion)

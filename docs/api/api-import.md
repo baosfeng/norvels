@@ -18,8 +18,7 @@
   "errors": [{ "source": "/books/x.pdf", "reason": "unsupported_format" }]
 }
 ```
-- 判定口径与真实导入一致：SHA-256 / 源路径命中即 `duplicate`（追更时再加书名+作者指纹），扩展名不支持即 `unsupported`，解析出 0 章记 `failed`；
-- `sample` 最多 20 条（按扫描顺序）、`errors` 最多 50 条；目录候选超过 200 个只解析前 200 并置 `truncated: true`（三个上限由 capabilities 的 `limits.dryRun` 下发）。
+- 判定口径与真实导入一致：SHA-256 / 源路径命中即 `duplicate`（追更时再加书名+作者指纹），扩展名不支持即 `unsupported`，解析出 0 章记 `failed`；`sample` 最多 20 条（按扫描顺序）、`errors` 最多 50 条；目录候选超过 200 个只解析前 200 并置 `truncated: true`（三个上限由 capabilities 的 `limits.dryRun` 下发）。
 
 `dir` 可以是目录，也可以是单个 `.txt` / `.epub` / `.zip` 文件（如 `/books/某本书.epub`）：
 
@@ -56,9 +55,7 @@ zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包�
 | 加密 EPUB（正文条目被加密） | 422 | `encrypted_epub` |
 | 已有导入任务在跑 | 409 | `conflict` |
 
-上限可用 `Config` 的 `MaxUploadFileBytes` / `MaxUploadTotalBytes` / `MaxUploadFiles` 调整（0 值回落默认）。只做字体混淆（仅加密 `.ttf/.otf/.woff`）的 EPUB 会放行，正文仍可读。
-
-加密预检只覆盖**顶层**上传的 `.epub`：zip 整包上传时不预先解包，包内的加密 EPUB 会在导入阶段被拒绝，并以失败条目出现在任务明细里。
+上限可用 `Config` 的 `MaxUploadFileBytes` / `MaxUploadTotalBytes` / `MaxUploadFiles` 调整（0 值回落默认）。只做字体混淆（仅加密 `.ttf/.otf/.woff`）的 EPUB 会放行，正文仍可读；加密预检只覆盖**顶层**上传的 `.epub`（zip 整包上传时不预先解包，包内的加密 EPUB 在导入阶段被拒绝并记为失败条目）。
 
 ### GET /api/import/jobs
 ```json
@@ -69,11 +66,9 @@ zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包�
 ### GET /api/import/jobs/{id}/files?status=failed
 文件级终态清单（0012 起），按行序：
 ```json
-{ "files": [{ "id": 1, "source": "/books/坏.txt", "displayPath": "坏.txt", "status": "failed",
-  "reason": "解析失败", "bookId": 0, "updatedAt": "…" }], "truncated": false }
+{ "files": [{ "id": 1, "source": "/books/坏.txt", "displayPath": "坏.txt", "status": "failed", "reason": "解析失败", "bookId": 0, "updatedAt": "…" }], "truncated": false }
 ```
-- `status` 取值 `imported|failed|skipped|unsupported|canceled`，其它值 → 400 `invalid_param`；不带返回全部；
-- 最多 1000 条，超出 `truncated: true`；任务不存在 → 404 `not_found`。
+- `status` 取值 `imported|failed|skipped|unsupported|canceled`，其它值 → 400 `invalid_param`；不带返回全部；最多 1000 条，超出 `truncated: true`；任务不存在 → 404 `not_found`。
 ### POST /api/import/jobs/{id}/retry
 body `{ "sources": ["…"] }`（省略 = 重试该任务全部 `failed`）→ **202** `{ "jobId": <新任务 id> }`。
 
@@ -116,5 +111,10 @@ body 同 GET（`rules` 为**全量替换**，传空数组即清空）。
 body 同 GET（`rules` 为**全量替换**，传空数组即清空）→ 成功 **204**，无响应体。
 
 - 条数 > 50、标签名为空或 > 20 字、单条关键词 0 或 > 100 个、单个关键词 > 20 字、同名标签出现两次 → 400 `invalid_param`；
-- 匹配口径（P1-B §2.4）：书名 + 作者 + 前 3 章标题 + 正文前 5000 字，两边去空白后小写子串比较；单书最多 10 个标签，同一标签命中多个关键词只打一次；规则顺序不影响结果（取并集）；
-- 打标只增不删：同书已有同名标签（任意来源）不重复插入且不改其来源；用户 PATCH `tags` 仍是全量替换。
+- 匹配口径（P1-B §2.4）：书名 + 作者 + 前 3 章标题 + 正文前 5000 字，两边去空白后小写子串比较；单书最多 10 个标签，同一标签命中多个关键词只打一次；规则顺序不影响结果（取并集）；打标只增不删：同书已有同名标签（任意来源）不重复插入且不改其来源，用户 PATCH `tags` 仍是全量替换。
+
+### GET /api/settings/dedupe
+内容去重阈值（章节命中率 ≥ 该值即视为同一本书）：`{ "threshold": 0.95 }`；未配置时返回缺省 0.95，库里的值非法时附 `warning` 并按缺省返回。
+
+### PUT /api/settings/dedupe
+body 同 GET，取值 **(0, 1]**（0.95 = 95%，不认百分数写法）；越界或非数字 → 400 `invalid_param`；成功 **204**，无响应体。

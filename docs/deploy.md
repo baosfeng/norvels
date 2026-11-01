@@ -342,9 +342,15 @@ v0.2 起正文不再是 SQL 可直接查询的 `content` 列，而是压缩块�
 （**读不出正文**，只能从备份恢复或重导那本书，工具不自动修）。同一份数据也会出现在
 `/api/health/report` 的 `content` 字段里（缓存 10 分钟）。
 
-**跨库引用**另有一道对账：`GET /api/health/report` 的 `content` 字段给出孤儿块（正文库里有、主库没有这本书）
-与悬空引用（章节指向不存在的块）的条数，结果缓存 10 分钟。备份/恢复不配套、进程在跨库写入中途被杀，
-都只会在这两个数上露头，deck 的「库健康」卡片能直接看到。
+**存量指纹回填**（迁移 0019 之后**必跑一次**）：
+
+```bash
+./bin/norvels backfill-fingerprints --db ./data/norvels.db        # 已有指纹的书整本跳过；可中断续跑
+```
+
+0019 只建表、不回填历史数据，而导入判重只认指纹：不跑它，新导入的书比不到老书，去重等于没开。
+生产 79.5 GB 正文约几十分钟，服务可照常提供；`GET /api/health/report` 的 `fingerprints.missing` 归零即回填完成
+（`--batch` 只调进度打印粒度）。
 
 输出形如：
 
@@ -492,7 +498,7 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 | 16 | `0016_users_and_shelf.sql` | 账号 `users`/`user_sessions` + 我的书架 `user_shelf`；个人记录改按 `(user_id, …)` 归属，存量归默认账号 `reader` |
 | 17 | `0017_codebook_blocks.sql` | 存量正文块重组：1 MB / 0x02 → **8 MB / 0x03（字码本 + zstd）**；块字节 27.5 GB → 约 21 GB，见 [ADR-0007](adr/0007-codebook-compressed-content.md) |
 | 18 | `0018_content_db.sql` | 正文块搬进独立文件 `norvels-content.db`，逐书流式搬运后 `DROP TABLE chapter_blocks`；`chapters.block_id` 变成跨库弱引用 |
-| 19 | `0019_chapter_fingerprints.sql` | 正文库建章级指纹 `chapter_fingerprints(hash, book_id, bytes)`（WITHOUT ROWID，主键 `(hash, book_id)`）+ 主库预置 `settings` 的 `dedupe.threshold` = 0.95；秒级、不回填历史书，见 [architecture](architecture.md) §2.3 |
+| 19 | `0019_chapter_fingerprints.sql` | 正文库建章级指纹 `chapter_fingerprints(hash, book_id, bytes)`（WITHOUT ROWID，主键 `(hash, book_id)`）+ 主库预置 `settings` 的 `dedupe.threshold` = 0.95；秒级，**升级后必须跑一次 `norvels backfill-fingerprints` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
 
 > 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **19**。
 >

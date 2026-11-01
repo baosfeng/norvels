@@ -44,8 +44,7 @@
 - **设置口令**：持有口令的人，个人记录按会话 Cookie 归属（公网 VPS、共享主机）。
 - 口令管「能不能进门」（`Bearer` 或登录 Cookie，HttpOnly + SameSite=Lax，`crypto/subtle` 恒定时间比较），
   会话 `norvels_session` 管「记录属于谁」，两者并存；只注册 + 输账号登录，**没有密码**。
-- `/api/health` 永远免鉴权（容器健康检查）；共享口令仍是**全有或全无**，不是权限分级——
-  需要真正的权限模型时必须先换掉这套鉴权（新开 ADR），详见 [api-account](api/api-account.md)。
+- `/api/health` 永远免鉴权（容器健康检查）；共享口令是**全有或全无**，不是权限分级——要真正的权限模型必须换掉这套鉴权（新开 ADR，见 [api-account](api/api-account.md)）。
 
 ## 2.2 升级模型（版本化迁移）
 
@@ -75,8 +74,9 @@ WAL 下 SQLite 的原子提交只覆盖单个文件，**不依赖跨库事务**�
 **内容去重（章级指纹，0019）**：导入前按**正文**判重（与文件名/编码无关）——正文归一化（删空白、全角半角标点
 统一）后取 64 位 FNV-1a，指纹存正文库 `chapter_fingerprints(hash, book_id, bytes)`，命中率按字节加权；≥ 阈值
 （settings 的 `dedupe.threshold`，0019 预置 0.95，取值 (0,1]）按 Skipped 跳过并备注「疑似重复：库内已有 X% 相同
-内容（《书名》可对照）」，≥ 40% 备注「疑似相关」后照常导入，`force` 一律跳过判定。指纹在 `SaveBook` 提交后按书
-先删后写；历史书不回填，重导即补齐。分档与后续质量分见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §4–§5。
+内容（《书名》可对照）」，≥ 40% 备注「疑似相关」后照常导入，`force` / `update`（追更）一律跳过判定；指纹在
+`SaveBook` 提交后按书先删后写，历史书用 `norvels backfill-fingerprints` 补齐（`/api/health/report` 的
+`fingerprints.missing` 提示缺口），分档与后续质量分见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §4–§5。
 
 ## 3. 数据模型（SQLite）
 
