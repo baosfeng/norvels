@@ -201,19 +201,17 @@ func cmdServe(args []string) error {
 
 	token := *authToken
 	warnAuthMode(token == "")
+	apiCfg := buildAPIConfig(cfg, ctx, token, *dbPath)
 	srv := &http.Server{
-		Addr: *addr,
-		Handler: api.New(st, api.Config{
-			Version: version, Commit: commit, BuiltAt: builtAt,
-			AuthToken: token,
-			Context:   ctx, // 进程收到 SIGTERM 时取消后台导入任务
-			// 上传临时目录放数据卷同目录：容器里的 /tmp 可能是小 tmpfs，
-			// 而单批上传峰值可达 256 MiB；导入结束整目录删除。
-			UploadDir: filepath.Join(filepath.Dir(*dbPath), "uploads"),
-		}),
+		Addr:              *addr,
+		Handler:           api.New(st, apiCfg),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	// AI 审核后台 worker：单线程串行，ctx 取消即停。没有 key 时它照样跑，
+	// 只是把待审记录直接落 needs_manual（审核页显示「AI 未启用」）。
+	api.StartReviewWorker(ctx, st, apiCfg.AIJudge())
+	logAIState(cfg, st.AIEnabled(context.Background()))
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -260,6 +258,44 @@ func warnAuthMode(openMode bool) {
 		return
 	}
 	log.Printf("WARN: 未启用鉴权，请勿暴露到公网（设置 NORVELS_AUTH_TOKEN 可开启）")
+}
+
+// buildAPIConfig 组装 API 配置：版本信息、鉴权、上传目录与 AI 审核参数。
+func buildAPIConfig(cfg config.Config, ctx context.Context, token, dbPath string) api.Config {
+	return api.Config{
+		Version: version, Commit: commit, BuiltAt: builtAt,
+		AuthToken: token,
+		Context:   ctx, // 进程收到 SIGTERM 时取消后台导入任务
+		// 上传临时目录放数据卷同目录：容器里的 /tmp 可能是小 tmpfs，
+		// 而单批上传峰值可达 256 MiB；导入结束整目录删除。
+		UploadDir: filepath.Join(filepath.Dir(dbPath), "uploads"),
+		// AI 审核（0021）：key 只在内存里；开关在 settings 的 ai.enabled（默认关）。
+		AIAPIKey:  cfg.AIAPIKey,
+		AIBaseURL: cfg.AIBaseURL,
+		AIModel:   cfg.AIModel,
+	}
+}
+
+// logAIState 打印 AI 审核的启动状态（key 有没有、开关开没开）。
+//
+// 不打印 key 本身：日志会进容器日志与工单，key 只该留在进程环境里。
+func logAIState(cfg config.Config, enabled bool) {
+	switch {
+	case cfg.AIEnabled() && enabled:
+		log.Printf("AI 审核已启用（模型 %s）", aiModelLabel(cfg.AIModel))
+	case cfg.AIEnabled():
+		log.Printf("AI 审核有 key 但开关未打开（settings ai.enabled=false），待审记录只落人工确认")
+	default:
+		log.Printf("AI 审核未配置 key（NORVELS_AI_API_KEY），待审记录只落人工确认")
+	}
+}
+
+// aiModelLabel 返回日志里的模型名（未配置时说明用默认值）。
+func aiModelLabel(model string) string {
+	if model == "" {
+		return "内置默认"
+	}
+	return model
 }
 
 // authModeLabel 返回日志里的鉴权模式描述。

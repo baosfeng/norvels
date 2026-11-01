@@ -66,6 +66,8 @@ var allowedDeps = map[string][]string{
 		"norvels/internal/store", "norvels/internal/webui", "norvels/internal/ebook",
 		"norvels/internal/source", "norvels/internal/booksource",
 		"norvels/internal/fetch", "norvels/internal/ruleimport",
+		// AI 审核（0021）：api 是裁决器的组装点（Config.AIJudge）与后台 worker 的宿主。
+		"norvels/internal/ai",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config"},

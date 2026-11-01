@@ -21,6 +21,11 @@ const (
 	EnvAuthToken = "NORVELS_AUTH_TOKEN"
 	EnvLogLevel  = "NORVELS_LOG_LEVEL"
 	EnvBooksDir  = "NORVELS_BOOKS_DIR"
+	// AI 审核（设计 §6）：key 只从环境变量进内存，**不落库、不进日志**。
+	// 空值 = 功能等同不存在（导入照常，待审记录直接落 needs_manual）。
+	EnvAIAPIKey  = "NORVELS_AI_API_KEY"
+	EnvAIBaseURL = "NORVELS_AI_BASE_URL"
+	EnvAIModel   = "NORVELS_AI_MODEL"
 )
 
 // 默认值。
@@ -38,6 +43,10 @@ type Config struct {
 	AuthToken string // 空 = 开放模式（无鉴权）
 	LogLevel  string // debug|info|warn|error
 	BooksDir  string // 导入源目录（容器内通常是只读挂载点）
+	// AI 审核（设计 §6）：APIKey 为空表示未启用；BaseURL / Model 为空用内置默认值。
+	AIAPIKey  string
+	AIBaseURL string
+	AIModel   string
 }
 
 // FromEnv 读取环境变量并填默认值。非法值（例如未知日志级别）直接报错，
@@ -49,6 +58,9 @@ func FromEnv() (Config, error) {
 		AuthToken: strings.TrimSpace(os.Getenv(EnvAuthToken)),
 		LogLevel:  strings.ToLower(envOr(EnvLogLevel, DefaultLogLevel)),
 		BooksDir:  envOr(EnvBooksDir, DefaultBooksDir),
+		AIAPIKey:  strings.TrimSpace(os.Getenv(EnvAIAPIKey)),
+		AIBaseURL: strings.TrimSpace(os.Getenv(EnvAIBaseURL)),
+		AIModel:   strings.TrimSpace(os.Getenv(EnvAIModel)),
 	}
 	if err := c.Validate(); err != nil {
 		return Config{}, err
@@ -97,6 +109,9 @@ func (c Config) LogLevelValue() slog.Level {
 
 // AuthEnabled 报告是否启用鉴权（设置了非空 token）。
 func (c Config) AuthEnabled() bool { return c.AuthToken != "" }
+
+// AIEnabled 报告是否配置了 AI key（有 key 才有裁决器；开关另由 settings 控制）。
+func (c Config) AIEnabled() bool { return c.AIAPIKey != "" }
 
 // envOr 读环境变量，空值回落默认值。
 func envOr(key, def string) string {
