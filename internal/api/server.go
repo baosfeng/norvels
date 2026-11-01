@@ -221,6 +221,9 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	// 内容去重阈值（0019 起）：章节命中率 ≥ 阈值视为同一本书。
 	mux.HandleFunc("GET /api/settings/dedupe", s.handleGetDedupeSettings)
 	mux.HandleFunc("PUT /api/settings/dedupe", s.handlePutDedupeSettings)
+	// AI 审核开关（设计 §6）：开关落库（ai.enabled），key 只从环境变量进内存。
+	mux.HandleFunc("GET /api/settings/ai", s.handleGetAISettings)
+	mux.HandleFunc("PUT /api/settings/ai", s.handlePutAISettings)
 	// 能力清单（策略注册表 + 上限）：前端硬编码上限的唯一来源。
 	mux.HandleFunc("GET "+capabilitiesPath, s.handleCapabilities)
 	mux.HandleFunc("GET /api/version", s.handleVersion)

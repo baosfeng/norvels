@@ -244,6 +244,8 @@ var apiRoutes = []struct {
 	{"/api/import/jobs/{id}/retry", http.MethodPost},
 	{"/api/settings/tag-rules", http.MethodGet},
 	{"/api/settings/tag-rules", http.MethodPut},
+	{"/api/settings/ai", http.MethodGet},
+	{"/api/settings/ai", http.MethodPut},
 	{"/api/version", http.MethodGet},
 	{"/api/health/report", http.MethodGet},
 	{"/api/stats/import-trend", http.MethodGet},
