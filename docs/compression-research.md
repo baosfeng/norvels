@@ -117,4 +117,4 @@
 - **迁移窗口**：79.5 GB 重压在 NAS 上约 1–2 小时，期间不监听端口（沿用一次性容器预跑 migrate 的做法）。
 - **兼容**：老块 0x02 永久保留读路径，新格式 0x03，天然支持混存过渡。
 
-> 复现：字频统计 `tests/tools/corpusstats`、方案对比 `cmd/codebench` 都在仓库里；样本正文不入库。
+> 复现：字频统计 `tests/tools/corpusstats`、方案对比 `cmd/codebench` 都在仓库里；样本正文不入库。两者都读**正文库**（0018 起 `chapter_blocks` 在 `norvels-content.db`，`-content-db` 缺省按主库推导兄弟文件，见 [ADR-0007](adr/0007-codebook-compressed-content.md)）。

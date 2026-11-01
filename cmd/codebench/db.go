@@ -62,10 +62,12 @@ type BookSize struct {
 	Raw int64
 }
 
-// loadLibrary 一次扫描 chapter_blocks 得到全库口径与每本书的原始正文字节数。
+// loadLibrary 一次扫描**正文库**的 chapter_blocks 得到全库口径与每本书的原始正文字节数。
 //
 // 为什么用一条 GROUP BY 而不是两条聚合：库里有 87,600 块 / 约 27 GB BLOB，
 // 每多扫一遍就多几十秒到几分钟的 NAS I/O，聚合成每本一次拿全。
+//
+// 0018 起块表只在正文库里：拿主库连接扫这张表会直接报 no such table。
 func loadLibrary(ctx context.Context, db *sql.DB) (Library, []BookSize, error) {
 	lib := Library{BinBooks: make([]int, binsCount)}
 	rows, err := db.QueryContext(ctx,
@@ -177,11 +179,13 @@ type bookSample struct {
 }
 
 // loadSamples 逐本读出正文（这段 I/O 与解压不计入任何方案的计时）。
-func loadSamples(ctx context.Context, db *sql.DB, ids []int64, c *compressor) ([]bookSample, error) {
+//
+// db 是主库（章节字节数），cdb 是正文库（packed BLOB）。
+func loadSamples(ctx context.Context, db, cdb *sql.DB, ids []int64, c *compressor) ([]bookSample, error) {
 	books := make([]bookSample, 0, len(ids))
 	var total int64
 	for i, id := range ids {
-		b, err := loadSample(ctx, db, id, c)
+		b, err := loadSample(ctx, db, cdb, id, c)
 		if err != nil {
 			return nil, err
 		}
@@ -195,10 +199,11 @@ func loadSamples(ctx context.Context, db *sql.DB, ids []int64, c *compressor) ([
 	return books, nil
 }
 
-// loadSample 读一本书的全部块、解压拼成正文，再取每章字节数（与块寻址同一口径）。
-func loadSample(ctx context.Context, db *sql.DB, id int64, c *compressor) (bookSample, error) {
+// loadSample 从正文库读一本书的全部块、解压拼成正文，再从主库取每章字节数
+// （章节只存块寻址，正文以正文库的块为准）。
+func loadSample(ctx context.Context, db, cdb *sql.DB, id int64, c *compressor) (bookSample, error) {
 	b := bookSample{id: id}
-	rows, err := db.QueryContext(ctx,
+	rows, err := cdb.QueryContext(ctx,
 		"SELECT raw_bytes, packed FROM chapter_blocks WHERE book_id = ? ORDER BY seq", id)
 	if err != nil {
 		return b, fmt.Errorf("book %d: 读块: %w", id, err)
@@ -243,7 +248,7 @@ func loadSample(ctx context.Context, db *sql.DB, id int64, c *compressor) (bookS
 	return b, nil
 }
 
-// loadChapterSizes 取一本书每章的字节数（chapters.block_len，按 idx 排序），
+// loadChapterSizes 从**主库**取一本书每章的字节数（chapters.block_len，按 idx 排序），
 // 供「按章节边界切块」复现库内的分块规则。空正文的章（block_id = 0）block_len 为 0。
 func loadChapterSizes(ctx context.Context, db *sql.DB, id int64) ([]int, error) {
 	rows, err := db.QueryContext(ctx,

@@ -9,14 +9,22 @@ import (
 	"sync"
 
 	"github.com/klauspost/compress/zstd"
+
+	"norvels/internal/textcode"
 )
 
-// 块 BLOB 的算法标记：0x00 raw / 0x01 flate / 0x02 zstd。
+// 块 BLOB 的算法标记：0x00 raw / 0x01 flate / 0x02 zstd / 0x03 码本流 + zstd。
 // 与 internal/store/compress.go 的常量一一对应（格式变更必须同步，否则统计口径失效）。
+//
+// 0x03 是 0017 起的唯一写入格式：不认它的话，任何迁移过的库都会在统计时报
+// 「未知算法标记 0x03」。解它必须用码表（textcode 把码表 embed 在二进制里），
+// 工具里复制一份码表等于给自己埋一个静默漂移，因此本包破例依赖 internal/textcode
+// （仅此一个叶子包；见 tests/tools/gatedeps 的白名单与理由）。
 const (
-	algoRaw   byte = 0x00
-	algoFlate byte = 0x01
-	algoZstd  byte = 0x02
+	algoRaw      byte = 0x00
+	algoFlate    byte = 0x01
+	algoZstd     byte = 0x02
+	algoCodebook byte = 0x03
 )
 
 // errCorrupt 表示块字节无法按标记解开（未知标记或压缩流损坏）。
@@ -43,6 +51,8 @@ func decompress(packed []byte) ([]byte, error) {
 		return inflate(packed[1:])
 	case algoZstd:
 		return unzstd(packed[1:])
+	case algoCodebook:
+		return decodeCodebook(packed[1:])
 	default:
 		return nil, fmt.Errorf("%w: 未知算法标记 0x%02x", errCorrupt, packed[0])
 	}
@@ -57,6 +67,21 @@ func inflate(payload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%w: flate: %v", errCorrupt, err)
 	}
 	return out, nil
+}
+
+// decodeCodebook 解一块 0x03：zstd → 码本流 → UTF-8。
+//
+// 第 1、2 步都在 textcode 里（码表随二进制 embed），这里只负责接上。
+func decodeCodebook(payload []byte) ([]byte, error) {
+	coded, err := unzstd(payload)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := textcode.Decode(nil, coded)
+	if err != nil {
+		return nil, fmt.Errorf("%w: 码本: %v", errCorrupt, err)
+	}
+	return raw, nil
 }
 
 // unzstd 用池化解码器解一块 zstd。

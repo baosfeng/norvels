@@ -20,12 +20,12 @@ func TestContentDBPathDerivation(t *testing.T) {
 		{"norvels.db", "norvels-content.db"},
 	}
 	for _, c := range cases {
-		if got := contentDBPath(c.main); got != c.want {
-			t.Errorf("contentDBPath(%q) = %q，期望 %q", c.main, got, c.want)
+		if got := ContentDBPath(c.main); got != c.want {
+			t.Errorf("ContentDBPath(%q) = %q，期望 %q", c.main, got, c.want)
 		}
 	}
 	t.Setenv(EnvContentDB, "/tmp/custom-content.db")
-	if got := contentDBPath("/data/norvels.db"); got != "/tmp/custom-content.db" {
+	if got := ContentDBPath("/data/norvels.db"); got != "/tmp/custom-content.db" {
 		t.Errorf("环境变量未生效：%q", got)
 	}
 }

@@ -12,12 +12,14 @@ import (
 
 // Result 是一次完整跑分的结果，也是 -out 同名 .json 的文件结构。
 type Result struct {
-	GeneratedAt string       `json:"generated_at"`
-	DBPath      string       `json:"db_path"`
-	Sample      int          `json:"sample"`
-	Library     Library      `json:"library"`
-	Groups      []GroupStat  `json:"groups"`
-	Largest     *LargestStat `json:"largest,omitempty"`
+	GeneratedAt string `json:"generated_at"`
+	DBPath      string `json:"db_path"`
+	// ContentDBPath 是正文库路径（0018 起 chapter_blocks 只在这里；库内 BLOB 对账的数据源）。
+	ContentDBPath string       `json:"content_db_path"`
+	Sample        int          `json:"sample"`
+	Library       Library      `json:"library"`
+	Groups        []GroupStat  `json:"groups"`
+	Largest       *LargestStat `json:"largest,omitempty"`
 }
 
 // GroupStat 是一组方案的汇总（总体 + 四档分档）。
@@ -202,7 +204,8 @@ func markdown(res *Result) string {
 	var b strings.Builder
 	lib := res.Library
 	fmt.Fprintf(&b, "# codebench：真实库压缩方案实测\n\n")
-	fmt.Fprintf(&b, "- 库：%s\n", res.DBPath)
+	fmt.Fprintf(&b, "- 主库：%s\n", res.DBPath)
+	fmt.Fprintf(&b, "- 正文库：%s\n", res.ContentDBPath)
 	fmt.Fprintf(&b, "- 全库口径：%d 本 / %d 块 / %d 字节 UTF-8 正文 / %d 字节库内 BLOB = %.2f%%\n",
 		lib.Books, lib.Blocks, lib.RawBytes, lib.PackedBytes, lib.Ratio*100)
 	fmt.Fprintf(&b, "- 抽样：%d 本（四档等额、档内按 book_id 分位）\n\n", res.Sample)

@@ -44,6 +44,12 @@ var contentSchemaDDL = []string{
 	"CREATE INDEX IF NOT EXISTS idx_chapter_blocks_book  ON chapter_blocks(book_id, seq)",
 }
 
+// ContentDBPath 由主库路径推导正文库路径（缺省同目录兄弟文件，NORVELS_CONTENT_DB 覆盖）。
+//
+// 导出给离线工具用（cmd/codebench 等）：**这是推导规则在本仓库里的唯一实现**，
+// 新工具不要再自己拼一遍路径——拼错一个字母就是「读到的库没有块表」。
+func ContentDBPath(mainPath string) string { return contentDBPath(mainPath) }
+
 // contentDBPath 由主库路径推导正文库路径。
 //
 // 默认是同目录兄弟文件：norvels.db → norvels-content.db（保留扩展名，便于

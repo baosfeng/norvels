@@ -60,7 +60,8 @@ ADR-0003 定的是 1 MB 块 + zstd-best，当时口径 838 本 / 4.87 GB 正文�
 
 ## 码表怎么来的
 
-扫全库 `chapter_blocks` 解压还原后按 rune 统计（`tests/tools/corpusstats`，只读）：
+扫全库 `chapter_blocks`（0018 起在正文库 `norvels-content.db`）解压还原后按 rune 统计
+（`tests/tools/corpusstats`，只读）：
 **26,957,660,602 个字符 / 35,912 个不同字符 / 20 个非法字节**（全是 0xAC）。
 `Train(字频).MarshalBinary()` → `internal/textcode/codebook_v1.bin`（8,384 项 / 33,556 字节）。
 
@@ -77,7 +78,18 @@ textcode.Version()                          // 码表版本
 ```
 
 换用自己的语料：`corpusstats` 统计字频 → `textcode.Train(freq)` → `MarshalBinary()` → 替换 `codebook_v1.bin`。
-对比不同方案：`cmd/codebench`（`-db -sample -out`）。
+
+两个离线工具都要读**正文库**（`chapter_blocks` 在 0018 起独立成文件），`-content-db` 缺省按主库路径
+推导同目录兄弟文件（`norvels.db` → `norvels-content.db`）：
+
+```bash
+# 字频统计（-all 全库 / -sample N 抽样；产物写到 -out 目录，放仓库外）
+go run ./tests/tools/corpusstats -db ./data/norvels.db -out /tmp/corpus -all
+go run ./tests/tools/corpusstats -db ./data/norvels.db -content-db ./data/norvels-content.db -out /tmp/corpus -sample 50
+
+# 方案对比（-sample 0 只出全库口径与分档统计）
+go run ./cmd/codebench -db ./data/norvels.db -sample 200 -out /tmp/codebench.md
+```
 
 ## 后果
 
@@ -96,5 +108,5 @@ textcode.Version()                          // 码表版本
 
 - 编解码：`internal/textcode/`（Encode / Decode / Train / MarshalBinary）
 - 块格式：`internal/store/compress.go`（`contentAlgoCodebook = 0x03`）
-- 字频统计：`tests/tools/corpusstats`
-- 方案对比：`cmd/codebench`
+- 字频统计：`tests/tools/corpusstats`（`-db` 主库 + `-content-db` 正文库）
+- 方案对比：`cmd/codebench`（同上；库内 BLOB 对账读正文库）

@@ -4,11 +4,21 @@
 // 只此一次，并且必须能交叉编译成单文件丢到 NAS 上跑（NAS 上没有 Go 工具链）。
 // 所以解压逻辑在本包内自带一份（与 internal/store/compress.go 的格式约定一致），
 // 不 import internal/store——工具越独立越好，也避免误碰服务端读路径。
+// 代价是正文库路径推导也有一份本地副本（见 db.go contentDBPath），两份必须同规则。
+//
+// 库文件（0018 起正文独立成文件）：
+//
+//	-db          主库（books：书数与抽样 id）
+//	-content-db  正文库（chapter_blocks：真正要统计的压缩块）
+//
+// -content-db 缺省按主库路径推导同目录兄弟文件（norvels.db → norvels-content.db，
+// 与 store.ContentDBPath 同一规则）。
 //
 // 用法：
 //
 //	corpusstats -db <path> -out <dir> -all
 //	corpusstats -db <path> -out <dir> -sample 50
+//	corpusstats -db <main.db> -content-db <content.db> -out <dir> -all
 //
 // 产物（写到 -out 目录，约定放仓库外）：
 //
@@ -36,11 +46,12 @@ func main() {
 
 // config 是一次运行的参数。
 type config struct {
-	db      string
-	out     string
-	sample  int
-	all     bool
-	workers int
+	db        string
+	contentDB string
+	out       string
+	sample    int
+	all       bool
+	workers   int
 }
 
 func run(args []string) error {
@@ -48,20 +59,29 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	db, err := openReadOnly(cfg.db)
+	main, err := openReadOnly(cfg.db)
+	if err != nil {
+		return fmt.Errorf("主库: %w", err)
+	}
+	defer func() { _ = main.Close() }()
+	contentPath, err := resolveContentPath(cfg.db, cfg.contentDB)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = db.Close() }()
+	content, err := openReadOnly(contentPath)
+	if err != nil {
+		return fmt.Errorf("正文库: %w", err)
+	}
+	defer func() { _ = content.Close() }()
 
-	p, err := planBlocks(db, cfg)
+	p, err := planBlocks(main, content, cfg)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "corpusstats: 模式=%s 书=%d 块=%d workers=%d\n",
-		p.mode, p.books, p.blocks, cfg.workers)
+	fmt.Fprintf(os.Stderr, "corpusstats: 模式=%s 书=%d 块=%d workers=%d 正文库=%s\n",
+		p.mode, p.books, p.blocks, cfg.workers, contentPath)
 
-	agg, err := countAll(db, p, cfg.workers)
+	agg, err := countAll(content, p, cfg.workers)
 	if err != nil {
 		return err
 	}
@@ -74,7 +94,8 @@ func run(args []string) error {
 func parseFlags(args []string) (config, error) {
 	var cfg config
 	fs := flag.NewFlagSet("corpusstats", flag.ContinueOnError)
-	fs.StringVar(&cfg.db, "db", "", "SQLite 库路径（只读打开）")
+	fs.StringVar(&cfg.db, "db", "", "主库路径（只读打开）")
+	fs.StringVar(&cfg.contentDB, "content-db", "", "正文库路径（缺省按主库推导 *-content.db）")
 	fs.StringVar(&cfg.out, "out", "", "输出目录（放仓库外）")
 	fs.IntVar(&cfg.sample, "sample", 0, "按 book_id 等间隔抽样的书本数")
 	fs.BoolVar(&cfg.all, "all", false, "统计全库")
