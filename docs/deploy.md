@@ -12,7 +12,7 @@
 | `deploy/compose.dev.yml` | 本地开发覆盖文件：保留 `build:` 段从源码构建（两个 `-f` 叠加使用） |
 | `scripts/import.sh` | 批量导入（本地二进制 / docker 两种模式），带校验、耗时统计、导入后 stats |
 | `scripts/backup.sh` | SQLite 在线备份（`.backup` 或 `VACUUM INTO`）+ 时间戳命名 + 保留策略 |
-| `cmd/healthcheck` | 2.1 MiB 静态健康检查器，供 distroless 镜像的 HEALTHCHECK 使用 |
+| `cmd/healthcheck` | 2.14 MiB 静态健康检查器，供 distroless 镜像的 HEALTHCHECK 使用 |
 | `.dockerignore` | 排除 node_modules、dist、data、testdata 等，构建上下文更小 |
 
 ## 2. 构建
@@ -72,17 +72,18 @@ docker build -f deploy/Dockerfile \
 > 因此本目录的镜像体积来自「交叉编译实测二进制 + 基镜像官方体积」，不是 `docker images` 实测值。
 > 已完成的验证：
 >
-> - `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w"` 实测通过，二进制 **11.1 MiB**（含 `golang.org/x/text` 的 GB18030/Big5 码表；`internal/webui/dist` 目前只有占位文件，前端产物合入后预计 12–13 MiB）；
-> - `go vet ./cmd/healthcheck` + `go test ./cmd/healthcheck` 通过，二进制 **2.1 MiB**；
+> - `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w"` 实测通过：按构建流程先 `pnpm -C web build` 再把 `web/dist/` 同步进 `internal/webui/dist/`（`go:embed` 的输入），二进制 **16.29 MiB**（17,080,480 字节）；embed 目录只有占位文件时 **15.38 MiB**（16,126,112 字节），差值就是前端产物（约 0.9 MiB）；
+> - `go vet ./cmd/healthcheck` + `go test ./cmd/healthcheck` 通过，二进制 **2.14 MiB**（2,248,864 字节）；
+> - 基镜像 distroless/static-debian13:nonroot（linux/amd64）拉取的层合计 **0.82 MiB**（860,442 字节），解压后 **3.27 MiB**（3,425,792 字节）；
 > - 端到端实测：8 个真实 txt（5.09 MiB）导入成功（397 章 / 1,733,881 字），30 个真实 txt（13.2 MiB）导入成功（1072 章 / 4,380,382 字）；重复导入全部 skipped（幂等）；`serve` + `/healthcheck` 对正常与不可达地址分别返回 0 / 1；
 > - Dockerfile 做静态自查（阶段、ARG 作用域、路径与 Makefile 一致、引号与行连续）。
 >
 > 在有 Docker 的机器上，请以 `docker images norvels:0.1.0` 的实际输出为准，并回来更新下表。
-> 另外 `web/` 前端仍在并行开发，`web/dist` 体积按 Vite + React 19 + Tailwind 的常见区间估算。
+> 表中二进制体积已含真实前端产物（`web/dist` 同步进 embed 目录后编译），不再是估算值。
 
 #### 基础镜像 digest 锁定
 
-运行镜像写成 `gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88`，
+运行镜像写成 `gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329`，
 标签 + digest 双写。为什么锁：
 
 - **tag 是可变的**：`nonroot` 是浮动标签，上游重建就会指向新镜像，同一份源码在不同时间可能构建出不同底座，"上周能跑这周不能跑"无法归因；
@@ -99,11 +100,11 @@ TOKEN=$(curl -s "https://m.daocloud.io/auth/token?service=gcr.m.daocloud.io&scop
 curl -s "$BASE/v2/distroless/static-debian13/manifests/nonroot" \
   -H "Accept: application/vnd.oci.image.index.v1+json" \
   -H "Authorization: Bearer $TOKEN" -D- -o /dev/null | grep -i docker-content-digest
-# docker-content-digest: sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
+# docker-content-digest: sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 ```
 
 > 为什么是 debian13：上游 README 只维护 `*-debian13`，debian12 系列已标注 deprecated 且不再更新；
-> Debian 12 的安全支持窗口到 2026-07-11 结束。`static` 变体无 shell、无包管理器，体积约 2 MiB。
+> Debian 12 的安全支持窗口到 2026-07-11 结束。`static` 变体无 shell、无包管理器，解压后约 3.3 MiB（压缩传输约 0.8 MiB）。
 
 ### 2.4 镜像内二进制与构建参数
 
@@ -111,8 +112,8 @@ curl -s "$BASE/v2/distroless/static-debian13/manifests/nonroot" \
 
 | 文件 | 来源 | 构建参数 | 体积 |
 |---|---|---|---|
-| `/norvels` | `./cmd/norvels` | 继承阶段 ENV `CGO_ENABLED=0`、`GOOS/GOARCH`；`-trimpath`；`-ldflags "-s -w -X main.version=... -X main.commit=... -X main.builtAt=..."` | **11.1 MiB**（linux/amd64 本机实测，含 x/text；前端合入后预计 12–13 MiB） |
-| `/healthcheck` | `./cmd/healthcheck` | 继承 `CGO_ENABLED=0`、`GOOS/GOARCH`；`-trimpath`；`-ldflags "-s -w"`（无版本注入） | 2.1 MiB（实测） |
+| `/norvels` | `./cmd/norvels` | 继承阶段 ENV `CGO_ENABLED=0`、`GOOS/GOARCH`；`-trimpath`；`-ldflags "-s -w -X main.version=... -X main.commit=... -X main.builtAt=..."` | **16.29 MiB**（17,080,480 字节；linux/amd64 本机实测，含 x/text 与前端产物） |
+| `/healthcheck` | `./cmd/healthcheck` | 继承 `CGO_ENABLED=0`、`GOOS/GOARCH`；`-trimpath`；`-ldflags "-s -w"`（无版本注入） | **2.14 MiB**（2,248,864 字节，实测） |
 
 `/healthcheck` 是手写的最小 HTTP/1.1 客户端（只用 `net`、`bufio`、`net/url`，不引入 `net/http`/`crypto/tls`），
 因此镜像里不需要 shell、curl 或 CA 证书；它请求回环地址 `http://127.0.0.1:8080/api/health`，按 JSON 中 `status == "ok"` 判定健康。
@@ -121,13 +122,14 @@ curl -s "$BASE/v2/distroless/static-debian13/manifests/nonroot" \
 
 | 组成 | 大小 | 来源 |
 |---|---:|---|
-| `/norvels`（Go 二进制） | **11.1 MiB** | 本机实测（linux/amd64、完整实现、含 x/text；`web/dist` 目前为占位，前端合入后预计 12–13 MiB） |
-| `/healthcheck` | **2.1 MiB** | 本机实测（手写最小 HTTP 客户端，不引入 net/http） |
-| distroless/static-debian13:nonroot 基础层 | **约 2.0–2.5 MiB** | 官方基镜像（无 shell、无包管理器，仅 ca-certificates、/etc/passwd、tzdata） |
-| **合计（估算）** | **约 15.5–16.5 MiB**（前端合入后约 16.5–18 MiB） | 目标 < 50 MiB，余量充足 |
+| `/norvels`（Go 二进制） | **16.29 MiB** | 本机实测（linux/amd64、完整实现、含 x/text 与前端产物；17,080,480 字节） |
+| `/healthcheck` | **2.14 MiB** | 本机实测（手写最小 HTTP 客户端，不引入 net/http；2,248,864 字节） |
+| distroless/static-debian13:nonroot 基础层 | **3.27 MiB** | 官方基镜像解压后实测 3,425,792 字节（压缩传输 860,442 字节）；无 shell、无包管理器，仅 ca-certificates、/etc/passwd、tzdata |
+| **合计** | **约 21.7 MiB** | 目标 < 50 MiB，余量充足 |
 
 > 前端产物通过 `go:embed` 打进二进制，不额外占镜像层；上表合计 = 二进制 + healthcheck + 基础层。
-> 实测命令：`CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o norvels ./cmd/norvels`（11,681,952 字节），healthcheck 2,248,864 字节。
+> 实测命令：`CI=true pnpm -C web build && rsync -a --delete web/dist/ internal/webui/dist/ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /tmp/norvels ./cmd/norvels`（17,080,480 字节）；healthcheck 同法编译为 2,248,864 字节。
+> 基镜像层大小取自 registry 的 amd64 manifest（`sum(layers[].size)` = 860,442 字节，逐层 gunzip 后合计 3,425,792 字节），无需本地 Docker。
 
 体积控制手段：
 
@@ -546,13 +548,20 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 升级候选（0021）可以在后台交给云端 LLM 判「哪一版更好」，**只作建议、必须人工确认**。默认关闭，关闭时导入行为与
 之前完全一致（候选照常入库并隐藏、审核记录直接落「人工确认」）。
 
+这个开关**只决定导入审核 worker 要不要把「待确认的升级版」自动交模型判一次**；命令行 `import --ai`
+走的是另一条路径（每次导入时逐本上架判定），两者互不影响，各自独立配置。
+
 1. **API key 只走环境变量**，不落库、不进日志：`NORVELS_AI_API_KEY`（可选 `NORVELS_AI_BASE_URL` / `NORVELS_AI_MODEL`，
    默认 DeepSeek 官方端点 + `deepseek-chat`）。没有 key 时 worker 把待审记录直接标成 `needs_manual`。
-2. **开关在库里**（默认 `false`），改完下一轮轮询（约 5s）生效，不用重启：
+2. **开关走界面**（默认关闭）：打开导入页的「AI 审核」面板点开关即可，写库即生效，下一轮轮询（约 5s）生效，不用重启。
+   面板上会显示服务端是否配了 key（GET 的 `apiKeyConfigured`）；没配 key 时开关置灰并提示「未配置 API key，开启也不会调用」。
+   无界面环境等价用接口（`GET /api/settings/ai` 读、`PUT /api/settings/ai` 写，body `{"enabled":true}`，成功 204）：
 
    ```bash
-   docker exec -it norvels /norvels stats --db /data/norvels.db >/dev/null   # 确认容器可执行
-   sqlite3 /data/norvels.db "INSERT INTO settings(key,value,updated_at) VALUES('ai.enabled','true',strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(key) DO UPDATE SET value='true'"
+   curl -fsS -H "Authorization: Bearer $NORVELS_AUTH_TOKEN" http://127.0.0.1:8080/api/settings/ai
+   # {"enabled":false,"apiKeyConfigured":true}
+   curl -fsS -X PUT -H "Authorization: Bearer $NORVELS_AUTH_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"enabled":true}' http://127.0.0.1:8080/api/settings/ai
    ```
 
 3. 外发内容只有**差异段落正文与上下文**（≤50 段、每段截断），不含书名 / 作者 / 路径；两次裁决不一致、超时、报错
