@@ -3,6 +3,7 @@ import { useImportJobs } from "../../api/hooks";
 import { ApiError, api } from "../../api/client";
 import type { DryRunReport, ImportJob } from "../../api/types";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
+import { AIPanel } from "./AIPanel";
 import { ChapterRulesPanel } from "./ChapterRulesPanel";
 import { DryRunReportPanel } from "./DryRunReport";
 import { FailedFilesPanel } from "./FailedFilesPanel";
@@ -280,6 +281,7 @@ export function ImportPage() {
           <UploadPanel onSubmitted={reload} disabled={Boolean(running)} />
           <ChapterRulesPanel />
           <TagRulesPanel />
+          <AIPanel />
           <SourceProfilesPanel dir={dir} />
         </div>
 

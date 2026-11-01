@@ -157,6 +157,11 @@ export function useTagRules() {
   return useResource((signal: AbortSignal) => api.tagRules({ signal }), []);
 }
 
+/** AI 审核开关（GET /api/settings/ai）：开关 + 「配置里有没有 key」的派生值。 */
+export function useAISettings() {
+  return useResource((signal: AbortSignal) => api.getAISettings({ signal }), []);
+}
+
 /** 书源规则包（声明式，非插件）：未配置时返回空数组。 */
 export function useSourceProfiles() {
   return useResource((signal: AbortSignal) => api.sourceProfiles({ signal }), []);

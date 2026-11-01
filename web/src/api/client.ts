@@ -1,4 +1,5 @@
 import type {
+  AISettings,
   AuthorDetail,
   AuthorSummary,
   BookBatchResult,
@@ -497,6 +498,11 @@ export const api = {
   /** 全量替换规则；正则非法后端 400 `invalid_pattern`，条数/长度超限也是 400。 */
   putChapterRules: (rules: ChapterRule[], opts?: RequestOptions) =>
     request<void>("/settings/chapter-rules", { ...opts, method: "PUT", body: { rules } }),
+  /** AI 审核开关：enabled 是库里的开关，apiKeyConfigured 是「配置里有没有 key」的派生值。 */
+  getAISettings: (opts?: RequestOptions) => request<AISettings>("/settings/ai", opts),
+  /** 只写开关；没配 key 也照写（后端 204），提示交给调用方按 apiKeyConfigured 决定。 */
+  putAISettings: (enabled: boolean, opts?: RequestOptions) =>
+    request<void>("/settings/ai", { ...opts, method: "PUT", body: { enabled } }),
   // limit 默认 5、上限 50（后端 intQuery 约束），传错值会 400
   readingProgress: (opts?: RequestOptions, limit?: number) =>
     request<{ items: ReadingProgress[] }>(`/reading/progress${query({ limit })}`, opts),

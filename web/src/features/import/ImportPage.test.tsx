@@ -67,6 +67,14 @@ const sourceProfilesState = {
   reload: vi.fn(),
 };
 
+/** 导入页也挂 AI 审核开关：同样自带取数，这里给「已关闭且未配 key」的静态态。 */
+const aiSettingsState = {
+  data: { enabled: false, apiKeyConfigured: false },
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
 /** 导入页底部也挂升级版审核入口：它自带一份取数，这里给空态（收起时不渲染卡片）。 */
 const reviewsState = {
   data: { items: [], aiEnabled: false },
@@ -104,6 +112,7 @@ vi.mock("../../api/hooks", () => ({
   useCapabilities: () => capsState,
   useSourceProfiles: () => sourceProfilesState,
   useImportReviews: () => reviewsState,
+  useAISettings: () => aiSettingsState,
 }));
 
 vi.mock("../../api/client", async () => {

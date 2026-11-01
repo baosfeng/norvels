@@ -698,6 +698,15 @@ export interface ChapterRules {
   rules: ChapterRule[];
 }
 
+/**
+ * AI 审核开关（GET /api/settings/ai）：开关落库，key 只从环境变量进进程。
+ * apiKeyConfigured 是派生值——只回答「配置里有没有 key」，永远不携带 key 本身。
+ */
+export interface AISettings {
+  enabled: boolean;
+  apiKeyConfigured: boolean;
+}
+
 // --- P3 契约（docs/specs/2026-10-25-p3-contract.md） ---
 
 /**

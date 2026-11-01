@@ -234,6 +234,8 @@ describe("api 其余端点都走同一出口", () => {
     await api.retryImport(7);
     await api.tagRules();
     await api.putTagRules([{ tag: "奇幻", keywords: ["魔法"] }]);
+    await api.getAISettings();
+    await api.putAISettings(true);
 
     expect(calls.map((call) => `${call.method ?? "GET"} ${call.url}`)).toEqual([
       "POST /api/import",
@@ -242,6 +244,8 @@ describe("api 其余端点都走同一出口", () => {
       "POST /api/import/jobs/7/retry",
       "GET /api/settings/tag-rules",
       "PUT /api/settings/tag-rules",
+      "GET /api/settings/ai",
+      "PUT /api/settings/ai",
     ]);
     // dryRun 由客户端补上，调用方不用记得传
     expect(JSON.parse(String(calls[0].body))).toEqual({ dir: "/books", recursive: true, dryRun: true });
