@@ -74,10 +74,11 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
   "textBytes": 131072, "indexBytes": 16384, "otherBytes": 8192, "lastImportAt": "…" }
 ```
 
-- `textBytes`：正文压缩块（`chapter_blocks.packed`）与书目文本列之和，即**压缩后**的实际占用；
+- `dbBytes`：**主库 + 正文库**（0018 起两个文件，各自含 WAL）的合计；
+- `textBytes`：正文库里的压缩块（`chapter_blocks.packed`）与书目文本列之和，即**压缩后**的实际占用；
 - `textBytesRaw`：正文压缩前的原文逻辑字节，只用于说明压缩比，不参与占比；
-- `indexBytes`：库文件大小减去正文与书目文本后的近似值（btree 页、表头等）；
-- `otherBytes` = `dbBytes` − 前两者（页头与空闲页，通常只有几 KB）；**三者之和恒等于 `dbBytes`**，
+- `indexBytes`：**主库**文件大小减去书目文本后的近似值（chapters 的 btree、索引、页填充）；
+- `otherBytes` = `dbBytes` − 前两者（正文库的块索引、页头与空闲页）；**三者之和恒等于 `dbBytes`**，
   可直接画堆叠条，不会出现负值。
 
 ### 实现要点
@@ -87,7 +88,8 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
 - `PUT /api/reading/progress` 校验顺序：JSON 形状 → `bookId`/`chapterId` 为正 → `percent ∈ [0,1]`
   → `paraIndex ≥ 0` → 章节存在且属于该书。分别返回 400 / 400 / 400 / 400 / 404，不做静默截断；
 - `GET /api/health/report` 的每项统计**独立查询**：单项失败该字段为 `null` 并追加进 `warnings`，
-  整体仍 200；分桶边界写死在 `internal/store/health.go`：
+  整体仍 200。返回体另有 `content` 字段是正文库对账摘要（`orphanBlocks`/`orphanBooks`/`danglingRefs`/
+  `missingTable`/`checkedAt`），10 分钟缓存一次（对账要全表扫 chapters）。分桶边界写死在 `internal/store/health.go`：
   - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+
   - 章节字数：<1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+
 - `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），

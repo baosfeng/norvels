@@ -150,7 +150,7 @@ func TestCheckContentReportsCorruptBlockWithLocation(t *testing.T) {
 		t.Fatalf("SaveBook: %v", err)
 	}
 	// 把块的 packed 换成垃圾字节：解压必然失败。
-	if _, err := st.DB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02010203'"); err != nil {
+	if _, err := st.ContentDB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02010203'"); err != nil {
 		t.Fatalf("破坏块: %v", err)
 	}
 
@@ -202,7 +202,7 @@ func TestCheckContentListsAllCorruptBlocks(t *testing.T) {
 		}
 	}
 	// 把所有块都破坏掉（两本书各一块）。
-	if _, err := st.DB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02ffff'"); err != nil {
+	if _, err := st.ContentDB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02ffff'"); err != nil {
 		t.Fatalf("破坏块: %v", err)
 	}
 
@@ -229,7 +229,7 @@ func TestCheckContentSampleModeAlsoDetects(t *testing.T) {
 	if _, err := st.SaveBook(ctx, book, SaveOptions{}); err != nil {
 		t.Fatalf("SaveBook: %v", err)
 	}
-	if _, err := st.DB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02010203'"); err != nil {
+	if _, err := st.ContentDB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02010203'"); err != nil {
 		t.Fatalf("破坏块: %v", err)
 	}
 	// 只有一块，抽样任意一章都会碰到它。
@@ -251,7 +251,7 @@ func TestLoadBlockErrorCarriesLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveBook: %v", err)
 	}
-	if _, err := st.DB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02010203'"); err != nil {
+	if _, err := st.ContentDB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02010203'"); err != nil {
 		t.Fatalf("破坏块: %v", err)
 	}
 
@@ -290,7 +290,7 @@ func TestListChaptersUnaffectedByCorruptBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveBook: %v", err)
 	}
-	if _, err := st.DB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02'"); err != nil {
+	if _, err := st.ContentDB().ExecContext(ctx, "UPDATE chapter_blocks SET packed = x'02'"); err != nil {
 		t.Fatalf("破坏块: %v", err)
 	}
 	page, err := st.ListChapters(ctx, ChapterQuery{BookID: res.BookID, Limit: 10})

@@ -24,7 +24,8 @@ func (s *Store) DeleteChapters(ctx context.Context, bookID int64, cids []int64) 
 	if err != nil {
 		return err
 	}
-	return s.inTx(ctx, "delete chapters", func(tx *sql.Tx) error {
+	return s.writeThrough(ctx, "delete chapters", func(wt *writeTx) error {
+		tx := wt.main
 		spans, err := loadChapterSpans(ctx, tx, bookID, ids)
 		if err != nil {
 			return err
@@ -38,7 +39,7 @@ func (s *Store) DeleteChapters(ctx context.Context, bookID int64, cids []int64) 
 		if err := applyDeleteCounts(ctx, tx, bookID, spans); err != nil {
 			return err
 		}
-		return reapBlocksOf(ctx, tx, spans)
+		return reapBlocksOf(ctx, wt, spans)
 	})
 }
 

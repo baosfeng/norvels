@@ -203,7 +203,7 @@ func seedContentBook(t *testing.T, ctx context.Context, st *Store, tag string,
 func blockCountOf(t *testing.T, ctx context.Context, st *Store, bookID int64) int {
 	t.Helper()
 	var n int
-	if err := st.DB().QueryRowContext(ctx,
+	if err := st.ContentDB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE book_id = ?", bookID).Scan(&n); err != nil {
 		t.Fatalf("count blocks: %v", err)
 	}
@@ -225,7 +225,7 @@ func blockIDOf(t *testing.T, ctx context.Context, st *Store, bookID, chapterID i
 func blockRefCount(t *testing.T, ctx context.Context, st *Store, blockID int64) int {
 	t.Helper()
 	var n int
-	if err := st.DB().QueryRowContext(ctx,
+	if err := st.ContentDB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE id = ?", blockID).Scan(&n); err != nil {
 		t.Fatalf("count block rows: %v", err)
 	}

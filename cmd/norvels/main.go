@@ -34,6 +34,7 @@ const usage = `norvels — 本地中文小说库
   norvels import  --dir <txt 目录> [--db ...] [--recursive] [--force] [--dry-run] [--workers N]
   norvels stats   [--db ...]
   norvels check-content [--db ...] [--all | --sample N]
+  norvels reconcile-content [--db ...] [--fix]
   norvels migrate [--db ...] [--dry-run] [--to N]
   norvels version
 
@@ -45,6 +46,10 @@ check-content 校验章节正文可读（迁移后自查用）：
   --all        全量校验所有章节（慢，迁移后建议跑一次）
   --sample N   随机抽 N 章（默认 50）
   两个参数互斥；正常时输出 OK，有坏块时列出全部损坏块并以非零码退出。
+
+reconcile-content 对账主库与正文库（0018 起正文独立成文件）：
+  报孤儿块（正文库有、主库没这本书）与悬空引用（章节指向不存在的块）；
+  --fix        删除孤儿块（悬空引用只报不修：缺的正文只能从备份/重导恢复）。
 
 优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:
   NORVELS_ADDR         serve 监听地址（默认 :8080）
@@ -63,29 +68,45 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
-	var err error
-	switch args[0] {
-	case "serve":
-		err = cmdServe(args[1:])
-	case "import":
-		err = cmdImport(args[1:])
-	case "stats":
-		err = cmdStats(args[1:])
-	case "check-content":
-		err = cmdCheckContent(args[1:])
-	case "migrate":
-		err = cmdMigrate(args[1:])
-	case "version", "-v", "--version":
-		fmt.Printf("norvels %s (commit %s, built %s)\n", version, commit, builtAt)
-	case "help", "-h", "--help":
-		fmt.Print(usage)
-	default:
+	run, ok := commands[args[0]]
+	if !ok {
 		fmt.Fprintf(os.Stderr, "未知子命令 %q\n\n%s", args[0], usage)
 		os.Exit(2)
 	}
-	if err != nil {
+	if err := run(args[1:]); err != nil {
 		log.Fatalf("错误: %v", err)
 	}
+}
+
+// commands 是子命令分派表：名字 → 处理函数（参数是去掉子命令之后的 flag 列表）。
+//
+// 用表而不是 switch 是有意的：每加一个子命令就往 switch 里添一个 case，
+// 圈复杂度会线性涨上去（加法本身没有分支复杂度），而这张表是平的、可数的。
+var commands = map[string]func([]string) error{
+	"serve":             cmdServe,
+	"import":            cmdImport,
+	"stats":             cmdStats,
+	"check-content":     cmdCheckContent,
+	"reconcile-content": cmdReconcileContent,
+	"migrate":           cmdMigrate,
+	"version":           cmdVersion,
+	"-v":                cmdVersion,
+	"--version":         cmdVersion,
+	"help":              cmdHelp,
+	"-h":                cmdHelp,
+	"--help":            cmdHelp,
+}
+
+// cmdVersion 打印版本信息（构建期由 -ldflags 注入）。
+func cmdVersion([]string) error {
+	fmt.Printf("norvels %s (commit %s, built %s)\n", version, commit, builtAt)
+	return nil
+}
+
+// cmdHelp 打印用法。
+func cmdHelp([]string) error {
+	fmt.Print(usage)
+	return nil
 }
 
 // mustConfig 读取环境变量配置；非法配置直接终止（配置错误不该带病启动）。

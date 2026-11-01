@@ -19,8 +19,8 @@ import (
 //
 // 调用方（SaveBook）已确认 bookID 有效且 opt.Update 为真。返回值就是 tail 长度：
 // 追更角标（books.new_chapters）的累加口径只有这里算过一次，上层直接拿去用。
-func appendBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, b *model.ParsedBook, w bookWrite) (int, error) {
-	oldTitles, err := loadChapterTitlesInTx(ctx, tx, bookID)
+func appendBookInTx(ctx context.Context, wt *writeTx, bookID int64, b *model.ParsedBook, w bookWrite) (int, error) {
+	oldTitles, err := loadChapterTitlesInTx(ctx, wt.main, bookID)
 	if err != nil {
 		return 0, err
 	}
@@ -29,7 +29,7 @@ func appendBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Pars
 	}
 	appended := 0
 	if tail := b.Chapters[len(oldTitles):]; len(tail) > 0 {
-		if err := appendChaptersInTx(ctx, tx, bookID, b, tail); err != nil {
+		if err := appendChaptersInTx(ctx, wt, bookID, b, tail); err != nil {
 			return 0, err
 		}
 		appended = len(tail)
@@ -39,7 +39,7 @@ func appendBookInTx(ctx context.Context, tx *sql.Tx, bookID int64, b *model.Pars
 		// updated_at，否则书架「最近更新」会把没变的书顶到前面。
 		return 0, nil
 	}
-	if err := updateBookAfterAppend(ctx, tx, bookID, w, appended); err != nil {
+	if err := updateBookAfterAppend(ctx, wt.main, bookID, w, appended); err != nil {
 		return 0, err
 	}
 	return appended, nil
@@ -86,17 +86,17 @@ func checkAppendable(oldTitles []string, chapters []model.ParsedChapter) error {
 	return nil
 }
 
-// appendChaptersInTx 写入尾部章节的压缩块与章节行，并累加 metrics。
+// appendChaptersInTx 写入尾部章节的压缩块（正文库）与章节行（主库），并累加 metrics。
 //
 // 块序号从已有块的 MAX(seq) 续写（chapter_blocks 上有 UNIQUE(book_id, seq)），
 // 章节 idx 直接用解析结果（前缀相同，尾部章节的 idx 天然接续）。
-func appendChaptersInTx(ctx context.Context, tx *sql.Tx, bookID int64,
+func appendChaptersInTx(ctx context.Context, wt *writeTx, bookID int64,
 	b *model.ParsedBook, tail []model.ParsedChapter) error {
-	volMap, err := appendVolumeMap(ctx, tx, bookID, b, tail)
+	volMap, err := appendVolumeMap(ctx, wt.main, bookID, b, tail)
 	if err != nil {
 		return err
 	}
-	startSeq, err := maxBlockSeqInTx(ctx, tx, bookID)
+	startSeq, err := wt.content.nextSeq(ctx, bookID)
 	if err != nil {
 		return err
 	}
@@ -104,21 +104,21 @@ func appendChaptersInTx(ctx context.Context, tx *sql.Tx, bookID int64,
 	for i := range tail {
 		sizes[i] = len(tail[i].Content)
 	}
-	refs, packedBytes, rawBytes, err := writeChapterBlocks(ctx, tx, bookID, tail, sizes, startSeq)
+	refs, packedBytes, rawBytes, err := writeChapterBlocks(ctx, wt.content, bookID, tail, sizes, startSeq)
 	if err != nil {
 		return err
 	}
-	words, err := insertChapterRows(ctx, tx, bookID, tail, volMap, refs)
+	words, err := insertChapterRows(ctx, wt.main, bookID, tail, volMap, refs)
 	if err != nil {
 		return err
 	}
-	if err := bumpMetrics(ctx, tx, packedBytes, words); err != nil {
+	if err := bumpMetrics(ctx, wt.main, packedBytes, words); err != nil {
 		return err
 	}
-	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, rawBytes); err != nil {
+	if err := bumpMetricKey(ctx, wt.main, metricTextBytesRaw, rawBytes); err != nil {
 		return err
 	}
-	_, err = bumpBookTextBytes(ctx, tx, bookID)
+	_, err = bumpBookTextBytes(ctx, wt.main, bookID)
 	return err
 }
 
@@ -176,16 +176,6 @@ func existingVolumeIDs(ctx context.Context, tx *sql.Tx, bookID int64) (map[int]i
 		return nil, fmt.Errorf("store: load volume ids rows: %w", err)
 	}
 	return out, nil
-}
-
-// maxBlockSeqInTx 返回已有块的最大 seq（0 表示还没有块），追更续写从它往下排。
-func maxBlockSeqInTx(ctx context.Context, tx *sql.Tx, bookID int64) (int, error) {
-	var seq int
-	if err := tx.QueryRowContext(ctx,
-		"SELECT COALESCE(MAX(seq), 0) FROM chapter_blocks WHERE book_id = ?", bookID).Scan(&seq); err != nil {
-		return 0, fmt.Errorf("store: max block seq %d: %w", bookID, err)
-	}
-	return seq, nil
 }
 
 // updateBookAfterAppend 刷新书级计数：章节数/字数按新文件的全量口径写回。

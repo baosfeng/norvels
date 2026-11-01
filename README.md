@@ -14,7 +14,8 @@
 - **封面与元数据可编辑**：有封面的书在书架与详情页显示真实封面；书名/作者/简介/标签/系列可在详情页直接改。
 - **零运行时依赖**：前端构建产物 `go:embed` 进二进制，容器里只有两个静态可执行文件。
 - **轻量镜像**：distroless/static + 非 root，约 15.5 MiB（实测二进制 11.1 MiB + 健康检查 2.1 MiB + 基镜像约 2 MiB；前端合入后 16–18 MiB，详见 [docs/deploy.md](docs/deploy.md)）。
-- **数据即文件**：所有内容存在 `/data/norvels.db`（SQLite + WAL），备份/迁移就是复制一个文件（用备份脚本正确处理 WAL）。
+- **数据即文件**：主库 `/data/norvels.db` + 正文库 `/data/norvels-content.db`（各带 WAL），备份/迁移就是复制这一对文件
+  （`scripts/backup.sh` 成对处理，含 WAL）。
 
 ## 架构
 
@@ -33,7 +34,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   U["浏览器 :8080"] --> C["norvels 容器<br/>distroless · nonroot"]
-  C --> V["/data 卷<br/>norvels.db + WAL"]
+  C --> V["/data 卷<br/>norvels.db + norvels-content.db"]
   S["小说目录（只读）<br/>挂载到 /books"] -.导入时.-> C
 ```
 
@@ -42,7 +43,7 @@ flowchart LR
 ```text
 norvels/
 ├── cmd/
-│   ├── norvels/            # 主程序：import / serve / stats / check-content / migrate / version
+│   ├── norvels/            # 主程序：import / serve / stats / check-content / reconcile-content / migrate / version
 │   └── healthcheck/        # 镜像内健康检查（distroless 无 curl，用它请求 /api/health）
 ├── internal/
 │   ├── api/                # REST 路由、中间件、SPA 静态资源
@@ -150,8 +151,8 @@ docker run --rm --entrypoint /norvels \
 | 文本总量 | 4.1–4.4 GB | `du -sh` 实测 4.1 GB；`find -iname '*.txt'` 计数 865 个 |
 | 导入耗时（单机 SSD，并发 4） | 约 10 分钟 | 838 个文件 / 4.1 GB 实测 10 分 25 秒；解析 CPU 密集，1C1G 约翻倍 |
 | 导入耗时（单文件） | 数十毫秒–数秒 | 取决于文件大小（单文件最大约 42 MB） |
-| 主库体积 | **29.0 GB** → 跑完 0017 约 **22 GB** | 20,110 本 / 791 万章 / 79.49 GB 正文；正文按 **8 MB 块 + 内置字码本 zstd** 压缩，26.45%（200 本抽样，[ADR-0007](docs/adr/0007-codebook-compressed-content.md)）；老库的 1 MB 块 / 34.67% 要迁移后重压 |
-| 磁盘预留 | ≥ 主库的 2 倍 | `0017` 迁移期间新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移后必须 `VACUUM` 才真正回落 |
+| 库体积 | **29.0 GB** → 跑完 0017 约 **22 GB**；0018 之后拆成主库（元数据）+ 正文库（约 21 GB） | 20,110 本 / 791 万章 / 79.49 GB 正文；正文按 **8 MB 块 + 内置字码本 zstd** 压缩，26.45%（200 本抽样，[ADR-0007](docs/adr/0007-codebook-compressed-content.md)）；老库的 1 MB 块 / 34.67% 要迁移后重压 |
+| 磁盘预留 | ≥ 库体积的 2 倍 | `0017` 迁移期间新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL）；`0018` 搬库期间主库旧块 + 正文库新块同时存在（约 22 GB + 21 GB），迁移后两个库各要 `VACUUM` 才真正回落 |
 
 导入后可重复执行：内容未变的文件按 SHA-256 命中直接跳过；需要重解析时加 `--force`。
 

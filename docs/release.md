@@ -11,7 +11,7 @@
 | Docker Hub 镜像 | `bsfeng/norvels`（**Docker Hub 用户名 bsfeng，与 GitHub 的 baosfeng 不同**） |
 | 架构 | `linux/amd64` + `linux/arm64`（buildx + QEMU 交叉构建） |
 | 版本来源 | git tag `v*` → 镜像 tag；`main` 分支 → `edge` |
-| 数据 | 单 SQLite 文件，挂在 `/data` 卷；升级时启动自动迁移 |
+| 数据 | 两个 SQLite 文件（`norvels.db` 主库 + `norvels-content.db` 正文库），同挂 `/data` 卷；升级时启动自动迁移 |
 
 workflow 里**不放任何凭据**：唯一用到的 secret 是 `DOCKER_HUB_TOKEN`。Docker Hub 用户名 `bsfeng` 写死在 workflow 里——它本来就公开（镜像名 `bsfeng/norvels` 写在 README 与本文档中），不是秘密。
 

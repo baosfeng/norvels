@@ -173,7 +173,7 @@ func TestDeleteLastChapterReapsBlock(t *testing.T) {
 func blockCount(t *testing.T, ctx context.Context, st *Store, bookID int64) int {
 	t.Helper()
 	var n int
-	if err := st.DB().QueryRowContext(ctx,
+	if err := st.ContentDB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE book_id = ?", bookID).Scan(&n); err != nil {
 		t.Fatalf("count blocks: %v", err)
 	}

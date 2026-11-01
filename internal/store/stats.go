@@ -6,7 +6,8 @@ import (
 	"os"
 )
 
-// Stats 返回库级统计。DBBytes 含主库与 -wal 文件的实际占用。
+// Stats 返回库级统计。DBBytes 是**两个库文件**（主库 + 正文库）与各自 -wal 的合计，
+// 即用户真正占用的磁盘量。
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	var (
 		st   Stats
@@ -38,10 +39,18 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	return st, nil
 }
 
-// diskUsage 统计主库与 WAL 文件字节数（不存在按 0 计）。
+// diskUsage 统计两个库文件与各自 WAL 的字节数（不存在按 0 计）。
 func (s *Store) diskUsage() int64 {
+	return dbFileBytes(s.path) + dbFileBytes(s.contentPath)
+}
+
+// mainBytes 只统计主库（含 WAL）的字节数，用于「索引类」体积口径。
+func (s *Store) mainBytes() int64 { return dbFileBytes(s.path) }
+
+// dbFileBytes 返回一个 SQLite 文件与其 -wal 的合计字节数。
+func dbFileBytes(path string) int64 {
 	var total int64
-	for _, p := range []string{s.path, s.path + "-wal"} {
+	for _, p := range []string{path, path + "-wal"} {
 		if fi, err := os.Stat(p); err == nil {
 			total += fi.Size()
 		}

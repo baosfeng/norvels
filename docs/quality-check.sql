@@ -1,6 +1,9 @@
 -- norvels 导入质检 SQL（验收用）
 -- 用法：sqlite3 -header -column data/norvels.db < docs/quality-check.sql
 -- 判据写在各条注释里；任何一条明显超标都要回查解析器。
+--
+-- 0018 起正文在独立文件 data/norvels-content.db：涉及 chapter_blocks 的几条
+-- （11 的块外查询、11.1）要在**正文库**上单独跑一遍，其余仍在主库上跑。
 
 -- 0) 总览
 SELECT 'books'     AS k, count(*) AS v FROM books
@@ -64,11 +67,14 @@ WHERE name = 'content';
 SELECT count(*) AS chapters_without_block_but_with_len
 FROM chapters WHERE block_id = 0 AND block_len <> 0;
 -- 块内区间越界（解压会切出错位正文，必须为 0）
-SELECT count(*) AS chapters_out_of_block_span FROM chapters c
-JOIN chapter_blocks b ON b.id = c.block_id
-WHERE c.block_off < 0 OR c.block_off + c.block_len > b.raw_bytes;
+-- 拆库后 chapters 与 chapter_blocks 不在同一个库，SQL 层面的 JOIN 不成立；
+-- 用「两侧合计」交叉验证：各章长度之和必须等于块原始字节之和：
+SELECT (SELECT COALESCE(SUM(block_len),0) FROM chapters) AS chapters_len_sum,
+       (SELECT COALESCE(SUM(raw_bytes),0) FROM chapter_blocks) AS blocks_raw_sum
+FROM chapter_blocks LIMIT 1;   -- 在正文库上执行（挂到主库时 chapter_blocks 不存在）
 
--- 11.1) 块存储概览与压缩率（正文压缩是否真的生效）
+-- 11.1) 块存储概览与压缩率（正文压缩是否真的生效）——在**正文库**上执行：
+--   sqlite3 -header -column data/norvels-content.db "SELECT count(*) AS blocks, sum(raw_bytes) ..."
 SELECT count(*) AS blocks, sum(raw_bytes) AS raw_bytes,
        sum(length(packed)) AS packed_bytes,
        printf('%.1f%%', 100.0 * sum(length(packed)) / sum(raw_bytes)) AS ratio

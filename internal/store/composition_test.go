@@ -117,7 +117,7 @@ func TestMetricsUpdatedBySaveBook(t *testing.T) {
 
 // exactTextBytes 返回全表精确的正文字符数（chapters 侧 + books 侧）。
 func exactTextBytes(ctx context.Context, st *Store) (int64, error) {
-	chapters, err := st.scalarInt64(ctx, chapterTextBytesSQL)
+	chapters, err := st.scalarOn(ctx, st.cdb, chapterTextBytesSQL)
 	if err != nil {
 		return 0, err
 	}

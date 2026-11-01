@@ -234,9 +234,12 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 ## 5. SQLite on volume 注意事项
 
-1. **主库、WAL、SHM 必须同目录**：`norvels.db`、`norvels.db-wal`、`norvels.db-shm` 都在 `/data`。不要把 `-wal` 单独挂载/清理。
+1. **两个库都放同一个目录**：主库 `norvels.db` 与正文库 `norvels-content.db`（0018 起），各自还有 `-wal`/`-shm`，一共六个文件都在 `/data`。
+   不要把 `-wal` 单独挂载/清理；两个库必须一起备份、一起恢复（只恢复主库 = 全部正文丢失）。
 2. **单写者**：导入与服务不要并发写库。导入期间请停止 `serve`（compose 场景先 `docker compose stop`，或用 `scripts/import.sh` 的顺序导入）。SQLite 会以 `busy_timeout=10000` 等待，但并发导入/备份仍可能触发 BUSY。**容器场景特别注意：导入期间不要并发执行 `scripts/backup.sh`**（备份会读一致性快照，但 `VACUUM INTO` 需要写锁，且大库备份与导入叠加会放大磁盘 IO）。
-3. **备份方式**：使用 `scripts/backup.sh`（`.backup` 在线备份或 `VACUUM INTO`）。直接 `cp norvels.db` 会漏掉 WAL 中未 checkpoint 的数据。
+3. **备份方式**：使用 `scripts/backup.sh`（`.backup` 在线备份或 `VACUUM INTO`）。它**成对**备份主库与正文库
+   （`norvels-<时间戳>.db` + `norvels-<时间戳>-content.db`），保留策略按「一对」计算。直接 `cp norvels.db` 会漏掉 WAL 里未 checkpoint 的数据，
+   也会漏掉整个正文库。
 4. **checkpoint**：导入结束会执行 `PRAGMA wal_checkpoint(TRUNCATE)`，把 WAL 合并回主库并缩小体积；备份前也可先 checkpoint。
 5. **卷性能**：数据库放本地 SSD 卷。网络盘（NFS/SMB）上的 SQLite 锁语义不可靠，会随机 `database is locked`。
 6. **卷生命周期**：`docker compose down` 保留 bind mount 数据；若改用 named volume，`docker compose down -v` 会删除数据，操作前确认。
@@ -247,7 +250,9 @@ curl -fsS http://127.0.0.1:8080/api/health
      原始 4.87 GB，压缩率 **34.7%**。每本约 1.93 MB（0.36x 原文）。
      算法与取舍见 [ADR-0003](adr/0003-block-compressed-content.md)。
    - 按 4.4 GB 原文规划：跑完迁移 + VACUUM 后 `/data` 约 1.6–2 GB，预留 **≥ 5 GB** 即可；
-     **迁移当次**峰值要 35 GB 以上（见 §4 的说明）。以 `/api/stats` 的 `dbBytes` 为准。
+     **迁移当次**峰值要 35 GB 以上（见 §4 的说明）。以 `/api/stats` 的 `dbBytes` 为准（它已是两个文件的合计）。
+   - **拆库之后（0018）**：正文只占 `norvels-content.db`（生产约 21–22 GB），主库只剩 books/chapters/索引/用户数据，
+     降到元数据量级；两者之和就是 `/api/stats` 的 `dbBytes`。备份、迁移、换盘都以「这一对文件」为单位。
    - 几万本的体积与延迟推算见 [data-profile.md §10](data-profile.md#10-容量推算几万本)。
 
 ## 6. 资源建议
@@ -278,23 +283,28 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 ```bash
 # 0) 升级前先备份（升级动作的第一步，不是可选步骤）
-scripts/backup.sh --keep 7            # 产物：backups/norvels-YYYYmmdd-HHMMSS.db
+#    产物是一对：norvels-YYYYmmdd-HHMMSS.db + norvels-YYYYmmdd-HHMMSS-content.db
+scripts/backup.sh --keep 7
 
 # 1) 停容器：不要在服务运行时覆盖数据库文件（WAL/SHM 会打架）
 docker compose -f deploy/compose.yml down
 
-# 2) 用升级前的备份覆盖数据库，并把库里残留的 WAL/SHM 一起清掉
+# 2) 用升级前的备份覆盖**两个**数据库，并把残留的 WAL/SHM 一起清掉
 docker run --rm -v "$PWD/data:/data" -v "$PWD/backups:/backup" alpine:3 \
-  sh -c 'rm -f /data/norvels.db-wal /data/norvels.db-shm && \
+  sh -c 'rm -f /data/norvels.db-wal /data/norvels.db-shm \
+                /data/norvels-content.db-wal /data/norvels-content.db-shm && \
          cp /backup/norvels-YYYYmmdd-HHMMSS.db /data/norvels.db && \
-         chown 65532:65532 /data/norvels.db'
+         cp /backup/norvels-YYYYmmdd-HHMMSS-content.db /data/norvels-content.db && \
+         chown 65532:65532 /data/norvels.db /data/norvels-content.db'
 
 # 3) 换回旧版本镜像再启动（钉版本，不要用 latest）
 NORVELS_VERSION=0.1.0 docker compose -f deploy/compose.yml up -d
 ```
 
 - **WAL/SHM 必须一起删**：只覆盖主库而留下新版本的 `-wal`，旧版本启动时会把 WAL 回放进主库，
-  等于把新结构又写回来一次。
+  等于把新结构又写回来一次；正文库同理（`norvels-content.db-wal`）。
+- **两个库必须成对恢复**：主库里的 `chapters.block_id` 指向正文库的块 id。只恢复主库 = 所有章节悬空
+  （阅读页报「正文块损坏」）；只恢复正文库 = 多出一批没人引用的孤儿块（`/api/health/report` 的 `content` 会报孤儿）。
 - **回滚后核对**：`curl -fsS http://127.0.0.1:8080/api/health` 返回 `status":"ok"`，
   且 `/api/stats` 的书目/章节数与备份时一致；日志里应打印库版本号等于旧镜像支持的版本。
 - **备份策略**：`scripts/backup.sh --keep 7` 保留最近 7 份；升级前那一次备份建议另存到
@@ -305,8 +315,8 @@ NORVELS_VERSION=0.1.0 docker compose -f deploy/compose.yml up -d
 
 ### 7.2 升级后自查：`check-content`
 
-v0.2 起正文不再是 SQL 可直接查询的 `content` 列，而是压缩块（`chapter_blocks`）。
-迁移之后**先跑一次正文自查**再放心用：
+v0.2 起正文不再是 SQL 可直接查询的 `content` 列，而是压缩块（`chapter_blocks`，0018 起在
+`norvels-content.db` 里）。迁移之后**先跑一次正文自查**再放心用：
 
 ```bash
 # 抽查 50 章（默认）——正常时最后一行是 OK
@@ -320,6 +330,21 @@ v0.2 起正文不再是 SQL 可直接查询的 `content` 列，而是压缩块�
 ```
 
 `--all` 与 `--sample` **互斥**，同时给会直接报错（避免「以为跑了全量、其实只抽样」）。
+
+**正文库对账**（0018 起另一道自查，秒级）：
+
+```bash
+./bin/norvels reconcile-content --db ./data/norvels.db          # 只体检；有悬空引用时退出码 1
+./bin/norvels reconcile-content --db ./data/norvels.db --fix    # 顺手删掉孤儿块
+```
+
+孤儿块 = 正文库里有、主库里没有这本书的块（删书/覆盖时正文库清理失败）；悬空引用 = 章节指向不存在的块
+（**读不出正文**，只能从备份恢复或重导那本书，工具不自动修）。同一份数据也会出现在
+`/api/health/report` 的 `content` 字段里（缓存 10 分钟）。
+
+**跨库引用**另有一道对账：`GET /api/health/report` 的 `content` 字段给出孤儿块（正文库里有、主库没有这本书）
+与悬空引用（章节指向不存在的块）的条数，结果缓存 10 分钟。备份/恢复不配套、进程在跨库写入中途被杀，
+都只会在这两个数上露头，deck 的「库健康」卡片能直接看到。
 
 输出形如：
 
@@ -388,14 +413,17 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 ### 7.3 迁移后回收空间：`VACUUM`
 
-迁移完成后推荐执行一次 `VACUUM` 回收空间：
+迁移完成后推荐执行一次 `VACUUM` 回收空间。**两个库都要做**：0018 之后正文在
+`norvels-content.db`，跑完 0018 只会让主库变小，正文库的空洞页要单独 VACUUM：
 
 ```bash
-norvels migrate --db /data/norvels.db && sqlite3 /data/norvels.db 'VACUUM;'
+norvels migrate --db /data/norvels.db
+sqlite3 /data/norvels.db 'VACUUM;'
+sqlite3 /data/norvels-content.db 'VACUUM;'
 ```
 
-**为什么需要这一步**：0007 把正文从 `chapters.content` 搬到了 `chapter_blocks`，
-但原来存正文的页并不会立刻归还给文件系统——它们变成空闲页留在库里。
+**为什么需要这一步**：0007 把正文从 `chapters.content` 搬到了 `chapter_blocks`，0018 又把它搬进
+另一个文件；两次都是「写新页 + 删旧行」，删掉的页并不会立刻归还给文件系统——它们变成空闲页留在库里。
 所以迁移刚跑完时**文件大小几乎没变**，看起来像「迁移没生效」。
 
 实测（13.83 GB / 838 本 / 422,715 章）：
@@ -420,7 +448,8 @@ norvels migrate --db /data/norvels.db && sqlite3 /data/norvels.db 'VACUUM;'
 >
 > ```bash
 > docker compose -f deploy/compose.yml stop
-> sqlite3 ./data/norvels.db 'VACUUM;'      # 宿主机的 sqlite3，操作 bind mount 的同一个文件
+> sqlite3 ./data/norvels.db 'VACUUM;'           # 宿主机 sqlite3，操作 bind mount 的同一个文件
+> sqlite3 ./data/norvels-content.db 'VACUUM;'   # 正文库单独做（0018 起）
 > docker compose -f deploy/compose.yml up -d
 > ```
 >
@@ -462,11 +491,16 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 | 15 | `0015_book_category.sql` | 两级分类 `category_l1`/`category_l2` + 存量回填 |
 | 16 | `0016_users_and_shelf.sql` | 账号 `users`/`user_sessions` + 我的书架 `user_shelf`；个人记录改按 `(user_id, …)` 归属，存量归默认账号 `reader` |
 | 17 | `0017_codebook_blocks.sql` | 存量正文块重组：1 MB / 0x02 → **8 MB / 0x03（字码本 + zstd）**；块字节 27.5 GB → 约 21 GB，见 [ADR-0007](adr/0007-codebook-compressed-content.md) |
+| 18 | `0018_content_db.sql` | 正文块搬进独立文件 `norvels-content.db`，逐书流式搬运后 `DROP TABLE chapter_blocks`；`chapters.block_id` 变成跨库弱引用 |
 
-> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **17**。
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **18**。
 >
 > **0017 的运维前提**：单事务内新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移期间**不监听端口**，
-> 大库按 [§7.3](#73-大库升级先跑迁移再起服务) 用一次性容器预跑；迁移后必须 `VACUUM` 才真正回落。
+> 大库按 [§7.3](#73-迁移后回收空间vacuum) 用一次性容器预跑；迁移后必须 `VACUUM` 才真正回落。
+>
+> **0018 的运维前提**：迁移期间两个库同时存在（主库约 22 GB 旧块 + 正文库逐步涨到约 21 GB，另加 WAL），
+> **预留 ≥ 50 GB**；同样**不监听端口**，大库用一次性容器预跑。中断可原样重跑（按块 id 覆盖搬，不会翻倍），
+> 搬完才 DROP 主库的块表。迁移后两个库各跑一次 `VACUUM`。
 
 ### 7.5 鉴权
 
@@ -492,7 +526,8 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `NORVELS_ADDR` | `:8080` | 监听地址 |
-| `NORVELS_DB` | `./data/norvels.db`（镜像内 `/data/norvels.db`） | 数据库路径 |
+| `NORVELS_DB` | `./data/norvels.db`（镜像内 `/data/norvels.db`） | 主库路径 |
+| `NORVELS_CONTENT_DB` | 空 = 按主库路径推导同目录 `*-content.db` | 正文库路径（0018 起；默认兄弟文件） |
 | `NORVELS_AUTH_TOKEN` | 空 | 空 = 开放模式 |
 | `NORVELS_LOG_LEVEL` | `info` | debug/info/warn/error（非法值启动即报错） |
 | `NORVELS_BOOKS_DIR` | `/books` | 导入源目录（只读挂载点） |
@@ -506,7 +541,9 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 | 导入报 BUSY | 停掉 `serve`；确认没有第二个 `import`；避免同时 `backup.sh` |
 | 镜像比预期大 | `docker history norvels:0.1.0`；确认 `-s -w` 与 `CGO_ENABLED=0` 生效，`web/node_modules` 未被 COPY |
 | 中文乱码 | 见 README FAQ；编码探测结果可在 `/api/books/{id}` 的 `encoding` 字段查看 |
-| 备份文件很小 | 检查是否只拷了主库而漏 WAL；用 `scripts/backup.sh` 而非 `cp` |
+| 备份文件很小 | 检查是否只拷了主库而漏 WAL；用 `scripts/backup.sh` 而非 `cp`（它会成对备份两个库） |
+| 阅读页报「压缩块损坏」但备份里主库完好 | 正文库没跟主库一起恢复。按 §7.1 两份都放回去；`/api/health/report` 的 `content.danglingRefs` 会先一步报出来 |
+| `/data` 用量和 `/api/stats` 对不上 | `dbBytes` 是主库 + 正文库（含各自 WAL）的合计；只量了 `norvels.db` 会差一个数量级 |
 | 回滚后数据异常 / 新列丢失 | 只换了镜像 tag 没恢复备份。按 §7.1 停容器 → 删 `-wal`/`-shm` → 从备份恢复 → 再用旧 tag 启动 |
 | 启动后反复重启、日志停在迁移 | 首次迁移超过 healthcheck 的 `start_period`。调大 `start_period`（当前 60s）或先单独跑 `migrate` 再 `up` |
 

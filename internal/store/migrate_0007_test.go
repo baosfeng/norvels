@@ -223,8 +223,8 @@ func TestMigrate0007KeepsContentByteIdentical(t *testing.T) {
 // 一旦漂移，/api/stats 显示的正文字节就与实际占用对不上。
 func assertBlockBytesMatchMetrics(t *testing.T, ctx context.Context, st *Store) (packed, raw int64) {
 	t.Helper()
-	packed = scalarInt(t, ctx, st, "SELECT COALESCE(SUM(length(packed)),0) FROM chapter_blocks")
-	raw = scalarInt(t, ctx, st, "SELECT COALESCE(SUM(raw_bytes),0) FROM chapter_blocks")
+	packed = scalarIntBlock(t, ctx, st, "SELECT COALESCE(SUM(length(packed)),0) FROM chapter_blocks")
+	raw = scalarIntBlock(t, ctx, st, "SELECT COALESCE(SUM(raw_bytes),0) FROM chapter_blocks")
 	if packed <= 0 || raw <= 0 {
 		t.Fatalf("块表口径异常：packed=%d raw=%d", packed, raw)
 	}
@@ -280,12 +280,13 @@ func assertBlockSchema(t *testing.T, ctx context.Context, st *Store) {
 			t.Errorf("chapters 缺少块寻址列 %q", col)
 		}
 	}
+	// 0018 之后块表在**正文库**：列与表都要到 cdb 上验证（主库那张表已被 DROP）。
 	for _, col := range []string{"book_id", "seq", "first_idx", "last_idx", "raw_bytes", "packed"} {
-		if !columnExists(t, ctx, st, "chapter_blocks", col) {
+		if !columnExistsIn(t, ctx, st.cdb, "chapter_blocks", col) {
 			t.Errorf("chapter_blocks 缺少列 %q", col)
 		}
 	}
-	if exists, err := st.tableExists(ctx, "chapter_blocks"); err != nil || !exists {
+	if exists, err := st.contentTableExists(ctx); err != nil || !exists {
 		t.Fatalf("chapter_blocks 表不存在（err=%v）", err)
 	}
 }
@@ -329,21 +330,10 @@ func assertBlockCoverage(t *testing.T, ctx context.Context, st *Store) {
 	if orphan != 0 {
 		t.Errorf("%d 章有长度但没有块归属", orphan)
 	}
-	var badSpan int
-	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM chapters c "+
-		"JOIN chapter_blocks b ON b.id = c.block_id "+
-		"WHERE c.block_off < 0 OR c.block_off + c.block_len > b.raw_bytes").Scan(&badSpan); err != nil {
-		t.Fatalf("查越界章节: %v", err)
-	}
-	if badSpan != 0 {
-		t.Errorf("%d 章的块内区间越界", badSpan)
-	}
-	var badRange int
-	if err := st.DB().QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM chapter_blocks WHERE first_idx > last_idx").Scan(&badRange); err != nil {
-		t.Fatalf("查块区间: %v", err)
-	}
-	if badRange != 0 {
+	// 拆库后 chapters 与 chapter_blocks 不再在同一个库里，JOIN 换成 Go 侧比对。
+	assertSpansWithinBlocks(t, ctx, st)
+	if badRange := scalarIntBlock(t, ctx, st,
+		"SELECT COUNT(*) FROM chapter_blocks WHERE first_idx > last_idx"); badRange != 0 {
 		t.Errorf("%d 个块的 first_idx > last_idx", badRange)
 	}
 }

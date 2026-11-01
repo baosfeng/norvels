@@ -194,7 +194,8 @@ func digestsByBook(t *testing.T, ctx context.Context, st *Store, books []int64) 
 // blocksPerBook 统计每本书的块数。
 func blocksPerBook(t *testing.T, ctx context.Context, st *Store) map[int64]int {
 	t.Helper()
-	rows, err := st.DB().QueryContext(ctx, "SELECT book_id, COUNT(*) FROM chapter_blocks GROUP BY book_id")
+	rows, err := blockDB(t, ctx, st).QueryContext(ctx,
+		"SELECT book_id, COUNT(*) FROM chapter_blocks GROUP BY book_id")
 	if err != nil {
 		t.Fatalf("统计块数: %v", err)
 	}
@@ -217,7 +218,7 @@ func blocksPerBook(t *testing.T, ctx context.Context, st *Store) map[int64]int {
 // blockSnapshot 快照块表（id / seq / raw_bytes / packed 长度），用于幂等比对。
 func blockSnapshot(t *testing.T, ctx context.Context, st *Store) []string {
 	t.Helper()
-	rows, err := st.DB().QueryContext(ctx,
+	rows, err := blockDB(t, ctx, st).QueryContext(ctx,
 		"SELECT id, book_id, seq, raw_bytes, length(packed) FROM chapter_blocks ORDER BY id")
 	if err != nil {
 		t.Fatalf("快照块表: %v", err)
@@ -241,11 +242,11 @@ func blockSnapshot(t *testing.T, ctx context.Context, st *Store) []string {
 // assertNoLegacyAlgo 断言库里已经没有 0x01/0x02 的老块。
 func assertNoLegacyAlgo(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	if got := scalarInt(t, ctx, st,
+	if got := scalarIntBlock(t, ctx, st,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE substr(packed,1,1) IN (x'01', x'02')"); got != 0 {
 		t.Errorf("仍有 %d 个 0x01/0x02 老块", got)
 	}
-	if got := scalarInt(t, ctx, st,
+	if got := scalarIntBlock(t, ctx, st,
 		"SELECT COUNT(*) FROM chapter_blocks WHERE substr(packed,1,1) NOT IN (x'00', x'03')"); got != 0 {
 		t.Errorf("%d 个块首字节既不是 0x00 也不是 0x03", got)
 	}
@@ -254,22 +255,22 @@ func assertNoLegacyAlgo(t *testing.T, ctx context.Context, st *Store) {
 // assertBlockShape 断言块大小、章节区间与字节守恒三件事同时对。
 func assertBlockShape(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	if got := scalarIntArg(t, ctx, st, "SELECT COUNT(*) FROM chapter_blocks WHERE raw_bytes > ?", int64(BlockTargetBytes)); got != 0 {
+	if got := scalarIntBlock(t, ctx, st, "SELECT COUNT(*) FROM chapter_blocks WHERE raw_bytes > ?",
+		int64(BlockTargetBytes)); got != 0 {
 		t.Errorf("%d 个块超过 8 MB 目标", got)
 	}
-	if got := scalarInt(t, ctx, st, "SELECT COUNT(*) FROM chapter_blocks WHERE first_idx > last_idx"); got != 0 {
+	if got := scalarIntBlock(t, ctx, st,
+		"SELECT COUNT(*) FROM chapter_blocks WHERE first_idx > last_idx"); got != 0 {
 		t.Errorf("%d 个块的 first_idx > last_idx", got)
 	}
 	if got := scalarInt(t, ctx, st, "SELECT COUNT(*) FROM chapters WHERE block_id = 0 AND block_len <> 0"); got != 0 {
 		t.Errorf("%d 章有长度却没有块归属", got)
 	}
-	if got := scalarInt(t, ctx, st, "SELECT COUNT(*) FROM chapters c JOIN chapter_blocks b ON b.id = c.block_id "+
-		"WHERE c.block_off < 0 OR c.block_off + c.block_len > b.raw_bytes"); got != 0 {
-		t.Errorf("%d 章的块内区间越界", got)
-	}
+	// 拆库后 chapters 与 chapter_blocks 不在同一个库，JOIN 换成 Go 侧比对。
+	assertSpansWithinBlocks(t, ctx, st)
 	// 块内字节守恒：一块由整数章拼接而成，各章长度之和必须等于块原始字节数。
 	end := scalarInt(t, ctx, st, "SELECT COALESCE(SUM(block_len),0) FROM chapters")
-	raw := scalarInt(t, ctx, st, "SELECT COALESCE(SUM(raw_bytes),0) FROM chapter_blocks")
+	raw := scalarIntBlock(t, ctx, st, "SELECT COALESCE(SUM(raw_bytes),0) FROM chapter_blocks")
 	if end != raw {
 		t.Errorf("各章长度之和 %d ≠ 块原始字节之和 %d", end, raw)
 	}

@@ -1,7 +1,7 @@
 # norvels 架构：组件划分
 
 > 目标：把 4.4GB / 865 个中文 txt 一次性结构化入库，提供「书架 → 目录 → 阅读 → 找书」的完整体验；
-> 同时保持 **单二进制 + 单 SQLite 文件 + 轻量容器镜像（目标 < 50MB）**。
+> 同时保持 **单二进制 + 两个 SQLite 文件（主库 + 正文库）+ 轻量容器镜像（目标 < 50MB）**。
 
 ## 1. 组件全景
 
@@ -10,8 +10,9 @@
   txt 目录 ──►   │  importer  ──►  parser  ──►  store(SQLite)    api(HTTP)  ◄── webui(embed 前端) │
    (865 files)   │  扫描/编排       编码+元数据+切章     写入/查询/迁移      REST/JSON     静态资源     │
                  └───────────────────────────────────────────────────────────────────────────────┘
-                                                        │
-                                                   data/norvels.db  (单文件 SQLite)
+                                        │                              │
+                             data/norvels.db            data/norvels-content.db
+                          (元数据/用户/聚合，几十 MB)        (chapter_blocks，GB 级)
 ```
 
 | 组件 | 路径 | 职责 | 对外契约 |
@@ -21,37 +22,30 @@
 | **store** | `internal/store` | SQLite 打开/PRAGMA/**版本化迁移**、所有写读查询、事务批次 | `store.Open(dsn)`、`Migrate()` / `MigrateTo(target)`、`*store.Store` 上的方法（见 `internal/store/types.go`） |
 | **importer** | `internal/importer` | 目录扫描（递归）、并发 worker、去重（文件 SHA-256 + 书名作者指纹）、导入任务记录、失败清单、断点续跑、进度回调 | `importer.Run(ctx, store, importer.Options)` |
 | **api** | `internal/api` | REST API、中间件（日志/gzip/CORS/panic 恢复）、分页、搜索、静态前端 `http.Handler` | `api.New(store, embedFS, opts) http.Handler` |
-| **webui** | `internal/webui` | `go:embed` 前端构建产物（`web/dist` → `internal/webui/dist`） | `webui.FS() fs.FS` |
-| **web** | `web/` | React 19 + TypeScript + Vite + Tailwind 前端：书架 / 书籍详情目录 / 阅读器 / 搜索 / 作者 / 导入管理 | 调 `/api/*`（见 `docs/api/README.md`） |
-| **cmd/norvels** | `cmd/norvels` | 子命令分发：`import` / `serve` / `stats` / `check-content` / `migrate` / `version` | — |
-| **config** | `internal/config` | 运行配置收敛：flag > env > 默认，统一 `NORVELS_` 前缀 | `config.FromEnv()` / `config.Config` |
-| **deploy** | `deploy/` | 多阶段 Dockerfile（node 构建前端 → Go 静态编译 → distroless/static）、compose、健康检查 | — |
+| **webui · web** | `internal/webui` · `web/` | React 19 + TS + Vite 前端（书架/目录/阅读器/搜索/作者/导入），`go:embed` 进二进制 | `webui.FS() fs.FS`，调 `/api/*` |
+| **cmd/norvels** | `cmd/norvels` | 子命令分发：`import` / `serve` / `stats` / `check-content` / `reconcile-content` / `migrate` / `version` | — |
+| **config · deploy** | `internal/config` · `deploy/` | 运行配置收敛（flag > env > 默认，统一 `NORVELS_` 前缀）；多阶段 Dockerfile + compose + 健康检查 | `config.FromEnv()` |
 
 ## 2. 关键约束
 
 1. **CGO-free**：使用 `modernc.org/sqlite`（纯 Go），才能 `CGO_ENABLED=0` 静态编译进 `scratch`/distroless。
-2. **数据与代码分离**：数据库放 `/data/norvels.db`（容器 volume），镜像内不含任何小说内容。
+2. **数据与代码分离**：主库 `/data/norvels.db` + 正文库 `/data/norvels-content.db`（同一个容器 volume），镜像内不含任何小说内容。
 3. **前端只经 API**：不引入 SSR，构建产物全部 embed，运行时无需 Node。
 4. **导入可重复执行**：同一目录重复 `import` 必须幂等（文件 SHA-256 命中则跳过，除非 `--force`）。
-5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=OFF`；聚合口径在导入时同事务预计算进 `store_metrics`，不回填全表。
+5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=NORMAL`；聚合口径在导入时同事务预计算进 `store_metrics`，不回填全表。
+6. **正文独立成库**（0018）：块表 `chapter_blocks` 只在正文库里，`chapters.block_id` 是**跨库弱引用**（没有外键）；两库各自一个 `*sql.DB`，`Open` 由主库路径推导兄弟文件、`Close` 双关。
 
 ## 2.1 鉴权边界与账号归属
 
 **书库共享，个人记录按账号隔离**（迁移 0016）：books / authors / chapters / tags 是同一份书库，
 不做多租户；`user_id` 只出现在个人数据上（进度 / 会话 / 书签 / 书单 / 我的书架）。
 
-| 状态 | 谁能访问 | 适用场景 |
-|---|---|---|
-| 默认（`NORVELS_AUTH_TOKEN` 为空） | 能连上端口的所有人；个人记录归默认账号 `reader` | 本机 / 家庭内网 |
-| 设置 `NORVELS_AUTH_TOKEN` | 持有共享口令的人；个人记录按会话 Cookie 归属 | 公网 VPS、共享主机 |
-
-- 鉴权实现：`Authorization: Bearer <token>` 或登录后下发的 Cookie（HttpOnly + SameSite=Lax + Path=/）；
-- 账号体系是**额外的一层**：`NORVELS_AUTH_TOKEN` 管「能不能进门」，会话 Cookie（`norvels_session`）
-  管「这些记录属于谁」；两者并存，口令的语义未变（详见 [api-account](api/api-account.md)）；
-- 只注册 + 输账号登录，**没有密码**——前提是内网私有部署；暴露公网前先换掉这套鉴权；
-- 令牌比较用 `crypto/subtle.ConstantTimeCompare`；`/api/health` 永远免鉴权（容器健康检查）；
-- 共享口令仍是**全有或全无**：拿到口令即可导入、读取、管理全部书库。账号只隔离个人记录，
-  不是权限分级；需要真正的权限模型时必须先换掉这套鉴权（新开 ADR）。
+- **默认**（`NORVELS_AUTH_TOKEN` 为空）：能连上端口的所有人，个人记录归默认账号 `reader`（本机 / 家庭内网）。
+- **设置口令**：持有口令的人，个人记录按会话 Cookie 归属（公网 VPS、共享主机）。
+- 口令管「能不能进门」（`Bearer` 或登录 Cookie，HttpOnly + SameSite=Lax，`crypto/subtle` 恒定时间比较），
+  会话 `norvels_session` 管「记录属于谁」，两者并存；只注册 + 输账号登录，**没有密码**。
+- `/api/health` 永远免鉴权（容器健康检查）；共享口令仍是**全有或全无**，不是权限分级——
+  需要真正的权限模型时必须先换掉这套鉴权（新开 ADR），详见 [api-account](api/api-account.md)。
 
 ## 2.2 升级模型（版本化迁移）
 
@@ -73,13 +67,17 @@ internal/store/migrations/
 | 回滚 | 迁移不提供 down 脚本；回退靠备份恢复（见 [deploy.md](deploy.md) §7） |
 | dry-run | `norvels migrate --db <path> --dry-run` 只读打印待应用迁移 |
 
-**老库兼容**（v0.1.x → 新版本）：老库的特征是 `PRAGMA user_version=1`、业务表已存在、
-且没有 `schema_migrations` 表。首次升级时会识别这种状态，直接把版本 1 记为已应用
-（**不重跑 0001 的建表 DDL**），然后只应用其后的迁移；数据条数不变。
+**老库兼容**：`PRAGMA user_version=1` + 业务表已存在 + 无 `schema_migrations` 的库，首次升级直接记版本 1 为已应用（不重跑 0001 的建表 DDL）。
 
-**带数据修正的迁移**（如 0013 的卷名去重）：修正与建约束在同一个事务里、由 Go 步骤完成
-（先改数据再建索引，SQLite 没有条件 DDL）；改了哪些行由步骤打印在迁移日志里
-（`迁移 0013：同书卷名去重改名 N 条`），便于核对这台机器到底改了几条。
+**带数据修正的迁移**（如 0013 卷名去重、0018 正文搬库）：修正与建约束由 Go 步骤在同一事务后段完成，改了哪些行打印在迁移日志里，便于核对该机器实际改了几条。
+
+## 2.3 双库布局与一致性
+
+WAL 下 SQLite 的原子提交只覆盖单个文件，**不依赖跨库事务**，改用「顺序 + 补偿 + 对账」：写路径统一走
+`store.writeThrough`（正文库写块 → 主库写 books/volumes/chapters → 主库失败按块 id 删掉这次新写的块）；
+删书与块回收都**延后到主库提交之后**——真删而主库失败会留悬空引用（读不出正文），留孤儿块只是体积虚高；
+漂移由 `ReconcileContent(ctx, fix)` 对账（结果进 `/api/health/report` 的 `content` 字段，缓存 10 分钟）。
+细节见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §1–§2。
 
 ## 3. 数据模型（SQLite）
 
@@ -88,17 +86,19 @@ authors(id, name UNIQUE, book_count)
 books(id, title, author_id, source_path UNIQUE, source_name, file_size, file_sha256 UNIQUE,
       encoding, word_count, chapter_count, intro, status, imported_at, updated_at)
 volumes(id, book_id, idx, title)                 -- 卷/部；UNIQUE(book_id, idx)，同书 TRIM(title) 唯一（0013）
-chapters(id, book_id, volume_id, idx, title, content, word_count)
--- 检索范围：books.title / authors.name 的 LIKE（无正文全文索引，也不按章节标题找书）
-tags(id, name) / book_tags(book_id, tag_id)
-import_jobs(id, source_dir, status, total, imported, skipped, failed, started_at, finished_at, message)
-import_errors(id, job_id, file_path, reason, created_at)
+chapters(id, book_id, volume_id, idx, title, word_count, block_id, block_off, block_len)
+                                                 -- block_id 指向**正文库**的块（跨库弱引用，无外键）
+tags(id, name) / book_tags(book_id, tag_id)       -- 检索范围只有书名/作者（LIKE），无全文索引
+import_jobs(...) / import_errors(...)            -- 导入任务与失败明细
+
+-- 以下一张表在**正文库**（data/norvels-content.db），与主库同目录、同寿命
+chapter_blocks(id, book_id, seq, first_idx, last_idx, raw_bytes, packed)
+                                                 -- 每块约 8 MB 原始正文，0x03 码本 + zstd
 ```
 
 完整 DDL 见 `internal/store/migrations/0001_init.sql`（v1 快照仍保留在 `internal/store/schema.sql` 供阅读，启动不再执行它）；逐版本变更见 [deploy.md](deploy.md) §7.1 的迁移表。
 
-检索范围是**书名 / 作者**：章节标题（目录）与正文都不参与，不含全文索引（理由与后果见 [ADR-0002](adr/0002-drop-fulltext-index.md)）。
-几万本的容量与延迟推算见 [data-profile.md §10](data-profile.md#10-容量推算几万本)。
+检索范围是**书名 / 作者**（章节标题与正文都不参与，无全文索引，理由见 [ADR-0002](adr/0002-drop-fulltext-index.md)）；几万本的容量推算见 [data-profile.md §10](data-profile.md#10-容量推算几万本)。
 
 ## 4. 导入流水线
 
@@ -109,11 +109,12 @@ import_errors(id, job_id, file_path, reason, created_at)
                  ├─ 文本规范化（BOM 去除、CRLF→LF、全角空格、广告/水印行清洗）
                  ├─ 元数据抽取（文件名规则 → 正文头部「作者：」「书名：」→ 兜底用文件名）
                  ├─ 章节切分（多级正则 + 卷/章嵌套 + 短篇兜底 + 单文件多书合集拆分）
-                 └─ 写入（books/authors/volumes/chapters，单文件一事务）
-                              └─ 预计算 metrics（store_metrics，同事务累加）
+                 └─ 写入（块 → 正文库事务；books/volumes/chapters → 主库事务，见 §2.3）
+                              └─ 预计算 metrics（store_metrics，主库同事务累加）
 ```
 
 ## 5. 端口与运行
 
-- 默认监听 `0.0.0.0:8080`，DB 路径 `/data/norvels.db`（本地默认 `./data/norvels.db`）。
+- 默认监听 `0.0.0.0:8080`；主库 `/data/norvels.db`、正文库 `/data/norvels-content.db`
+  （本地默认 `./data/norvels.db`，正文库由主库路径推导，可用 `NORVELS_CONTENT_DB` 覆盖）。
 - 健康检查 `GET /api/health` 返回 `{"status":"ok","db":"ok","version":"..."}`。

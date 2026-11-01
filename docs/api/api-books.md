@@ -39,7 +39,8 @@ body 为任意子集：`title`、`author`、`authors`（**全量替换**，最�
 - `serialStatus` 只接受 `""|ongoing|completed`、`readStatus` 只接受 `""|want|reading|done`，其它值 400（两者与解析状态 `status` 互不覆写）；`rating` 越界或 `pubDate` 非 YYYY-MM-DD → 400；改作者会重算新旧作者的聚合列，改 `tags` 会清理孤儿标签。
 
 ### DELETE /api/books/{id}
-单事务级联删除 `chapters`/`chapter_blocks`/`volumes`/`book_covers`/`books_authors`/`reading_progress`/`bookmarks`/`book_tags`，并重算作者聚合（作者行保留）。成功 **204**；书不存在或已删 → 404 `not_found`；立即从书架/搜索/作者页消失，同一 `source_path` 可重新导入。
+单事务级联删除主库的 `chapters`/`volumes`/`book_covers`/`books_authors`/`reading_progress`/`bookmarks`/`book_tags`，并重算作者聚合（作者行保留）；
+提交后删除**正文库**里这本书的 `chapter_blocks`（跨库，best-effort：清理失败只留孤儿块，由对账报告）。成功 **204**；书不存在或已删 → 404 `not_found`；立即从书架/搜索/作者页消失，同一 `source_path` 可重新导入。
 
 ### 封面 /api/books/{id}/cover（GET · PUT · DELETE）
 - **GET**：有封面 200，`Content-Type` 为 `image/jpeg|png|webp|gif`，`Cache-Control: public, max-age=86400`；无封面 404。前端给 src 加 `?v=<updatedAt>` 规避一天缓存。

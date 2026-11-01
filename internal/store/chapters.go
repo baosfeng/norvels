@@ -56,8 +56,9 @@ func (s *Store) ListChapters(ctx context.Context, q ChapterQuery) (Page[ChapterB
 
 // GetChapter 返回正文及前后章 id（0 表示到头）。bookID 为 0 时只按章节 id 查。
 //
-// 正文来自 chapter_blocks：先读块的 block_id/off/len，再把该块解压后切片。
-// 解压是**按块独立完成**的，不依赖其他章、也不需要跨章状态。
+// 正文来自**正文库**的 chapter_blocks：先从主库读 chapters 的 block_id/off/len，
+// 再去 cdb 取块解压切片。两库之间没有事务保证，读到的是「最近已提交」的一致快照；
+// 块缺失会被 loadBlock 报成 *BlockError（带块定位），而不是静默返回空正文。
 func (s *Store) GetChapter(ctx context.Context, bookID, chapterID int64) (*ChapterContent, error) {
 	if chapterID <= 0 {
 		return nil, fmt.Errorf("%w: chapter id %d", ErrInvalidArgument, chapterID)
@@ -105,7 +106,7 @@ func (s *Store) fillChapterContent(ctx context.Context, out *ChapterContent, blo
 		}
 		return nil
 	}
-	block, err := loadBlock(ctx, s.db, blockID, out.ID)
+	block, err := s.loadBlockText(ctx, blockID, out.ID)
 	if err != nil {
 		return err
 	}
@@ -123,7 +124,7 @@ func (s *Store) fillChapterContent(ctx context.Context, out *ChapterContent, blo
 // 块已经解压成功、但章节记录的 off/len 指到块外面，说明 **元数据与块不一致**，
 // 同样是块级故障（可能是迁移中断或手工改库），定位信息一样要有。
 func (s *Store) wrapBlockSpanError(ctx context.Context, blockID, chapterID int64, cause error) error {
-	meta, err := readBlockRowMetaOnly(ctx, s.db, blockID)
+	meta, err := s.blockMeta(ctx, blockID)
 	if err != nil {
 		return fmt.Errorf("store: chapter %d: %w", chapterID, cause)
 	}

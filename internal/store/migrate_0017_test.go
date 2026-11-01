@@ -25,7 +25,8 @@ func TestMigrate0017RepacksLegacyBlocks(t *testing.T) {
 	if beforeBlocks[books[0]] < 8 {
 		t.Fatalf("大书迁移前只有 %d 个块，造库失败（应接近 9）", beforeBlocks[books[0]])
 	}
-	if got := scalarInt(t, ctx, st, "SELECT COUNT(*) FROM chapter_blocks WHERE substr(packed,1,1) = x'02'"); got < 8 {
+	if got := scalarIntBlock(t, ctx, st,
+		"SELECT COUNT(*) FROM chapter_blocks WHERE substr(packed,1,1) = x'02'"); got < 8 {
 		t.Fatalf("老格式 0x02 块只有 %d 个，造库失败", got)
 	}
 
@@ -51,8 +52,9 @@ func TestMigrate0017RepacksLegacyBlocks(t *testing.T) {
 	t.Logf("大书块数 %d → %d；有块的书 %d 本；packed %d 字节 / 原文 %d 字节（%.1f%%）",
 		beforeBlocks[books[0]], afterBlocks[books[0]], len(afterBlocks),
 		packed, raw, 100*float64(packed)/float64(raw))
-	if v := scalarInt(t, ctx, st, "SELECT value FROM store_metrics WHERE key = 'metrics_version'"); v != 3 {
-		t.Errorf("metrics_version = %d，期望 3（0017 口径）", v)
+	// 0018 把块表搬进正文库后口径再 +1（v4），所以这里断言的是最终版本。
+	if v := scalarInt(t, ctx, st, "SELECT value FROM store_metrics WHERE key = 'metrics_version'"); v != 4 {
+		t.Errorf("metrics_version = %d，期望 4（0018 拆库后口径）", v)
 	}
 }
 
@@ -94,7 +96,7 @@ func TestMigrate0017SecondRunIsNoOp(t *testing.T) {
 // TestMigrate0017FailsOnCorruptBlock 验证坏块路径：报出 book_id + seq，整体回滚。
 func TestMigrate0017FailsOnCorruptBlock(t *testing.T) {
 	st, ctx, books := seedLegacyBlocks(t, true)
-	corruptBlock := scalarIntArg(t, ctx, st,
+	corruptBlock := scalarIntBlock(t, ctx, st,
 		"SELECT id FROM chapter_blocks WHERE book_id = ? AND seq = 2", books[0])
 	if _, err := st.DB().ExecContext(ctx,
 		"UPDATE chapter_blocks SET packed = x'02deadbeef' WHERE id = ?", corruptBlock); err != nil {

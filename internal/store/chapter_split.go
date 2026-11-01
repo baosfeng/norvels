@@ -34,12 +34,12 @@ func (s *Store) SplitChapter(ctx context.Context, bookID, chapterID int64, cutAf
 		return 0, fmt.Errorf("%w: 一次最多拆成 %d 章", ErrInvalidArgument, maxSplitPieces)
 	}
 	pieces := 0
-	err := s.inTx(ctx, "split chapter", func(tx *sql.Tx) error {
-		sp, err := loadChapterSpan(ctx, tx, bookID, chapterID)
+	err := s.writeThrough(ctx, "split chapter", func(wt *writeTx) error {
+		sp, err := loadChapterSpan(ctx, wt.main, bookID, chapterID)
 		if err != nil {
 			return err
 		}
-		raw, err := spanText(ctx, tx, sp)
+		raw, err := spanText(ctx, wt.content, sp)
 		if err != nil {
 			return err
 		}
@@ -48,7 +48,7 @@ func (s *Store) SplitChapter(ctx context.Context, bookID, chapterID int64, cutAf
 			return err
 		}
 		pieces = len(cuts) + 1
-		return applySplit(ctx, tx, bookID, sp, string(raw), cuts)
+		return applySplit(ctx, wt, bookID, sp, string(raw), cuts)
 	})
 	if err != nil {
 		return 0, err
@@ -57,7 +57,11 @@ func (s *Store) SplitChapter(ctx context.Context, bookID, chapterID int64, cutAf
 }
 
 // applySplit 落实一次拆分：腾位置 → 改写原章 → 插入其余各章 → 计数与块区间。
-func applySplit(ctx context.Context, tx *sql.Tx, bookID int64, sp chapterSpan, text string, cuts []int) error {
+//
+// 拆分不写新块：各段仍指向原块，只是 block_off/block_len 不同（见文件头注释），
+// 因此正文库这边只更新原块的章节范围。
+func applySplit(ctx context.Context, wt *writeTx, bookID int64, sp chapterSpan, text string, cuts []int) error {
+	tx := wt.main
 	pieces := len(cuts) + 1
 	titles := splitTitles(sp.title, pieces)
 	if err := shiftChaptersIdx(ctx, tx, bookID, sp.idx, pieces-1); err != nil {
@@ -79,7 +83,7 @@ func applySplit(ctx context.Context, tx *sql.Tx, bookID int64, sp chapterSpan, t
 	if err := bumpMetrics(ctx, tx, 0, int64(delta)); err != nil {
 		return err
 	}
-	return refreshBlockIdxRange(ctx, tx, sp.blockID)
+	return refreshBlockIdxRange(ctx, wt, sp.blockID)
 }
 
 // rewriteHeadPiece 把原章改写为第一段，返回第一段的字数。
