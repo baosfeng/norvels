@@ -93,7 +93,8 @@ if [ "$VACUUM_ONLY" = "1" ] || [ "$BACKFILL_ONLY" = "1" ]; then
     for f in norvels.db norvels-content.db; do
       [ -f "$DATA_DIR/$f" ] || continue
       echo "-- VACUUM $f"
-      docker run --rm --user 65532:65532 -v "$DATA_DIR:/data" keinos/sqlite3 "/data/$f" "VACUUM;"
+      # --entrypoint 必须显式给：该镜像默认 entrypoint 是 tini，会把 db 路径当可执行文件。
+      docker run --rm --user 65532:65532 --entrypoint sqlite3 -v "$DATA_DIR:/data" keinos/sqlite3 "/data/$f" "VACUUM;"
     done
     docker compose up -d
     echo "VACUUM 完成（两个库的 WAL 已合并，主库空洞页已回收）"
