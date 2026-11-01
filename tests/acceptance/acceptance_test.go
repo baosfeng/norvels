@@ -23,6 +23,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"norvels/internal/api"
+	"norvels/internal/recstore"
 	"norvels/internal/store"
 )
 
@@ -97,6 +98,16 @@ type world struct {
 	// 只能靠拿旧 token 再请求一次。
 	acct             *http.Client
 	lastSessionToken string
+
+	// 推荐（发现页）：推荐库、最近一次上报的分类、最近一次/两次推荐结果。
+	// 分数单独存两份，「两次结果不完全相同」靠对比它们判定。
+	rec         *recstore.Store
+	recCategory string
+	recItems    []recCard
+	recScoreA   []float64
+	recScoreB   []float64
+	// recOtherID 是「两本书」场景里的第二本：「已读不推」要有一本没读过的做对照。
+	recOtherID int64
 }
 
 // reset 关闭上一个场景留下的资源。
@@ -108,6 +119,10 @@ func (w *world) reset() {
 	if w.srv != nil {
 		w.srv.Close()
 		w.srv = nil
+	}
+	if w.rec != nil {
+		_ = w.rec.Close()
+		w.rec = nil
 	}
 	if w.db != nil {
 		_ = w.db.Close()
@@ -141,6 +156,12 @@ func (w *world) ensureDB() error {
 		return fmt.Errorf("store.Migrate: %w", err)
 	}
 	w.db = st
+	rec, err := recstore.Open(ctx, filepath.Join(root, "norvels-rec.db"))
+	if err != nil {
+		_ = st.Close()
+		return fmt.Errorf("recstore.Open: %w", err)
+	}
+	w.rec = rec
 	w.srv = httptest.NewServer(api.New(st, api.Config{
 		Version:          "acceptance",
 		Commit:           "gherkin",
@@ -152,6 +173,9 @@ func (w *world) ensureDB() error {
 		MaxUploadTotalBytes: 32 << 10,
 		MaxUploadFiles:      20,
 		UploadDir:           filepath.Join(root, "uploads"),
+		// 推荐库（设计 §1）：与主库同目录的兄弟文件，验收端点 /api/events 与
+		// /api/recommend 都依赖它；缺了会整体 503，场景当场失败。
+		Rec: rec,
 	}))
 	return nil
 }

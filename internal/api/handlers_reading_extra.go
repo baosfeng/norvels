@@ -67,7 +67,31 @@ func (s *Server) handleAddReadingSession(w http.ResponseWriter, r *http.Request)
 		s.failReadingWrite(w, r, err)
 		return
 	}
+	s.recordReadingSignal(r, in)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// recordReadingSignal 把一次阅读会话同步进推荐库（best-effort）。
+//
+// 为什么在 handler 里而不是 store 内部：推荐库是独立依赖，store 不该反向依赖它
+// （依赖方向门禁），api 才是「主库 + 正文库 + 推荐库」的组装点。
+// 为什么失败只记日志：会话已经写进主库、阅读统计已经生效，推荐信号丢一条
+// 不该让读者看到错误；补不回来也不影响正确性（兴趣只是权重的原料）。
+func (s *Server) recordReadingSignal(r *http.Request, in store.ReadingSessionInput) {
+	if s.cfg.Rec == nil {
+		return
+	}
+	ctx := r.Context()
+	books, err := s.st.BooksByIDs(ctx, []int64{in.BookID})
+	if err != nil || len(books) == 0 {
+		s.logf("api: 取书 %d 的作者/分类失败（推荐 read 事件跳过）: %v", in.BookID, err)
+		return
+	}
+	bs := books[0]
+	if err := s.cfg.Rec.RecordReading(ctx, store.ScopeUserID(ctx), in.BookID,
+		bs.AuthorID, bs.CategoryL1, bs.CategoryL2, in.Seconds, in.StartedAt); err != nil {
+		s.logf("api: 写推荐 read 事件失败: %v", err)
+	}
 }
 
 // validateSessionRequest 做字段级校验（store 侧还有同一套守卫，这里先拦成 400）。

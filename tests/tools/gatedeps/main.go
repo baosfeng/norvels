@@ -46,6 +46,11 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/ebook": {"norvels/internal/model"},
 	// 正文编码层：UTF-8 ↔ 字频码本流的无损重编码，只依赖标准库（叶子包）。
 	"norvels/internal/textcode": {},
+	// 推荐库数据层（设计 §1）：只依赖标准库 + modernc sqlite（外部依赖不计入白名单），
+	// 刻意不 import store / model —— 推荐库与主库解耦是设计前提。
+	"norvels/internal/recstore": {},
+	// 推荐排序纯函数：只依赖标准库（叶子包），召回（读库）与打分（纯函数）解耦。
+	"norvels/internal/recommend": {},
 	// 书源规则包：纯数据模型 + 校验，只依赖标准库（叶子包）。
 	"norvels/internal/source": {},
 	// 在线抓取执行器：只依赖标准库（叶子包），不碰解析与存储。
@@ -68,9 +73,11 @@ var allowedDeps = map[string][]string{
 		"norvels/internal/fetch", "norvels/internal/ruleimport",
 		// AI 审核（0021）：api 是裁决器的组装点（Config.AIJudge）与后台 worker 的宿主。
 		"norvels/internal/ai",
+		// 推荐系统：api 是「主库候选 + 推荐库信号 + 纯函数打分」三者的唯一组装点。
+		"norvels/internal/recstore", "norvels/internal/recommend",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
-	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config"},
+	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config", "norvels/internal/recstore"},
 	"norvels/cmd/healthcheck": {},
 	// 压缩率/延迟实测工具：只读库 + 调正文编码层与路径推导，不进发布二进制（Makefile 只 build ./cmd/norvels）。
 	// store 只用来复用 ContentDBPath（正文库路径推导的唯一实现），不调用它的读写路径。

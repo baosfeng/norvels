@@ -95,7 +95,18 @@ import_jobs(...) / import_errors(...) / import_reviews(...)  -- 导入任务、�
 chapter_blocks(id, book_id, seq, first_idx, last_idx, raw_bytes, packed)
                                                  -- 每块约 8 MB 原始正文，0x03 码本 + zstd
 chapter_fingerprints(hash, book_id, bytes)       -- 章级内容指纹（0019，WITHOUT ROWID，主键 (hash, book_id)）
+
+-- 推荐库是**第三个文件**（data/norvels-rec.db），整库可重建，不进主库迁移体系
+events(id, user_id, kind, book_id, author_id, category_l1, category_l2, value, extra, ts)
+                                                 -- 只落有信号的 kind；impression 不落明细
+book_stats(book_id, impressions, clicks, reads, read_seconds, shelf_adds, last_at)
+book_daily(book_id, day, impressions, clicks, reads, seconds)  -- 按日聚合（热度窗口读它）
+user_interest(user_id, dim, key, weight, updated_at)           -- dim: category / author，14 天指数衰减
+cooccur(book_id, other_id, users)                              -- 共读（item-item co-read），双向各一行
+recent_items(user_id, book_id, ts)                             -- 近期已曝光，按 (user, book) 去重
 ```
+
+推荐库的 schema 用 `PRAGMA user_version` 版本化（当前 1），由 `internal/recstore` 打开；它与主库之间没有外键、也没有跨库事务。推荐库打不开时 `/api/events` 与 `/api/recommend` 返回 503，阅读与书架功能照常（设计见 [specs/2026-11-01-recommend-design.md](specs/2026-11-01-recommend-design.md)）。
 
 完整 DDL 见 `internal/store/migrations/0001_init.sql`（v1 快照仍保留在 `internal/store/schema.sql` 供阅读，启动不再执行它）；逐版本变更见 [deploy.md](deploy.md) §7.1 的迁移表。
 

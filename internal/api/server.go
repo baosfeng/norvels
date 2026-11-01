@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"norvels/internal/ai"
+	"norvels/internal/recstore"
 	"norvels/internal/ruleimport"
 	"norvels/internal/store"
 	"norvels/internal/webui"
@@ -52,6 +53,11 @@ type Config struct {
 	// （DeepSeek 官方端点 + deepseek-chat）。
 	AIBaseURL string
 	AIModel   string
+	// ---- 推荐系统（设计 §1）----
+	// Rec 是独立的推荐库（norvels-rec.db）。为 nil 时 /api/events 与
+	// /api/recommend 返回 503，其余端点完全不受影响——推荐是辅助能力，
+	// 缺库（磁盘满、旧版本残留）不该把整个服务拖成起不来。
+	Rec *recstore.Store
 }
 
 // AIJudge 按配置构造裁决器；没有 key 时返回 nil（调用方按「功能不存在」处理）。
@@ -101,6 +107,7 @@ func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) 
 	s.registerLibraryRoutes(mux)
 	s.registerImportRoutes(mux)
 	s.registerMiscRoutes(mux)
+	s.registerRecommendRoutes(mux)
 	// 未命中任何 API 路由时统一返回 JSON 错误（否则 mux 会写纯文本）。
 	mux.HandleFunc("/api", s.handleAPINotFound)
 	mux.HandleFunc("/api/", s.handleAPINotFound)
@@ -240,6 +247,15 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/me", s.handleAuthMe)
 	// 登录页的「选账号」列表：免鉴权（理由见 handleListUsers 注释）。
 	mux.HandleFunc("GET /api/auth/users", s.handleListUsers)
+}
+
+// registerRecommendRoutes 注册发现页的埋点上报与推荐流。
+//
+// 单独一组而不是并进 registerMiscRoutes：这两个端点依赖独立库（Config.Rec），
+// 缺失时整体降级为 503，放在单独函数里让「哪些端点会受推荐库影响」一眼可见。
+func (s *Server) registerRecommendRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/events", s.handleRecordEvents)
+	mux.HandleFunc("GET /api/recommend", s.handleRecommend)
 }
 
 // baseContext 返回导入任务的父 context。

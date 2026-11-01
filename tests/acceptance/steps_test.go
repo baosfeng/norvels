@@ -32,6 +32,7 @@ func registerSteps(sc *godog.ScenarioContext, w *world) {
 	registerP3Steps(sc, w)
 	registerCategorySteps(sc, w)
 	registerAccountSteps(sc, w)
+	registerRecommendSteps(sc, w)
 	registerCommonAssertSteps(sc, w)
 }
 

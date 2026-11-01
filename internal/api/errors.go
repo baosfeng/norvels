@@ -65,6 +65,9 @@ const (
 	// codeInvalidPattern 表示自定义章节规则里的正则编译失败（spec §2.2）：
 	// 与其它参数错误分开成独立码，前端才能把错误标到具体那一行正则上。
 	codeInvalidPattern = "invalid_pattern"
+	// codeUnavailable 表示这项能力当前不可用（推荐库没打开、依赖缺失）：
+	// 与 internal 分开，前端据此显示「未启用」而不是「服务器出错了」。
+	codeUnavailable = "unavailable"
 )
 
 // writeJSON 以 JSON 写响应；序列化失败时退化为 500。
