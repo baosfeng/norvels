@@ -99,6 +99,7 @@
 `tests/tools/gatedeps/main.go` 的 `allowedDeps` 是事实源：cmd → internal/{api,importer,parser,store,source}；api → importer/parser/store/source/webui；
 importer → parser/store/source/model；parser,store → model；model、webui 为叶子。新增内部包必须先登记，否则 `make gate-deps` 以「未登记」判失败。
 `internal/source`（书源规则包）是叶子包：store、api、importer 可依赖它，它不依赖任何内部包（纯数据模型 + 校验）。
+`internal/ai`（裁决客户端）是叶子包：只依赖标准库，只外发差异段落正文，不碰解析与存储。
 
 ## 覆盖率：基线 + 渐进目标
 

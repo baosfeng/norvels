@@ -27,7 +27,9 @@ func JudgeTwice(ctx context.Context, j Judge, req Request) (Verdict, error) {
 	return mergeVerdicts(first, second), nil
 }
 
-// JudgeTwice 用本裁决器做两次一致性判定（等价于 JudgeTwice(ctx, c, req)）。
+// JudgeTwice 用本裁决器做两次一致性判定：只是 ai.JudgeTwice(ctx, c, req) 的薄封装
+// （共用同一段逻辑，不重复实现）。直接用 ChatJudge 的调用方走这个方法少传一个参数；
+// 面向 Judge 接口编程（含测试替身）时用包级 ai.JudgeTwice。
 func (c *ChatJudge) JudgeTwice(ctx context.Context, req Request) (Verdict, error) {
 	return JudgeTwice(ctx, c, req)
 }

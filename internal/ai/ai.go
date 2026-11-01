@@ -55,7 +55,7 @@ var (
 	ErrNoKey = errors.New("ai: 未提供 API key")
 	// ErrNoSegments 表示没有可裁决的差异段落。
 	ErrNoSegments = errors.New("ai: 没有可裁决的差异段落")
-	// ErrTimeout 表示请求超时（不重试）。
+	// ErrTimeout 表示请求超时（不重试：重试会把 60s 超时翻倍，拖垮导入队列）。
 	ErrTimeout = errors.New("ai: 请求超时")
 	// ErrServer 表示服务端 5xx（已重试一次）。
 	ErrServer = errors.New("ai: 服务端错误 5xx")
