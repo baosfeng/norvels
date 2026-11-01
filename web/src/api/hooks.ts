@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { api, type BookQuery, type RequestOptions, type SearchParams } from "../api/client";
-import type { HealthIssueKind, ReadingSessionInput } from "./types";
+import type { HealthIssueKind, ReadingSessionInput, ReviewStatusFilter } from "./types";
 import { useResource } from "../lib/useResource";
 import { subscribeReadingRevision } from "../lib/readingRevision";
 import { subscribeStatsRevision } from "../lib/statsRevision";
@@ -105,6 +105,14 @@ export function useSearch(q: string, params: SearchParams = {}) {
 
 export function useImportJobs() {
   return useResource((signal: AbortSignal) => api.importJobs({ signal }), []);
+}
+
+/**
+ * 升级审核列表（AI 审核）：默认拉全部历史，卡片按状态自己分「待办 / 已决策」。
+ * 待办入口要显示 pending + ready 的数量，所以这里不能只拉 pending。
+ */
+export function useImportReviews(status: ReviewStatusFilter = "all", limit = 50) {
+  return useResource((signal: AbortSignal) => api.importReviews({ status, limit }, { signal }), [status, limit]);
 }
 
 /**

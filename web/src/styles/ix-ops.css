@@ -198,3 +198,146 @@
     animation: none;
   }
 }
+
+/* ── 升级版审核（导入页内联）：收起只留入口，展开是两版对照卡 ─────────────── */
+.review-panel .head {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.review-panel .head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+.review-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.review-badge.is-todo {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.review-badge.is-ready {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-warm);
+}
+.review-badge.is-needs_manual {
+  border-color: var(--warn-text);
+  color: var(--warn-text);
+}
+.review-badge.is-confirmed_replace,
+.review-badge.is-confirmed_keep,
+.review-badge.is-rolled_back {
+  border-color: var(--success-text);
+  color: var(--success-text);
+}
+.review-body {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.review-body-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.review-list {
+  display: grid;
+  gap: var(--space-3);
+}
+.review-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.review-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.review-books {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+}
+.review-book {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-warm);
+}
+.review-book strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.review-arrow {
+  color: var(--muted);
+}
+.review-quality {
+  display: grid;
+  gap: var(--space-2);
+}
+.review-quality .table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+/* 对比列只有一个短标记：固定窄列，别把「当前 / 新版」两列挤成一条缝 */
+.review-quality .table th:last-child,
+.review-quality .table td:last-child {
+  width: 72px;
+  white-space: nowrap;
+}
+.review-quality .table td,
+.review-quality .table th {
+  padding: 8px 12px;
+}
+.review-dim.is-better {
+  color: var(--success-text);
+  font-weight: 600;
+}
+.review-dim.is-worse {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+.review-ai {
+  display: grid;
+  gap: var(--space-1);
+}
+.review-ai-line {
+  font-size: 13px;
+}
+.review-reasons {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  .review-books {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-arrow {
+    display: none;
+  }
+}

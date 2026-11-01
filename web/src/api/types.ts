@@ -801,3 +801,89 @@ export interface ReadingSessionInput {
   /** 缺省由后端取当前时间 */
   startedAt?: string;
 }
+
+// --- AI 审核（docs/api/api-reviews.md 是事实源） ---
+
+/**
+ * 审核记录状态机：pending 等 AI → ready 有结论 → 人工决策 → confirmed_*；
+ * rolled_back 是「替换后又回滚」的终态。非法迁移后端一律 409 review_state。
+ */
+export type ReviewStatus =
+  | "pending"
+  | "ready"
+  | "needs_manual"
+  | "confirmed_replace"
+  | "confirmed_keep"
+  | "rolled_back";
+
+/** 列表的 status 参数：all = 全部历史，其余是单状态。未知值后端按字面筛（空列表）。 */
+export type ReviewStatusFilter = ReviewStatus | "all";
+
+/** 一份质量分；computed=false 表示**没算过**（不是 0 分，0 分看起来像完美版本）。 */
+export interface ReviewQuality {
+  garbageRatio: number;
+  noiseRatio: number;
+  structureScore: number;
+  duplicateRatio: number;
+  chapters: number;
+  chars: number;
+  computed: boolean;
+}
+
+/** 审核里的两版书之一；supersededBy=0 表示这一版是**当前在用**的版本。书被删时只留 id。 */
+export interface ReviewBook {
+  id: number;
+  title: string;
+  chapterCount: number;
+  wordCount: number;
+  supersededBy: number;
+  quality: ReviewQuality;
+}
+
+/** 规则侧一个维度的对比：key 是 garbage / noise / structure。 */
+export interface ReviewDimension {
+  key: string;
+  old: number;
+  new: number;
+}
+
+/** 规则侧质量对比；note 非空 = 走了保守路径（哪一侧没有质量分）。 */
+export interface ReviewQualityCompare {
+  old: ReviewQuality;
+  new: ReviewQuality;
+  better: ReviewDimension[];
+  worse: ReviewDimension[];
+  note?: string;
+}
+
+/** AI 结论；needs_manual 时 winner 为空，reasons 是「为什么没有结论」的原因。 */
+export interface ReviewAI {
+  winner?: "new" | "old" | "equal" | "";
+  confidence: number;
+  reasons: string[];
+}
+
+/** 一条升级审核记录（列表 items[] 与两个决策端点的响应同形）。 */
+export interface ImportReview {
+  id: number;
+  jobId: number;
+  status: ReviewStatus;
+  hitRatio: number;
+  oldBook: ReviewBook;
+  newBook: ReviewBook;
+  quality: ReviewQualityCompare;
+  ai: ReviewAI;
+  ruleReasons: string[];
+  createdAt: string;
+  decidedAt?: string | null;
+  decidedBy: string;
+}
+
+/** GET /api/import/reviews 的响应：items 之外只有 AI 开关当前值。 */
+export interface ImportReviews {
+  items: ImportReview[];
+  aiEnabled: boolean;
+}
+
+/** decide 的动作：replace 换成新版，keep 保留当前版本（书侧不动）。 */
+export type ReviewDecision = "replace" | "keep";

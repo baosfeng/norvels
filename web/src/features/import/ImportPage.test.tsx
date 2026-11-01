@@ -67,6 +67,14 @@ const sourceProfilesState = {
   reload: vi.fn(),
 };
 
+/** 导入页底部也挂升级版审核入口：它自带一份取数，这里给空态（收起时不渲染卡片）。 */
+const reviewsState = {
+  data: { items: [], aiEnabled: false },
+  loading: false,
+  error: null as unknown,
+  reload: vi.fn(),
+};
+
 /** 能力清单的改动只在本用例内生效，别把状态漏给后面的用例。 */
 afterEach(() => {
   capsState.data = defaultCaps;
@@ -95,6 +103,7 @@ vi.mock("../../api/hooks", () => ({
   useFailedFiles: () => failedFilesState,
   useCapabilities: () => capsState,
   useSourceProfiles: () => sourceProfilesState,
+  useImportReviews: () => reviewsState,
 }));
 
 vi.mock("../../api/client", async () => {

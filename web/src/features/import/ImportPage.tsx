@@ -9,6 +9,7 @@ import { FailedFilesPanel } from "./FailedFilesPanel";
 import { ImportHistory } from "./ImportHistory";
 import { ImportProgressCard } from "./ImportProgressCard";
 import { ImportSuccessPanel } from "./ImportSuccessPanel";
+import { ReviewPanel } from "./ReviewPanel";
 import { SourceProfilesPanel } from "./SourceProfilesPanel";
 import { TagRulesPanel } from "./TagRulesPanel";
 import { UploadPanel } from "./UploadPanel";
@@ -330,6 +331,9 @@ export function ImportPage() {
 
           {/* 读取中 / 读取失败时任务历史还是空的：别让「还没有结束的任务」和错误态同时出现 */}
           {!loading && !error ? <ImportHistory jobs={finished} /> : null}
+
+          {/* 升级版审核：收起时只露入口与待办数，展开才取列表（不新开顶层路由） */}
+          <ReviewPanel />
         </div>
       </div>
     </section>
