@@ -512,9 +512,10 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 | 17 | `0017_codebook_blocks.sql` | 存量正文块重组：1 MB / 0x02 → **8 MB / 0x03（字码本 + zstd）**；块字节 27.5 GB → 约 21 GB，见 [ADR-0007](adr/0007-codebook-compressed-content.md) |
 | 18 | `0018_content_db.sql` | 正文块搬进独立文件 `norvels-content.db`，逐书流式搬运后 `DROP TABLE chapter_blocks`；`chapters.block_id` 变成跨库弱引用 |
 | 19 | `0019_chapter_fingerprints.sql` | 正文库建章级指纹 `chapter_fingerprints(hash, book_id, bytes)`（WITHOUT ROWID，主键 `(hash, book_id)`）+ 主库预置 `settings` 的 `dedupe.threshold` = 0.95；秒级，**升级后必须跑一次 `norvels backfill-fingerprints` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
+| 21 | `0021_import_reviews.sql` | AI 审核表 `import_reviews`（状态机 pending/ready/needs_manual/confirmed_keep/confirmed_replace/rolled_back）+ books 加 `superseded_by`（0 = 当前版本）+ 预置 `settings` 的 `ai.enabled` = false；秒级，升级后书架行为不变（没有 superseded 的书），AI 用法见 [§7.6](#76-ai-审核可选默认关闭) |
 | 20 | `0020_book_quality.sql` | books 加七列质量分 `garbage_ratio`/`noise_ratio`/`structure_score`/`duplicate_ratio`/`quality_chapters`/`quality_chars`/`quality_at`（NOT NULL DEFAULT 0/''，存量 = 未计算）+ `metrics_version` 4→5（旧缓存自动重算）；只加列、秒级，**跑一次 `norvels backfill-quality` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
 
-> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **20**。
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **21**。
 >
 > **0017 的运维前提**：单事务内新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移期间**不监听端口**，
 > 大库按 [§7.3](#73-迁移后回收空间vacuum) 用一次性容器预跑；迁移后必须 `VACUUM` 才真正回落。
@@ -540,7 +541,24 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 配置口令后 Bearer / 旧 `norvels_auth` Cookie 语义完全不变；没配口令时请求归默认账号 `reader`。
 账号只隔离进度 / 书签 / 书单 / 我的书架，**不隔离书库也不做权限分级**，详见 [api-account](api/api-account.md)。
 
-### 7.6 配置优先级
+### 7.6 AI 审核（可选，默认关闭）
+
+升级候选（0021）可以在后台交给云端 LLM 判「哪一版更好」，**只作建议、必须人工确认**。默认关闭，关闭时导入行为与
+之前完全一致（候选照常入库并隐藏、审核记录直接落「人工确认」）。
+
+1. **API key 只走环境变量**，不落库、不进日志：`NORVELS_AI_API_KEY`（可选 `NORVELS_AI_BASE_URL` / `NORVELS_AI_MODEL`，
+   默认 DeepSeek 官方端点 + `deepseek-chat`）。没有 key 时 worker 把待审记录直接标成 `needs_manual`。
+2. **开关在库里**（默认 `false`），改完下一轮轮询（约 5s）生效，不用重启：
+
+   ```bash
+   docker exec -it norvels /norvels stats --db /data/norvels.db >/dev/null   # 确认容器可执行
+   sqlite3 /data/norvels.db "INSERT INTO settings(key,value,updated_at) VALUES('ai.enabled','true',strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(key) DO UPDATE SET value='true'"
+   ```
+
+3. 外发内容只有**差异段落正文与上下文**（≤50 段、每段截断），不含书名 / 作者 / 路径；两次裁决不一致、超时、报错
+   都降级为规则结论 + 人工确认。契约见 [api-reviews](api/api-reviews.md)。
+
+### 7.7 配置优先级
 
 命令行 flag > 环境变量 > 默认值。环境变量统一 `NORVELS_` 前缀：
 
@@ -552,6 +570,9 @@ NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.ym
 | `NORVELS_AUTH_TOKEN` | 空 | 空 = 开放模式 |
 | `NORVELS_LOG_LEVEL` | `info` | debug/info/warn/error（非法值启动即报错） |
 | `NORVELS_BOOKS_DIR` | `/books` | 导入源目录（只读挂载点） |
+| `NORVELS_AI_API_KEY` | 空 | AI 审核 key（0021）；空 = 功能等同不存在，不落库、不进日志 |
+| `NORVELS_AI_BASE_URL` | 空 = DeepSeek 官方端点 | OpenAI 兼容 base（自建网关时改这里） |
+| `NORVELS_AI_MODEL` | 空 = `deepseek-chat` | 模型名 |
 
 ## 8. 排障
 

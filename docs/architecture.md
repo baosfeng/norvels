@@ -70,26 +70,26 @@ WAL 下 SQLite 的原子提交只覆盖单个文件，**不依赖跨库事务**�
 `store.writeThrough`（正文库写块 → 主库写 books/volumes/chapters → 主库失败按块 id 删这次新写的块）；删书与块回收
 **延后到主库提交之后**（真删而主库失败会留悬空引用，留孤儿块只是体积虚高）；漂移由 `ReconcileContent` 对账入 `/api/health/report`。
 
-**内容去重（章级指纹，0019）+ 版本择优（质量分，0020）**：导入前按**正文**判重（与文件名/编码无关）——正文归一化（删空白、
-全角半角标点统一）后取 64 位 FNV-1a，指纹存正文库 `chapter_fingerprints(hash, book_id, bytes)`，命中率按字节加权；≥ 阈值
-（settings 的 `dedupe.threshold`，0019 预置 0.95，取值 (0,1]）按 Skipped 跳过，≥ 40% 备注「疑似相关」后照常导入，`force` /
-`update`（追更）一律跳过判定。命中率到阈值时再比一次质量分（books 七列，0020）：噪声率降 ≥50% / 乱码率降 ≥80% / 结构分
-升 ≥0.1 里至少两项显著更优、且无一项显著变差 → 「升级候选」（**不自动替换**，等人工确认），否则判「重复」；任一侧没有
-质量分走保守路径判重复。质量分在 `SaveBook` 同事务写入，解析期没有质量分的书（EPUB / 合集子书）写「未计算」而非 0 分；
-`norvels backfill-quality` / `backfill-fingerprints` 补历史书，缺口见 `/api/health/report` 的 `quality.missing` /
-`fingerprints.missing`；指纹在 `SaveBook` 提交后按书先删后写。细则见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §4–§5。
+**内容去重（章级指纹，0019）+ 版本择优（质量分，0020）+ AI 审核（0021）**：导入前按**正文**判重（与文件名/编码无关）——正文归一化（删空白、
+全角半角标点统一）后取 64 位 FNV-1a，指纹存正文库 `chapter_fingerprints(hash, book_id, bytes)`，命中率按字节加权；≥ 阈值（settings 的
+`dedupe.threshold`，0019 预置 0.95）按 Skipped 跳过，≥ 40% 备注「疑似相关」后照常导入，`force` / `update`（追更）一律跳过判定。命中率到
+阈值时再比质量分（books 七列，0020）：噪声率降 ≥50% / 乱码率降 ≥80% / 结构分升 ≥0.1 里至少两项显著更优、且无一项显著变差 → 「升级候选」。
+**升级候选（0021）**：新版本照常入库但立刻 `superseded_by = 旧书 id`（书架/搜索/详情/阅读只认 `superseded_by = 0`），并落一条
+`import_reviews`；后台 worker（单线程，`ai.enabled` 默认关）按章 idx 对齐两版正文、抽 ≤50 段差异段交给 `internal/ai` 判两次，
+不一致 / 超时 / 无 key 一律降级 `needs_manual`；替换 / 保留 / 回滚只改这两个整数字段，**绝不自动替换**。质量分在 `SaveBook` 同事务写入，
+没有质量分的书（EPUB / 合集子书）写「未计算」而非 0 分；`backfill-quality` / `backfill-fingerprints` 补历史书。细则见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §4–§7。
 
 ## 3. 数据模型（SQLite）
 
 ```
 authors(id, name UNIQUE, book_count)
-books(id, title, author_id, source_path UNIQUE, source_name, file_size, file_sha256 UNIQUE,
-      encoding, word_count, chapter_count, intro, status, imported_at, updated_at)
+books(id, title, author_id, source_path UNIQUE, source_name, file_size, file_sha256 UNIQUE, encoding, word_count,
+      chapter_count, intro, status, imported_at, updated_at, superseded_by)  -- superseded_by=0 是当前版本（0021）
 volumes(id, book_id, idx, title)                 -- 卷/部；UNIQUE(book_id, idx)，同书 TRIM(title) 唯一（0013）
 chapters(id, book_id, volume_id, idx, title, word_count, block_id, block_off, block_len)
                                                  -- block_id 指向**正文库**的块（跨库弱引用，无外键）
 tags(id, name) / book_tags(book_id, tag_id)       -- 检索范围只有书名/作者（LIKE），无全文索引
-import_jobs(...) / import_errors(...)            -- 导入任务与失败明细
+import_jobs(...) / import_errors(...) / import_reviews(...)  -- 导入任务、失败明细与 AI 审核记录（0021）
 
 -- 以下一张表在**正文库**（data/norvels-content.db），与主库同目录、同寿命
 chapter_blocks(id, book_id, seq, first_idx, last_idx, raw_bytes, packed)
