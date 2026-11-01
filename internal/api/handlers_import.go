@@ -270,6 +270,7 @@ func (s *Server) runImport(ctx context.Context, cancel context.CancelFunc, jobID
 		}
 		s.logf("api: 导入完成 dir=%s 导入=%d 跳过=%d 失败=%d 用时=%s",
 			dir, imported, skipped, failed, time.Since(start).Round(time.Second))
+		s.logUpgradeCandidates(res)
 	}
 }
 

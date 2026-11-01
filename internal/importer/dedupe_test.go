@@ -156,12 +156,32 @@ func TestImportDedupeForceSkipsJudge(t *testing.T) {
 // TestDuplicateReasonText 备注文案与阈值回落的口径。
 func TestDuplicateReasonText(t *testing.T) {
 	rep := store.DedupeReport{HitRate: 1, DuplicateBookTitle: "甲书"}
-	if got, want := duplicateReason(rep), "疑似重复：库内已有 100% 相同内容（《甲书》可对照）"; got != want {
+	if got, want := duplicateReason(rep), "疑似重复：库内已有 100% 相同内容（《甲书》未做质量对比）"; got != want {
 		t.Errorf("重复备注 = %q，期望 %q", got, want)
 	}
 	rep.DuplicateBookTitle = ""
 	if got := duplicateReason(rep); !strings.Contains(got, "《书名未知》") {
 		t.Errorf("缺书名时备注 = %q，期望写「书名未知」", got)
+	}
+	// 版本择优的三个分支：旧版本更优 / 持平 / 无质量分（保守路径）。
+	olderBetter := store.DedupeReport{HitRate: 1, DuplicateBookTitle: "甲书", Version: &store.VersionPick{
+		OldComputed: true, NewComputed: true,
+		Worse: []store.QualityDimension{{Key: store.QualityDimNoise, Old: 0.01, New: 0.2}},
+	}}
+	if got := duplicateReason(olderBetter); !strings.Contains(got, "质量更优") {
+		t.Errorf("旧版本更优的备注 = %q，期望写「质量更优」", got)
+	}
+	tie := store.DedupeReport{HitRate: 1, DuplicateBookTitle: "甲书", Version: &store.VersionPick{
+		OldComputed: true, NewComputed: true,
+	}}
+	if got := duplicateReason(tie); !strings.Contains(got, "质量持平") {
+		t.Errorf("持平的备注 = %q，期望写「质量持平」", got)
+	}
+	unknown := store.DedupeReport{HitRate: 1, DuplicateBookTitle: "甲书", Version: &store.VersionPick{
+		Note: store.VersionNoteOldUnknown,
+	}}
+	if got := duplicateReason(unknown); !strings.Contains(got, "旧版本无质量分") {
+		t.Errorf("保守路径的备注 = %q，期望写「旧版本无质量分」", got)
 	}
 	if got, want := relatedNote(store.DedupeReport{HitRate: 0.4321}), "疑似相关：43%"; got != want {
 		t.Errorf("相关备注 = %q，期望 %q", got, want)

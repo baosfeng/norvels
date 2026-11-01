@@ -69,7 +69,19 @@ func cmdImport(args []string) error {
 			log.Printf("wal checkpoint 失败: %v", err)
 		}
 	}
+	reportUpgradeCandidates(res)
 	log.Printf("完成：导入=%d 跳过=%d 失败=%d 用时=%s",
 		res.Imported, res.Skipped, res.Failed, time.Since(start).Round(time.Second))
 	return nil
+}
+
+// reportUpgradeCandidates 打印本次导入判出的「升级候选」（设计 §5）。
+//
+// 候选**不会**被自动替换（设计 §7）：这里只是让命令行用户看到「库外有一本更好的版本」，
+// 否则「跳过=1」看上去和普通重复没有区别。结构化字段在任务文件备注与 API 里。
+func reportUpgradeCandidates(res *importer.Result) {
+	for _, c := range res.UpgradeCandidates {
+		log.Printf("升级候选：%s → 旧书 %d《%s》命中率 %.0f%%，更优 %d 项（未替换，需人工确认）",
+			c.DisplayPath, c.OldBookID, c.OldBookTitle, c.HitRate*100, len(c.Better))
+	}
 }

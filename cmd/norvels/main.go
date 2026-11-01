@@ -36,6 +36,7 @@ const usage = `norvels — 本地中文小说库
   norvels check-content [--db ...] [--all | --sample N]
   norvels reconcile-content [--db ...] [--fix]
   norvels backfill-fingerprints [--db ...] [--batch N]
+  norvels backfill-quality [--db ...] [--batch N]
   norvels migrate [--db ...] [--dry-run] [--to N]
   norvels version
 
@@ -55,6 +56,11 @@ reconcile-content 对账主库与正文库（0018 起正文独立成文件）：
 backfill-fingerprints 给存量书补写章级内容指纹（升级到 0019 后跑一次）：
   0019 只建表、不回填历史数据，而导入判重只认指纹；已有指纹的书整本跳过，
   中断后重跑从断点继续。生产 79.5 GB 正文约几十分钟，--batch 控制进度打印粒度。
+
+backfill-quality 给存量书补算质量分（升级到 0020 后跑一次）：
+  0020 只加列、不回填历史数据，而版本择优要拿旧版本的质量分跟新版本比；
+  已有质量分的书整本跳过，中断后重跑从断点继续。正文全空的书跳过并计数。
+  噪声率按残留计（库里正文已清洗过，噪声行在入库时就丢了），口径见 docs/architecture.md。
 
 优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:
   NORVELS_ADDR         serve 监听地址（默认 :8080）
@@ -94,6 +100,7 @@ var commands = map[string]func([]string) error{
 	"check-content":         cmdCheckContent,
 	"reconcile-content":     cmdReconcileContent,
 	"backfill-fingerprints": cmdBackfillFingerprints,
+	"backfill-quality":      cmdBackfillQuality,
 	"migrate":               cmdMigrate,
 	"version":               cmdVersion,
 	"-v":                    cmdVersion,

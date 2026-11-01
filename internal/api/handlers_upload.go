@@ -219,6 +219,7 @@ func (s *Server) runUploadImport(ctx context.Context, cancel context.CancelFunc,
 		s.logf("api: 收尾上传任务失败 job=%d: %v", jobID, ferr)
 	}
 	s.logf("api: 上传导入完成 dir=%s 用时=%s", sess.dir, time.Since(start).Round(time.Second))
+	s.logUpgradeCandidates(res)
 }
 
 // uploadFailure 把导入错误翻译成任务终态与提示。
