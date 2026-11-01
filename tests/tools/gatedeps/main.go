@@ -7,7 +7,7 @@
 //	internal/importer → parser / store / source / model
 //	internal/parser, internal/store → model
 //	internal/source → 不依赖任何内置包（规则包是纯数据，不拖解析与存储细节）
-//	internal/model, internal/webui  → 不依赖任何其他内置包
+//	internal/model, internal/webui, internal/ai → 不依赖任何其他内置包
 //
 // 未登记的包一律视为违规（提示在 allowedDeps 里登记），避免新增包悄悄绕过门禁。
 //
@@ -50,6 +50,8 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/source": {},
 	// 在线抓取执行器：只依赖标准库（叶子包），不碰解析与存储。
 	"norvels/internal/fetch": {},
+	// AI 裁决客户端：DeepSeek 兼容 HTTP，只依赖标准库（叶子包），只发差异段落、不碰存储与解析。
+	"norvels/internal/ai": {},
 	// 声明式规则执行器：只依赖标准库与 CSS/XPath 解析库（叶子包）。
 	"norvels/internal/ruleexec": {},
 	// JS 沙箱执行器：只依赖 goja 与标准库（叶子包），不碰解析与抓取。
