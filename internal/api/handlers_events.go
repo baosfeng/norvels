@@ -125,7 +125,7 @@ func toRecEvents(payloads []eventPayload) []recstore.Event {
 //
 // 为什么在服务端补：前端埋点只知道「点了哪本书」，作者与分类不一定在卡片数据里；
 // 让每处调用各查一遍，同一本书的维度就会有的点带、有的点不带，兴趣权重也就
-// 聚不到同一个 key 上（"category:武侠" 与空 key 各拿一半权重，谁都进不了 top）。
+// 聚不到同一个 key 上（"category_l1:武侠" 与空 key 各拿一半权重，谁都进不了 top）。
 // 一次 BooksByIDs 批量补齐，代价是一次按主键的查询。
 func (s *Server) enrichEvents(ctx context.Context, events []recstore.Event) []recstore.Event {
 	ids := missingDimsIDs(events)

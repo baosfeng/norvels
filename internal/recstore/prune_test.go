@@ -62,7 +62,7 @@ func TestPruneKeepsAggregates(t *testing.T) {
 	if _, _, reads, seconds, _, ok := bookStats(t, s, 7); !ok || reads != 1 || seconds != 600 {
 		t.Fatalf("book_stats 不应被清理: ok=%v reads=%d seconds=%d", ok, reads, seconds)
 	}
-	if got := interestOf(t, s, 1, "category:武侠"); got <= 0 {
+	if got := interestOf(t, s, 1, "category_l1:武侠"); got <= 0 {
 		t.Fatalf("兴趣权重不应被清理，得到 %v", got)
 	}
 }

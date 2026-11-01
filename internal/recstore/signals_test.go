@@ -26,7 +26,7 @@ func TestInterestsDecaysOnRead(t *testing.T) {
 		"UPDATE user_interest SET weight = 1, updated_at = ? WHERE user_id = 1", old); err != nil {
 		t.Fatalf("改写权重: %v", err)
 	}
-	got := interestOf(t, s, 1, "category:武侠")
+	got := interestOf(t, s, 1, "category_l1:武侠")
 	if math.Abs(got-math.Exp(-0.5)) > 1e-2 {
 		t.Fatalf("7 天后权重 = %v，期望 ≈ e⁻⁰·⁵", got)
 	}
@@ -43,7 +43,7 @@ func TestInterestsDecaysOnRead(t *testing.T) {
 		"UPDATE user_interest SET weight = 3, updated_at = '怪' WHERE user_id = 1"); err != nil {
 		t.Fatalf("改坏时间: %v", err)
 	}
-	if got := interestOf(t, s, 1, "category:武侠"); math.Abs(got-3) > 1e-9 {
+	if got := interestOf(t, s, 1, "category_l1:武侠"); math.Abs(got-3) > 1e-9 {
 		t.Fatalf("时间不可解析时权重 = %v，期望 3", got)
 	}
 }

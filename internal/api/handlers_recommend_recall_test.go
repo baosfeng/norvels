@@ -107,10 +107,10 @@ func TestEventsBackfillBookDims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读兴趣: %v", err)
 	}
-	if _, ok := interest["category:玄幻"]; !ok {
-		t.Fatalf("分类维度未补齐: %v", interest)
+	if _, ok := interest["category_l1:玄幻"]; !ok {
+		t.Fatalf("一级分类维度未补齐: %v", interest)
 	}
-	if _, ok := interest["category:东方玄幻"]; !ok {
+	if _, ok := interest["category_l2:东方玄幻"]; !ok {
 		t.Fatalf("二级分类维度未补齐: %v", interest)
 	}
 }

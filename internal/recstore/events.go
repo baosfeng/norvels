@@ -236,19 +236,28 @@ type interestDim struct {
 	key string
 }
 
+// 兴趣维度：分类拆成 L1 / L2 两个维度，作者一个维度。
+//
+// 为什么不合成一个 category：同一本书的「武侠」与「江湖」分属两个层级，混在一个维度里
+// 会让看板出现「武侠 69.4 / 江湖 69.4」成对重复，召回也分不清命中凭据是大类还是细分，
+// 权重更没法按层级给（设计 §3：L1 3.0 / L2 1.5）。
+//
+// 旧键 dim=category **直接作废**：推荐库整库可重建（设计 §1），不做数据迁移；
+// 库里残留的 category 行不会再被任何读路径消费，随 90 天保留窗口自然清掉，或删库重建。
 const (
-	dimCategory = "category"
-	dimAuthor   = "author"
+	dimCategoryL1 = "category_l1"
+	dimCategoryL2 = "category_l2"
+	dimAuthor     = "author"
 )
 
 // interestDims 列出这条事件该加权的维度；空分类/0 作者直接跳过。
 func interestDims(ev Event) []interestDim {
 	out := make([]interestDim, 0, 3)
 	if ev.CategoryL1 != "" {
-		out = append(out, interestDim{dimCategory, ev.CategoryL1})
+		out = append(out, interestDim{dimCategoryL1, ev.CategoryL1})
 	}
 	if ev.CategoryL2 != "" {
-		out = append(out, interestDim{dimCategory, ev.CategoryL2})
+		out = append(out, interestDim{dimCategoryL2, ev.CategoryL2})
 	}
 	if ev.AuthorID > 0 {
 		out = append(out, interestDim{dimAuthor, strconv.FormatInt(ev.AuthorID, 10)})

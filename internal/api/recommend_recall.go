@@ -112,7 +112,7 @@ func (s *Server) recallCandidates(ctx context.Context, userID int64,
 // recallByInterest 按兴趣分类与兴趣作者两路召回。
 func (s *Server) recallByInterest(ctx context.Context, rr *recallResult,
 	interest map[string]float64) error {
-	for _, name := range topKeys(interest, "category", recallTopCategories) {
+	for _, name := range interestCategoryNames(interest) {
 		if err := s.recallCategory(ctx, rr, name); err != nil {
 			return err
 		}
@@ -129,10 +129,29 @@ func (s *Server) recallByInterest(ctx context.Context, rr *recallResult,
 	return nil
 }
 
+// interestCategoryNames 合并 L1 / L2 两维的分类名（各取 top3、去重、按权重顺序）。
+//
+// 两个维度在存储上分开是为了看板能分层展示，但「按分类取书」并不在乎层级：
+// 同一个名字在两维都出现时只查一次，避免同一批书被召回两遍。
+func interestCategoryNames(interest map[string]float64) []string {
+	names := make([]string, 0, recallTopCategories*2)
+	seen := make(map[string]bool, recallTopCategories*2)
+	for _, dim := range []string{interestDimCategoryL1, interestDimCategoryL2} {
+		for _, name := range topKeys(interest, dim, recallTopCategories) {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // recallCategory 取某个分类下的书；先按大分类查，没命中再按小分类查。
 //
-// 兴趣表里只存「分类名」不存层级（导入时 L1/L2 都写进同一个 dim），
-// 所以一个名字可能两级都不是；先 L1 后 L2 的顺序让大分类命中时少一次查询。
+// 合并后的名字不知道来自哪一级（L1 与 L2 的名字可能重名），所以两级都试：
+// 先 L1 后 L2 的顺序让大分类命中时少一次查询。
 func (s *Server) recallCategory(ctx context.Context, rr *recallResult, name string) error {
 	page, err := s.st.ListBooks(ctx, store.BookQuery{CategoryL1: name, Page: 1, Size: recallPerCategory})
 	if err != nil {

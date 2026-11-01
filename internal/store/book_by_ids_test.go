@@ -72,7 +72,7 @@ func TestBooksByIDsSkipsSuperseded(t *testing.T) {
 func TestBooksByIDsRejectsTooMany(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
-	ids := make([]int64, maxBooksByIDs+1)
+	ids := make([]int64, maxIDsPerQuery+1)
 	for i := range ids {
 		ids[i] = int64(i + 1)
 	}

@@ -93,7 +93,7 @@ func TestRecordEventsAggregatesByKind(t *testing.T) {
 	if imp != 0 || clicks != 1 || reads != 1 || seconds != 600 || shelf != 1 {
 		t.Fatalf("聚合 = imp%d click%d read%d sec%d shelf%d", imp, clicks, reads, seconds, shelf)
 	}
-	if got := interestOf(t, s, 1, "category:武侠"); math.Abs(got-7) > 1e-2 {
+	if got := interestOf(t, s, 1, "category_l1:武侠"); math.Abs(got-7) > 1e-2 {
 		t.Fatalf("武侠兴趣 = %v，期望 7（click1 + read3 + shelf3）", got)
 	}
 	if got := interestOf(t, s, 1, "author:12"); math.Abs(got-4) > 1e-2 {
@@ -112,21 +112,40 @@ func TestRecordEventsInterestDeltaByKind(t *testing.T) {
 		Event{Kind: KindSearch, CategoryL1: "搜索"},
 		Event{Kind: KindRead, BookID: 3, CategoryL1: "超长阅读", Value: maxReadSeconds},
 	)
-	if got := interestOf(t, s, 1, "category:评分"); math.Abs(got-5) > 1e-2 {
+	if got := interestOf(t, s, 1, "category_l1:评分"); math.Abs(got-5) > 1e-2 {
 		t.Fatalf("rating 增量 = %v，期望 5", got)
 	}
-	if got := interestOf(t, s, 1, "category:浏览"); math.Abs(got-0.5) > 1e-2 {
+	if got := interestOf(t, s, 1, "category_l1:浏览"); math.Abs(got-0.5) > 1e-2 {
 		t.Fatalf("view 增量 = %v，期望 0.5", got)
 	}
 	m, err := s.Interests(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("Interests: %v", err)
 	}
-	if _, ok := m["category:搜索"]; ok {
+	if _, ok := m["category_l1:搜索"]; ok {
 		t.Fatal("search 不应产生兴趣权重")
 	}
-	if got := m["category:超长阅读"]; math.Abs(got-4) > 1e-2 {
+	if got := m["category_l1:超长阅读"]; math.Abs(got-4) > 1e-2 {
 		t.Fatalf("read 增量封顶后 = %v，期望 1+3", got)
+	}
+}
+
+func TestRecordEventsSplitsCategoryLevels(t *testing.T) {
+	s := openTemp(t)
+	// 同一本书同时带一级/二级分类：两个维度各记一条，不再合并成同一个 key。
+	recordEvents(t, s, 1, Event{Kind: KindClick, BookID: 1, CategoryL1: "武侠", CategoryL2: "江湖"})
+	m, err := s.Interests(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Interests: %v", err)
+	}
+	if _, ok := m["category:武侠"]; ok {
+		t.Fatalf("旧键 category 应作废，实际仍写入: %v", m)
+	}
+	if got := m["category_l1:武侠"]; math.Abs(got-1) > 1e-6 {
+		t.Fatalf("一级分类权重 = %v，期望 1（只计 1 次点击）", got)
+	}
+	if got := m["category_l2:江湖"]; math.Abs(got-1) > 1e-6 {
+		t.Fatalf("二级分类权重 = %v，期望 1（独立计数，不与 L1 合并）", got)
 	}
 }
 
@@ -140,7 +159,7 @@ func TestRecordEventsReadDecaysOldInterest(t *testing.T) {
 	}
 	recordEvents(t, s, 1, Event{Kind: KindClick, BookID: 1, CategoryL1: "武侠"})
 	// 2·e⁻¹ ≈ 0.736 + 1
-	if got := interestOf(t, s, 1, "category:武侠"); math.Abs(got-1.736) > 1e-2 {
+	if got := interestOf(t, s, 1, "category_l1:武侠"); math.Abs(got-1.736) > 1e-2 {
 		t.Fatalf("衰减后再累加 = %v，期望 ≈1.736", got)
 	}
 }
@@ -154,7 +173,7 @@ func TestRecordEventsUnparsableUpdatedAtKeepsWeight(t *testing.T) {
 	}
 	recordEvents(t, s, 1, Event{Kind: KindClick, BookID: 1, CategoryL1: "武侠"})
 	// 时间不可解析时不衰减，也不把权重清零：宁可多给一点兴趣，也别把用户偏好丢掉。
-	if got := interestOf(t, s, 1, "category:武侠"); math.Abs(got-2) > 1e-2 {
+	if got := interestOf(t, s, 1, "category_l1:武侠"); math.Abs(got-2) > 1e-2 {
 		t.Fatalf("不可解析时间时权重 = %v，期望 2", got)
 	}
 }

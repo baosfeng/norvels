@@ -81,7 +81,7 @@ func (w Weights) resolve() Weights {
 
 // Signals 是一次推荐请求的外部信号：用户兴趣权重 + 打分权重。
 type Signals struct {
-	// Interest 的 key 与 recstore.Interests 同口径："category:武侠" / "author:12"。
+	// Interest 的 key 与 recstore.Interests 同口径："category_l1:武侠" / "category_l2:江湖" / "author:12"。
 	Interest map[string]float64
 	Weights  Weights
 }
@@ -110,9 +110,12 @@ const interestPrefix = "因为你常看"
 
 // 维度前缀，必须与 recstore 的 dim 常量一致（两包不互相 import，
 // 一致性的保证是各自的单测里都断言了同一个字符串）。
+// 兴趣维度的字符串与 recstore 的 dim 取值一致（两包不互相 import，
+// 由各自的单测钉住同一组字面量）。分类分两级：L1 权重 3.0、L2 权重 1.5。
 const (
-	dimCategory = "category"
-	dimAuthor   = "author"
+	dimCategoryL1 = "category_l1"
+	dimCategoryL2 = "category_l2"
+	dimAuthor     = "author"
 )
 
 // freshHalfLifeDays 是新鲜度衰减的时间常数：14 天前的书新鲜度约 0.37。

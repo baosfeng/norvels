@@ -35,7 +35,7 @@ const statsQuery = "SELECT (SELECT COUNT(*) FROM events), (SELECT COUNT(*) FROM 
 
 // Interests 返回该账号按 14 天指数衰减后的兴趣权重。
 //
-// key 形如 "category:武侠" / "author:12"，与 recommend.Signals.Interest 同一口径；
+// key 形如 "category_l1:武侠" / "category_l2:江湖" / "author:12"，与 recommend.Signals.Interest 同一口径；
 // 衰减在这里再做一次而不是只靠写入时衰减：用户几天不互动，读侧的旧权重必须继续变轻。
 func (s *Store) Interests(ctx context.Context, userID int64) (map[string]float64, error) {
 	if userID <= 0 {

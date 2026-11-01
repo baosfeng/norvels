@@ -2,7 +2,7 @@
 
 > 设计见 [2026-11-01-recommend-design](../specs/2026-11-01-recommend-design.md)：推荐数据独立成库
 > `norvels-rec.db`（`NORVELS_REC_DB` 可整路径覆盖），整库可重建；缺库时两个端点都返回 503 `unavailable`，
-> 其余端点不受影响。
+> 其余端点不受影响；推荐相关端点（events / recommend / recommend-stats）统一按此降级。
 
 ## POST /api/events
 
@@ -34,6 +34,37 @@
 召回来源（每路都回主库补标题与封面）：兴趣分类（top3 × 40）→ 兴趣作者（top2 × 20）→
 共读邻居（≤60）→ 近 7 天热度（≤40）→ 最近入库（20）→ 随机（20）。
 
+## GET /api/recommend/stats
+
+推荐看板（驾驶舱「推荐与埋点」区块）的聚合数据，只读、无副作用。
+
+- `days` 1–90，默认 14；越界夹取（非整数 → 400）。
+- → 200：
+
+```json
+{
+  "summary": {"days": 14, "impressions": 120, "clicks": 33, "reads": 8, "readSeconds": 2400, "shelfAdds": 5},
+  "daily": [{"date": "2026-11-01", "impressions": 12, "clicks": 3, "reads": 1, "seconds": 300}],
+  "interests": [{"dim": "category_l1", "key": "武侠", "name": "武侠", "weight": 3.2},
+                {"dim": "category_l2", "key": "江湖", "name": "江湖", "weight": 1.6},
+                {"dim": "author", "key": "12", "name": "示例作者", "weight": 2.4}],
+  "hotBooks": [{"bookId": 1, "title": "示例书", "authorName": "示例作者", "reads": 5, "clicks": 2, "seconds": 900}]
+}
+```
+
+口径（两处混用会导致「这台机器上所有人的平均兴趣」这种没有消费方的数字）：
+
+- `summary` / `daily` 是**全局埋点口径**：按书聚合，不分账号。`daily` 从今天往前 days 天平铺、
+  缺日补 0、升序；`summary.shelfAdds` 是**累计**收藏数（收藏没有日维度），不是窗口值。
+- `interests` 是**当前账号口径**：权重已按 14 天衰减，最多 10 行，同权重按 dim、key 升序。
+  每项 `{dim,key,name,weight}`，`dim` 取值 **`category_l1` | `category_l2` | `author`**：
+  一级分类与二级分类**分开计数**（同一本书的「武侠」与「江湖」是两行，不再成对重复）；
+  `key` 是稳定标识（作者 id / 分类名），`name` 是展示名——作者维度回主库换成作者名
+  （看板上不该出现「作者 1 / 3 / 2」），分类维度 `name` 与 `key` 相同；作者已删除时省略
+  `name`（omitempty），前端按 `name → key` 回退。
+- `hotBooks` 固定取近 7 天热度前 10（与推荐召回的窗口参数无关），标题/作者回主库补齐；
+  主库已删的书直接跳过（事件不级联删，但榜单上「未知书名」没有信息量）。
+
 ## 冷启动
 
 没有任何事件时只有「最近入库 + 随机」两路有货，结果仍然非空（库里至少有一本书时），
@@ -47,5 +78,6 @@
 
 ## 错误码
 
-- `invalid_param`：kind 未知、缺 `bookId`、字段超长、批量超限、`ts` 非法。
-- `unavailable`：推荐库未启用（`Config.Rec` 为 nil，例如启动时打开失败）。
+- `invalid_param`：kind 未知、缺 `bookId`、字段超长、批量超限、`ts` 非法、`days`/`limit` 非整数。
+- `unavailable`：推荐库未启用（`Config.Rec` 为 nil，例如启动时打开失败）；`/api/events`、
+  `/api/recommend`、`/api/recommend/stats` 三个端点统一返回。

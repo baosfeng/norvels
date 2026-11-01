@@ -35,8 +35,8 @@ func (c contributions) total() float64 {
 // contributionsOf 计算各分量。惩罚项在 total 里减去，这里只存正值。
 func contributionsOf(c Candidate, interest map[string]float64, w Weights) contributions {
 	return contributions{
-		l1:        w.InterestL1 * interestWeight(interest, dimCategory, c.CategoryL1),
-		l2:        w.InterestL2 * interestWeight(interest, dimCategory, c.CategoryL2),
+		l1:        w.InterestL1 * interestWeight(interest, dimCategoryL1, c.CategoryL1),
+		l2:        w.InterestL2 * interestWeight(interest, dimCategoryL2, c.CategoryL2),
 		author:    w.InterestAuthor * interestWeight(interest, dimAuthor, authorKey(c.AuthorID)),
 		cooccur:   w.Cooccur * math.Log1p(nonNegative(c.CooccurUsers)),
 		hotReads:  w.HotReads * math.Log1p(nonNegative(c.HotReads)),

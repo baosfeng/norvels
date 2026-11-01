@@ -74,7 +74,7 @@ func TestRankOrdersByInterestAndExplains(t *testing.T) {
 		{BookID: 2, CategoryL1: "武侠"},
 		{BookID: 3, CategoryL1: "都市"},
 	}
-	sig := Signals{Interest: map[string]float64{"category:武侠": 2}}
+	sig := Signals{Interest: map[string]float64{"category_l1:武侠": 2}}
 	got := Rank(cands, sig, rand.New(rand.NewSource(3)), 2)
 	if len(got) != 2 {
 		t.Fatalf("结果条数 = %d，期望 2", len(got))

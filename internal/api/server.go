@@ -256,6 +256,8 @@ func (s *Server) registerMiscRoutes(mux *http.ServeMux) {
 func (s *Server) registerRecommendRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/events", s.handleRecordEvents)
 	mux.HandleFunc("GET /api/recommend", s.handleRecommend)
+	// 看板聚合（驾驶舱「推荐与埋点」区块）：只读，口径见 handlers_recommend_stats.go。
+	mux.HandleFunc("GET /api/recommend/stats", s.handleRecommendStats)
 }
 
 // baseContext 返回导入任务的父 context。

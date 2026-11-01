@@ -12,11 +12,11 @@ import (
 // 再统一回主库补标题与封面——那次补全必须与列表页共用 bookSummaryColumns，
 // 否则推荐卡和书架卡会各写各的字段口径。
 
-// maxBooksByIDs 是一次 IN 查询的 id 上限。
+// maxIDsPerQuery 是一次 IN 查询的 id 上限（书 / 作者共用同一口径）。
 //
 // SQLite 的绑定参数上限默认 999，这里取 500 留余量。超了直接报错而不是截断：
-// 静默截断会悄悄改变召回结果，排查「为什么这本书没被推荐」时找不到任何线索。
-const maxBooksByIDs = 500
+// 静默截断会悄悄改变召回结果或看板上的作者名，排查时找不到任何线索。
+const maxIDsPerQuery = 500
 
 // BooksByIDs 按传入顺序返回这些书（跳过不存在 / 已被取代 / 非正 id）。
 //
@@ -24,7 +24,7 @@ const maxBooksByIDs = 500
 // 所以这里按输入顺序回填。只返回 superseded_by = 0 的书：旧版本在书架上本来就不可见，
 // 推荐里冒出一本被替换掉的旧版，用户点进去会看到重复书目。
 func (s *Store) BooksByIDs(ctx context.Context, ids []int64) ([]BookSummary, error) {
-	uniq, err := dedupeBookIDs(ids)
+	uniq, err := dedupeIDs(ids, "书")
 	if err != nil {
 		return nil, err
 	}
@@ -72,8 +72,11 @@ func (s *Store) countActiveBooks(ctx context.Context) (int, error) {
 	return total, nil
 }
 
-// dedupeBookIDs 去重并丢掉非正 id；空结果表示「没有要查的书」。
-func dedupeBookIDs(ids []int64) ([]int64, error) {
+// dedupeIDs 去重并丢掉非正 id；空结果表示「没有要查的对象」。
+//
+// noun 只用于错误文案（"书" / "作者"）：口径完全一致，文案说清楚才不至于
+// 让「一次最多按 500 个 id 取书」出现在作者查询的报错里。
+func dedupeIDs(ids []int64, noun string) ([]int64, error) {
 	out := make([]int64, 0, len(ids))
 	seen := make(map[int64]bool, len(ids))
 	for _, id := range ids {
@@ -83,9 +86,9 @@ func dedupeBookIDs(ids []int64) ([]int64, error) {
 		seen[id] = true
 		out = append(out, id)
 	}
-	if len(out) > maxBooksByIDs {
-		return nil, fmt.Errorf("%w: 一次最多按 %d 个 id 取书，收到 %d 个",
-			ErrInvalidArgument, maxBooksByIDs, len(out))
+	if len(out) > maxIDsPerQuery {
+		return nil, fmt.Errorf("%w: 一次最多按 %d 个 id 取%s，收到 %d 个",
+			ErrInvalidArgument, maxIDsPerQuery, noun, len(out))
 	}
 	return out, nil
 }

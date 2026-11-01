@@ -7,10 +7,11 @@ import (
 
 func TestRawScoreFullFormula(t *testing.T) {
 	w := DefaultWeights()
+	// L1 与 L2 是两个维度：同一个名字落在不同维度是不同的信号。
 	interest := map[string]float64{
-		"category:武侠": 2,
-		"category:传统": 1,
-		"author:12":   1,
+		"category_l1:武侠": 2,
+		"category_l2:传统": 1,
+		"author:12":      1,
 	}
 	c := Candidate{
 		BookID: 1, AuthorID: 12, CategoryL1: "武侠", CategoryL2: "传统",
@@ -64,17 +65,21 @@ func TestNonNegative(t *testing.T) {
 }
 
 func TestInterestWeight(t *testing.T) {
-	m := map[string]float64{"category:武侠": 2}
-	if got := interestWeight(m, dimCategory, "武侠"); got != 2 {
+	m := map[string]float64{"category_l1:武侠": 2}
+	if got := interestWeight(m, dimCategoryL1, "武侠"); got != 2 {
 		t.Fatalf("命中权重 = %v", got)
 	}
-	if got := interestWeight(m, dimCategory, ""); got != 0 {
+	// 同名但维度不同（L2）不能命中：否则 L1/L2 又会在打分里混成一份。
+	if got := interestWeight(m, dimCategoryL2, "武侠"); got != 0 {
+		t.Fatalf("L2 维度不应命中 L1 的权重，得到 %v", got)
+	}
+	if got := interestWeight(m, dimCategoryL1, ""); got != 0 {
 		t.Fatalf("空 key 应取 0，得到 %v", got)
 	}
-	if got := interestWeight(m, dimCategory, "仙侠"); got != 0 {
+	if got := interestWeight(m, dimCategoryL1, "仙侠"); got != 0 {
 		t.Fatalf("未命中应取 0，得到 %v", got)
 	}
-	if got := interestWeight(nil, dimCategory, "武侠"); got != 0 {
+	if got := interestWeight(nil, dimCategoryL1, "武侠"); got != 0 {
 		t.Fatalf("nil map 应取 0，得到 %v", got)
 	}
 }
