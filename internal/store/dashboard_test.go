@@ -332,6 +332,22 @@ func TestFillCompositionClampsOversize(t *testing.T) {
 	}
 }
 
+// TestFillCompositionNoOverflow 守住 GB 量级的按比例缩放：int64 直接相乘会溢出成负数。
+func TestFillCompositionNoOverflow(t *testing.T) {
+	const gb = int64(1) << 30
+	st := Stats{DBBytes: 23 * gb}
+	fillComposition(&st, 21*gb, 73*gb) // 迁移中途的 index_bytes 会远大于真实文件
+	if st.TextBytes < 0 || st.IndexBytes < 0 || st.OtherBytes < 0 {
+		t.Fatalf("缩放后出现负值：%+v", st)
+	}
+	if sum := st.TextBytes + st.IndexBytes + st.OtherBytes; sum != st.DBBytes {
+		t.Errorf("缩放后合计 = %d，期望 %d", sum, st.DBBytes)
+	}
+	if st.TextBytes <= 0 {
+		t.Errorf("按比例缩放后正文不应为 0：%d", st.TextBytes)
+	}
+}
+
 // TestFillCompositionEdgeCases 覆盖全零估算与 DBBytes=0。
 func TestFillCompositionEdgeCases(t *testing.T) {
 	zero := Stats{DBBytes: 500}

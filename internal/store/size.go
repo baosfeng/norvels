@@ -95,8 +95,10 @@ func fillComposition(st *Stats, textBytes, indexBytes int64) {
 		return
 	}
 	if total > st.DBBytes {
-		st.TextBytes = textBytes * st.DBBytes / total
-		st.IndexBytes = indexBytes * st.DBBytes / total
+		// 用 float64 缩放：int64 直接乘会在 GB 量级溢出（21.9 GB × 23.4 GB 远超 9.2e18）。
+		ratio := float64(st.DBBytes) / float64(total)
+		st.TextBytes = int64(float64(textBytes) * ratio)
+		st.IndexBytes = int64(float64(indexBytes) * ratio)
 		st.OtherBytes = st.DBBytes - st.TextBytes - st.IndexBytes
 		return
 	}

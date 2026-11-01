@@ -37,6 +37,7 @@ const usage = `norvels — 本地中文小说库
   norvels reconcile-content [--db ...] [--fix]
   norvels backfill-fingerprints [--db ...] [--batch N]
   norvels backfill-quality [--db ...] [--batch N]
+  norvels refresh-metrics [--db ...]
   norvels migrate [--db ...] [--dry-run] [--to N]
   norvels version
 
@@ -101,6 +102,7 @@ var commands = map[string]func([]string) error{
 	"reconcile-content":     cmdReconcileContent,
 	"backfill-fingerprints": cmdBackfillFingerprints,
 	"backfill-quality":      cmdBackfillQuality,
+	"refresh-metrics":       cmdRefreshMetrics,
 	"migrate":               cmdMigrate,
 	"version":               cmdVersion,
 	"-v":                    cmdVersion,

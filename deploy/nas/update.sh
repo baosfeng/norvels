@@ -24,16 +24,34 @@ CHECK_UPDATES=0
 USE_LATEST=0
 VACUUM_ONLY=0
 BACKFILL_ONLY=0
+UP_ONLY=0
+CHECKPOINT_ONLY=0
+SQL_ONLY=0
+RESTART_ONLY=0
+REFRESH_ONLY=0
+SQL_DB=""
+SQL_TEXT=""
 NEW_VERSION=""
 for arg in "$@"; do
   case "$arg" in
     --check) CHECK_ONLY=1 ;;
+    --up) UP_ONLY=1 ;;
+    --checkpoint) CHECKPOINT_ONLY=1 ;;
+    --sql) SQL_ONLY=1 ;;
+    --restart) RESTART_ONLY=1 ;;
+    --refresh) REFRESH_ONLY=1 ;;
     --check-updates) CHECK_UPDATES=1 ;;
     --latest) USE_LATEST=1 ;;
     --vacuum) VACUUM_ONLY=1 ;;
     --backfill) BACKFILL_ONLY=1 ;;
     -* ) die "未知参数 $arg" ;;
-    *  ) NEW_VERSION="$arg" ;;
+    *  )
+      if [ "$SQL_ONLY" = "1" ]; then
+        if [ -z "$SQL_DB" ]; then SQL_DB="$arg"; else SQL_TEXT="$arg"; fi
+      else
+        NEW_VERSION="$arg"
+      fi
+      ;;
   esac
 done
 
@@ -84,6 +102,55 @@ echo "当前版本：${NORVELS_VERSION:-latest}   数据目录：$DATA_DIR"
 
 # ---------- 维护子命令：迁移后必做的两件事 ----------
 # 单独成命令是为了能走 sudoers 白名单（只免密 /vol1/norvels/update.sh *）。
+if [ "$REFRESH_ONLY" = "1" ]; then
+  echo "== 重算体积构成（refresh-metrics）=="
+  docker run --rm --user 65532:65532 --entrypoint /norvels -v "$DATA_DIR:/data" "bsfeng/norvels:${NORVELS_VERSION:-latest}" refresh-metrics --db /data/norvels.db
+  exit 0
+fi
+if [ "$RESTART_ONLY" = "1" ]; then
+  echo "== 重启容器 =="
+  docker compose restart
+  for i in $(seq 1 24); do
+    STATE=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' norvels 2>/dev/null || echo missing)
+    [ "$STATE" = "healthy" ] && { echo "已恢复健康"; exit 0; }
+    [ "$STATE" = "unhealthy" ] && die "容器 unhealthy，查 docker compose logs --tail 50 norvels"
+    sleep 5
+  done
+  die "120 秒内未健康"
+fi
+if [ "$SQL_ONLY" = "1" ]; then
+  # 只读查询（不写库）：排障用，例如 ./update.sh --sql norvels.db "select * from store_metrics"
+  : "${SQL_DB:?用法: ./update.sh --sql <norvels.db|norvels-content.db> <SQL>}"
+  : "${SQL_TEXT:?用法: ./update.sh --sql <库文件> <SQL>}"
+  docker pull -q keinos/sqlite3 >/dev/null
+  docker run --rm --entrypoint sqlite3 --user 65532:65532 -v "$DATA_DIR:/data" keinos/sqlite3 "/data/$SQL_DB" "$SQL_TEXT"
+  exit 0
+fi
+if [ "$CHECKPOINT_ONLY" = "1" ]; then
+  echo "== WAL checkpoint（停服；把 -wal 合并回主文件并截断）=="
+  docker compose stop
+  docker pull -q keinos/sqlite3 >/dev/null
+  for f in norvels.db norvels-content.db; do
+    [ -f "$DATA_DIR/$f" ] || continue
+    echo "-- checkpoint $f"
+    docker run --rm --user 65532:65532 --entrypoint sqlite3 -v "$DATA_DIR:/data" keinos/sqlite3 "/data/$f" "PRAGMA wal_checkpoint(TRUNCATE);"
+    ls -la "$DATA_DIR/$f-wal" 2>/dev/null || echo "  （无 WAL，已全部合并）"
+  done
+  docker compose up -d
+  echo "checkpoint 完成"
+  exit 0
+fi
+if [ "$UP_ONLY" = "1" ]; then
+  echo "== 启动容器 =="
+  docker compose up -d
+  for i in $(seq 1 24); do
+    STATE=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' norvels 2>/dev/null || echo missing)
+    [ "$STATE" = "healthy" ] && { echo "已恢复健康"; exit 0; }
+    [ "$STATE" = "unhealthy" ] && die "容器 unhealthy，查 docker compose logs --tail 50 norvels"
+    sleep 5
+  done
+  die "120 秒内未健康"
+fi
 if [ "$VACUUM_ONLY" = "1" ] || [ "$BACKFILL_ONLY" = "1" ]; then
   IMAGE="bsfeng/norvels:${NORVELS_VERSION:-latest}"
   if [ "$VACUUM_ONLY" = "1" ]; then
@@ -96,8 +163,11 @@ if [ "$VACUUM_ONLY" = "1" ] || [ "$BACKFILL_ONLY" = "1" ]; then
       # --entrypoint 必须显式给：该镜像默认 entrypoint 是 tini，会把 db 路径当可执行文件。
       docker run --rm --user 65532:65532 --entrypoint sqlite3 -v "$DATA_DIR:/data" keinos/sqlite3 "/data/$f" "VACUUM;"
     done
+    # VACUUM 之后文件大小变了，index_bytes 等缓存必然过期；重算一次再起服。
+    echo "-- 重算体积构成（refresh-metrics）"
+    docker run --rm --user 65532:65532 --entrypoint /norvels -v "$DATA_DIR:/data" "$IMAGE" refresh-metrics --db /data/norvels.db
     docker compose up -d
-    echo "VACUUM 完成（两个库的 WAL 已合并，主库空洞页已回收）"
+    echo "VACUUM 完成（两个库的 WAL 已合并，主库空洞页已回收，体积构成已重算）"
   fi
   if [ "$BACKFILL_ONLY" = "1" ]; then
     echo "== 回填章级指纹（存量库几十分钟，可中断续跑）=="
