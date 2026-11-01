@@ -16,6 +16,7 @@ import { useTocColumns } from "./useTocColumns";
 import { H5StickyCta } from "./H5StickyCta";
 import { ackNewChaptersIfLast } from "./newChapters";
 import { chapterLabel } from "./chapterLabel";
+import { useBookView } from "./useBookView";
 
 /**
  * 书籍详情：PC 双栏（封面侧 + 目录），H5 单列（封面缩为横向头部，简介折叠）。
@@ -28,6 +29,9 @@ export function BookPage() {
   const id = Number(bookId);
   const isH5 = useIsH5();
   const { data: book, loading, error, reload } = useBook(Number.isFinite(id) ? id : null);
+  // 停留埋点：必须在下面的早返回之前调用（hooks 不能条件化）。
+  // 书还没取回来时不计时，停留从「看得见内容」那一刻算起，离开时上报一条 view。
+  useBookView(book ?? null);
   const progress = useReadingProgress();
   const navigate = useNavigate();
   const location = useLocation();

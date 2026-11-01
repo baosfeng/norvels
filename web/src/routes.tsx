@@ -15,6 +15,7 @@ import { SeriesPage } from "./features/series/SeriesPage";
 import { SeriesDetailPage } from "./features/series/SeriesDetailPage";
 import { HistoryPage } from "./features/history/HistoryPage";
 import { CollectionsPage } from "./features/collections/CollectionsPage";
+import { DiscoverPage } from "./features/discover/DiscoverPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { TierRoute } from "./layouts/TierRoute";
 import { LandingRedirect, NotFoundPage, TierHomeRedirect } from "./layouts/Redirects";
@@ -40,6 +41,8 @@ export const routeTable: RouteObject[] = [
           </TierRoute>
         ),
       },
+      // 发现页（为你推荐）：两档都开——H5 也需要一个「今天读点什么」的入口
+      { path: "discover", element: <DiscoverPage /> },
       { path: "shelf", element: <ShelfPage /> },
       // 登录 / 注册：两档都开（H5 同样需要一个入口）。匿名可用是硬要求，
       // 它不是拦截页，只是"需要账号的动作"的落脚点。

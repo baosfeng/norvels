@@ -35,9 +35,18 @@ function hrefs(): string[] {
 }
 
 describe("侧栏：H5 抽屉补齐两档都开的能力", () => {
-  it("H5 主导航含 首页 / 书架 / 搜索 / 系列 / 阅读历史 / 书单", () => {
+  it("H5 主导航含 首页 / 发现 / 书架 / 搜索 / 系列 / 阅读历史 / 书单", () => {
     renderSidebar("h5");
-    expect(hrefs()).toEqual(["/home", "/shelf", "/search", "/series", "/history", "/collections"]);
+    expect(hrefs()).toEqual([
+      "/home",
+      "/discover",
+      "/shelf",
+      "/search",
+      "/series",
+      "/history",
+      "/collections",
+    ]);
+    expect(screen.getByTestId("nav-discover")).toBeTruthy();
     expect(screen.getByTestId("nav-series")).toBeTruthy();
     expect(screen.getByTestId("nav-history")).toBeTruthy();
     expect(screen.getByTestId("nav-collections")).toBeTruthy();
@@ -52,9 +61,10 @@ describe("侧栏：H5 抽屉补齐两档都开的能力", () => {
     expect(within(nav).queryByText("导入管理")).toBeNull();
   });
 
-  it("PC 主导航是管理工作台：含系列、历史与书单，但不含 H5 首页", () => {
+  it("PC 主导航是管理工作台：含发现、系列、历史与书单，但不含 H5 首页", () => {
     renderSidebar("pc");
     expect(hrefs()).toEqual([
+      "/discover",
       "/shelf",
       "/search",
       "/series",

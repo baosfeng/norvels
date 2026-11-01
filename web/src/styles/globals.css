@@ -521,6 +521,8 @@ body.h5-sheet-open {
 @import "./ix-dashboard.css";
 /* 搜索页平铺筛选区（分类 / 评分 / 阅读 / 连载 / 作者 / 标签） */
 @import "./ix-search-filters.css";
+/* 发现页（/discover）：为你推荐的卡片流（复用书架卡结构，只换成竖排海报格 + 推荐理由一行） */
+@import "./ix-recommend.css";
 
 /* 侧栏当前页的选中态：按 aria-current="page" 接管（prototype.css 的 .is-active 从未命中）。
    **必须留在最后一条 @import**：它要盖住上面各表的悬停底色（navActive.ix.test.ts 守着这个位置）。 */

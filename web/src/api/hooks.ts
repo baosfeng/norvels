@@ -273,6 +273,14 @@ export function useRecordReadingSession() {
   }, []);
 }
 
+/**
+ * 为你推荐（发现页）：`limit` 是请求条数（契约 1–50），进依赖——换了条数就重取。
+ * 「换一批」调 reload：key 不变所以列表不会先清空闪骨架，服务端每次都会重新随机。
+ */
+export function useRecommendations(limit = 20) {
+  return useResource((signal: AbortSignal) => api.recommendations(limit, { signal }), [limit]);
+}
+
 /** 追更角标清零（读到最后一章）：失败只影响角标数字，不打断阅读。 */
 export function useAckNewChapters() {
   return useCallback(async (bookId: number, options?: RequestOptions) => {

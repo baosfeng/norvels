@@ -25,6 +25,7 @@ import type {
   MergeResult,
   Page,
   ReadStatus,
+  RecommendResult,
   RenumberBody,
   RenumberResult,
   ReviewDecision,
@@ -49,6 +50,8 @@ import type {
   Stats,
   TagRule,
   TagRules,
+  TrackEvent,
+  TrackEventsResult,
   CategoryTree,
   TagSummary,
   UploadResult,
@@ -648,4 +651,20 @@ export const api = {
   /** 移出书架：204，幂等（本来不在同样成功）。 */
   removeFromShelf: (bookId: number, opts?: RequestOptions) =>
     request<void>(`/shelf/${bookId}`, { ...opts, method: "DELETE" }),
+
+  // --- 推荐与埋点（docs/specs/2026-11-01-recommend-design.md §4） ---
+
+  /**
+   * 批量上报埋点事件：一次 ≤100 条（调用方负责拆批，lib/telemetry 已按契约切好）。
+   * 非法 kind / 超长字段后端 400——那是**整批**被拒，所以埋点侧只重试网络类失败，不重试 4xx。
+   */
+  postEvents: (events: TrackEvent[], opts?: RequestOptions) =>
+    request<TrackEventsResult>("/events", { ...opts, method: "POST", body: { events } }),
+
+  /**
+   * 为你推荐：`limit` 夹在 1–50（后端兜底），缺省由后端决定。
+   * 每次调用都带随机扰动（设计 §3），「换一批」就是再取一次。
+   */
+  recommendations: (limit?: number, opts?: RequestOptions) =>
+    request<RecommendResult>(`/recommend${query({ limit })}`, opts),
 };

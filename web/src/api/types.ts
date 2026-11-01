@@ -887,3 +887,75 @@ export interface ImportReviews {
 
 /** decide 的动作：replace 换成新版，keep 保留当前版本（书侧不动）。 */
 export type ReviewDecision = "replace" | "keep";
+
+// --- 推荐与埋点（docs/specs/2026-11-01-recommend-design.md §4 契约） ---
+
+/**
+ * 埋点事件类型：与 rec 库 events.kind 一一对应，也是后端 kind 白名单的全集
+ * （设计文档 §2 的「有信号的事件」+ §4 的校验口径）。
+ *
+ * **没有 `start`**：§5 写的是「挂载记 start」，但 §2 / §4 的落库与校验白名单里都没有它，
+ * 后端对不在白名单里的 kind 整批 400（批量上报是重试单位，混合接受会让客户端无法判断该重发哪条）。
+ * 所以详情页只在离开时上报一条 `view`（value = 停留秒数）——它同样能表达「进来过、待了多久」，
+ * 且不会把同一批里的其他事件一起带进 400。要不要加 `start` 由后端契约决定，前端不单方面发明。
+ */
+export type TrackEventKind =
+  | "impression"
+  | "click"
+  | "view"
+  | "read"
+  | "search"
+  | "shelf"
+  | "rating";
+
+/**
+ * POST /api/events 的一条事件。字段都可缺省：埋点只带**已知**的维度，
+ * 缺的维度由后端按 book_id 反查，不在这里猜。
+ */
+export interface TrackEvent {
+  kind: TrackEventKind;
+  bookId?: number;
+  authorId?: number;
+  categoryL1?: string;
+  categoryL2?: string;
+  /** 数值语义按 kind 定：view = 停留秒数，rating = 星级，其余缺省。 */
+  value?: number;
+  /** 自由文本（如搜索词）；超长后端 400，所以调用方只放短串。 */
+  extra?: string;
+  /** 客户端时间（ISO-8601）。当前不发送：服务端按接收时间落 ts，避免两台时钟不一致。 */
+  ts?: string;
+}
+
+/** POST /api/events 的请求体：一次 ≤100 条（lib/telemetry 自己拆批）。 */
+export interface TrackEventsBody {
+  events: TrackEvent[];
+}
+
+/** POST /api/events 的响应：只回实际落库条数。 */
+export interface TrackEventsResult {
+  accepted: number;
+}
+
+/**
+ * GET /api/recommend 的一条推荐。字段由后端投影，前端不猜：
+ * `reason` 是给人看的一句话（「因为你常看武侠」），`score` 只用于排序与调试。
+ */
+export interface RecommendItem {
+  bookId: number;
+  title: string;
+  authorName: string;
+  /** 空串 = 未分类（与 BookMeta 同口径） */
+  categoryL1: string;
+  /** 空串 = 该大分类下未细分 */
+  categoryL2: string;
+  hasCover: boolean;
+  /** 推荐理由：直接展示，不由前端拼装 */
+  reason: string;
+  score: number;
+}
+
+/** GET /api/recommend 的响应。`generatedAt` 用于「这一批是什么时候算的」。 */
+export interface RecommendResult {
+  items: RecommendItem[];
+  generatedAt: string;
+}

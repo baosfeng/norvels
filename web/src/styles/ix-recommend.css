@@ -1,0 +1,135 @@
+/* ══ 发现页（/discover）⬤ 为你推荐的卡片流 ══
+   结构完全复用书架那张卡（.book-card / .book-link / .book-card-body / .cover），
+   只把形态换成一格一张的竖排海报，正文列多一行「推荐理由」。
+   封面在上、文字在下的竖排是真的用 CSS 做的，两档同一套 DOM（与书架 H5 网格同一做法）。 */
+
+.view-discover .discover-grid {
+  display: grid;
+  /* 海报格按可用宽度自动铺列（1440 一屏 6 列）：固定的 3/4 列会把封面拉到 360px 以上，
+     一屏只看得见 4 本，推荐流要的是「一眼扫过很多本」 */
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: var(--gap-card);
+  min-width: 0;
+}
+
+/* 卡片退成「透明的格子」：没有描边与内边距，封面自己撑起视觉边界 */
+.view-discover .book-card {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.view-discover .book-card .book-link {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+/* 封面 3:4 吃满格子宽（压掉 prototype.css 的 84px 固定宽） */
+.view-discover .book-card .cover {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-sm);
+}
+.view-discover .book-card .cover span {
+  font-size: 30px;
+}
+/* 悬停：整格最有辨识度的是封面，描边落在这里而不是卡片框上 */
+.view-discover .book-card:hover .cover {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.view-discover .book-card .book-card-body {
+  gap: 2px;
+  min-width: 0;
+}
+/* 书名固定 2 行高：一行书名的格与两行的高一样，作者与理由才对得齐 */
+.view-discover .book-card h3.book-title {
+  font-size: 14px;
+  line-height: 1.3;
+  -webkit-line-clamp: 2;
+  min-height: 2.6em;
+  overflow-wrap: anywhere;
+}
+.view-discover .book-card .book-author {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.view-discover .book-card .discover-cat {
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 推荐理由：后端给的人话，长书名会把行撑长，所以允许换行且任何位置可断——
+   这一条是 390 断点最容易横向溢出的地方（原型里的 .pill 是 nowrap，不放它） */
+.view-discover .discover-reason {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px;
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--meta);
+  overflow-wrap: anywhere;
+}
+.view-discover .discover-reason::before {
+  content: "✦";
+  font-size: 10px;
+  line-height: 1.6;
+  color: color-mix(in oklab, var(--accent), transparent 30%);
+}
+
+/* 页头右侧：「换一批」与标题同一视觉行 */
+.view-discover .discover-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  /* 与书架同一口径：页面左右留白收到 --gap-page，格子宽一点，书名与理由才放得下 */
+  main.container:has(> .view-discover) {
+    --gutter: var(--gap-page);
+  }
+  /* 390 → 2 列（每格 173px），768 的平板 → 4 列：按可用宽度铺，而不是写死两列 */
+  .view-discover .discover-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+  .view-discover .book-card h3.book-title {
+    font-size: 13px;
+  }
+  .view-discover .book-card .book-author,
+  .view-discover .discover-reason {
+    font-size: 11px;
+  }
+  /* 手机上理由收到 2 行：理由再长也不让一张卡比封面还高 */
+  .view-discover .discover-reason {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    padding-left: 13px;
+    position: relative;
+  }
+  .view-discover .discover-reason::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  .view-discover .discover-head-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
