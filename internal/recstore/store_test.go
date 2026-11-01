@@ -19,6 +19,12 @@ func openTemp(t *testing.T) *Store {
 	return s
 }
 
+// otherSlot 返回一个与当前时段不同的时刻（+6 小时必然换槽）。
+//
+// 读兴趣时用它取「全局那一份」：Interests 会并入当前时段 ×1.5 的加成，
+// 而多数用例断言的是全局权重。
+func otherSlot() time.Time { return time.Now().Add(6 * time.Hour) }
+
 // recordEvents 是「写入必须成功」的测试捷径：失败直接 Fatal，用例正文只关心结果。
 func recordEvents(t *testing.T, s *Store, userID int64, events ...Event) {
 	t.Helper()
@@ -53,6 +59,22 @@ func closeStore(t *testing.T, s *Store) {
 	if err := s.Close(); err != nil {
 		t.Fatalf("关闭库失败: %v", err)
 	}
+}
+
+// globalInterest 直接读全局兴趣表（不经时段加成），用于断言写入侧口径。
+func globalInterest(t *testing.T, s *Store, userID int64) map[string]float64 {
+	t.Helper()
+	m, err := s.readInterestRows(context.Background(), userID, nowUTC(), -1)
+	if err != nil {
+		t.Fatalf("读全局兴趣: %v", err)
+	}
+	return m
+}
+
+// interestOf 取一条全局兴趣权重（见 globalInterest）。
+func interestOf(t *testing.T, s *Store, userID int64, key string) float64 {
+	t.Helper()
+	return globalInterest(t, s, userID)[key]
 }
 
 var testNow = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)

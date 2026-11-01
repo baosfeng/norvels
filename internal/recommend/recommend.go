@@ -38,6 +38,10 @@ type Candidate struct {
 	// Resume 表示「读到一半、值得接着读」的续读候选。它同时豁免 Rank 的已读过滤：
 	// 进度存在即算读过，若按已读一律过滤，续读这条路永远召不回任何书。
 	Resume bool
+	// Similar 表示这是「相似书」召回（与种子书同系列/同作者/同分类）；
+	// SimilarReason 是它与种子书的关系文案，由召回路径决定。
+	Similar       bool
+	SimilarReason string
 }
 
 // Weights 是打分权重，默认值来自设计 §3；调用方可按需整体替换（例如冷启动只留热度）。
@@ -55,6 +59,7 @@ type Weights struct {
 	InterestTag    float64 // 标签兴趣（取命中标签的最大权重）
 	InterestSeries float64 // 系列兴趣
 	Resume         float64 // 续读基础分（读到一半的书给一个明确的正分）
+	Similar        float64 // 相似书基础分（similar=bookId 时，关系本身就是强信号）
 	// ReadPenalty 是「读过的书」降权（读了几分钟不代表想再看一遍，但不该直接消失）。
 	ReadPenalty        float64
 	RecentShownPenalty float64 // 近期已曝光惩罚
@@ -76,6 +81,7 @@ func DefaultWeights() Weights {
 		InterestTag:        2.0,
 		InterestSeries:     1.5,
 		Resume:             2.0,
+		Similar:            2.5,
 		ReadPenalty:        1.0,
 		RecentShownPenalty: 0.5,
 		JitterBase:         0.8,
@@ -125,6 +131,10 @@ const (
 	ReasonDefault = "猜你喜欢"
 	// ReasonResume 是续读召回的理由：这本书有未读完的进度。
 	ReasonResume = "读到一半，接着读"
+	// ReasonSameAuthor / ReasonSameCategory 是相似书召回的两条理由
+	// （同系列复用「同系列《X>」模板，不另起文案）。
+	ReasonSameAuthor   = "同一个作者"
+	ReasonSameCategory = "同一分类"
 )
 
 // interestPrefix 是兴趣类理由的前缀，后面接分类名，例如「因为你常看武侠」。

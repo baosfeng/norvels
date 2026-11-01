@@ -29,10 +29,7 @@ func TestDislikeWritesNegativeItemAndLowersInterest(t *testing.T) {
 	if n := countRows(t, s, "events"); n != 2 {
 		t.Fatalf("dislike 应落事件明细，events = %d", n)
 	}
-	interest, err := s.Interests(ctx, 1)
-	if err != nil {
-		t.Fatalf("Interests: %v", err)
-	}
+	interest := globalInterest(t, s, 1)
 	for key, weight := range interest {
 		if weight < 0 {
 			t.Fatalf("兴趣不应出现负权重: %s = %v", key, weight)
@@ -62,10 +59,7 @@ func TestRecordEventsTagsAndSeriesInterest(t *testing.T) {
 	recordEvents(t, s, 1, Event{
 		Kind: KindClick, BookID: 3, Tags: []string{"武侠", "群像"}, Series: "山河",
 	})
-	interest, err := s.Interests(context.Background(), 1)
-	if err != nil {
-		t.Fatalf("Interests: %v", err)
-	}
+	interest := globalInterest(t, s, 1)
 	for _, key := range []string{"tag:武侠", "tag:群像", "series:山河"} {
 		if got := interest[key]; math.Abs(got-1) > 1e-6 {
 			t.Fatalf("%s = %v，期望 1", key, got)

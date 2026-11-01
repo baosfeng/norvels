@@ -25,6 +25,7 @@ type contributions struct {
 	hotClicks float64
 	fresh     float64
 	resume    float64
+	similar   float64
 	read      float64
 	recent    float64
 }
@@ -32,7 +33,7 @@ type contributions struct {
 // total 把各分量合成特征加权和（惩罚项按设计为负）。
 func (c contributions) total() float64 {
 	return c.l1 + c.l2 + c.author + c.tag + c.series + c.cooccur + c.hotReads +
-		c.hotClicks + c.fresh + c.resume - c.read - c.recent
+		c.hotClicks + c.fresh + c.resume + c.similar - c.read - c.recent
 }
 
 // contributionsOf 计算各分量。惩罚项在 total 里减去，这里只存正值。
@@ -48,6 +49,7 @@ func contributionsOf(c Candidate, interest map[string]float64, w Weights) contri
 		tag:       w.InterestTag * bestTagWeight(c.Tags, interest),
 		series:    w.InterestSeries * interestWeight(interest, dimSeries, c.Series),
 		resume:    boolWeight(c.Resume, w.Resume),
+		similar:   boolWeight(c.Similar, w.Similar),
 		read:      boolWeight(c.Read, w.ReadPenalty),
 		recent:    boolWeight(c.RecentShown, w.RecentShownPenalty),
 	}
@@ -148,6 +150,7 @@ func reasonFor(c Candidate, sc contributions, interest map[string]float64) strin
 		{sc.hotReads + sc.hotClicks, ReasonHot},
 		{sc.fresh, ReasonFresh},
 		{sc.resume, ReasonResume},
+		{sc.similar, similarReason(c)},
 	}
 	best := reasonOption{reason: ReasonRandom}
 	for _, o := range opts {
@@ -167,13 +170,25 @@ func tagReason(c Candidate, interest map[string]float64) string {
 	return tagPrefix + tag + tagSuffix
 }
 
+// similarReason 用召回路径写好的关系文案；没写就退化为泛化说法。
+func similarReason(c Candidate) string {
+	if c.SimilarReason == "" {
+		return ReasonDefault
+	}
+	return c.SimilarReason
+}
+
 // seriesReason 拼系列类理由；系列名缺失时退化为泛化说法。
 func seriesReason(c Candidate) string {
 	if c.Series == "" {
 		return ReasonDefault
 	}
-	return seriesPrefix + c.Series + seriesSuffix
+	return SeriesReason(c.Series)
 }
+
+// SeriesReason 拼「同系列《X》」文案：相似书召回与兴趣召回应共用同一句话，
+// 两处各拼一次迟早会出现「同系列《X》」与「同系列 X」两种写法。
+func SeriesReason(series string) string { return seriesPrefix + series + seriesSuffix }
 
 // interestReason 拼兴趣类理由；分类缺失时退化为不带分类的泛化说法。
 func interestReason(c Candidate) string {

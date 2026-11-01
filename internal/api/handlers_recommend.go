@@ -45,9 +45,12 @@ const (
 
 // recommendItem 是推荐卡（前端不查详情即可渲染）。
 type recommendItem struct {
-	BookID     int64   `json:"bookId"`
-	Title      string  `json:"title"`
-	AuthorName string  `json:"authorName"`
+	BookID     int64  `json:"bookId"`
+	Title      string `json:"title"`
+	AuthorName string `json:"authorName"`
+	// AuthorID 供前端「不喜欢这个作者」直接下发 dislike（缺作者时置灰）；
+	// 只给名字不给 id 的话前端还得再查一次详情才能构造事件。
+	AuthorID   int64   `json:"authorId"`
 	CategoryL1 string  `json:"categoryL1"`
 	CategoryL2 string  `json:"categoryL2"`
 	HasCover   bool    `json:"hasCover"`
@@ -71,10 +74,20 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
-	tab, err := parseRecommendTab(r)
+	similarID, err := similarQuery(r)
 	if err != nil {
 		s.badRequest(w, err, codeInvalidParam)
 		return
+	}
+	// similar 与 tab 互斥且 similar 优先：给了种子书就按相似书召回，tab 不再参与
+	// （此时连 tab 的合法性也不校验——前端从详情页跳过来可能带着旧的 tab 参数）。
+	tab := recommendTabForYou
+	if similarID == 0 {
+		tab, err = parseRecommendTab(r)
+		if err != nil {
+			s.badRequest(w, err, codeInvalidParam)
+			return
+		}
 	}
 	ctx := r.Context()
 	userID := store.ScopeUserID(ctx)
@@ -83,7 +96,12 @@ func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
 		s.failRec(w, r, err, "推荐信号不可用")
 		return
 	}
-	recall, err := s.recallCandidates(ctx, userID, interest, tab)
+	var recall *recallResult
+	if similarID > 0 {
+		recall, err = s.recallSimilar(ctx, similarID)
+	} else {
+		recall, err = s.recallCandidates(ctx, userID, interest, tab)
+	}
 	if err != nil {
 		s.fail(w, r, err, "推荐候选不可用")
 		return
@@ -110,6 +128,19 @@ func parseRecommendTab(r *http.Request) (string, error) {
 	}
 	return "", badParam("参数 tab 必须是 %s|%s|%s",
 		recommendTabForYou, recommendTabResume, recommendTabRandom)
+}
+
+// similarQuery 解析 ?similar=<bookId>：缺省 0；给出时必须是正整数，否则 400。
+func similarQuery(r *http.Request) (int64, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("similar"))
+	if raw == "" {
+		return 0, nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, badParam("参数 similar 必须是正整数 bookId")
+	}
+	return id, nil
 }
 
 // buildRecommendations 读「已读 / 近期曝光」信号，打分后做多样性重排并装配响应。
@@ -141,6 +172,12 @@ func (s *Server) buildRecommendations(ctx context.Context, userID int64,
 		read: read, finished: finished, recent: recent, now: now,
 	})
 	cands = dropNegatives(cands, negatives)
+	// 作者级拉黑与书级同层：一次 dislike 带 authorId 时整位作者的作品都不再出现。
+	negAuthors, err := s.cfg.Rec.NegativeAuthors(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	cands = dropNegativeAuthors(cands, negAuthors)
 	sig := recommend.Signals{Interest: interest, ExploreRatio: tabExploreRatio(tab)}
 	ranked := recommend.Rank(cands, sig, rand.New(rand.NewSource(now.UnixNano())),
 		rankLimitForTab(tab, limit, len(cands)))
@@ -153,6 +190,21 @@ func (s *Server) buildRecommendations(ctx context.Context, userID int64,
 		items = append(items, itemOf(sc, recall.books[sc.BookID]))
 	}
 	return items, nil
+}
+
+// dropNegativeAuthors 剔除作者被拉黑的候选（与书级拉黑同层过滤）。
+func dropNegativeAuthors(cands []recommend.Candidate, authors map[int64]bool) []recommend.Candidate {
+	if len(authors) == 0 {
+		return cands
+	}
+	out := cands[:0]
+	for _, c := range cands {
+		if c.AuthorID > 0 && authors[c.AuthorID] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // dropNegatives 剔除被标记「不感兴趣」的候选（原地过滤，省一次分配）。
@@ -220,6 +272,7 @@ func sortResumeFirst(items []recommend.Scored, resume map[int64]float64) []recom
 func itemOf(sc recommend.Scored, bs store.BookSummary) recommendItem {
 	return recommendItem{
 		BookID: sc.BookID, Title: bs.Title, AuthorName: bs.AuthorName,
+		AuthorID:   bs.AuthorID,
 		CategoryL1: bs.CategoryL1, CategoryL2: bs.CategoryL2,
 		HasCover: bs.HasCover, Reason: sc.Reason, Score: sc.Score,
 	}

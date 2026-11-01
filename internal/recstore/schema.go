@@ -10,9 +10,10 @@ import (
 // 为什么不用主库的迁移体系：本库整库可重建（设计 §1），加一列可以「删文件重来」，
 // 不需要 20 分钟不可逆的前向迁移；用 user_version 只为挡住「新库配旧程序」这种
 // 会读到错列的组合。
-// 版本历史：1 = 初始结构；2 = 负反馈表 negative_items（dislike 用）。
+// 版本历史：1 = 初始结构；2 = negative_items（dislike 用）；
+// 3 = time_interest（时段偏好）+ negative_authors（作者级拉黑）。
 // 升版只做「幂等建表」（所有 DDL 都是 IF NOT EXISTS），不做数据迁移。
-const recSchemaVersion = 2
+const recSchemaVersion = 3
 
 // recSchemaDDL 是推荐库的全部结构，只在这里声明一次。
 //
@@ -88,6 +89,25 @@ var recSchemaDDL = []string{
     book_id INTEGER NOT NULL,
     ts      TEXT    NOT NULL,
     PRIMARY KEY (user_id, book_id)
+) WITHOUT ROWID`,
+	// 作者级拉黑：与 negative_items 同一套口径（按人去重、只留最近一次时间）。
+	`CREATE TABLE IF NOT EXISTS negative_authors (
+    user_id   INTEGER NOT NULL,
+    author_id INTEGER NOT NULL,
+    ts        TEXT    NOT NULL,
+    PRIMARY KEY (user_id, author_id)
+) WITHOUT ROWID`,
+	// 时段兴趣：与 user_interest 同构，多一列 slot（0-3）。
+	// 主键把 slot 放在 dim 前面：读取永远是「某账号的某个时段整片拿」，
+	// 前缀 (user_id, slot) 正好是聚簇顺序。
+	`CREATE TABLE IF NOT EXISTS time_interest (
+    user_id    INTEGER NOT NULL,
+    slot       INTEGER NOT NULL,
+    dim        TEXT    NOT NULL,
+    key        TEXT    NOT NULL,
+    weight     REAL    NOT NULL DEFAULT 0,
+    updated_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, slot, dim, key)
 ) WITHOUT ROWID`,
 }
 

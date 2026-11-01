@@ -50,6 +50,9 @@ type recallResult struct {
 	tags map[int64][]string
 	// resume 记录「读到一半」的书及其进度（0..1），只在该书被续读召回时存在。
 	resume map[int64]float64
+	// similar 记录相似书召回里「与种子书的关系文案」；selfID 是种子书（不推荐自己）。
+	similar map[int64]string
+	selfID  int64
 }
 
 // newRecallResult 预分配容量（一屏召回通常几十到几百本）。
@@ -61,6 +64,7 @@ func newRecallResult() *recallResult {
 		hot:     make(map[int64]recstore.HotBook, 32),
 		tags:    make(map[int64][]string, 64),
 		resume:  make(map[int64]float64, 16),
+		similar: make(map[int64]string, 32),
 	}
 }
 
@@ -97,10 +101,11 @@ func (rr *recallResult) candidates(sig recallSignals) []recommend.Candidate {
 			Read: sig.read[id], Finished: sig.finished[id], RecentShown: sig.recent[id],
 			CooccurUsers: rr.cooccur[id],
 			HotReads:     rr.hot[id].Reads, HotClicks: rr.hot[id].Clicks,
-			Fresh:  recommend.Freshness(bs.ImportedAt, sig.now),
-			Tags:   rr.tags[id],
-			Series: bs.Series,
-			Resume: rr.resume[id] > 0,
+			Fresh:   recommend.Freshness(bs.ImportedAt, sig.now),
+			Tags:    rr.tags[id],
+			Series:  bs.Series,
+			Resume:  rr.resume[id] > 0,
+			Similar: rr.similar[id] != "", SimilarReason: rr.similar[id],
 		})
 	}
 	return out

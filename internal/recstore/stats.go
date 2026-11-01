@@ -187,3 +187,78 @@ func clampInterestLimit(n int) int {
 		return n
 	}
 }
+
+// ReasonClick 是「某个推荐理由被点了多少次」（看板的理由分布）。
+type ReasonClick struct {
+	Reason string `json:"reason"`
+	Clicks int    `json:"clicks"`
+}
+
+// CategoryClick 是「某个一级分类被点了多少次」。
+type CategoryClick struct {
+	CategoryL1 string `json:"categoryL1"`
+	Clicks     int    `json:"clicks"`
+}
+
+// topMixLimit 是理由 / 分类分布榜的条数（与热门榜同一个「一屏看得完」标准）。
+const topMixLimit = 10
+
+const (
+	reasonMixQuery = "SELECT extra, COUNT(*) FROM events WHERE kind = 'click' AND extra <> '' " +
+		"AND ts >= ? GROUP BY extra ORDER BY COUNT(*) DESC, extra LIMIT ?"
+	categoryClicksQuery = "SELECT category_l1, COUNT(*) FROM events WHERE kind = 'click' " +
+		"AND category_l1 <> '' AND ts >= ? GROUP BY category_l1 ORDER BY COUNT(*) DESC, category_l1 LIMIT ?"
+)
+
+// ReasonMix 返回近 days 天点击最多的推荐理由（top10）。
+//
+// 只从 click 明细聚合：impression 不落明细（写放大护栏），拿不到理由分布；
+// 想统计「曝光都在推什么」需要另开聚合列，不在本次范围。
+func (s *Store) ReasonMix(ctx context.Context, days int) ([]ReasonClick, error) {
+	rows, err := s.db.QueryContext(ctx, reasonMixQuery, statsWindowStart(days), topMixLimit)
+	if err != nil {
+		return nil, fmt.Errorf("recstore: 查理由分布: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]ReasonClick, 0, topMixLimit)
+	for rows.Next() {
+		var r ReasonClick
+		if err := rows.Scan(&r.Reason, &r.Clicks); err != nil {
+			return nil, fmt.Errorf("recstore: 扫描理由分布: %w", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("recstore: 遍历理由分布: %w", err)
+	}
+	return out, nil
+}
+
+// CategoryClicks 返回近 days 天点击最多的一级分类（top10）。
+func (s *Store) CategoryClicks(ctx context.Context, days int) ([]CategoryClick, error) {
+	rows, err := s.db.QueryContext(ctx, categoryClicksQuery, statsWindowStart(days), topMixLimit)
+	if err != nil {
+		return nil, fmt.Errorf("recstore: 查分类点击: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]CategoryClick, 0, topMixLimit)
+	for rows.Next() {
+		var c CategoryClick
+		if err := rows.Scan(&c.CategoryL1, &c.Clicks); err != nil {
+			return nil, fmt.Errorf("recstore: 扫描分类点击: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("recstore: 遍历分类点击: %w", err)
+	}
+	return out, nil
+}
+
+// statsWindowStart 是「近 days 天」的起始日期（含今天，与 daily 同一口径）。
+func statsWindowStart(days int) string {
+	days = clampStatsDays(days)
+	return dayOf(formatTime(nowUTC().AddDate(0, 0, -(days - 1))))
+}

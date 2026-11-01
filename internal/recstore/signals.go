@@ -33,43 +33,15 @@ const statsQuery = "SELECT (SELECT COUNT(*) FROM events), (SELECT COUNT(*) FROM 
 	"(SELECT COUNT(DISTINCT user_id) FROM events), (SELECT COUNT(*) FROM user_interest), " +
 	"(SELECT COUNT(*) FROM cooccur), (SELECT COUNT(*) FROM recent_items)"
 
-// Interests 返回该账号按 14 天指数衰减后的兴趣权重。
+// Interests 返回该账号按 14 天指数衰减后的兴趣权重（含当前时段加成）。
 //
-// key 形如 "category_l1:武侠" / "category_l2:江湖" / "author:12"，与 recommend.Signals.Interest 同一口径；
-// 衰减在这里再做一次而不是只靠写入时衰减：用户几天不互动，读侧的旧权重必须继续变轻。
+// key 形如 "category_l1:武侠" / "category_l2:江湖" / "author:12" / "tag:武侠"，与
+// recommend.Signals.Interest 同一口径；衰减在这里再做一次而不是只靠写入时衰减：
+// 用户几天不互动，读侧的旧权重必须继续变轻。
+//
+// 时段加成见 InterestsAt：同一个账号在深夜与下午拿到的兴趣图不同，这是设计意图。
 func (s *Store) Interests(ctx context.Context, userID int64) (map[string]float64, error) {
-	if userID <= 0 {
-		return nil, fmt.Errorf("%w: user_id %d", ErrInvalidArgument, userID)
-	}
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT dim, key, weight, updated_at FROM user_interest WHERE user_id = ?", userID)
-	if err != nil {
-		return nil, fmt.Errorf("recstore: 查兴趣: %w", err)
-	}
-	defer rows.Close()
-
-	out := make(map[string]float64, 16)
-	now := nowUTC()
-	for rows.Next() {
-		var (
-			dim, key, updatedAt string
-			weight              float64
-		)
-		if err := rows.Scan(&dim, &key, &weight, &updatedAt); err != nil {
-			return nil, fmt.Errorf("recstore: 扫描兴趣: %w", err)
-		}
-		if prev, perr := parseTime(updatedAt); perr == nil {
-			weight = decay(weight, prev, now)
-		}
-		if weight < minDecayedWeight {
-			continue
-		}
-		out[dim+":"+key] = weight
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("recstore: 遍历兴趣: %w", err)
-	}
-	return out, nil
+	return s.InterestsAt(ctx, userID, time.Now())
 }
 
 // Cooccur 返回该用户「读过 A 的人也在读 B」的邻居对（按共读人数降序）。
@@ -196,4 +168,35 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		return Stats{}, fmt.Errorf("recstore: 读统计: %w", err)
 	}
 	return st, nil
+}
+
+// CooccurForBook 返回「读过这本书的人还读了什么」的邻居对（不限账号）。
+//
+// 与 Cooccur 的区别：Cooccur 是「这个用户读过的书」的邻居（个性化）；
+// 这里是「某一本书」的邻居（相似书推荐用），不带 user 维度。
+func (s *Store) CooccurForBook(ctx context.Context, bookID int64, limit int) ([]Cooccur, error) {
+	if bookID <= 0 {
+		return nil, fmt.Errorf("%w: book_id %d", ErrInvalidArgument, bookID)
+	}
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT book_id, other_id, users FROM cooccur WHERE book_id = ? "+
+			"ORDER BY users DESC, other_id LIMIT ?",
+		bookID, clampLimit(limit, defaultCooccurLimit))
+	if err != nil {
+		return nil, fmt.Errorf("recstore: 查书的共读: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Cooccur, 0, 32)
+	for rows.Next() {
+		var c Cooccur
+		if err := rows.Scan(&c.BookID, &c.OtherID, &c.Users); err != nil {
+			return nil, fmt.Errorf("recstore: 扫描书的共读: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("recstore: 遍历书的共读: %w", err)
+	}
+	return out, nil
 }

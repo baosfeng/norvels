@@ -195,6 +195,13 @@ func (s *Store) applyEvent(ctx context.Context, tx *sql.Tx, userID int64,
 			if err := upsertNegativeItem(ctx, tx, userID, ev.BookID, ev.TS); err != nil {
 				return err
 			}
+			// 带作者才拉黑作者：前端菜单会传 authorId；不带就只针对这一本，
+			// 不能因为没传就推断「作者」——那等于把一次误点放大成整位作者封禁。
+			if ev.AuthorID > 0 {
+				if err := upsertNegativeAuthor(ctx, tx, userID, ev.AuthorID, ev.TS); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if err := s.bumpAggregates(ctx, tx, ev); err != nil {

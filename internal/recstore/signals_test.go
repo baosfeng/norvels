@@ -9,11 +9,11 @@ import (
 
 func TestInterestsErrors(t *testing.T) {
 	s := openTemp(t)
-	if _, err := s.Interests(context.Background(), 0); err == nil {
+	if _, err := s.InterestsAt(context.Background(), 0, otherSlot()); err == nil {
 		t.Fatal("user_id=0 应报错")
 	}
 	closeStore(t, s)
-	if _, err := s.Interests(context.Background(), 1); err == nil {
+	if _, err := s.InterestsAt(context.Background(), 1, otherSlot()); err == nil {
 		t.Fatal("库已关闭应报错")
 	}
 }
@@ -35,7 +35,7 @@ func TestInterestsDecaysOnRead(t *testing.T) {
 		"UPDATE user_interest SET weight = 1e-9, updated_at = ? WHERE user_id = 1", old); err != nil {
 		t.Fatalf("改小权重: %v", err)
 	}
-	if m, _ := s.Interests(context.Background(), 1); len(m) != 0 {
+	if m := globalInterest(t, s, 1); len(m) != 0 {
 		t.Fatalf("过小权重应被过滤，得到 %v", m)
 	}
 	// 时间不可解析时保持原值（不衰减），只影响排序强度，不影响正确性。
@@ -180,5 +180,29 @@ func TestStats(t *testing.T) {
 	closeStore(t, s)
 	if _, err := s.Stats(context.Background()); err == nil {
 		t.Fatal("库已关闭应报错")
+	}
+}
+
+func TestInterestsAtBoostsCurrentSlot(t *testing.T) {
+	s := openTemp(t)
+	ctx := context.Background()
+	// 事件写在一个确定时刻，随后分别在「同一时段」与「另一时段」读兴趣。
+	at := time.Now()
+	recordEvents(t, s, 1, Event{Kind: KindClick, BookID: 1, CategoryL1: "武侠", TS: formatTime(at)})
+	weightAt := func(now time.Time) float64 {
+		m, err := s.InterestsAt(ctx, 1, now)
+		if err != nil {
+			t.Fatalf("InterestsAt: %v", err)
+		}
+		return m["category_l1:武侠"]
+	}
+	sameSlot := weightAt(at)
+	otherSlotWeight := weightAt(at.Add(6 * time.Hour))
+	if math.Abs(sameSlot-2.5) > 1e-2 {
+		t.Fatalf("同时段兴趣 = %v，期望 1.0 + 1.5x1.0", sameSlot)
+	}
+	// 隔了 6 小时再读，全局权重会自然衰减约 1.8%（14 天半衰），放宽容差。
+	if math.Abs(otherSlotWeight-1.0) > 3e-2 {
+		t.Fatalf("其它时段兴趣 = %v，期望只有全局约 1.0", otherSlotWeight)
 	}
 }

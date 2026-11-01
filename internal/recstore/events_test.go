@@ -9,15 +9,6 @@ import (
 	"time"
 )
 
-func interestOf(t *testing.T, s *Store, userID int64, key string) float64 {
-	t.Helper()
-	m, err := s.Interests(context.Background(), userID)
-	if err != nil {
-		t.Fatalf("读兴趣: %v", err)
-	}
-	return m[key]
-}
-
 func TestRecordEventsRejectsInvalid(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -118,10 +109,7 @@ func TestRecordEventsInterestDeltaByKind(t *testing.T) {
 	if got := interestOf(t, s, 1, "category_l1:浏览"); math.Abs(got-0.5) > 1e-2 {
 		t.Fatalf("view 增量 = %v，期望 0.5", got)
 	}
-	m, err := s.Interests(context.Background(), 1)
-	if err != nil {
-		t.Fatalf("Interests: %v", err)
-	}
+	m := globalInterest(t, s, 1)
 	if _, ok := m["category_l1:搜索"]; ok {
 		t.Fatal("search 不应产生兴趣权重")
 	}
@@ -134,10 +122,7 @@ func TestRecordEventsSplitsCategoryLevels(t *testing.T) {
 	s := openTemp(t)
 	// 同一本书同时带一级/二级分类：两个维度各记一条，不再合并成同一个 key。
 	recordEvents(t, s, 1, Event{Kind: KindClick, BookID: 1, CategoryL1: "武侠", CategoryL2: "江湖"})
-	m, err := s.Interests(context.Background(), 1)
-	if err != nil {
-		t.Fatalf("Interests: %v", err)
-	}
+	m := globalInterest(t, s, 1)
 	if _, ok := m["category:武侠"]; ok {
 		t.Fatalf("旧键 category 应作废，实际仍写入: %v", m)
 	}

@@ -67,6 +67,10 @@ type recommendStatsResponse struct {
 	Daily     []recstore.DailyStat `json:"daily"`
 	Interests []interestStat       `json:"interests"`
 	HotBooks  []hotBookStat        `json:"hotBooks"`
+	// ReasonMix / CategoryClicks 是「推荐理由被点了几次」「分类被点了几次」，
+	// 都从 click 明细聚合（impression 不落明细，拿不到理由分布）。
+	ReasonMix      []recstore.ReasonClick   `json:"reasonMix"`
+	CategoryClicks []recstore.CategoryClick `json:"categoryClicks"`
 }
 
 // handleRecommendStats 处理 GET /api/recommend/stats：看板聚合数据（只读）。
@@ -106,8 +110,19 @@ func (s *Server) handleRecommendStats(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, "推荐热门榜不可用")
 		return
 	}
+	reasonMix, err := s.cfg.Rec.ReasonMix(ctx, days)
+	if err != nil {
+		s.failRec(w, r, err, "推荐理由分布不可用")
+		return
+	}
+	categoryClicks, err := s.cfg.Rec.CategoryClicks(ctx, days)
+	if err != nil {
+		s.failRec(w, r, err, "推荐分类点击不可用")
+		return
+	}
 	writeJSON(w, http.StatusOK, recommendStatsResponse{
 		Summary: summary, Daily: daily, Interests: interests, HotBooks: hot,
+		ReasonMix: reasonMix, CategoryClicks: categoryClicks,
 	})
 }
 

@@ -9,7 +9,7 @@ import (
 func TestDefaultWeightsMatchDesign(t *testing.T) {
 	want := Weights{
 		InterestL1: 3.0, InterestL2: 1.5, InterestAuthor: 2.5,
-		InterestTag: 2.0, InterestSeries: 1.5, Resume: 2.0,
+		InterestTag: 2.0, InterestSeries: 1.5, Resume: 2.0, Similar: 2.5,
 		Cooccur: 2.0, HotReads: 1.5, HotClicks: 0.5, Freshness: 1.0,
 		ReadPenalty: 1.0, RecentShownPenalty: 0.5,
 		JitterBase: 0.8, JitterSpan: 0.4, Explore: 0.6,

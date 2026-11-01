@@ -22,22 +22,29 @@
 - 其余 kind 在同一事务内写 `events` + 聚合 + 兴趣 + 共读；
 - 兴趣权重按 14 天指数衰减累计：click 1 / read 1+min(秒数/300, 3) / shelf 3 / rating 5 / view 0.5；
 - `dislike`（负反馈）：落明细 + 写入 `negative_items`（召回时整本剔除）+ 相关兴趣各减 2，
-  **权重下限为 0**（不出现负分）；
+  **权重下限为 0**（不出现负分）；**带 `authorId` 时同时拉黑该作者**（`negative_authors`，
+  该作者的所有书都不再推），不带就只针对这一本；
 - 兴趣维度：`category_l1` / `category_l2` / `author` / `tag`（每个标签一条）/ `series`；
+  每条兴趣增量同时记进 `time_interest`（按事件时刻分 4 槽：0-5 深夜 / 6-11 上午 / 12-17 下午 /
+  18-23 晚上，本地时区），读取时当前时段的那份 ×1.5 并入全局兴趣（时段偏好）；
 - 共读只对 `read` 计数（点击只代表有兴趣，读才代表真读过）。
 - **保留窗口**：`events` 明细与 `recent_items` 保留 90 天，serve 启动时与每 24h 清理一次（best-effort，聚合表不清）。
 
 ## GET /api/recommend
 
 - `limit` 1–50，默认 20；越界夹取（非整数 → 400）。
+- `similar`：`<bookId>`，取「与这本书相似的书」；正整数以外 → 400，书不存在 → 404。
+  与 `tab` 互斥且 **similar 优先**（给了种子书就不再校验 tab）。
 - `tab`：`for_you`（默认）| `resume` | `random`；非法值 → 400 `invalid_param`。
   - `for_you`：全量召回（见下）；
   - `resume`：只拼「读到一半」的书（进度 0<percent<1），按进度倒序，热门/新鲜兜底保证非空；
   - `random`：随机池 + 热门，ε 探索比例从 10% 提到 **50%**（这个 tab 的用户就是要不一样）。
-- → 200 `{items:[{bookId,title,authorName,categoryL1,categoryL2,hasCover,reason,score}], generatedAt}`
+- → 200 `{items:[{bookId,title,authorName,authorId,categoryL1,categoryL2,hasCover,reason,score}], generatedAt}`
+  （`authorId` 供前端「不喜欢这个作者」直接下发 dislike，缺作者时前端置灰）
 - 只读、无副作用；`items` 恒为数组（冷启动可能为空，见下）。
 - `reason` 取值：「因为你常看<分类>」/「因为你喜欢「<标签>」标签」/「同系列《<系列名>》」/
-  「读到一半，接着读」/「读过这本书的人也在看」/「最近很多人读」/「最近入库」/「随机发现」。
+  「同一个作者」/「同一分类」/「读到一半，接着读」/「读过这本书的人也在看」/「最近很多人读」/
+  「最近入库」/「随机发现」。
 - **读完不推**（主库 `reading_progress.percent ≥ 0.99`）、`dislike` 过的不推；
   **读过的书只降权**（`ReadPenalty` −1.0），仍然可以出现——把「读了几页」当读完会让
   候选池越用越少，真实库里几乎每本书都被 read 事件覆盖过。
@@ -49,6 +56,9 @@
 召回来源（每路都回主库补标题与封面）：兴趣分类（L1/L2 合并 top3 × 40）→ 兴趣作者（top2 × 20）→
 兴趣标签（top2 × 20）→ 兴趣系列（top2 × 20）→ 共读邻居（≤60）→ 近 7 天热度（≤40）→
 最近入库（20）→ 随机（20）→ 续读（最近 20 条进度里读到一半的）。
+
+`similar` 召回顺序固定为 **同系列 → 同作者 → 同分类（L1/L2）→ 该书的共读邻居**，
+排除自身、读完、dislike 过的书与拉黑作者；理由按第一条命中的关系给出。
 
 ## GET /api/recommend/stats
 
@@ -64,7 +74,9 @@
   "interests": [{"dim": "category_l1", "key": "武侠", "name": "武侠", "weight": 3.2},
                 {"dim": "category_l2", "key": "江湖", "name": "江湖", "weight": 1.6},
                 {"dim": "author", "key": "12", "name": "示例作者", "weight": 2.4}],
-  "hotBooks": [{"bookId": 1, "title": "示例书", "authorName": "示例作者", "reads": 5, "clicks": 2, "seconds": 900}]
+  "hotBooks": [{"bookId": 1, "title": "示例书", "authorName": "示例作者", "reads": 5, "clicks": 2, "seconds": 900}],
+  "reasonMix": [{"reason": "因为你常看武侠", "clicks": 12}],
+  "categoryClicks": [{"categoryL1": "武侠", "clicks": 20}]
 }
 ```
 
@@ -81,6 +93,9 @@
   作者已删除时省略 `name`（omitempty），前端按 `name → key` 回退。
 - `hotBooks` 固定取近 7 天热度前 10（与推荐召回的窗口参数无关），标题/作者回主库补齐；
   主库已删的书直接跳过（事件不级联删，但榜单上「未知书名」没有信息量）。
+- `reasonMix` / `categoryClicks` 是**全局口径**（同 daily），窗口 `days`、各取 top10：
+  前者按 click 的 `extra`（推荐理由）分组、空 `extra` 跳过，后者按 click 的 `category_l1` 分组。
+  只从 click 明细聚合——`impression` 不落明细（写放大护栏），拿不到曝光侧的理由分布。
 
 ## 冷启动
 
