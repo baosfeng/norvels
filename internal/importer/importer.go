@@ -87,6 +87,10 @@ type Result struct {
 	AppliedProfiles []AppliedProfile `json:"appliedProfiles,omitempty"`
 	// ProfileWarnings 是编译期被跳过的规则包及原因（坏编码名 / 坏正则等）。
 	ProfileWarnings []string `json:"profileWarnings,omitempty"`
+	// UpgradeCandidates 是「新版本显著更优、但未替换」的书（设计 §5）：结构化字段
+	// 直接给 API 消费，对应的文件终态是 skipped + 备注「升级候选：…」。
+	// 本轮不自动替换，替换必须人工确认（设计 §7）。
+	UpgradeCandidates []UpgradeCandidate `json:"upgradeCandidates,omitempty"`
 }
 
 // AppliedProfile 记录一个文件实际生效的规则包。

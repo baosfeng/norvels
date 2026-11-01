@@ -13,8 +13,8 @@ import (
 // 本文件是「章级去重判定」的读路径（设计 §4）：新书逐章算指纹 → 分批查正文库 → 按字节加权算命中率。
 //
 // 判定只看**正文内容**：文件名、路径、书名、编码都不参与。分档结论由 DedupeReport.Level 给出，
-// 阈值由调用方注入（settings 的 dedupe.threshold，缺省 0.95）；「质量分对比 / 升级候选」
-// 是下一阶段（设计 §5），报告里先留好字段位置，判定不读它们。
+// 阈值由调用方注入（settings 的 dedupe.threshold，缺省 0.95）；命中率到阈值之后的
+// 「质量分对比 / 升级候选」由 CheckBookDuplicate 叠加（设计 §5，规则见 versionpick.go）。
 
 // relatedHitRate 是「疑似相关」的下界（设计 §4 表格）：低于它的命中率按新书处理。
 const relatedHitRate = 0.40
@@ -43,19 +43,9 @@ type DedupeReport struct {
 	DuplicateBytes     int64 // 命中最多的那本书贡献的命中字节
 	DuplicateChapters  int   // 命中最多的那本书命中的章节数
 
-	// 下一阶段（设计 §5）质量分对比的占位：nil 表示尚未计算。
-	// 现在只有字段形状，判定不读它们——预留下来是为了加质量分时不必改 CheckContentDuplicate 的签名。
-	DuplicateQuality *QualityScore
-	NewQuality       *QualityScore
-}
-
-// QualityScore 是「版本择优」要对比的质量分维度（设计 §5），当前只用于占位。
-type QualityScore struct {
-	GarbledRatio   float64 // 乱码占比（U+FFFD / 私用区），越低越好
-	NoiseRatio     float64 // 广告/水印/网址行占比，越低越好
-	StructureScore float64 // countSanity + 空章率 + 离群章率的合成
-	ChapterCount   int     // 完整性对照：章数
-	WordCount      int64   // 完整性对照：字数
+	// Version 是命中率到阈值后的「版本择优」结论（设计 §5）；没有命中书、
+	// 或命中率没到阈值时为 nil（见 CheckBookDuplicate）。判定规则在 versionpick.go。
+	Version *VersionPick
 }
 
 // Level 按阈值给出本报告的分档结论；阈值越界（≤0 或 >1）时回落 DefaultDedupeThreshold。
@@ -115,6 +105,38 @@ func (s *Store) CheckContentDuplicate(ctx context.Context, chapters []model.Pars
 	if rep.DuplicateBookTitle, err = s.bookTitleByID(ctx, rep.DuplicateBookID); err != nil {
 		return DedupeReport{}, err
 	}
+	return rep, nil
+}
+
+// CheckBookDuplicate 在章级判重之上叠加「版本择优」（设计 §5）。
+//
+// 判定分两层，互不改写：
+//   - 第一层仍是 CheckContentDuplicate 的命中率分档（口径不变，判定只认正文）；
+//   - 第二层只在**命中率到阈值**（同一本书）时做：比一次新旧质量分，回答
+//     「新版本是不是更好的版本」。命中率没到阈值就没有可比对象，Version 保持 nil。
+//
+// 质量分两条来源：旧版本从 books 的七列读（0020 落库），新版本直接取解析结果
+// （ParsedBook.Quality，解析时已算好，这里不重新扫正文——判重路径的预算是 200 ms）。
+// 旧版本没有质量分（0020 之前入的书、EPUB、合集拆出的子书）时走保守路径：判重复。
+//
+// 不自动替换：本方法只给出「是不是升级候选」，替换要人工确认（设计 §7）。
+func (s *Store) CheckBookDuplicate(ctx context.Context, book *model.ParsedBook, threshold float64) (DedupeReport, error) {
+	if book == nil {
+		return DedupeReport{}, fmt.Errorf("%w: nil book", ErrInvalidArgument)
+	}
+	rep, err := s.CheckContentDuplicate(ctx, book.Chapters)
+	if err != nil {
+		return DedupeReport{}, err
+	}
+	if rep.Level(threshold) != DedupeLevelDuplicate {
+		return rep, nil
+	}
+	oldQ, err := s.bookQualityByID(ctx, rep.DuplicateBookID)
+	if err != nil {
+		return DedupeReport{}, err
+	}
+	pick := compareVersionQuality(oldQ, qualityFromMetrics(book.Quality, nowUTC()))
+	rep.Version = &pick
 	return rep, nil
 }
 

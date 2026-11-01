@@ -14,7 +14,9 @@ import (
 //	v2：text_bytes = chapter_blocks.packed 压缩字节之和；原文逻辑字节另记 text_bytes_raw
 //	v3：v2 同一口径，块边界改成 8 MB、格式改成 0x03（0017 重压存量块，见 rebuild.go）
 //	v4：v3 同一口径，但正文搬进独立库（0018）；索引类体积改成只按主库文件算
-const metricsVersion = 4
+//	v5：v4 同一口径，但 books 多出七列质量分（0020），健康报告新增质量分覆盖率聚合；
+//	    旧快照无法证明与新口径一致，按「宁可重算一次」处理
+const metricsVersion = 5
 
 // store_metrics 的键位。全部是整数值，读接口只查表，毫秒级。
 const (

@@ -21,14 +21,15 @@ import (
 const bookInsertSQL = "INSERT INTO books(title, author_id, source_path, source_name, file_size, file_sha256, " +
 	"encoding, word_count, chapter_count, volume_count, intro, status, multi_book, imported_at, updated_at, " +
 	"language, publisher, isbn, pub_date, series, series_index, source_format, has_cover, " +
-	"category_l1, category_l2) " +
-	"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	"category_l1, category_l2, " + bookQualityInsertColumns + ") " +
+	"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " +
+	bookQualityPlaceholders + ")"
 
 const bookUpdateSQL = "UPDATE books SET title = ?, author_id = ?, source_path = ?, source_name = ?, file_size = ?, " +
 	"file_sha256 = ?, encoding = ?, word_count = ?, chapter_count = ?, volume_count = ?, intro = ?, " +
 	"status = ?, multi_book = ?, imported_at = ?, updated_at = ?, language = ?, publisher = ?, isbn = ?, " +
 	"pub_date = ?, series = ?, series_index = ?, source_format = ?, has_cover = ?, " +
-	"category_l1 = ?, category_l2 = ? WHERE id = ?"
+	"category_l1 = ?, category_l2 = ?, " + bookQualityUpdateAssignments + " WHERE id = ?"
 
 // bookWrite 是一次写入所需的已归一化字段集合：由 prepareBookWrite 产出，
 // 让「校验/归一化」与「SQL 拼接」两部分各自单一职责。
@@ -59,6 +60,8 @@ type bookWrite struct {
 	// ---- 分类（0015 起，来源目录推断，空串表示未分类）----
 	categoryL1 string
 	categoryL2 string
+	// ---- 质量分（0020 起，版本择优的输入；零值 = 未计算，见 quality.go）----
+	quality BookQuality
 }
 
 // execArgs 返回书籍写入语句的占位符参数（不含 WHERE 的 id）。
@@ -69,6 +72,14 @@ func (w bookWrite) execArgs(authorID int64) []any {
 		w.language, w.publisher, w.isbn, w.pubDate, w.series, w.seriesIndex, w.sourceFormat, w.hasCover,
 		w.categoryL1, w.categoryL2,
 	}
+}
+
+// execArgsWithQuality 返回书籍写入语句的完整参数：公共列 + 七列质量分。
+//
+// 单独拆一层而不是塞进 execArgs：质量分是 0020 才有的列，把它的参数拼在最后，
+// 与 bookInsertSQL / bookUpdateSQL 里「公共列 + 质量列」的分段一一对应。
+func (w bookWrite) execArgsWithQuality(authorID int64) []any {
+	return append(w.execArgs(authorID), w.quality.qualityArgs()...)
 }
 
 // saveBookExtras 写入随书附加信息：分类标签（dc:subject / 词表）与封面。

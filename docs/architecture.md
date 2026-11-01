@@ -1,7 +1,6 @@
 # norvels 架构：组件划分
 
-> 目标：把 4.4GB / 865 个中文 txt 一次性结构化入库，提供「书架 → 目录 → 阅读 → 找书」的完整体验；
-> 同时保持 **单二进制 + 两个 SQLite 文件（主库 + 正文库）+ 轻量容器镜像（目标 < 50MB）**。
+> 目标：把 4.4GB / 865 个中文 txt 一次性结构化入库，提供「书架 → 目录 → 阅读 → 找书」的完整体验；同时保持 **单二进制 + 两个 SQLite 文件（主库 + 正文库）+ 轻量容器镜像（目标 < 50MB）**。
 
 ## 1. 组件全景
 
@@ -71,12 +70,14 @@ WAL 下 SQLite 的原子提交只覆盖单个文件，**不依赖跨库事务**�
 `store.writeThrough`（正文库写块 → 主库写 books/volumes/chapters → 主库失败按块 id 删这次新写的块）；删书与块回收
 **延后到主库提交之后**（真删而主库失败会留悬空引用，留孤儿块只是体积虚高）；漂移由 `ReconcileContent` 对账入 `/api/health/report`。
 
-**内容去重（章级指纹，0019）**：导入前按**正文**判重（与文件名/编码无关）——正文归一化（删空白、全角半角标点
-统一）后取 64 位 FNV-1a，指纹存正文库 `chapter_fingerprints(hash, book_id, bytes)`，命中率按字节加权；≥ 阈值
-（settings 的 `dedupe.threshold`，0019 预置 0.95，取值 (0,1]）按 Skipped 跳过并备注「疑似重复：库内已有 X% 相同
-内容（《书名》可对照）」，≥ 40% 备注「疑似相关」后照常导入，`force` / `update`（追更）一律跳过判定；指纹在
-`SaveBook` 提交后按书先删后写，历史书用 `norvels backfill-fingerprints` 补齐（`/api/health/report` 的
-`fingerprints.missing` 提示缺口），分档与后续质量分见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §4–§5。
+**内容去重（章级指纹，0019）+ 版本择优（质量分，0020）**：导入前按**正文**判重（与文件名/编码无关）——正文归一化（删空白、
+全角半角标点统一）后取 64 位 FNV-1a，指纹存正文库 `chapter_fingerprints(hash, book_id, bytes)`，命中率按字节加权；≥ 阈值
+（settings 的 `dedupe.threshold`，0019 预置 0.95，取值 (0,1]）按 Skipped 跳过，≥ 40% 备注「疑似相关」后照常导入，`force` /
+`update`（追更）一律跳过判定。命中率到阈值时再比一次质量分（books 七列，0020）：噪声率降 ≥50% / 乱码率降 ≥80% / 结构分
+升 ≥0.1 里至少两项显著更优、且无一项显著变差 → 「升级候选」（**不自动替换**，等人工确认），否则判「重复」；任一侧没有
+质量分走保守路径判重复。质量分在 `SaveBook` 同事务写入，解析期没有质量分的书（EPUB / 合集子书）写「未计算」而非 0 分；
+`norvels backfill-quality` / `backfill-fingerprints` 补历史书，缺口见 `/api/health/report` 的 `quality.missing` /
+`fingerprints.missing`；指纹在 `SaveBook` 提交后按书先删后写。细则见 [设计定稿](specs/2026-11-01-content-db-and-dedupe-design.md) §4–§5。
 
 ## 3. 数据模型（SQLite）
 
@@ -115,6 +116,5 @@ chapter_fingerprints(hash, book_id, bytes)       -- 章级内容指纹（0019，
 
 ## 5. 端口与运行
 
-- 默认监听 `0.0.0.0:8080`；主库 `/data/norvels.db`、正文库 `/data/norvels-content.db`
-  （本地默认 `./data/norvels.db`，正文库由主库路径推导，可用 `NORVELS_CONTENT_DB` 覆盖）。
+- 默认监听 `0.0.0.0:8080`；主库 `/data/norvels.db`、正文库 `/data/norvels-content.db`（本地默认 `./data/norvels.db`，正文库由主库路径推导，可用 `NORVELS_CONTENT_DB` 覆盖）。
 - 健康检查 `GET /api/health` 返回 `{"status":"ok","db":"ok","version":"..."}`。

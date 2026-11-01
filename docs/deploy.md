@@ -352,6 +352,19 @@ v0.2 起正文不再是 SQL 可直接查询的 `content` 列，而是压缩块�
 生产 79.5 GB 正文约几十分钟，服务可照常提供；`GET /api/health/report` 的 `fingerprints.missing` 归零即回填完成
 （`--batch` 只调进度打印粒度）。
 
+**存量质量分回填**（迁移 0020 之后**跑一次**，与指纹回填互不替代）：
+
+```bash
+./bin/norvels backfill-quality --db ./data/norvels.db            # 已有质量分的书整本跳过；可中断续跑
+```
+
+0020 只给 books 加七列质量分、不回填历史数据，而版本择优要拿旧版本的分跟新版本比：不跑它，每次判重都只能
+走保守路径「旧版本无质量分」，升级候选永远出不来。正文全空的书跳过并计入「无正文」。比指纹回填慢一个量级
+（要把正文解压后逐段统计，还要在全书范围内判内部重复），服务可照常提供；`GET /api/health/report` 的
+`quality.missing` 归零即回填完成。回填出的噪声率按**残留**计（库里正文已清洗过，噪声行在入库时就丢了），
+历史书的噪声率因此恒为 0：**历史书的噪声维度不参与择优，只做保守否决**（新版本只要有噪声就不推成升级候选），
+它们的升级候选主要靠乱码率与结构分两项。
+
 输出形如：
 
 ```text
@@ -499,8 +512,9 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 | 17 | `0017_codebook_blocks.sql` | 存量正文块重组：1 MB / 0x02 → **8 MB / 0x03（字码本 + zstd）**；块字节 27.5 GB → 约 21 GB，见 [ADR-0007](adr/0007-codebook-compressed-content.md) |
 | 18 | `0018_content_db.sql` | 正文块搬进独立文件 `norvels-content.db`，逐书流式搬运后 `DROP TABLE chapter_blocks`；`chapters.block_id` 变成跨库弱引用 |
 | 19 | `0019_chapter_fingerprints.sql` | 正文库建章级指纹 `chapter_fingerprints(hash, book_id, bytes)`（WITHOUT ROWID，主键 `(hash, book_id)`）+ 主库预置 `settings` 的 `dedupe.threshold` = 0.95；秒级，**升级后必须跑一次 `norvels backfill-fingerprints` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
+| 20 | `0020_book_quality.sql` | books 加七列质量分 `garbage_ratio`/`noise_ratio`/`structure_score`/`duplicate_ratio`/`quality_chapters`/`quality_chars`/`quality_at`（NOT NULL DEFAULT 0/''，存量 = 未计算）+ `metrics_version` 4→5（旧缓存自动重算）；只加列、秒级，**跑一次 `norvels backfill-quality` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
 
-> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **19**。
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **20**。
 >
 > **0017 的运维前提**：单事务内新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移期间**不监听端口**，
 > 大库按 [§7.3](#73-迁移后回收空间vacuum) 用一次性容器预跑；迁移后必须 `VACUUM` 才真正回落。
