@@ -959,3 +959,73 @@ export interface RecommendResult {
   items: RecommendItem[];
   generatedAt: string;
 }
+
+// --- 推荐看板（GET /api/recommend/stats，契约见 docs/api/api-recommend.md） ---
+
+/** 窗口汇总：days 是实际统计天数，其余都是该窗口内的量。 */
+export interface RecommendStatsSummary {
+  days: number;
+  impressions: number;
+  clicks: number;
+  reads: number;
+  /** 阅读时长（秒）：前端换算成分钟展示 */
+  readSeconds: number;
+  shelfAdds: number;
+}
+
+/** 某一天的事件量。`date` 是 UTC 的 YYYY-MM-DD（与后端 daily 同口径）。 */
+export interface RecommendStatsDay {
+  date: string;
+  impressions: number;
+  clicks: number;
+  reads: number;
+  /** 当天阅读时长（秒） */
+  seconds: number;
+}
+
+/**
+ * 兴趣维度的三个分档：大分类 / 小分类 / 作者。
+ *
+ * 大分类与小分类分开，是因为它们的 key 空间重叠（「武侠」既有可能是大分类，
+ * 也有可能是某个小分类的名字）。合在一个 dim 里时看板会出现「武侠 69.4 / 江湖 69.4」
+ * 这种成对重复、看起来像算重了的行。
+ */
+export type RecommendInterestDim = "category_l1" | "category_l2" | "author";
+
+/**
+ * 兴趣画像一行。
+ *
+ * - `dim`：三个维度之一（见 RecommendInterestDim）。老后端的 `category` 已不再出现，
+ *   前端不认识的值一律不渲染（不猜、也不会让整张图报错）。
+ * - `key`：分类名，或作者 id 的十进制文本（稳定标识，不随重命名变）；
+ * - `name`：给人看的名字。分类的 name = key；作者是作者名，查不到时为空串。
+ *   后端这个字段是后加的，所以类型上可选——缺省时前端退回 `key`，不猜名字。
+ */
+export interface RecommendInterest {
+  dim: RecommendInterestDim;
+  key: string;
+  /** 展示名（作者名 / 分类名）；缺省或空串时用 key 兜底 */
+  name?: string;
+  /** 已按 14 天衰减的兴趣权重 */
+  weight: number;
+}
+
+/** 热门书一行：三个计数都是统计窗口内的量。 */
+export interface RecommendHotBook {
+  bookId: number;
+  title: string;
+  authorName: string;
+  reads: number;
+  clicks: number;
+  /** 这本书被读了多少秒（窗口内合计） */
+  seconds: number;
+}
+
+/** GET /api/recommend/stats：推荐库未启用时后端 503 unavailable。 */
+export interface RecommendStats {
+  summary: RecommendStatsSummary;
+  daily: RecommendStatsDay[];
+  interests: RecommendInterest[];
+  hotBooks: RecommendHotBook[];
+}
+

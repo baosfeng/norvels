@@ -8,18 +8,25 @@ import {
   useReadingProgress,
   useReadingProgressAll,
   useReadingStats,
+  useRecommendStats,
   useStats,
   useTopAuthors,
 } from "../../api/hooks";
+import type { RecommendStatsSummary } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
 import { formatCount, formatDate } from "../../lib/format";
+import { buildRecommendMetrics } from "../../lib/charts";
 import { HealthCard } from "./HealthCard";
 import { ReadingHeatmapCard } from "./ReadingHeatmap";
 import {
   ChapterBucketsChart,
   ChapterLengthChart,
+  EventTrendChart,
+  FunnelChart,
+  HotBooksChart,
   ImportTrendChart,
+  InterestBarsChart,
   ReadingDistChart,
   StorageChart,
   TopAuthorsChart,
@@ -28,6 +35,24 @@ import {
 
 const TREND_DAYS = 14;
 const PROGRESS_LIMIT = 50;
+
+/** 埋点接口读不到 / 还没数据时的空汇总：图拿到全 0 就走各自的空态，不用一堆 ?? 兜底。 */
+const EMPTY_RECOMMEND_SUMMARY: RecommendStatsSummary = {
+  days: TREND_DAYS,
+  impressions: 0,
+  clicks: 0,
+  reads: 0,
+  readSeconds: 0,
+  shelfAdds: 0,
+};
+
+/** 一条埋点事件都没有：曝光 / 点击 / 阅读 / 收藏全为 0（后端冷启动就是这个形状）。 */
+function hasNoEvents(summary: RecommendStatsSummary, dailyCount: number): boolean {
+  return (
+    dailyCount === 0 ||
+    summary.impressions + summary.clicks + summary.reads + summary.shelfAdds === 0
+  );
+}
 
 /**
  * 驾驶舱（PC 专属）。六张图全部来自真实接口，每张图自带一句实算结论。
@@ -43,6 +68,8 @@ export function DashboardPage() {
   const topAuthors = useTopAuthors(10);
   /** 近 90 天阅读时长：今日 / 本周 / 累计 / 连续天数 + 日历热力图 */
   const reading = useReadingStats(90);
+  /** 推荐与埋点：曝光 / 点击 / 阅读 / 收藏的窗口聚合（rec 库；未启用时后端 503） */
+  const rec = useRecommendStats(TREND_DAYS);
   const [refreshing, setRefreshing] = useState(false);
 
   /** 刷新概览（契约 C-29）：重取全部数据源，卡片保持旧值直到新值回来。 */
@@ -50,7 +77,7 @@ export function DashboardPage() {
     if (refreshing) return;
     setRefreshing(true);
     const started = Date.now();
-    for (const source of [stats, progress, progressAll, jobs, health, trend, topAuthors, reading]) {
+    for (const source of [stats, progress, progressAll, jobs, health, trend, topAuthors, reading, rec]) {
       source.reload();
     }
     const wait = Math.max(0, 240 - (Date.now() - started));
@@ -77,6 +104,13 @@ export function DashboardPage() {
   // 后端把统计改成查预计算表后，刷新窗口内会带 stale 标记：此时照常出图，只提示「数据更新中」
   const statsStale = Boolean(stats.data?.stale);
   const healthStale = Boolean(health.data?.stale);
+
+  const recSummary = rec.data?.summary ?? EMPTY_RECOMMEND_SUMMARY;
+  const recDaily = rec.data?.daily ?? [];
+  // 「今日」按 UTC 天匹配：后端 daily 的日期就是 UTC 的 YYYY-MM-DD，与徽标口径一致
+  const recommendMetrics = buildRecommendMetrics(recSummary, recDaily, new Date().toISOString().slice(0, 10))
+    .metrics;
+  const recEmpty = hasNoEvents(recSummary, recDaily.length);
 
   return (
     <section data-testid="view:dashboard" data-od-id="dashboard">
@@ -176,6 +210,56 @@ export function DashboardPage() {
                 <EmptyPanel title="还没有导入任务" description="去导入页选一个目录，开始第一次导入。" />
               ) : (
                 <ImportSummary jobs={jobs.data?.items ?? []} />
+              )}
+            </section>
+
+
+            {/* 推荐与埋点：数据来自发现页的真实浏览（曝光 / 点击 / 停留 / 阅读）。
+                事件只有真的逛过才会产生，所以整块自己带空态，而不是画四张空图占两屏。 */}
+            <section className="dash-block" data-testid="dashboard:recommend" data-od-id="dashboard:recommend">
+              <div className="dash-block-head">
+                <h2>推荐与埋点</h2>
+                <Link className="meta" to="/discover" data-testid="dashboard:discover-link">
+                  去发现页 →
+                </Link>
+              </div>
+              {rec.loading && !rec.data ? (
+                <LoadingPanel
+                  title="正在读取埋点数据"
+                  description="正在汇总最近的曝光、点击与阅读。"
+                  testId="recommend-loading"
+                />
+              ) : rec.error ? (
+                <ErrorPanel error={rec.error} title="埋点数据没能加载" onRetry={rec.reload} testId="recommend-error" />
+              ) : recEmpty ? (
+                <EmptyPanel
+                  title="还没有埋点数据"
+                  description="去发现页逛一圈就会开始记录：曝光、点击、停留与阅读都会计入，这里随后会长出兴趣画像与热门书。"
+                  testId="recommend-empty"
+                  actions={
+                    <Link className="btn btn-primary" to="/discover">
+                      去发现页
+                    </Link>
+                  }
+                />
+              ) : (
+                <>
+                  <div className="rec-metrics" data-testid="recommend-metrics">
+                    {recommendMetrics.map((metric) => (
+                      <div className="stat-card" key={metric.key} data-testid={`metric-${metric.key}`}>
+                        <span className="stat-label">{metric.label}</span>
+                        <b className="stat-num num">{metric.value}</b>
+                        <span className="stat-hint">{metric.hint}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="chart-grid rec-charts" data-testid="recommend-charts">
+                    <EventTrendChart daily={recDaily} {...chartState(rec)} />
+                    <InterestBarsChart interests={rec.data?.interests ?? []} {...chartState(rec)} />
+                    <HotBooksChart books={rec.data?.hotBooks ?? []} {...chartState(rec)} />
+                    <FunnelChart summary={recSummary} {...chartState(rec)} />
+                  </div>
+                </>
               )}
             </section>
 

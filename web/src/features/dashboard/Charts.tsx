@@ -3,24 +3,51 @@ import type { ReactNode } from "react";
 import {
   buildChapterBuckets,
   buildChapterLength,
+  buildEventTrend,
+  buildFunnel,
+  buildHotBooks,
   buildImportTrend,
+  buildInterestBars,
   buildReadingDist,
   buildStorage,
   buildTopAuthors,
+  compact,
   RADIUS,
   storageRatioNote,
 } from "../../lib/charts";
-import type { Bucket, ImportTrendPoint, ReadingProgress, Stats } from "../../api/types";
+import type {
+  Bucket,
+  ImportTrendPoint,
+  ReadingProgress,
+  RecommendHotBook,
+  RecommendInterest,
+  RecommendStatsDay,
+  RecommendStatsSummary,
+  Stats,
+} from "../../api/types";
 import { ChartTipLayer } from "./ChartTip";
 import { useChartTip } from "./useChartTip";
 
 /**
- * 六张图：纯 SVG/CSS 手写，不引图表库（ADR-0001 §6）。
+ * 十张图：纯 SVG/CSS 手写，不引图表库（ADR-0001 §6）。
  * 每张图结构一致：标题 → 一句实算结论 → 图体。结论与图体由同一份转换结果生成，不会各说各话。
  * 四态由 ChartFrame 统一处理（读取中 / 失败 / 空 / 有数据），颜色全取 CSS 变量，深浅主题自动跟随。
+ *
+ * 前六张是库概览（导入 / 章节 / 作者 / 进度 / 体积 / 章节长度），后四张是「推荐与埋点」
+ * （事件趋势 / 兴趣画像 / 热门书 / 漏斗）——后者复用同一套 ChartFrame 与读数浮层，不另起一套。
  */
 
-export type ChartId = "trend" | "authors" | "buckets" | "reading" | "storage" | "chapterlen";
+export type ChartId =
+  | "trend"
+  | "authors"
+  | "buckets"
+  | "reading"
+  | "storage"
+  | "chapterlen"
+  | "events"
+  | "interest"
+  | "hot"
+  | "funnel";
 
 /** 单张图的取数状态：与页面其它数据区同一套四态口径。 */
 export interface ChartState {
@@ -354,6 +381,143 @@ export function ChapterLengthChart({ buckets, ...state }: { buckets: Bucket[] } 
         ))}
       </div>
       <ChartTipLayer tip={tip.tip} />
+    </ChartFrame>
+  );
+}
+
+/* ── 7 近 N 天埋点事件（三色柱） ── */
+export function EventTrendChart({ daily, ...state }: { daily: RecommendStatsDay[] } & ChartState) {
+  const model = buildEventTrend(daily);
+  const tip = useChartTip();
+  return (
+    <ChartFrame
+      id="events"
+      title="近 14 天埋点事件"
+      note={model.note}
+      detail="三色柱各自按峰值归一，浮层给的是当天真实次数。"
+      isEmpty={model.empty}
+      {...state}
+    >
+      <div className="etrend-wrap">
+        <div className="etrend">
+          {model.data.days.map((day) => (
+            // 整列都是读数目标：哪一根为 0 也要能读出「这天没有」
+            <div className="etrend-col" key={day.date} {...tip.bind(day.title)}>
+              <span className="etrend-bars">
+                {day.impressions > 0 ? (
+                  <i className="etrend-bar is-impression" style={{ height: `${day.impressionPct}%` }} />
+                ) : null}
+                {day.clicks > 0 ? (
+                  <i className="etrend-bar is-click" style={{ height: `${day.clickPct}%` }} />
+                ) : null}
+                {day.reads > 0 ? <i className="etrend-bar is-read" style={{ height: `${day.readPct}%` }} /> : null}
+              </span>
+              <span className="bar-lbl">{day.labelVisible ? day.label : ""}</span>
+            </div>
+          ))}
+        </div>
+        <ChartTipLayer tip={tip.tip} />
+        <div className="etrend-legend">
+          <span className="legend-row">
+            <span className="legend-dot is-impression" />
+            曝光 {compact(model.data.impressions)}
+          </span>
+          <span className="legend-row">
+            <span className="legend-dot is-click" />
+            点击 {compact(model.data.clicks)}（{model.data.ctr}）
+          </span>
+          <span className="legend-row">
+            <span className="legend-dot is-read" />
+            阅读 {compact(model.data.reads)} · {compact(model.data.readMinutes)} 分钟
+          </span>
+        </div>
+      </div>
+    </ChartFrame>
+  );
+}
+
+/* ── 8 兴趣画像（分类 / 作者 两组横条） ── */
+export function InterestBarsChart({ interests, ...state }: { interests: RecommendInterest[] } & ChartState) {
+  const model = buildInterestBars(interests);
+  const tip = useChartTip();
+  return (
+    <ChartFrame id="interest" title="兴趣画像" note={model.note} isEmpty={model.empty} {...state}>
+      <div className="ibars">
+        {model.data.groups.map((group) => (
+          <div
+            className="ibars-group"
+            key={group.dim}
+            data-dim={group.dim}
+            data-testid={`ibars-${group.dim}`}
+          >
+            <span className="ibars-label">{group.label}</span>
+            {group.rows.map((row) => (
+              <div className="hbar-row" key={`${group.dim}-${row.name}`} {...tip.bind(row.title)}>
+                <span className="hbar-name">{row.name}</span>
+                <span className="hbar-track">
+                  <span className="hbar-fill" style={{ width: `${row.widthPct}%` }} />
+                </span>
+                <span className="hbar-val">{row.display}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <ChartTipLayer tip={tip.tip} />
+    </ChartFrame>
+  );
+}
+
+/* ── 9 热门书 Top 10（横条，读过 2 分 / 点击 1 分） ── */
+export function HotBooksChart({ books, ...state }: { books: RecommendHotBook[] } & ChartState) {
+  const model = buildHotBooks(books);
+  const tip = useChartTip();
+  return (
+    <ChartFrame id="hot" title="热门书 Top 10" note={model.note} isEmpty={model.empty} {...state}>
+      <div className="hbars hot-books">
+        {model.data.rows.map((row) => (
+          <div className="hbar-row" key={row.name} {...tip.bind(row.title)}>
+            <span className="hbar-name">{row.name}</span>
+            <span className="hbar-track">
+              <span className="hbar-fill" style={{ width: `${row.widthPct}%` }} />
+            </span>
+            <span className="hbar-val">{row.display}</span>
+          </div>
+        ))}
+      </div>
+      <ChartTipLayer tip={tip.tip} />
+    </ChartFrame>
+  );
+}
+
+/* ── 10 曝光 → 点击 → 阅读 → 收藏（漏斗） ── */
+export function FunnelChart({ summary, ...state }: { summary: RecommendStatsSummary } & ChartState) {
+  const model = buildFunnel(summary);
+  const tip = useChartTip();
+  return (
+    <ChartFrame
+      id="funnel"
+      title="曝光到收藏"
+      note={model.note}
+      detail="条长按曝光归一，右侧是相对上一级的转化率。"
+      isEmpty={model.empty}
+      {...state}
+    >
+      <div className="funnel-wrap">
+        <div className="funnel">
+          {model.data.steps.map((step) => (
+            <div className="funnel-row" key={step.key} {...tip.bind(step.title)}>
+              <span className="funnel-label">{step.label}</span>
+              <span className="funnel-track">
+                <span className={`funnel-fill is-${step.key}`} style={{ width: `${step.widthPct}%` }} />
+              </span>
+              <span className="funnel-value num">{compact(step.value)}</span>
+              <span className="funnel-rate">{step.stepRate}</span>
+            </div>
+          ))}
+        </div>
+        <ChartTipLayer tip={tip.tip} />
+      </div>
     </ChartFrame>
   );
 }

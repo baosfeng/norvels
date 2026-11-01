@@ -2,16 +2,31 @@ import { describe, expect, it } from "vitest";
 import {
   buildChapterBuckets,
   buildChapterLength,
+  buildEventTrend,
+  buildFunnel,
+  buildHotBooks,
   buildImportTrend,
+  buildInterestBars,
   buildReadingDist,
+  buildRecommendMetrics,
   buildStorage,
   buildTopAuthors,
   CIRCUMFERENCE,
   compact,
+  HOT_READ_WEIGHT,
   storageRatioNote,
 } from "./charts";
 import { findForbiddenTerms } from "./audit";
-import type { Bucket, ImportTrendPoint, ReadingProgress, Stats } from "../api/types";
+import type {
+  Bucket,
+  ImportTrendPoint,
+  ReadingProgress,
+  RecommendHotBook,
+  RecommendInterest,
+  RecommendStatsDay,
+  RecommendStatsSummary,
+  Stats,
+} from "../api/types";
 
 const trend = (books: number[]): ImportTrendPoint[] =>
   books.map((b, i) => ({ date: `2026-10-${String(i + 1).padStart(2, "0")}`, books: b, chapters: b * 100 }));
@@ -300,5 +315,279 @@ describe("6 章节长度分布", () => {
 
   it("空数据判空", () => {
     expect(buildChapterLength([]).empty).toBe(true);
+  });
+});
+
+/* ── 推荐与埋点（驾驶舱新区块） ── */
+
+const days = (rows: [number, number, number, number][]): RecommendStatsDay[] =>
+  rows.map(([impressions, clicks, reads, seconds], index) => ({
+    // 10-18 起连续若干天：与页面上的「近 14 天」同一口径
+    date: `2026-10-${String(18 + index).padStart(2, "0")}`,
+    impressions,
+    clicks,
+    reads,
+    seconds,
+  }));
+
+const summary = (over: Partial<RecommendStatsSummary> = {}): RecommendStatsSummary => ({
+  days: 14,
+  impressions: 100,
+  clicks: 10,
+  reads: 4,
+  readSeconds: 600,
+  shelfAdds: 2,
+  ...over,
+});
+
+const hot = (title: string, reads: number, clicks: number, seconds = 0): RecommendHotBook => ({
+  bookId: title.length,
+  title,
+  authorName: "示例作者",
+  reads,
+  clicks,
+  seconds,
+});
+
+describe("7 事件趋势", () => {
+  it("三色柱各自按自身峰值归一，浮层给真实次数与当天点击率", () => {
+    const model = buildEventTrend(days([
+      [100, 1, 0, 0],
+      [40, 8, 2, 120],
+    ]));
+    // 曝光峰值 100、点击峰值 8、阅读峰值 2：三列各自归一，谁也不会被压成一条线
+    expect(model.data.days.map((d) => d.impressionPct)).toEqual([100, 40]);
+    expect(model.data.days.map((d) => d.clickPct)).toEqual([13, 100]);
+    expect(model.data.days.map((d) => d.readPct)).toEqual([0, 100]);
+    // 浮层是绝对次数 + 当天点击率，不是归一化后的百分比
+    expect(model.data.days[1].title).toContain("曝光 40、点击 8、阅读 2");
+    expect(model.data.days[1].title).toContain("读了 2 分钟");
+    expect(model.data.days[1].title).toContain("点击率 20%");
+    expect(model.data.days[0].title).toContain("点击率 1%");
+  });
+
+  it("结论由窗口合计实算（曝光 / 点击率 / 阅读分钟）", () => {
+    const model = buildEventTrend(days([[100, 5, 1, 60], [300, 15, 3, 240]]));
+    expect(model.data.impressions).toBe(400);
+    expect(model.data.clicks).toBe(20);
+    expect(model.data.ctr).toBe("5%");
+    expect(model.data.readMinutes).toBe(5);
+    expect(model.note).toContain("2 天曝光 400");
+    expect(model.note).toContain("点击率 5%");
+    expect(model.note).toContain("读了 5 分钟");
+    // 结论里不许出现实现词（「索引」「bookId」这类）
+    expect(findForbiddenTerms(model.note)).toEqual([]);
+  });
+
+  it("点击率不足 1% 写「<1%」，不写成 0%", () => {
+    const model = buildEventTrend(days([[1000, 3, 0, 0]]));
+    expect(model.data.ctr).toBe("<1%");
+    expect(model.data.days[0].title).toContain("点击率 <1%");
+  });
+
+  it("没有事件（全 0）与没有日期都判空", () => {
+    expect(buildEventTrend([]).empty).toBe(true);
+    expect(buildEventTrend(days([[0, 0, 0, 0]])).empty).toBe(true);
+    expect(buildEventTrend(days([[1, 0, 0, 0]])).empty).toBe(false);
+  });
+
+  it("日期按升序排：后端顺序变了图也不会倒着画", () => {
+    const model = buildEventTrend([
+      { date: "2026-10-20", impressions: 5, clicks: 0, reads: 0, seconds: 0 },
+      { date: "2026-10-18", impressions: 1, clicks: 0, reads: 0, seconds: 0 },
+    ]);
+    expect(model.data.days.map((d) => d.date)).toEqual(["2026-10-18", "2026-10-20"]);
+    // 最后一根一定带标签（与导入趋势同一稀疏口径）
+    expect(model.data.days[model.data.days.length - 1].labelVisible).toBe(true);
+  });
+});
+
+describe("8 兴趣画像（大分类 / 小分类 / 作者三组）", () => {
+  const interests: RecommendInterest[] = [
+    { dim: "category_l1", key: "武侠", name: "武侠", weight: 69.4 },
+    { dim: "category_l1", key: "科幻", name: "科幻", weight: 60.1 },
+    { dim: "category_l2", key: "江湖", name: "江湖", weight: 69.4 },
+    { dim: "category_l2", key: "太空", name: "太空", weight: 60.1 },
+    { dim: "author", key: "9", name: "演示作者己", weight: 38.6 },
+    { dim: "author", key: "7", name: "演示作者丁", weight: 37.1 },
+    { dim: "category_l1", key: "悬疑", name: "悬疑", weight: 0 },
+  ];
+
+  it("三组按「大分类 → 小分类 → 作者」的固定顺序分开，各自组内归一", () => {
+    const model = buildInterestBars(interests);
+    expect(model.data.groups.map((g) => g.dim)).toEqual(["category_l1", "category_l2", "author"]);
+    expect(model.data.groups.map((g) => g.label)).toEqual(["分类·大", "分类·小", "作者"]);
+    expect(model.data.groups[0].rows.map((r) => r.name)).toEqual(["武侠", "科幻"]);
+    expect(model.data.groups[0].rows.map((r) => r.widthPct)).toEqual([100, 87]);
+    // 小分类自己归一：同名不同组的「武侠 / 江湖」不会再被当成同一行
+    expect(model.data.groups[1].rows.map((r) => r.name)).toEqual(["江湖", "太空"]);
+    expect(model.data.groups[1].rows[0].widthPct).toBe(100);
+    // 作者组也自己归一
+    expect(model.data.groups[2].rows.map((r) => r.name)).toEqual(["演示作者己", "演示作者丁"]);
+    expect(model.data.groups[2].rows[0].widthPct).toBe(100);
+  });
+
+  it("同名出现在两组时不合并、浮层按组说清是大分类还是小分类", () => {
+    const model = buildInterestBars([
+      { dim: "category_l1", key: "武侠", name: "武侠", weight: 5 },
+      { dim: "category_l2", key: "武侠", name: "武侠", weight: 5 },
+    ]);
+    expect(model.data.groups).toHaveLength(2);
+    expect(model.data.groups[0].rows[0].title).toBe("大分类「武侠」：兴趣 5.0");
+    expect(model.data.groups[1].rows[0].title).toBe("小分类「武侠」：兴趣 5.0");
+  });
+
+  it("空组整组不渲染：没有小分类兴趣时只出两组", () => {
+    const model = buildInterestBars([
+      { dim: "category_l1", key: "武侠", name: "武侠", weight: 3 },
+      { dim: "author", key: "9", name: "演示作者己", weight: 2 },
+    ]);
+    expect(model.data.groups.map((g) => g.dim)).toEqual(["category_l1", "author"]);
+    expect(buildInterestBars([]).empty).toBe(true);
+  });
+
+  it("不认识的 dim（老后端的 category）一律忽略，不报错也不占组位", () => {
+    const legacy = [
+      { dim: "category", key: "武侠", name: "武侠", weight: 5 },
+      { dim: "whatever", key: "x", weight: 1 },
+    ] as unknown as RecommendInterest[];
+    expect(buildInterestBars(legacy).empty).toBe(true);
+  });
+
+  it("作者组显示作者名（后端给的 name），不是 id", () => {
+    const model = buildInterestBars(interests);
+    const authorRow = model.data.groups[2].rows[0];
+    expect(authorRow.name).toBe("演示作者己");
+    expect(authorRow.title).toBe("作者 演示作者己：兴趣 38.6");
+    expect(authorRow.title).not.toContain("编号");
+  });
+
+  it("name 缺省或空串时退回 key：旧后端 / 作者已删也不显示空白行", () => {
+    const model = buildInterestBars([
+      { dim: "author", key: "12", weight: 3 },
+      { dim: "author", key: "7", name: "  ", weight: 2 },
+      { dim: "category_l1", key: "武侠", weight: 1 },
+    ]);
+    const authors = model.data.groups.find((g) => g.dim === "author");
+    expect(authors?.rows.map((r) => r.name)).toEqual(["12", "7"]);
+    // 浮层同样用兜底后的名字，不会出现「作者 ：」
+    expect(authors?.rows[0].title).toBe("作者 12：兴趣 3.0");
+    expect(authors?.rows[1].title).toBe("作者 7：兴趣 2.0");
+    expect(model.note).toContain("最重的是作者「12」");
+  });
+
+  it("权重 0 与空 key 不进榜（后端会留下衰减到 0 的行）", () => {
+    const model = buildInterestBars(interests);
+    expect(model.data.groups[0].rows.map((r) => r.name)).not.toContain("悬疑");
+    expect(buildInterestBars([{ dim: "category_l1", key: "  ", weight: 9 }]).empty).toBe(true);
+  });
+
+  it("每组各取 top 5，结论里带上它属于哪一组", () => {
+    const many: RecommendInterest[] = Array.from({ length: 7 }, (_, i) => ({
+      dim: "category_l1",
+      key: `类${i}`,
+      name: `类${i}`,
+      weight: 7 - i,
+    }));
+    const model = buildInterestBars(many);
+    expect(model.data.groups[0].rows).toHaveLength(5);
+    expect(model.data.groups[0].rows.map((r) => r.name)).toEqual(["类0", "类1", "类2", "类3", "类4"]);
+    // 三组并排时「最重的」要说清在哪一组：同名分类可能同时出现在大 / 小分类里
+    expect(model.note).toBe("最重的是「类0」（分类·大，兴趣 7.0）");
+  });
+});
+
+describe("9 热门书", () => {
+  it("读过 2 分 / 点击 1 分：读懂比点开值钱", () => {
+    const model = buildHotBooks([
+      hot("点开三次的书", 0, 3),
+      hot("读完两次的书", 2, 0),
+      hot("点开一次的书", 0, 1),
+    ]);
+    expect(HOT_READ_WEIGHT).toBe(2);
+    // 2 次阅读（4 分）压过 3 次点击（3 分），1 次点击（1 分）垫底
+    expect(model.data.rows.map((r) => r.name)).toEqual(["读完两次的书", "点开三次的书", "点开一次的书"]);
+    expect(model.data.rows.map((r) => r.value)).toEqual([4, 3, 1]);
+  });
+
+  it("按分数排序而不是按输入顺序，且最多 10 本", () => {
+    const books: RecommendHotBook[] = Array.from({ length: 12 }, (_, i) => hot(`书${i}`, 0, i + 1));
+    const model = buildHotBooks(books);
+    expect(model.data.rows).toHaveLength(10);
+    expect(model.data.rows[0].name).toBe("书11");
+    expect(model.data.rows[0].widthPct).toBe(100);
+    // 分母是这一榜的总热度：最大那本占 11 / (12+...+2) ≈ 14%
+    expect(model.data.rows[0].title).toContain("热度占");
+  });
+
+  it("结论给「最热的是 X」并带读过 / 点开次数", () => {
+    const model = buildHotBooks([hot("剑影山河", 3, 5, 600)]);
+    expect(model.note).toContain("最热的是《剑影山河》");
+    expect(model.note).toContain("3 次阅读、5 次点击");
+    expect(model.data.rows[0].display).toBe("3 读 · 5 点");
+    expect(model.data.rows[0].title).toContain("读了 10 分钟");
+  });
+
+  it("只有点击为 0 的书时判空（不至于画一条 0 分的榜）", () => {
+    expect(buildHotBooks([hot("没人看的书", 0, 0)]).empty).toBe(true);
+    expect(buildHotBooks([]).empty).toBe(true);
+  });
+});
+
+describe("10 曝光到收藏的漏斗", () => {
+  it("四级齐全，宽度按曝光归一，右侧给级间转化率", () => {
+    const model = buildFunnel(summary({ impressions: 200, clicks: 20, reads: 10, shelfAdds: 4 }));
+    expect(model.data.steps.map((s) => s.label)).toEqual(["曝光", "点击", "阅读", "收藏"]);
+    expect(model.data.steps.map((s) => s.widthPct)).toEqual([100, 10, 5, 2]);
+    expect(model.data.steps.map((s) => s.stepRate)).toEqual(["起始", "10%", "50%", "40%"]);
+    expect(model.data.overall).toBe("2%");
+    expect(model.note).toContain("整体转化 2%");
+  });
+
+  it("极小的一级也留一条看得见的宽度（0.2% 的收藏不画成 0）", () => {
+    const model = buildFunnel(summary({ impressions: 10_000, clicks: 50, reads: 5, shelfAdds: 20 }));
+    const shelf = model.data.steps[3];
+    expect(shelf.value).toBe(20);
+    // 真实比例 0.2% 低于最小可见宽度，所以给到 2%（宽度是视觉下限，数字仍是真实值）
+    expect(shelf.widthPct).toBe(2);
+  });
+
+  it("全 0 判空；只有曝光的漏斗不算空", () => {
+    expect(buildFunnel(summary({ impressions: 0, clicks: 0, reads: 0, shelfAdds: 0 })).empty).toBe(true);
+    expect(buildFunnel(summary({ impressions: 50, clicks: 0, reads: 0, shelfAdds: 0 })).empty).toBe(false);
+  });
+});
+
+describe("指标卡行", () => {
+  const today = "2026-10-19";
+
+  it("今日曝光按 UTC 日期精确匹配，不是取数组最后一个", () => {
+    const model = buildRecommendMetrics(summary(), days([[9, 0, 0, 0], [30, 0, 0, 0], [7, 0, 0, 0]]), "2026-10-19");
+    // 18 / 19 / 20 三天，今日是 19 号
+    expect(model.todayImpressions).toBe(30);
+    expect(model.metrics[0]).toMatchObject({ key: "impressions", label: "今日曝光", value: "30" });
+  });
+
+  it("窗口里没有今天时退回最近一天，不显示凭空算出的 0", () => {
+    const model = buildRecommendMetrics(summary(), days([[5, 0, 0, 0], [11, 0, 0, 0]]), today);
+    expect(model.todayImpressions).toBe(11);
+  });
+
+  it("四个指标与图表同一份数字：点击率、阅读分钟、收藏", () => {
+    const model = buildRecommendMetrics(
+      summary({ impressions: 400, clicks: 20, reads: 6, readSeconds: 1500, shelfAdds: 3, days: 14 }),
+      [days([[1, 0, 0, 0]])[0]],
+      "2026-10-18",
+    );
+    expect(model.metrics.map((m) => m.key)).toEqual(["impressions", "ctr", "reads", "shelf"]);
+    expect(model.metrics[1].value).toBe("5%");
+    expect(model.metrics[2].value).toBe("25");
+    expect(model.metrics[3].value).toBe("3");
+    // 可见文案里不许出现实现词
+    expect(findForbiddenTerms(model.metrics.map((m) => `${m.label}${m.value}${m.hint}`).join(""))).toEqual([]);
+  });
+
+  it("没有任何 daily 行时今日曝光是 0，不抛错", () => {
+    expect(buildRecommendMetrics(summary({ impressions: 0 }), [], today).todayImpressions).toBe(0);
   });
 });

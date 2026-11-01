@@ -1,15 +1,28 @@
 import { render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   ChapterBucketsChart,
   ChapterLengthChart,
+  EventTrendChart,
+  FunnelChart,
+  HotBooksChart,
   ImportTrendChart,
+  InterestBarsChart,
   ReadingDistChart,
   StorageChart,
   TopAuthorsChart,
   type ChartState,
 } from "./Charts";
-import type { ImportTrendPoint, ReadingProgress, Stats } from "../../api/types";
+import type {
+  ImportTrendPoint,
+  ReadingProgress,
+  RecommendHotBook,
+  RecommendInterest,
+  RecommendStatsDay,
+  RecommendStatsSummary,
+  Stats,
+} from "../../api/types";
 import { findForbiddenTerms } from "../../lib/audit";
 
 const idle: ChartState = { loading: false, failed: false, onRetry: () => {} };
@@ -220,5 +233,150 @@ describe("库体积构成：正文改成压缩后口径", () => {
     const segs = [...container.querySelectorAll<HTMLElement>(".stack-seg")];
     const sum = segs.reduce((acc, seg) => acc + Number.parseFloat(seg.style.width), 0);
     expect(Math.round(sum * 100) / 100).toBe(100);
+  });
+});
+
+/* ── 推荐与埋点：四张新图（同一套 ChartFrame 四态） ── */
+
+const recDays: RecommendStatsDay[] = [
+  { date: "2026-10-18", impressions: 120, clicks: 6, reads: 2, seconds: 240 },
+  { date: "2026-10-19", impressions: 80, clicks: 12, reads: 4, seconds: 600 },
+];
+
+const recSummary: RecommendStatsSummary = {
+  days: 14,
+  impressions: 200,
+  clicks: 18,
+  reads: 6,
+  readSeconds: 840,
+  shelfAdds: 3,
+};
+
+const recInterests: RecommendInterest[] = [
+  { dim: "category_l1", key: "武侠", name: "武侠", weight: 4 },
+  { dim: "category_l2", key: "江湖", name: "江湖", weight: 4 },
+  { dim: "author", key: "12", name: "演示作者甲", weight: 3 },
+];
+
+const recBooks: RecommendHotBook[] = [
+  { bookId: 1, title: "剑影山河", authorName: "示例作者甲", reads: 3, clicks: 5, seconds: 600 },
+  { bookId: 2, title: "星海拾遗", authorName: "示例作者丙", reads: 1, clicks: 2, seconds: 120 },
+];
+
+describe("推荐与埋点四张图：四态一致", () => {
+  it("读取中：图体换成读取占位，不画半张图", () => {
+    const cases = [
+      <EventTrendChart key="events" daily={recDays} loading failed={false} onRetry={() => {}} />,
+      <InterestBarsChart key="interest" interests={recInterests} loading failed={false} onRetry={() => {}} />,
+      <HotBooksChart key="hot" books={recBooks} loading failed={false} onRetry={() => {}} />,
+      <FunnelChart key="funnel" summary={recSummary} loading failed={false} onRetry={() => {}} />,
+    ];
+    for (const element of cases) {
+      const { container, unmount } = render(element);
+      const id = (container.querySelector(".chart-card") as HTMLElement).dataset.chart;
+      expect(screen.getByTestId(`chart:${id}:loading`)).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("失败：四张图各自给可点重试", () => {
+    const onRetry = vi.fn();
+    const { unmount } = render(<EventTrendChart daily={recDays} loading={false} failed onRetry={onRetry} />);
+    screen.getByTestId("chart:events:error");
+    screen.getByRole("button", { name: "重试" }).click();
+    expect(onRetry).toHaveBeenCalledOnce();
+    unmount();
+
+    render(<FunnelChart summary={recSummary} loading={false} failed onRetry={onRetry} />);
+    expect(screen.getByTestId("chart:funnel:error")).toBeTruthy();
+  });
+
+  it("空：没有事件时四张图都说「暂无数据」，不画空轴", () => {
+    const cases: [string, ReactElement, number][] = [
+      [
+        "events",
+        <EventTrendChart daily={[]} {...idle} />,
+        0,
+      ],
+      [
+        "interest",
+        <InterestBarsChart interests={[]} {...idle} />,
+        0,
+      ],
+      [
+        "hot",
+        <HotBooksChart books={[]} {...idle} />,
+        0,
+      ],
+      [
+        "funnel",
+        <FunnelChart summary={{ ...recSummary, impressions: 0, clicks: 0, reads: 0, shelfAdds: 0 }} {...idle} />,
+        0,
+      ],
+    ];
+    for (const [id, element, count] of cases) {
+      const { container, unmount } = render(element);
+      expect(screen.getByTestId(`chart:${id}:empty`)).toBeTruthy();
+      expect(container.querySelectorAll(".etrend-col, .hbar-row, .funnel-row")).toHaveLength(count);
+      unmount();
+    }
+  });
+
+  it("有数据：四张图都画出图体，且读数可聚焦（键盘也能看浮层）", () => {
+    const { container, unmount } = render(<EventTrendChart daily={recDays} {...idle} />);
+    // 两天 × 三根柱，但 0 值不画：这里两天都有三种事件
+    expect(container.querySelectorAll(".etrend-col")).toHaveLength(2);
+    expect(container.querySelectorAll(".etrend-bar")).toHaveLength(6);
+    expect(container.querySelectorAll('[data-tip="1"]')).toHaveLength(2);
+    unmount();
+
+    const interest = render(<InterestBarsChart interests={recInterests} {...idle} />);
+    // 三组并排：分类·大 / 分类·小 / 作者，各一行
+    expect(interest.container.querySelectorAll(".ibars-group")).toHaveLength(3);
+    expect(interest.container.querySelectorAll(".hbar-row")).toHaveLength(3);
+    for (const label of ["分类·大", "分类·小", "作者"]) {
+      expect(interest.container.textContent).toContain(label);
+    }
+    // 作者组显示后端给的作者名，不是编号
+    expect(interest.container.textContent).toContain("演示作者甲");
+    // 组上带着 dim，窄屏/宽度规则按组取（作者名比分类名长）
+    expect(interest.container.querySelector('[data-testid="ibars-author"]')?.getAttribute("data-dim")).toBe("author");
+    interest.unmount();
+
+    const hot = render(<HotBooksChart books={recBooks} {...idle} />);
+    expect(hot.container.querySelectorAll(".hbar-row")).toHaveLength(2);
+    hot.unmount();
+
+    const funnel = render(<FunnelChart summary={recSummary} {...idle} />);
+    expect(funnel.container.querySelectorAll(".funnel-row")).toHaveLength(4);
+    // 转化率写在每级右侧：曝光→点击、点击→阅读、阅读→收藏
+    expect(funnel.container.textContent).toContain("9%");
+    expect(funnel.container.textContent).toContain("50%");
+  });
+});
+
+
+  it("某一组没有数据时整组不渲染（三组不一定都出现）", () => {
+    const { container } = render(
+      <InterestBarsChart interests={[{ dim: "author", key: "12", name: "演示作者甲", weight: 3 }]} {...idle} />,
+    );
+    expect(container.querySelectorAll(".ibars-group")).toHaveLength(1);
+    expect(container.querySelector('[data-testid="ibars-author"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="ibars-category_l1"]')).toBeNull();
+  });
+
+describe("推荐与埋点：可见文案不含实现词", () => {
+  it("四张卡的正文与结论都过一遍禁用词表", () => {
+    const { container } = render(
+      <>
+        <EventTrendChart daily={recDays} {...idle} />
+        <InterestBarsChart interests={recInterests} {...idle} />
+        <HotBooksChart books={recBooks} {...idle} />
+        <FunnelChart summary={recSummary} {...idle} />
+      </>,
+    );
+    for (const card of container.querySelectorAll(".chart-card")) {
+      expect(findForbiddenTerms(card.textContent ?? "")).toEqual([]);
+    }
   });
 });

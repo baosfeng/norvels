@@ -237,3 +237,234 @@
 .stat-card {
   padding: 10px 14px;
 }
+
+/* ══ 推荐与埋点区块（驾驶舱）════
+ * 四张图沿用 .chart-card / .chart-frame 体系，只补四种图体：三色柱 / 两组横条 / 热门榜 / 漏斗。
+ * 全部用 flex + 百分比高度，不引入图表库；颜色取 tokens（曝光=accent 的淡色、点击=accent、阅读=success）。
+ * 密度口径：图体高度与其它图表卡一致（132px 基准），图例与说明各占一行，不留成片空白。 */
+
+/* 顶部四个指标卡：与页首 .dash-stats 同一套 .stat-card，只把行高收紧一档 */
+.rec-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap-card);
+  margin-bottom: var(--gap-card);
+}
+.rec-metrics .stat-card {
+  padding: 8px 12px;
+  background: var(--bg);
+}
+.rec-metrics .stat-num {
+  font-size: var(--text-lg);
+}
+/* 四张图与上面四个指标挨在一起，块内间距比页面默认小一档 */
+.rec-charts {
+  gap: var(--gap-card);
+}
+/* 两张「宽图」各占一整行：事件趋势要横向放 14 天，兴趣画像三组并排要装得下作者名 + 条 + 数字。
+   半张卡只有 ~318px，三列每组 ~95px，作者名（5 字 = 60px）一放就没地方画条了。
+   这样排下来是「趋势一整行 → 画像一整行 → 热门书 | 漏斗」，2 列网格正好铺满、不留空格。 */
+.rec-charts [data-chart="events"],
+.rec-charts [data-chart="interest"] {
+  grid-column: 1 / -1;
+}
+
+/* ── 事件趋势：每天三根细柱（曝光 / 点击 / 阅读），各自按自身峰值归一 ── */
+.etrend-wrap {
+  width: 100%;
+  align-self: flex-end;
+}
+.etrend {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 100%;
+  height: 132px;
+}
+.etrend-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 100%;
+  min-width: 0;
+}
+.etrend-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+.etrend-bar {
+  display: block;
+  flex: 1 1 0;
+  max-width: 6px;
+  min-width: 0;
+  border-radius: 1px 1px 0 0;
+}
+/* 三色：曝光走 accent 的淡色（量最大、压低存在感），点击是主色，阅读用成功色区分 */
+.etrend-bar.is-impression,
+.etrend-legend .legend-dot.is-impression {
+  background: color-mix(in oklab, var(--accent), var(--surface) 58%);
+}
+.etrend-bar.is-click,
+.etrend-legend .legend-dot.is-click {
+  background: var(--accent);
+}
+.etrend-bar.is-read,
+.etrend-legend .legend-dot.is-read {
+  background: var(--success-text);
+}
+.etrend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.etrend-legend .legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ── 兴趣画像：大分类 / 小分类 / 作者三组并排（组内归一，三组不共用刻度） ──
+   三组并排的前提是这张卡占整行（见 .rec-charts 的 grid-column 规则）；
+   窄屏（≤768）改成三组竖排，条才有宽度。 */
+.ibars {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 16px;
+  width: 100%;
+  /* .chart-body 是 align-items:flex-end（柱状图从底部往上长）：成排的横条与榜单要顶部对齐，
+     否则只有几行数据时整块内容会沉在卡片底部，上面留一大片空白 */
+  align-self: flex-start;
+}
+.ibars-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ibars-label {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+/* 轴标签让出宽度给条：分类名（2–3 字）窄、作者名（5 字）宽。
+   作者名必须完整显示——「演示作者己 / 演示作者丁」前四个字完全一样，
+   截成「演示作…」就分不出是谁了（实测 54px 会把四行截成一模一样）。 */
+.ibars .hbar-name {
+  flex: 0 0 54px;
+}
+.ibars-group[data-dim="author"] .hbar-name {
+  flex: 0 0 76px;
+}
+.ibars .hbar-track {
+  height: 9px;
+}
+.ibars .hbar-val {
+  font-size: 11px;
+}
+
+/* ── 热门书 Top 10：书名占宽度多一点，行高收紧（10 行不许超过两张卡的高度） ── */
+.hot-books {
+  gap: 3px;
+  align-self: flex-start;
+}
+.hot-books .hbar-row {
+  gap: 6px;
+}
+.hot-books .hbar-name {
+  flex: 0 0 96px;
+  font-size: 11.5px;
+}
+.hot-books .hbar-track {
+  height: 9px;
+}
+.hot-books .hbar-val {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── 漏斗：曝光 → 点击 → 阅读 → 收藏，条长按曝光归一，右侧写级间转化率 ── */
+.funnel-wrap {
+  width: 100%;
+  align-self: center;
+}
+.funnel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+}
+.funnel-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 46px 42px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.funnel-label {
+  color: var(--fg-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.funnel-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-warm);
+}
+.funnel-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accent), var(--surface) 45%);
+}
+.funnel-fill.is-impression {
+  background: color-mix(in oklab, var(--accent), var(--surface) 58%);
+}
+.funnel-fill.is-click {
+  background: var(--accent);
+}
+.funnel-fill.is-read {
+  background: var(--success-text);
+}
+.funnel-fill.is-shelf {
+  background: color-mix(in oklab, var(--success-text), var(--surface) 35%);
+}
+.funnel-value {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg-2);
+  text-align: right;
+  white-space: nowrap;
+}
+.funnel-rate {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 窄屏（驾驶舱本身是 PC 专属，这里只服务「窄视口截图 / 嵌入」这类形态）：
+   指标卡两列、兴趣画像单列，避免 4 列挤成一条线 */
+@media (max-width: 768px) {
+  .rec-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ibars {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hot-books .hbar-name {
+    flex: 0 0 84px;
+  }
+}
+

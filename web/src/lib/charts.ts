@@ -1,8 +1,21 @@
-import type { Bucket, ImportTrendPoint, ReadingProgress, Stats } from "../api/types";
+import type {
+  Bucket,
+  ImportTrendPoint,
+  ReadingProgress,
+  RecommendHotBook,
+  RecommendInterest,
+  RecommendInterestDim,
+  RecommendStatsDay,
+  RecommendStatsSummary,
+  Stats,
+} from "../api/types";
 
 /**
- * 六张图的数据转换：只做「后端数值 → 绘图几何 + 一句人话结论」，
+ * 十张图的数据转换：只做「后端数值 → 绘图几何 + 一句人话结论」，
  * 不碰 DOM，方便单测，也保证图与结论由同一份数字算出、不会对不上。
+ *
+ * 前六张是驾驶舱原有的库概览（导入 / 章节 / 作者 / 进度 / 体积 / 章节长度），
+ * 后四张是「推荐与埋点」区块（事件趋势 / 兴趣画像 / 热门书 / 漏斗）。
  */
 
 export interface VerticalBar {
@@ -418,4 +431,299 @@ export function buildChapterLength(buckets: Bucket[]): ChartModel<{ cols: Vertic
     ? `共 ${compact(total)} 章，${peak.label}最多（${peakShare}%）`
     : "还没有章节数据";
   return { empty: total === 0, note, data: { cols, total, peak: peak?.label ?? "" } };
+}
+
+/* ── 7 推荐与埋点：近 N 天事件趋势（三色柱） ── */
+
+/**
+ * 百分比人话：非零但不足 1% 写「<1%」。
+ * 与 shareText 同一口径（那里写「<1」不带符号，因为它后面还跟别的字）。
+ */
+function rateText(part: number, total: number): string {
+  if (part <= 0 || total <= 0) return "0%";
+  const rounded = Math.round((part / total) * 100);
+  return rounded === 0 ? "<1%" : `${rounded}%`;
+}
+
+/** 秒数 → 「6 分钟」；不足 1 分钟但有读数时写「<1 分钟」。 */
+function minutesText(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0 分钟";
+  const minutes = Math.round(seconds / 60);
+  return minutes < 1 ? "<1 分钟" : `${minutes} 分钟`;
+}
+
+export interface TrendDay {
+  date: string;
+  label: string;
+  labelVisible: boolean;
+  impressions: number;
+  clicks: number;
+  reads: number;
+  /** 三色柱各自按自身峰值归一：曝光动辄上千、阅读个位，同一把尺子会把点击与阅读压成一条线 */
+  impressionPct: number;
+  clickPct: number;
+  readPct: number;
+  /** 浮层读数：当天三个绝对次数 + 当天点击率 */
+  title: string;
+}
+
+export interface EventTrendData {
+  days: TrendDay[];
+  impressions: number;
+  clicks: number;
+  reads: number;
+  /** 窗口整体点击率（点击 / 曝光），人话文本 */
+  ctr: string;
+  readMinutes: number;
+}
+
+/**
+ * 事件趋势：每天三根柱（曝光 / 点击 / 阅读）。
+ *
+ * 归一化口径写在卡片里（「三色柱各自按自身峰值归一」）：曝光与阅读差两三个数量级，
+ * 共用一把尺子时点击 / 阅读会趴在 0 上，图就没有信息量了；绝对次数由浮层给出。
+ */
+export function buildEventTrend(daily: RecommendStatsDay[]): ChartModel<EventTrendData> {
+  const points = [...daily].sort((a, b) => a.date.localeCompare(b.date));
+  const peak = {
+    impressions: Math.max(0, ...points.map((p) => p.impressions)),
+    clicks: Math.max(0, ...points.map((p) => p.clicks)),
+    reads: Math.max(0, ...points.map((p) => p.reads)),
+  };
+  const days: TrendDay[] = points.map((p, index) => ({
+    date: p.date,
+    label: shortDate(p.date),
+    // 与导入趋势同一口径：每 3 根标一次 + 最后一根，倒数第二根让位给最后一根
+    labelVisible: index === points.length - 1 || (index % 3 === 0 && points.length - 1 - index > 1),
+    impressions: p.impressions,
+    clicks: p.clicks,
+    reads: p.reads,
+    impressionPct: pct(p.impressions, peak.impressions),
+    clickPct: pct(p.clicks, peak.clicks),
+    readPct: pct(p.reads, peak.reads),
+    title: `${fullDate(p.date)}：曝光 ${compact(p.impressions)}、点击 ${compact(p.clicks)}、阅读 ${compact(p.reads)}${p.seconds > 0 ? `，读了 ${minutesText(p.seconds)}` : ""}${p.impressions > 0 ? `（点击率 ${rateText(p.clicks, p.impressions)}）` : ""}`,
+  }));
+
+  const impressions = points.reduce((sum, p) => sum + p.impressions, 0);
+  const clicks = points.reduce((sum, p) => sum + p.clicks, 0);
+  const reads = points.reduce((sum, p) => sum + p.reads, 0);
+  const seconds = points.reduce((sum, p) => sum + p.seconds, 0);
+  const ctr = rateText(clicks, impressions);
+  const readMinutes = Math.round(seconds / 60);
+  const note =
+    points.length === 0
+      ? "还没有埋点数据"
+      : `${points.length} 天曝光 ${compact(impressions)}、点击 ${compact(clicks)}（点击率 ${ctr}）、读了 ${minutesText(seconds)}`;
+  return {
+    empty: points.length === 0 || impressions + clicks + reads === 0,
+    note,
+    data: { days, impressions, clicks, reads, ctr, readMinutes },
+  };
+}
+
+/* ── 8 推荐与埋点：兴趣画像 ── */
+
+export interface InterestGroup {
+  dim: RecommendInterestDim;
+  /** 组标题（中文短标签：「分类·大」「分类·小」「作者」） */
+  label: string;
+  rows: HorizontalBar[];
+}
+
+/**
+ * 三个维度的固定展示顺序与组标题。
+ *
+ * 顺序是「大分类 → 小分类 → 作者」：先看他的口味大类，再看细分，最后看人。
+ * 三组的权重不在同一尺度上（作者权重来自作者维度累计，分类来自分类维度），
+ * 所以各自的条按**组内峰值**归一，组间不可比；这一点由组标题分开表达，不混榜。
+ */
+const INTEREST_GROUPS: { dim: RecommendInterestDim; label: string; noun: string }[] = [
+  { dim: "category_l1", label: "分类·大", noun: "大分类" },
+  { dim: "category_l2", label: "分类·小", noun: "小分类" },
+  { dim: "author", label: "作者", noun: "作者" },
+];
+
+/**
+ * 兴趣画像：大分类 / 小分类 / 作者三组，各自排序、各自归一、各自取 top N。
+ *
+ * 展示名取 `name ?? key`：后端给名字（作者名 / 分类名）就用名字，没给或给了空串
+ * （作者被删、库还是旧版）就退回 key —— key 是稳定标识（作者 id 的十进制文本），
+ * 所以「名字缺了」不会让这一行消失或显示成一串空白。
+ * 某个维度没有数据时该组整组不渲染（空组不占位置）；不认识的 dim 一律忽略。
+ */
+export function buildInterestBars(
+  interests: RecommendInterest[],
+  limit = 5,
+): ChartModel<{ groups: InterestGroup[]; top: string }> {
+  const groups: InterestGroup[] = INTEREST_GROUPS.map(({ dim, label }) => {
+    const rows = interests
+      .filter((item) => item.dim === dim)
+      .filter((item) => item.weight > 0 && item.key.trim() !== "")
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, limit);
+    const max = rows[0]?.weight ?? 0;
+    return {
+      dim,
+      label,
+      rows: rows.map<HorizontalBar>((row) => {
+        const name = (row.name ?? "").trim() || row.key;
+        const group = INTEREST_GROUPS.find((group) => group.dim === dim);
+        return {
+          name,
+          value: row.weight,
+          widthPct: pct(row.weight, max, 4),
+          display: row.weight.toFixed(1),
+          title:
+            dim === "author"
+              ? `作者 ${name}：兴趣 ${row.weight.toFixed(1)}`
+              : `${group?.noun ?? "分类"}「${name}」：兴趣 ${row.weight.toFixed(1)}`,
+        };
+      }),
+    };
+  }).filter((group) => group.rows.length > 0);
+
+  const best = groups
+    .flatMap((group) => group.rows.map((row) => ({ dim: group.dim, label: group.label, row })))
+    .reduce<{ dim: InterestGroup["dim"]; label: string; row: HorizontalBar } | null>(
+      (top, item) => (!top || item.row.value > top.row.value ? item : top),
+      null,
+    );
+  // 三组并排时「最重的那个」要说清它在哪一组：分类名可能同名出现在大分类与小分类里
+  const note = best
+    ? best.dim === "author"
+      ? `最重的是作者「${best.row.name}」（兴趣 ${best.row.display}）`
+      : `最重的是「${best.row.name}」（${best.label}，兴趣 ${best.row.display}）`
+    : "还没有形成兴趣画像：点击、阅读几本之后这里会填上分类与作者";
+
+  return { empty: groups.length === 0, note, data: { groups, top: best?.row.name ?? "" } };
+}
+
+/* ── 9 推荐与埋点：热门书 Top N（横条） ── */
+
+/**
+ * 热门书打分：`读过 1 次 = 2 分，点击 1 次 = 1 分`。
+ *
+ * 权重复用设计 §2 的「读比点值钱」：点开只是有兴趣，读完才算真读过。
+ * 只看点击会把「点开就关」的书排到第一，只看阅读又会让刚上线的书永远上不了榜。
+ */
+export const HOT_READ_WEIGHT = 2;
+
+export function buildHotBooks(
+  books: RecommendHotBook[],
+  limit = 10,
+): ChartModel<{ rows: HorizontalBar[]; top: string; total: number }> {
+  const scored = books
+    .map((book) => ({ ...book, score: book.reads * HOT_READ_WEIGHT + book.clicks }))
+    .filter((book) => book.score > 0)
+    .sort((a, b) => b.score - a.score || b.reads - a.reads || a.bookId - b.bookId)
+    .slice(0, limit);
+  const max = scored[0]?.score ?? 0;
+  const total = scored.reduce((sum, book) => sum + book.score, 0);
+  const rows = scored.map<HorizontalBar>((book) => ({
+    name: book.title || "未命名",
+    value: book.score,
+    widthPct: pct(book.score, max, 4),
+    display: `${compact(book.reads)} 读 · ${compact(book.clicks)} 点`,
+    title: `《${book.title}》：${book.reads} 次阅读、${book.clicks} 次点击、读了 ${minutesText(book.seconds)}（热度占 ${shareText(book.score, total)}%）`,
+  }));
+  const first = scored[0];
+  const note = first
+    ? `最热的是《${first.title}》：${first.reads} 次阅读、${first.clicks} 次点击`
+    : "还没有阅读或点击记录";
+  return { empty: rows.length === 0, note, data: { rows, top: rows[0]?.name ?? "", total } };
+}
+
+/* ── 10 推荐与埋点：曝光 → 点击 → 阅读 → 收藏（漏斗） ── */
+
+export interface FunnelStep {
+  key: "impression" | "click" | "read" | "shelf";
+  label: string;
+  value: number;
+  /** 相对第一级（曝光）的宽度百分比：漏斗要能一眼看出「越往下越窄」 */
+  widthPct: number;
+  /** 相对上一级的转化率；第一级写「起始」 */
+  stepRate: string;
+  title: string;
+}
+
+export interface FunnelData {
+  steps: FunnelStep[];
+  /** 曝光 → 收藏的整体转化率 */
+  overall: string;
+}
+
+/** 漏斗最小可见宽度：0.4% 的收藏按真实比例画是一条看不见的线。 */
+const FUNNEL_MIN_PCT = 2;
+
+export function buildFunnel(summary: RecommendStatsSummary): ChartModel<FunnelData> {
+  const levels: { key: FunnelStep["key"]; label: string; value: number }[] = [
+    { key: "impression", label: "曝光", value: Math.max(0, summary.impressions) },
+    { key: "click", label: "点击", value: Math.max(0, summary.clicks) },
+    { key: "read", label: "阅读", value: Math.max(0, summary.reads) },
+    { key: "shelf", label: "收藏", value: Math.max(0, summary.shelfAdds) },
+  ];
+  const base = levels[0].value;
+  const steps = levels.map<FunnelStep>((level, index) => {
+    const previous = index === 0 ? null : levels[index - 1].value;
+    const stepRate = previous === null ? "起始" : rateText(level.value, previous);
+    return {
+      ...level,
+      widthPct: level.value > 0 ? Math.max(FUNNEL_MIN_PCT, pct(level.value, base)) : 0,
+      stepRate,
+      title:
+        previous === null
+          ? `${level.label} ${compact(level.value)} 次（漏斗起点）`
+          : `${level.label} ${compact(level.value)} 次，相对${levels[index - 1].label} ${stepRate}`,
+    };
+  });
+  const overall = rateText(summary.shelfAdds, summary.impressions);
+  const note =
+    base > 0
+      ? `曝光 ${compact(base)} → 收藏 ${compact(summary.shelfAdds)}，整体转化 ${overall}`
+      : "还没有曝光记录";
+  return {
+    empty: levels.every((level) => level.value === 0),
+    note,
+    data: { steps, overall },
+  };
+}
+
+/* ── 指标卡行（区块顶部四张卡，数字与上面四张图同源） ── */
+
+export interface RecommendMetric {
+  key: "impressions" | "ctr" | "reads" | "shelf";
+  label: string;
+  value: string;
+  hint: string;
+}
+
+/**
+ * 顶部四个指标：今日曝光 / 点击率 / 阅读分钟 / 收藏。
+ *
+ * 「今日」按 **UTC 天**匹配（后端 daily 的日期就是 UTC 的 YYYY-MM-DD，见 internal/recstore）；
+ * 匹配不到（窗口里没有今天）就退回到窗口内最近的一天，绝不显示一个凭空算出的 0。
+ */
+export function buildRecommendMetrics(
+  summary: RecommendStatsSummary,
+  daily: RecommendStatsDay[],
+  today: string,
+): { metrics: RecommendMetric[]; todayImpressions: number } {
+  const sorted = [...daily].sort((a, b) => a.date.localeCompare(b.date));
+  const todayRow = sorted.find((day) => day.date === today) ?? sorted[sorted.length - 1] ?? null;
+  const todayImpressions = Math.max(0, todayRow?.impressions ?? 0);
+  const days = summary.days || sorted.length;
+  return {
+    todayImpressions,
+    metrics: [
+      { key: "impressions", label: "今日曝光", value: compact(todayImpressions), hint: "次" },
+      { key: "ctr", label: "点击率", value: rateText(summary.clicks, summary.impressions), hint: "点击 / 曝光" },
+      {
+        key: "reads",
+        label: "阅读分钟",
+        value: compact(Math.round((summary.readSeconds ?? 0) / 60)),
+        hint: `近 ${days} 天`,
+      },
+      { key: "shelf", label: "收藏", value: compact(summary.shelfAdds), hint: "加入书架" },
+    ],
+  };
 }

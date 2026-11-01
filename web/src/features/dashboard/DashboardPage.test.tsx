@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../api/client";
 import { ToastHost } from "../../lib/toast";
 
 const reloads = {
@@ -12,6 +13,7 @@ const reloads = {
   reading: vi.fn(),
   progress: vi.fn(),
   progressAll: vi.fn(),
+  recommend: vi.fn(),
 };
 
 const state = {
@@ -29,6 +31,23 @@ const state = {
       otherBytes: 151_456_530,
       stale: false,
     },
+    loading: false,
+    error: null as unknown,
+  },
+  recommend: {
+    data: {
+      summary: { days: 14, impressions: 200, clicks: 18, reads: 6, readSeconds: 840, shelfAdds: 3 },
+      daily: [
+        { date: "2026-10-18", impressions: 120, clicks: 6, reads: 2, seconds: 240 },
+        { date: "2026-10-19", impressions: 80, clicks: 12, reads: 4, seconds: 600 },
+      ],
+      interests: [
+        { dim: "category_l1", key: "武侠", name: "武侠", weight: 4 },
+        { dim: "category_l2", key: "江湖", name: "江湖", weight: 4 },
+        { dim: "author", key: "12", name: "演示作者甲", weight: 3 },
+      ],
+      hotBooks: [{ bookId: 1, title: "剑影山河", authorName: "示例作者甲", reads: 3, clicks: 5, seconds: 600 }],
+    } as unknown,
     loading: false,
     error: null as unknown,
   },
@@ -61,6 +80,7 @@ vi.mock("../../api/hooks", () => ({
     error: null,
     reload: reloads.reading,
   }),
+  useRecommendStats: () => ({ ...state.recommend, reload: reloads.recommend }),
   useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progress }),
   useReadingProgressAll: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progressAll }),
   useHealthIssues: () => ({
@@ -157,6 +177,72 @@ describe("回归：C-23「全部书架」要清掉上次筛选", () => {
     expect(screen.getByTestId("shelf-state").textContent).toContain('"resetFilters":true');
   });
 });
+
+describe("推荐与埋点区块（新增）", () => {
+  it("区块头有「去发现页」入口，指标卡行给出四项实测值", () => {
+    renderPage();
+    expect(screen.getByTestId("dashboard:recommend")).toBeTruthy();
+    expect(screen.getByTestId("dashboard:discover-link").getAttribute("href")).toBe("/discover");
+
+    const metrics = screen.getByTestId("recommend-metrics");
+    // 「今日」按 UTC 日期匹配；测试数据里没有今天，退回窗口内最近的一天（80）
+    expect(within(metrics).getAllByText("今日曝光")).toHaveLength(1);
+    expect(screen.getByTestId("metric-impressions").textContent).toContain("80");
+    // 18 / 200 = 9%
+    expect(screen.getByTestId("metric-ctr").textContent).toContain("9%");
+    // 840 秒 = 14 分钟
+    expect(screen.getByTestId("metric-reads").textContent).toContain("14");
+    expect(screen.getByTestId("metric-shelf").textContent).toContain("3");
+  });
+
+  it("四张图进同一个 chart-grid（与既有七张同一套卡片体系）", () => {
+    renderPage();
+    const charts = screen.getByTestId("recommend-charts");
+    expect(charts.className).toContain("chart-grid");
+    for (const id of ["events", "interest", "hot", "funnel"]) {
+      expect(screen.getByTestId(`chart:${id}`)).toBeTruthy();
+    }
+    // 既有区块没被挤掉：原来的七张图还在
+    expect(screen.getByTestId("dashboard:charts").querySelectorAll(".chart-card")).toHaveLength(7);
+  });
+
+  it("一条埋点都没有时给整块空态 + 去发现页按钮，不画四张空图占两屏", () => {
+    const saved = state.recommend.data;
+    state.recommend.data = {
+      summary: { days: 14, impressions: 0, clicks: 0, reads: 0, readSeconds: 0, shelfAdds: 0 },
+      daily: [],
+      interests: [],
+      hotBooks: [],
+    };
+    renderPage();
+    const empty = screen.getByTestId("recommend-empty");
+    expect(empty.textContent).toContain("还没有埋点数据");
+    expect(within(empty).getByRole("link", { name: "去发现页" }).getAttribute("href")).toBe("/discover");
+    expect(screen.queryByTestId("recommend-charts")).toBeNull();
+    expect(screen.queryByTestId("recommend-metrics")).toBeNull();
+    state.recommend.data = saved;
+  });
+
+  it("读不到埋点数据（推荐库未启用 503）给错误态，重试按钮重取", () => {
+    const saved = { data: state.recommend.data, error: state.recommend.error };
+    state.recommend.data = null;
+    state.recommend.error = new ApiError("http", "推荐库未启用", 503, "unavailable");
+    renderPage();
+    expect(screen.getByTestId("recommend-error")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(reloads.recommend).toHaveBeenCalled();
+    state.recommend.data = saved.data;
+    state.recommend.error = saved.error;
+  });
+
+  it("刷新概览会把埋点数据一起重取", async () => {
+    renderPage();
+    fireEvent.click(document.querySelector('[data-od-id="C-29"]') as HTMLButtonElement);
+    expect(reloads.recommend).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("概览已刷新"), { timeout: 1500 });
+  });
+});
+
 describe("健康卡下钻（新增）", () => {
   it("四类问题各有「查看 N 本/个」入口，点开抽屉列出明细并链到单书管理页", () => {
     renderPage();

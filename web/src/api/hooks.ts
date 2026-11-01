@@ -281,6 +281,14 @@ export function useRecommendations(limit = 20) {
   return useResource((signal: AbortSignal) => api.recommendations(limit, { signal }), [limit]);
 }
 
+/**
+ * 推荐看板（驾驶舱「推荐与埋点」）：窗口默认 14 天，进依赖——换窗口就重取。
+ * 推荐库未启用时后端 503，这里照常是 error 态，由区块的三态面板说明「暂不可用」。
+ */
+export function useRecommendStats(days = 14) {
+  return useResource((signal: AbortSignal) => api.recommendStats(days, { signal }), [days]);
+}
+
 /** 追更角标清零（读到最后一章）：失败只影响角标数字，不打断阅读。 */
 export function useAckNewChapters() {
   return useCallback(async (bookId: number, options?: RequestOptions) => {

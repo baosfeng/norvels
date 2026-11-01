@@ -26,6 +26,7 @@ import type {
   Page,
   ReadStatus,
   RecommendResult,
+  RecommendStats,
   RenumberBody,
   RenumberResult,
   ReviewDecision,
@@ -667,4 +668,14 @@ export const api = {
    */
   recommendations: (limit?: number, opts?: RequestOptions) =>
     request<RecommendResult>(`/recommend${query({ limit })}`, opts),
+
+  /**
+   * 推荐看板（驾驶舱）：`days` 是统计窗口（默认 14，越界由后端夹取）。
+   * 查的是 rec 库的聚合表，与其它统计接口同一口径放宽超时；推荐库未启用时 503。
+   */
+  recommendStats: (days?: number, opts?: RequestOptions) =>
+    request<RecommendStats>(`/recommend/stats${query({ days })}`, {
+      timeoutMs: STATS_TIMEOUT_MS,
+      ...opts,
+    }),
 };
