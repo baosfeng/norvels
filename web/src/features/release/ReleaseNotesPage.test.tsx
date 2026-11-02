@@ -105,7 +105,8 @@ describe("更新日志页", () => {
 
   it("接口失败给错误态与重试入口", async () => {
     const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-    releases.mockRejectedValue(new actual.ApiError("internal", "发版说明不可用"));
+    // 后端解析失败时是 500 + code=internal；前端 ApiError 的 kind 归类为 http，code 在 .code 上
+    releases.mockRejectedValue(new actual.ApiError("http", "发版说明不可用", 500, "internal"));
     renderPage();
     expect(await screen.findByTestId("releases-error")).toBeTruthy();
     expect(screen.getByText("重试")).toBeTruthy();

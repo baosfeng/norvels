@@ -31,7 +31,7 @@
 | 9 | 隐私扫描 | 零命中 | `scripts/privacy-scan.sh --all` |
 | 10 | 构建一致性 | 容器工具版本满足 `web/` 要求 | `scripts/check-build-parity.sh` |
 | 10 | （同上，v0.9.0 起的加严项） | `Makefile` 的 `VERSION` 在 `internal/releases/CHANGELOG.md` 里有 `## [x.y.z]` 一节——说明用 go:embed 打进产品，版本发了却没写 = 发布事故；删掉该节必红 | 同上 |
-| 11 | 前端单元测试 | 全绿 | vitest（`cd web && pnpm test`） |
+| 11 | 前端类型检查 + 单元测试 | tsc 无 `error TS`；vitest 全绿 | `scripts/gate-frontend.sh`：先 `npm run typecheck`，再 vitest。**vitest 走 esbuild 不查类型**，导入路径/枚举值写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 一个文件都不查并返回 0。反向验证：注入 `const x: number = "s"` → 红 TS2322，复原即绿 |
 
 ## 没有门禁 3 与 8
 
