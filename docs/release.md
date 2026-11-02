@@ -159,11 +159,14 @@ make gate        # 门禁 10 校验 VERSION 在说明里有对应条目，漏写
 make run         # 可选自查：打开 /changelog，「你在用的这一版」应已是新版本号
 
 # 3. 打注释 tag：正文直接取该版本条目（两处同源，不再手写）
-git tag -a v0.9.0 -F - <<'MSG'
-norvels v0.9.0
-
-$(sed -n '/^## [0.9.0]/,/^## [/p' internal/releases/CHANGELOG.md | sed '1d;$d')
-MSG
+#    用进程替换而不是 heredoc：heredoc 里要展开 $(...) 就得去掉引号，
+#    去掉引号后说明正文里的反引号与 $ 又会被 shell 吃掉。
+#    --cleanup=verbatim：默认的 strip 会把以 # 开头的行当注释删掉，
+#    而说明正文里全是「### 新增 / 改进」这类标题。
+git tag -a v0.9.0 --cleanup=verbatim -F <(
+  printf 'norvels v0.9.0\n\n'
+  sed -n '/^## \[0.9.0\]/,/^## \[/p' internal/releases/CHANGELOG.md | sed '1d;$d'
+)
 git push origin v0.9.0
 ```
 
