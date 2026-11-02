@@ -16,6 +16,7 @@ import { SeriesDetailPage } from "./features/series/SeriesDetailPage";
 import { HistoryPage } from "./features/history/HistoryPage";
 import { CollectionsPage } from "./features/collections/CollectionsPage";
 import { DiscoverPage } from "./features/discover/DiscoverPage";
+import { ReleaseNotesPage } from "./features/release/ReleaseNotesPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { TierRoute } from "./layouts/TierRoute";
 import { LandingRedirect, NotFoundPage, TierHomeRedirect } from "./layouts/Redirects";
@@ -125,6 +126,8 @@ export const routeTable: RouteObject[] = [
       },
       // 书单是收藏夹本身的管理面，两档都开（表里没有 = 两档可用，见 lib/tier.ts）
       { path: "collections", element: <CollectionsPage /> },
+      // 更新日志（两档都开）：说明随二进制走，用户不必去 GitHub——NAS 上只有网页
+      { path: "changelog", element: <ReleaseNotesPage /> },
       { path: "landing", element: <LandingRedirect /> },
       { path: "*", element: <NotFoundPage /> },
     ],

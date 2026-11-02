@@ -91,6 +91,22 @@ if [[ -f .dockerignore ]]; then
   ok ".dockerignore 未排除 web/ 构建输入"
 fi
 
+# 6) 发版说明与当前版本号一致性：VERSION 必须在 internal/releases/CHANGELOG.md 里有一节。
+#    说明是打进二进制的产品内容（网页「更新日志」读它），版本发了却没有条目 =
+#    用户在产品里看不到这一版改了什么——这正是本项要挡住的发布事故。
+#    VERSION 的唯一事实源是 Makefile（LDFLAGS 由它注入），说明文件的唯一事实源是 internal/releases。
+changelog="internal/releases/CHANGELOG.md"
+version=$(grep -E '^VERSION \?= ' Makefile | head -1 | sed 's/^VERSION ?= //' | tr -d '[:space:]')
+if [[ -z "$version" ]]; then
+  fail "Makefile 里找不到 VERSION（发版说明无法与版本号对齐）"
+elif [[ ! -f "$changelog" ]]; then
+  fail "$changelog 不存在：发版说明缺失，产品里的更新日志会整页不可用"
+elif ! grep -qE "^## \[$version\]" "$changelog"; then
+  fail "CHANGELOG 缺少当前版本 $version 的条目（$changelog 里最新的几节不是它）：发版前先补 ## [$version] - YYYY-MM-DD"
+else
+  ok "发版说明含当前版本 $version 的条目"
+fi
+
 echo
 if [[ $fails -eq 0 ]]; then
   echo "✅ 构建一致性检查通过"

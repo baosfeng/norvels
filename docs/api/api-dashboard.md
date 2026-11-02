@@ -116,5 +116,5 @@ curl -s 'http://127.0.0.1:8080/api/stats'
 
 - `GET /api/tags` → `{ "items": [{ "id": 1, "name": "武侠", "bookCount": 120 }] }`
 - `GET /api/version` → `{ "version": "0.1.0", "commit": "abc123", "builtAt": "…" }`
-- 前端 SPA 路由：非 `/api/*` 且非静态资源命中时，返回 `index.html`（200）。
-- 静态资源带内容哈希，`/assets/*` 设置 `Cache-Control: public, max-age=31536000, immutable`。
+- `GET /api/releases` → 内置发版说明（按版本倒序），见 [api-releases.md](api-releases.md)
+- 前端 SPA 路由：非 `/api/*` 且非静态资源命中时返回 `index.html`（200）；`/assets/*` 带内容哈希，`Cache-Control: public, max-age=31536000, immutable`。

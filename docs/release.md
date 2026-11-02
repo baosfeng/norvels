@@ -121,7 +121,7 @@ GitHub 的 token 从 `GITHUB_TOKEN` / `GH_TOKEN` 环境变量读，或读 `~/.ds
 
 `--list` 里出现 `DOCKER_HUB_TOKEN` 才算配好。注意它只列 **Actions** 作用域下的 secret——在 `--list` 里看不到，就说明配错了地方。
 
-### 4.2 关于「全局设置一次」
+### 4.4 关于「全局设置一次」
 
 **GitHub Actions 的 secret 没有账号级作用域**，只有三级：
 
@@ -139,13 +139,32 @@ GitHub 的 token 从 `GITHUB_TOKEN` / `GH_TOKEN` 环境变量读，或读 `~/.ds
 
 ## 5. 发版流程
 
+发版说明是**流程里不可跳过的一步**：说明写在 [internal/releases/CHANGELOG.md](../internal/releases/CHANGELOG.md)，
+它用 `go:embed` 打进二进制，应用内「更新日志」页（`/changelog`）读的就是这一份——
+用户跑在 NAS 上，只看网页，不会去 GitHub。
+
+顺序固定：**改版本号 → 写说明 → 跑门禁 → 才打 tag**。tag 推出去就触发镜像发布，
+说明没写或版本号没对齐就推，等于发布一个「产品里查不到这一版改了什么」的版本。
+
 ```bash
-# 1. 确认 main 上 CI 全绿、门禁全过
+# 1. 确认 main 上 CI 全绿
 git checkout main && git pull
 
-# 2. 打注释 tag（语义化版本）
-git tag -a v0.1.0 -m "norvels v0.1.0"
-git push origin v0.1.0
+# 2. 对齐版本号（Makefile 的 VERSION + web/package.json 的 version）与说明：
+#    在 internal/releases/CHANGELOG.md 顶部补一节，条目按用户视角一句话，
+#    不写提交号与内部文件名，只写用户能感知的变化。
+#      ## [x.y.z] - YYYY-MM-DD
+#      ### 新增 / 改进 / 修复 / 升级注意
+make gate        # 门禁 10 校验 VERSION 在说明里有对应条目，漏写直接红
+make run         # 可选自查：打开 /changelog，「你在用的这一版」应已是新版本号
+
+# 3. 打注释 tag：正文直接取该版本条目（两处同源，不再手写）
+git tag -a v0.9.0 -F - <<'MSG'
+norvels v0.9.0
+
+$(sed -n '/^## [0.9.0]/,/^## [/p' internal/releases/CHANGELOG.md | sed '1d;$d')
+MSG
+git push origin v0.9.0
 ```
 
 推送后自动发生：`release.yml` → 复用 CI 的四项检查 → 登录 Docker Hub → buildx 构建 amd64/arm64 → 推送镜像。
@@ -190,6 +209,9 @@ curl -fsS localhost:8080/api/health              # 期望 {"db":"ok",...}
 - [ ] 在 Docker Hub 创建仓库 `bsfeng/norvels`（Public；也可由首次 push 自动创建）
 - [ ] 确认 `main` 上 `ci.yml` 四个 job 全绿（含覆盖率门禁）
 - [ ] 本地跑一次 `scripts/privacy-scan.sh --all`，零命中
+- [ ] `internal/releases/CHANGELOG.md` 里已有本版一节（`## [x.y.z] - YYYY-MM-DD`，含「升级注意」），
+      且与 `Makefile` 的 `VERSION` 一致；`make gate` 的门禁 10 复跑即验证
+- [ ] 本版有用户会踩的迁移/备份要求时，「升级注意」已写清（哪些操作要在升级前做）
 - [ ] 打第一个 tag：`git tag -a v0.1.0 -m "norvels v0.1.0" && git push origin v0.1.0`
 - [ ] `release.yml` 跑完后 `docker buildx imagetools inspect bsfeng/norvels:0.1.0` 看到 amd64 + arm64
 - [ ] Docker Hub 页面上 `latest` 与 `X.Y.Z` 两个标签齐全（当前 `0.3.0`）

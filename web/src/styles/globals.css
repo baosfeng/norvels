@@ -448,6 +448,8 @@ body.h5-sheet-open {
 @import "./ix-search-filters.css";
 /* 发现页（/discover）：为你推荐的卡片流（复用书架卡结构，只换成竖排海报格 + 推荐理由一行） */
 @import "./ix-recommend.css";
+/* 更新日志页（/changelog）：版本卡 / 正在使用高亮 / 升级注意醒目样式 */
+@import "./ix-releases.css";
 
 /* 侧栏当前页的选中态：按 aria-current="page" 接管（prototype.css 的 .is-active 从未命中）。
    **必须留在最后一条 @import**：它要盖住上面各表的悬停底色（navActive.ix.test.ts 守着这个位置）。 */

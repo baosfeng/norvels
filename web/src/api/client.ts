@@ -32,9 +32,11 @@ import type {
   RenumberBody,
   RenumberResult,
   ReviewDecision,
+  VersionInfo,
   ReviewStatusFilter,
   SerialStatus,
   ReadingHistoryResult,
+  ReleaseNotes,
   ReadingProgress,
   ReadingSessionInput,
   ReadingStats,
@@ -250,6 +252,10 @@ export interface UploadOptions {
 
 export const api = {
   stats: (opts?: RequestOptions) => request<Stats>("/stats", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
+  /** 发版说明（更新日志页）：内置在二进制里，无参数、不常变。 */
+  releases: (opts?: RequestOptions) => request<ReleaseNotes>("/releases", opts),
+  /** 当前运行版本：页面顶部显示「正在使用」的那一版。 */
+  version: (opts?: RequestOptions) => request<VersionInfo>("/version", opts),
   healthReport: (opts?: RequestOptions) =>
     request<HealthReport>("/health/report", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   /** 健康卡下钻：某一类问题具体是哪些书 / 章节（kind 非法后端 400）。 */

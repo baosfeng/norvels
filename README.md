@@ -182,11 +182,15 @@ docker run --rm --entrypoint /norvels \
 
 完整契约见 [docs/api.md](docs/api.md)。Base 为 `/api`，响应均为 JSON。
 
+每个版本改了什么，见 [发版说明](internal/releases/CHANGELOG.md)——同一个文件用 `go:embed` 打进二进制，
+应用内的「更新日志」页（`/changelog`）读的就是它，所以网页与仓库不会是两份。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/health` | 健康检查（`status`、`db`、`version`、`uptimeSeconds`） |
 | GET | `/api/stats` | 库级统计（书籍/章节/作者/字数/库大小） |
 | GET | `/api/version` | 版本信息 |
+| GET | `/api/releases` | 发版说明（内嵌 CHANGELOG，按版本倒序；网页「更新日志」/changelog 的数据源） |
 | GET | `/api/books` | 书籍列表（`q`、`authorId`、`tag`、`series`、`rating`、`collection`、`sort`、分页） |
 | GET | `/api/books/{id}` | 书籍详情 + 卷/章目录 |
 | GET | `/api/books/random` | 随机一本（可按作者/标签/书单缩范围；无书 404） |

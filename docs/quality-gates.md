@@ -30,6 +30,7 @@
 | 7 | 覆盖率 | 不低于登记基线（硬门禁），85% 为渐进目标 | `go tool cover` 行覆盖率 |
 | 9 | 隐私扫描 | 零命中 | `scripts/privacy-scan.sh --all` |
 | 10 | 构建一致性 | 容器工具版本满足 `web/` 要求 | `scripts/check-build-parity.sh` |
+| 10 | （同上，v0.9.0 起的加严项） | `Makefile` 的 `VERSION` 在 `internal/releases/CHANGELOG.md` 里有 `## [x.y.z]` 一节——说明用 go:embed 打进产品，版本发了却没写 = 发布事故；删掉该节必红 | 同上 |
 | 11 | 前端单元测试 | 全绿 | vitest（`cd web && pnpm test`） |
 
 ## 没有门禁 3 与 8
