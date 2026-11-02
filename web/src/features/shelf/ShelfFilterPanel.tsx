@@ -16,6 +16,12 @@ const OPEN_BY_DEFAULT: readonly string[] = ["sort"];
 type AuthorOption = { id: number; name: string; bookCount: number };
 type CountedOption = { id: number; name: string; bookCount: number };
 
+/**
+ * 分组计数：`status:reading` → 37、`rating:4` → 12。
+ * 缺项（还没取回来 / 取失败）就不显示数字——不拿 0 冒充「没有」。
+ */
+export type FacetCounts = Record<string, number>;
+
 export interface ShelfFilterPanelProps {
   sort: SortValue;
   onChooseSort: (next: SortValue) => void;
@@ -37,6 +43,8 @@ export interface ShelfFilterPanelProps {
   filtering: boolean;
   /** 已启用的筛选项数：写进面板标题，用户不用自己数 */
   filterCount: number;
+  /** 阅读状态与评分的分组计数（分类 / 书单 / 标签自带接口计数，不走这里） */
+  facetCounts: FacetCounts | null;
   /** 当前命中数：底部「查看 N 本」用；加载中拿不到给 null，改显示「查看结果」 */
   resultCount: number | null;
   /** 已选条件（每项自带「只清这一项」的回调）：点 × 单独取消 */
@@ -56,8 +64,9 @@ export interface ShelfFilterPanelProps {
  * （排序默认展开，其余点标题展开、标题右侧写着当前值）→ 底部「查看 N 本」把列表滚进视口。
  * 每组都是「标题 + 换行铺满的 chip」；分类两级同组，不占原生下拉。
  *
- * 计数口径：分类 / 书单 / 标签用接口给的计数；评分与阅读状态后端不给分组计数，
- * 不编造数字，由底部「查看 N 本」回答「筛完还剩几本」。
+ * 计数口径：分类 / 书单 / 标签用接口自带的计数；阅读状态与评分后端没有分组计数接口，
+ * 由 `useShelfFacetCounts` 按「其它维度 + 该项」各问一次 total（与点下去之后的列表同源，
+ * 所以标签上的数字必然等于「查看 N 本」的数字）。取不到就不显示数字，不编造。
  */
 export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
   const {
@@ -80,6 +89,7 @@ export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
     onChooseTag,
     filtering,
     filterCount,
+    facetCounts,
     resultCount,
     chips,
     onClearAll,
@@ -139,14 +149,22 @@ export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
         onToggle={() => toggle("status")}
       >
         <div className="shelf-filter-options">
-          {READ_STATUS_FILTERS.map((option) => (
+          {/* 「全部」的数目就是当前结果总数，由底部「查看 N 本」回答，这里不重复一次 */}
+          <FilterChip
+            testId="read-status-option-all"
+            active={readStatus === null}
+            onClick={() => onChooseReadStatus(null)}
+          >
+            全部
+          </FilterChip>
+          {READ_STATUS_FILTERS.filter((option) => option.value !== null).map((option) => (
             <FilterChip
               key={option.label}
-              testId={"read-status-option-" + (option.value ?? "all")}
+              testId={"read-status-option-" + option.value}
               active={option.value === readStatus}
               onClick={() => onChooseReadStatus(option.value)}
             >
-              {option.label}
+              {withCount(option.label, facetCounts?.["status:" + option.value])}
             </FilterChip>
           ))}
         </div>
@@ -164,7 +182,7 @@ export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
               active={rating === star}
               onClick={() => onChooseRating(star)}
             >
-              {star} 星
+              {withCount(star + " 星", facetCounts?.["rating:" + star])}
             </FilterChip>
           ))}
         </div>
@@ -306,6 +324,14 @@ export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
       </div>
     </section>
   );
+}
+
+/**
+ * 带计数的标签：「在读」→「在读 37」。计数缺失（还没取回 / 取失败）就只写标签本身，
+ * 补一个占位的 0 会把「不知道」说成「没有」。
+ */
+function withCount(label: string, count: number | undefined): string {
+  return count === undefined ? label : label + " " + count;
 }
 
 /** 定长候选（书单）：一条「全部」+ 每项带接口计数，选中用 aria-pressed 暴露给读屏。 */

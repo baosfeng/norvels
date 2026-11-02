@@ -1,7 +1,12 @@
 import type { useAuthors, useCollections, useTags } from "../../api/hooks";
+import { READ_STATUS_FILTERS } from "../../lib/readStatus";
 import { ShelfFilterPanel } from "./ShelfFilterPanel";
 import { useShelfChipFilters } from "./useShelfChipFilters";
+import { useShelfFacetCounts, type FacetCountSpec } from "./useShelfFacetCounts";
 import type { useShelfFilters } from "./useShelfFilters";
+
+/** 评分候选：与 PC 工具栏下拉同序（5 → 1 星）。 */
+const RATING_STARS = [5, 4, 3, 2, 1] as const;
 
 type Filters = ReturnType<typeof useShelfFilters>;
 type Query<T> = { data: T | null };
@@ -39,6 +44,7 @@ export function ShelfH5Filters({
   const authorName = authorOf(authors, filters.authorId);
   const collectionName = collectionOf(collections, filters.collection);
   const chips = useShelfChipFilters({ filters, authorName, collectionName, onAfterClear: onAfterChange });
+  const facetCounts = useShelfFacetCounts(facetSpecs(filters), !loading);
 
   return (
     <ShelfFilterPanel
@@ -61,12 +67,47 @@ export function ShelfH5Filters({
       onChooseTag={(next) => choose(filters.setTag, next, onAfterChange)}
       filtering={filters.filtering}
       filterCount={filters.filterCount}
+      facetCounts={facetCounts.counts}
       resultCount={loading ? null : total}
       chips={chips}
       onClearAll={onClearAll}
       onViewResults={onViewResults}
     />
   );
+}
+
+/**
+ * 要计数的两组（阅读状态 / 评分）：每项都带上**其它**维度的筛选、唯独不带自己这一维——
+ * 「在读（37）」里的 37 与点「在读」之后列表的总数来自同一个查询，两个数字不可能对不上。
+ *
+ * 为什么不去数分类 / 书单 / 标签：它们自带接口给的计数（分类树与标签、书单接口都带 count），
+ * 再发一轮请求既多余又可能与标签页上的数字打架。
+ *
+ * 全部（不筛这一维）的数目就是结果总数，由底部「查看 N 本」负责，这里不重复发一次。
+ */
+function facetSpecs(filters: Filters): FacetCountSpec[] {
+  const base = otherDimensions(filters);
+  const statuses: FacetCountSpec[] = READ_STATUS_FILTERS.filter((option) => option.value !== null).map((option) => ({
+    key: `status:${option.value}`,
+    query: { ...base, readStatus: option.value as NonNullable<FacetCountSpec["query"]["readStatus"]> },
+  }));
+  const ratings: FacetCountSpec[] = RATING_STARS.map((star) => ({
+    key: `rating:${star}`,
+    query: { ...base, rating: star },
+  }));
+  return [...statuses, ...ratings];
+}
+
+/** 除阅读状态与评分之外的筛选：状态与评分的计数都要带上它们，才与列表口径一致。 */
+function otherDimensions(filters: Filters): FacetCountSpec["query"] {
+  return {
+    sort: filters.sort,
+    authorId: filters.authorId ?? undefined,
+    tag: filters.tag ?? undefined,
+    collection: filters.collection ?? undefined,
+    categoryL1: filters.category.l1 ?? undefined,
+    categoryL2: filters.category.l2 ?? undefined,
+  };
 }
 
 /** 选中即生效：先落值，再把列表带回顶部（换筛选等价于换一屏结果）。 */
