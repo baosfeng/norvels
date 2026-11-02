@@ -9,6 +9,8 @@
 @import "./admin-book.css";
 /* 书籍管理列表：五组平铺 chips + 标签管理弹层排版 */
 @import "./admin-filters.css";
+/* 书籍管理列表：分页条（跳页输入框定宽、页组不拉伸） */
+@import "./admin-pagination.css";
 /* 全站页头压缩 + 顶栏高度收敛（只改页头壳，不动列表 / 图表 / 表单内部） */
 @import "./page-heads.css";
 
