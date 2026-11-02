@@ -10,6 +10,8 @@ const useTags = vi.fn();
 const useAuthors = vi.fn();
 
 vi.mock("../../api/hooks", () => ({
+  // 搜索页空态接入了场景推荐位（SceneRecommendBlock），mock 必须把它用到的 hook 补齐
+  useRecommendations: () => ({ data: null, loading: false, error: null, reload: () => {} }),
   useSearch: (q: string, params: unknown) => useSearch(q, params),
   useCategories: (opts?: unknown) => useCategories(opts),
   useTags: (opts?: unknown) => useTags(opts),

@@ -25,6 +25,7 @@ const empty: SearchResult = { q: "旧城", books: { items: [], total: 0, page: 1
 const useSearch = vi.fn();
 const emptyList = { data: { items: [], total: 0 }, loading: false, error: null, reload: () => {} };
 vi.mock("../../api/hooks", () => ({
+  useRecommendations: () => ({ data: null, loading: false, error: null, reload: () => {} }),
   useSearch: (q: string, params: unknown) => useSearch(q, params),
   useCategories: () => emptyList,
   useTags: () => ({ data: { items: [] }, loading: false, error: null, reload: () => {} }),
