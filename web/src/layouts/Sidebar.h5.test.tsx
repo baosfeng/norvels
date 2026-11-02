@@ -35,7 +35,7 @@ function hrefs(): string[] {
 }
 
 describe("侧栏：H5 抽屉补齐两档都开的能力", () => {
-  it("H5 主导航含 首页 / 发现 / 书架 / 搜索 / 系列 / 阅读历史 / 书单", () => {
+  it("H5 主导航含 首页 / 发现 / 书架 / 搜索 / 系列 / 阅读历史 / 书单 / 更新日志", () => {
     renderSidebar("h5");
     expect(hrefs()).toEqual([
       "/home",
@@ -45,11 +45,14 @@ describe("侧栏：H5 抽屉补齐两档都开的能力", () => {
       "/series",
       "/history",
       "/collections",
+      "/changelog",
     ]);
     expect(screen.getByTestId("nav-discover")).toBeTruthy();
     expect(screen.getByTestId("nav-series")).toBeTruthy();
     expect(screen.getByTestId("nav-history")).toBeTruthy();
     expect(screen.getByTestId("nav-collections")).toBeTruthy();
+    // 更新日志两档都开：NAS 用户只看网页，发版说明必须能在应用内点到
+    expect(screen.getByTestId("nav-changelog")).toBeTruthy();
   });
 
   it("H5 不出现管理四项（条件渲染，没有节点）", () => {
@@ -61,7 +64,7 @@ describe("侧栏：H5 抽屉补齐两档都开的能力", () => {
     expect(within(nav).queryByText("导入管理")).toBeNull();
   });
 
-  it("PC 主导航是管理工作台：含发现、系列、历史与书单，但不含 H5 首页", () => {
+  it("PC 主导航是管理工作台：含发现、系列、历史、书单与更新日志，但不含 H5 首页", () => {
     renderSidebar("pc");
     expect(hrefs()).toEqual([
       "/discover",
@@ -70,6 +73,7 @@ describe("侧栏：H5 抽屉补齐两档都开的能力", () => {
       "/series",
       "/history",
       "/collections",
+      "/changelog",
       "/admin",
       "/dashboard",
       "/authors",

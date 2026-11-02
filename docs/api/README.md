@@ -24,6 +24,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 | [api-source-import.md](api-source-import.md) | 导入 Legado 书源 JSON（预览 + 应用） |
 | [api-dashboard.md](api-dashboard.md) | 元信息（health/stats）、驾驶舱端点、其它端点 |
 | [api-account.md](api-account.md) | 账号（注册/登录/登出/me/列表）与我的书架；个人数据按账号隔离 |
+| [api-releases.md](api-releases.md) | 发版说明（`GET /api/releases`）：网页「更新日志」的数据源 |
 
 原 `docs/api.md` 章节号对照：§1/§7/§9 → [api-dashboard.md](api-dashboard.md)；§2/§3 → [api-books.md](api-books.md)；§4/§8/§10 → 本文件；§5/§6 → [api-import.md](api-import.md)；来源规则包 → [api-source.md](api-source.md)。
 

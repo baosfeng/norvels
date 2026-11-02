@@ -61,6 +61,8 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/fetch": {},
 	// AI 裁决客户端：DeepSeek 兼容 HTTP，只依赖标准库（叶子包），只发差异段落、不碰存储与解析。
 	"norvels/internal/ai": {},
+	// 发版说明：go:embed 内置 CHANGELOG + 纯函数解析，只依赖标准库（叶子包）。
+	"norvels/internal/releases": {},
 	// 声明式规则执行器：只依赖标准库与 CSS/XPath 解析库（叶子包）。
 	"norvels/internal/ruleexec": {},
 	// JS 沙箱执行器：只依赖 goja 与标准库（叶子包），不碰解析与抓取。
@@ -77,6 +79,8 @@ var allowedDeps = map[string][]string{
 		"norvels/internal/fetch", "norvels/internal/ruleimport",
 		// AI 审核（0021）：api 是裁决器的组装点（Config.AIJudge）与后台 worker 的宿主。
 		"norvels/internal/ai",
+		// 发版说明：api 只做适配（把内置 CHANGELOG 包成 GET /api/releases），解析在叶子包里。
+		"norvels/internal/releases",
 		// 推荐系统：api 是「主库候选 + 推荐库信号 + 纯函数打分」三者的唯一组装点；
 		// 召回读库的本体在 recommend/recall，api 只留 Port 适配与 tab 校验。
 		"norvels/internal/recstore", "norvels/internal/recommend", "norvels/internal/recommend/recall",

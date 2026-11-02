@@ -1121,3 +1121,37 @@ export interface RecommendStats {
   categoryClicks?: RecommendCategoryClicks[];
 }
 
+/** 一个版本的四类条目（GET /api/releases）。空分组是 []，不是 null。 */
+export interface ReleaseSections {
+  added: string[];
+  changed: string[];
+  fixed: string[];
+  upgrade: string[];
+}
+
+/** 一个版本的发版说明。retro = 事后从 git 历史回溯整理（早期版本发版时没写）。 */
+export interface ReleaseEntry {
+  version: string;
+  /** YYYY-MM-DD；缺省为空串 */
+  date: string;
+  retro: boolean;
+  sections: ReleaseSections;
+}
+
+/**
+ * GET /api/releases：内置发版说明，按版本倒序。
+ *
+ * current 是当前运行版本在说明里的对应条目；版本对不上（如开发构建）时为空串，
+ * 页面据此决定是否高亮「正在使用」。
+ */
+export interface ReleaseNotes {
+  current: string;
+  items: ReleaseEntry[];
+}
+
+/** GET /api/version */
+export interface VersionInfo {
+  version: string;
+  commit: string;
+  builtAt: string;
+}

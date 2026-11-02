@@ -13,6 +13,7 @@ import (
 
 	"norvels/internal/ai"
 	"norvels/internal/recstore"
+	"norvels/internal/releases"
 	"norvels/internal/ruleimport"
 	"norvels/internal/store"
 	"norvels/internal/webui"
@@ -97,6 +98,9 @@ type Server struct {
 	importMu sync.Mutex
 	// routes 是注册时累积出的路由表，405/404 判定的唯一事实源（不要另写清单）。
 	routes []route
+	// releaseMD 是发版说明的原始 Markdown（默认取 internal/releases 里 embed 的那份）。
+	// 做成字段而不是在 handler 里直接读 embed：测试要覆盖「说明文件写坏」的失败路径。
+	releaseMD []byte
 }
 
 // New 构造 HTTP handler（含 API 与 SPA 静态资源）。
@@ -112,7 +116,7 @@ func New(st *store.Store, cfg Config) http.Handler {
 // 新端点加进对应的 route 构造函数，不要在别处再手写一份清单。
 func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) {
 	s := &Server{st: st, cfg: cfg, fsys: fsys, log: log.Default(), start: time.Now(),
-		placeholder: webui.PlaceholderHTML()}
+		placeholder: webui.PlaceholderHTML(), releaseMD: releases.Builtin()}
 	mux := http.NewServeMux()
 	s.routes = registerRoutes(mux, s)
 	// 未命中任何 API 路由时统一返回 JSON 错误（否则 mux 会写纯文本）。
@@ -246,6 +250,8 @@ func (s *Server) miscRoutes() []route {
 		// 能力清单（策略注册表 + 上限）：前端硬编码上限的唯一来源。
 		newRoute(http.MethodGet, capabilitiesPath, s.handleCapabilities),
 		newRoute(http.MethodGet, "/api/version", s.handleVersion),
+		// 发版说明（更新日志页 /changelog）：解析内置 CHANGELOG，按版本倒序返回。
+		newRoute(http.MethodGet, "/api/releases", s.handleReleases),
 		// 驾驶舱（docs/api.md §8）
 		newRoute(http.MethodGet, "/api/health/report", s.handleHealthReport),
 		// 健康卡下钻：某一类问题的书 / 章节明细（判定口径与报告同源）。

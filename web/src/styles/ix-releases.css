@@ -1,0 +1,120 @@
+/* 更新日志页：版本一节一张卡，条目按「新增 / 改进 / 修复 / 升级注意」分组。
+   只改这一页的密度与层级；tokens 与页头沿用全站口径（.page-head 在 page-heads.css）。 */
+
+.view-releases {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.release-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.release-card {
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.1));
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--surface, #fff);
+}
+
+/* 正在使用的那一版：左侧色条 + 浅底，扫列表时一眼定位 */
+.release-card.is-current {
+  border-color: var(--accent, #2f6fed);
+  box-shadow: inset 3px 0 0 var(--accent, #2f6fed);
+}
+
+.release-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.release-head h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.release-badge {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 18px;
+  color: #fff;
+  background: var(--accent, #2f6fed);
+}
+
+.release-date,
+.release-retro {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* 回溯条目：说明是从 git 历史整理的，用虚线框把它和发版时写的区分开 */
+.release-retro {
+  border: 1px dashed currentColor;
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.release-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+
+/* H5 一列：窄屏两列会把条目挤成两三字一行 */
+.release-groups.is-h5 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.release-group h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
+}
+
+.release-group ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.release-group li {
+  margin: 2px 0;
+  line-height: 1.6;
+}
+
+/* 升级注意要醒目：这是唯一「不读会出事」的一组 */
+.release-upgrade {
+  grid-column: 1 / -1;
+  border-left: 3px solid var(--warn, #d9822b);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--warn, #d9822b) 8%, transparent);
+}
+
+.release-upgrade h3 {
+  opacity: 1;
+  color: var(--warn, #d9822b);
+}
+
+/* 手机端：卡片内边距收紧，条目字号跟正文一致 */
+@media (max-width: 768px) {
+  .release-card {
+    padding: 12px;
+  }
+
+  .release-head h2 {
+    font-size: 16px;
+  }
+}

@@ -311,6 +311,16 @@ export function useRecommendStats(days = 14) {
   return useResource((signal: AbortSignal) => api.recommendStats(days, { signal }), [days]);
 }
 
+/** 发版说明（更新日志页）。无参数、内容随二进制走，不订阅任何失效事件。 */
+export function useReleaseNotes() {
+  return useResource((signal: AbortSignal) => api.releases({ signal }), []);
+}
+
+/** 当前运行版本：页面顶部「正在使用」的那一版。 */
+export function useVersion() {
+  return useResource((signal: AbortSignal) => api.version({ signal }), []);
+}
+
 /** 追更角标清零（读到最后一章）：失败只影响角标数字，不打断阅读。 */
 export function useAckNewChapters() {
   return useCallback(async (bookId: number, options?: RequestOptions) => {
