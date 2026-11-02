@@ -268,6 +268,13 @@ export const api = {
     request<ImportTrendPoint[]>(`/stats/import-trend${query({ days })}`, { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   books: (params: BookQuery, opts?: RequestOptions) =>
     request<Page<BookSummary>>(`/books${query({ ...params })}`, opts),
+  /**
+   * 只要条数：书架筛选项的分组计数用（阅读状态 / 评分没有专用计数接口）。
+   * 与 books 同一套查询参数、同一个后端过滤逻辑——size=1 下取回的 total 就是该条件下的总数，
+   * 因此这个数字与列表总数必然一致；单独成方法，是为了让「只要数字」的调用点在代码里看得见。
+   */
+  bookCount: (params: BookQuery, opts?: RequestOptions) =>
+    request<Page<BookSummary>>(`/books${query({ ...params, page: 1, size: 1 })}`, opts).then((page) => page.total),
   book: (id: number, opts?: RequestOptions) => request<BookDetail>(`/books/${id}`, opts),
   chapter: (bookId: number, chapterId: number, opts?: RequestOptions) =>
     request<ChapterDetail>(`/books/${bookId}/chapters/${chapterId}`, opts),

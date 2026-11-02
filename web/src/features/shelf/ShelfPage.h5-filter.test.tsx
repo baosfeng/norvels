@@ -6,6 +6,8 @@ import type { BookDetail, BookSummary, CategoryTree, Page, TagSummary } from "..
 import { TierProvider } from "../../lib/tier";
 
 const books = vi.fn<(params: BookQuery, opts?: RequestOptions) => Promise<Page<BookSummary>>>();
+/** 分组计数：与列表分开的取数路径（api.bookCount），所以这里单独桩 */
+const bookCount = vi.fn<(params: BookQuery) => Promise<number>>();
 const categories = vi.fn(async (): Promise<CategoryTree> => tree());
 const tags = vi.fn(async (): Promise<{ items: TagSummary[] }> => ({ items: [{ id: 9, name: "民国", bookCount: 2 }] }));
 const collections = vi.fn(async () => ({ items: [], total: 0 }));
@@ -23,6 +25,7 @@ vi.mock("../../api/client", async () => {
     api: {
       ...actual.api,
       books: (params: BookQuery, opts?: RequestOptions) => books(params, opts),
+      bookCount: (params: BookQuery) => bookCount(params),
       categories: () => categories(),
       tags: () => tags(),
       collections: () => collections(),
@@ -94,9 +97,20 @@ function openGroup(id: string) {
   return screen.getByTestId(`filter-group-${id}`);
 }
 
+/**
+ * 分组计数的默认桩：按「阅读状态 / 评分」给出**独立于列表**的数字，
+ * 这样断言能证明数字来自计数接口，而不是碰巧等于列表总数。
+ */
+const STATUS_COUNTS: Record<string, number> = { want: 12, reading: 37, done: 5 };
+
 beforeEach(() => {
   window.sessionStorage.clear();
   books.mockReset().mockResolvedValue(pageOf());
+  bookCount.mockReset().mockImplementation(async (params: BookQuery) => {
+    if (params.readStatus) return STATUS_COUNTS[params.readStatus] ?? 0;
+    if (params.rating !== undefined) return params.rating * 10;
+    return 838;
+  });
   categories.mockClear();
   tags.mockClear();
   collections.mockClear();
@@ -214,6 +228,57 @@ describe("H5 书架：筛选平铺在最外层（不再藏进底部弹层）", (
 
     expect((await screen.findByTestId("category-l2-empty")).textContent).toBe("该分类暂无细分");
     expect(screen.queryByTestId("category-l2-options")).toBeNull();
+  });
+
+  it("阅读状态与评分都带真实计数：数字来自计数接口，不是编的", async () => {
+    renderShelf();
+    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
+
+    openGroup("status");
+    // 三个状态各自一个数字，且互不相同——证明是分别问出来的，不是拿总数糊上去
+    await waitFor(() => expect(screen.getByTestId("read-status-option-reading").textContent).toBe("在读 37"));
+    expect(screen.getByTestId("read-status-option-want").textContent).toBe("想读 12");
+    expect(screen.getByTestId("read-status-option-done").textContent).toBe("已读 5");
+    // 「全部」不显示数字：那就是底部「查看 N 本」的职责，同一处不写两遍
+    expect(screen.getByTestId("read-status-option-all").textContent).toBe("全部");
+
+    openGroup("rating");
+    await waitFor(() => expect(screen.getByTestId("rating-option-4").textContent).toBe("4 星 40"));
+    expect(screen.getByTestId("rating-option-5").textContent).toBe("5 星 50");
+  });
+
+  it("分组标签上的数字 == 选中它之后「查看 N 本」的数字（同一个查询）", async () => {
+    // 计数与列表走同一套后端过滤：把两边都接到同一份假数据上，「在读」就是 37
+    bookCount.mockImplementation(async (params: BookQuery) => (params.readStatus === "reading" ? 37 : 1));
+    books.mockImplementation(async (params: BookQuery) => ({
+      items: [bookAt(1)],
+      total: params.readStatus === "reading" ? 37 : 1,
+      page: 1,
+      size: 30,
+    }));
+    renderShelf();
+    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
+
+    openGroup("status");
+    await waitFor(() => expect(screen.getByTestId("read-status-option-reading").textContent).toBe("在读 37"));
+    const labelCount = Number(screen.getByTestId("read-status-option-reading").textContent!.replace(/\D+/g, ""));
+
+    fireEvent.click(screen.getByTestId("read-status-option-reading"));
+    // 选中之后底部按钮报的就是同一个数：标签与结果数出自同一个查询条件
+    await waitFor(() => expect(screen.getByTestId("panel-view-results").textContent).toBe(`查看 ${labelCount} 本`));
+    expect(labelCount).toBe(37);
+    expect(books.mock.calls.map((call) => call[0].readStatus)).toContain("reading");
+  });
+
+  it("计数接口失败时标签退回裸文字，不拿 0 冒充「没有」", async () => {
+    bookCount.mockRejectedValue(new Error("离线"));
+    renderShelf();
+    await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
+
+    openGroup("status");
+    // 取不到就不写数字；列表本身照常渲染，不因为计数失败而变成错误页
+    expect(screen.getByTestId("read-status-option-reading").textContent).toBe("在读");
+    expect(screen.getByTestId("shelf-live")).toBeTruthy();
   });
 
   it("作者只留「已选作者 ×」的清除入口，不再铺一屏作者 chip", async () => {
