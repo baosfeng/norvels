@@ -11,6 +11,8 @@ vi.mock("../api/hooks", () => ({
     reload: () => undefined,
   }),
   useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: () => undefined }),
+  // 页脚版本位（SideVersion）读它：外壳测试只关心导航，版本就是一行固定值
+  useVersion: () => ({ data: { version: "0.9.0", commit: "abc1234", builtAt: "2026-11-02T10:00:00Z" }, loading: false, error: null, reload: () => undefined }),
 }));
 
 const { Sidebar } = await import("./Sidebar");

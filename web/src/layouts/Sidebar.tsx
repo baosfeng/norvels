@@ -6,6 +6,7 @@ import { Cover } from "../components/Cover";
 import { formatCount } from "../lib/format";
 import { useIsH5 } from "../lib/tier";
 import { SideAccount } from "./SideAccount";
+import { SideVersion } from "./SideVersion";
 
 /**
  * 侧栏（PC 常驻 / H5 作为汉堡抽屉内容）。
@@ -130,10 +131,20 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* 账号区放在侧栏底部：PC 常驻可见，H5 就在汉堡抽屉底部。不强制拦截浏览 */}
-      <SideAccount onNavigate={onNavigate} />
+      {/* 侧栏底部整块（账号区 + 页脚）吸底：侧栏在 800px 高的屏上内容已经溢出
+          （10 个导航项 + 统计），不吸底的话「登录」与版本号都要滚到底才看得到。
+          整块吸底而不是只吸页脚：只吸页脚会把账号区压在下面。 */}
+      <div className="side-bottom">
+        {/* 账号区放在侧栏底部：PC 常驻可见，H5 就在汉堡抽屉底部。不强制拦截浏览 */}
+        <SideAccount onNavigate={onNavigate} />
 
-      <p className="side-foot meta">所有数据保存在你的电脑里</p>
+        {/* 页脚两行：版本位（点进更新日志）+ 数据归属。版本号是「这版改了什么」的入口，
+            PC 与 H5 抽屉是同一份 DOM，一处改两档都生效 */}
+        <div className="side-foot meta">
+          <SideVersion onNavigate={onNavigate} />
+          <span>所有数据保存在你的电脑里</span>
+        </div>
+      </div>
     </aside>
   );
 }

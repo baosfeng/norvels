@@ -7,6 +7,7 @@ import { TierProvider } from "../lib/tier";
 vi.mock("../api/hooks", () => ({
   useStats: () => ({ data: { books: 0, chapters: 0, words: 0, authors: 0 }, loading: false, error: null, reload: () => undefined }),
   useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: () => undefined }),
+  useVersion: () => ({ data: { version: "0.9.0", commit: "abc1234", builtAt: "2026-11-02T10:00:00Z" }, loading: false, error: null, reload: () => undefined }),
 }));
 
 const { AppShell } = await import("./AppShell");

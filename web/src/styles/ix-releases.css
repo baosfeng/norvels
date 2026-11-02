@@ -118,3 +118,66 @@
     font-size: 16px;
   }
 }
+
+/* 侧栏页脚：版本位（PC 常驻 / H5 抽屉同一份 DOM）。
+   side-foot 原本是单行说明，这里让它竖排两行——版本一行、数据归属一行，
+   版本用同一个 meta 口径（小号 + muted），不与主信息抢位。
+
+   吸底（sticky）是必须的：侧栏内容在 800px 高的屏上已经溢出（10 个导航项 + 统计 + 账号区），
+   侧栏本身 overflow:auto，margin-top:auto 只能把页脚推到滚动区底部——用户不滚到底就看不到版本。
+   吸底后它始终钉在侧栏可视区底部，滚动时盖住的是导航项而不是被导航项挡住。 */
+/* 底部整块（账号区 + 页脚）吸底。
+   侧栏是 overflow:auto 的定高列，内容在 800px 屏上已经溢出：只让页脚吸底会把账号区压在它下面，
+   所以整块一起吸。滚动时盖住的是导航项（可再滚回来），页面底部因此始终能看到版本号。 */
+.sidebar .side-bottom {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+  padding: 10px 0 2px;
+  background: var(--surface);
+}
+
+.sidebar .side-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+/* 版本位：可点的等宽数字，悬停时才给强调色——页脚不该常驻一条高对比链接 */
+.sidebar .side-version {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-decoration: none;
+  width: fit-content;
+}
+
+.sidebar .side-version:hover,
+.sidebar .side-version:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}
+/* 矮视口（1280×800 这类笔记本屏）压缩侧栏间距：10 个导航项 + 统计 + 账号区 + 页脚
+   在 800px 高里本来就差一点放不下，之前是靠滚动把页脚藏到了折线以下。
+   版本位要「不滚动就能看到」，所以这里收间距而不是继续藏。 */
+@media (max-height: 900px) {
+  .sidebar {
+    gap: 14px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .sidebar .side-nav a {
+    min-height: 34px;
+  }
+
+  .sidebar .side-stats {
+    gap: 4px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}

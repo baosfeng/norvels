@@ -18,7 +18,11 @@ const { stats, chapter, updateChapterContent, deleteChapter, readingProgress } =
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
-  return { ...actual, api: { stats, chapter, updateChapterContent, deleteChapter, readingProgress } };
+  // version 也是侧栏（页脚版本位）会用到的真实 hook，这里给同一套桩
+  return {
+    ...actual,
+    api: { stats, chapter, updateChapterContent, deleteChapter, readingProgress, version: async () => ({ version: "0.9.0", commit: "abc1234", builtAt: "2026-11-02T10:00:00Z" }) },
+  };
 });
 
 const { AdminChapters } = await import("./AdminChapters");
