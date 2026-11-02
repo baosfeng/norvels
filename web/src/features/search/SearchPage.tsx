@@ -11,6 +11,7 @@ import {
 } from "../../lib/searchHistory";
 import { useIsH5 } from "../../lib/tier";
 import { showToast } from "../../lib/toastStore";
+import { SceneRecommendBlock } from "../recommend/SceneRecommendBlock";
 import { SearchEmpty } from "./SearchEmpty";
 import { SearchFilters } from "./SearchFilterBar";
 import { SearchResultItem } from "./SearchResultItem";
@@ -217,14 +218,18 @@ export function SearchPage() {
           <ErrorPanel error={error} title="搜索没能完成" onRetry={retry} />
         </div>
       ) : !trimmed || tooShort || bookCount === 0 ? (
-        <SearchEmpty
-          kind={emptyKind()}
-          history={history}
-          onPick={runSearch}
-          onClearHistory={clearHistory}
-          filtersActive={activeCount > 0}
-          onClearFilters={clearFilters}
-        />
+        <>
+          <SearchEmpty
+            kind={emptyKind()}
+            history={history}
+            onPick={runSearch}
+            onClearHistory={clearHistory}
+            filtersActive={activeCount > 0}
+            onClearFilters={clearFilters}
+          />
+          {/* 搜索没有结果时用推荐补位：用户来这一趟是为了找书，别让他空手回去 */}
+          <SceneRecommendBlock scene="search-empty" />
+        </>
       ) : (
         <div className="search-layout" style={isH5 ? { gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           <aside aria-label="书名和作者结果" data-od-id="search-books-col">

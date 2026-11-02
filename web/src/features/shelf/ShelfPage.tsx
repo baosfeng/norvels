@@ -26,6 +26,7 @@ import { SORTS, type SortValue } from "./shelfSorts";
 import { useShelfFilters } from "./useShelfFilters";
 import { useShelfCache, useShelfScrollRestore, shouldRefresh } from "./useShelfScrollRestore";
 import { useBookFeed, type BookFeedRestore } from "../../lib/useBookFeed";
+import { SceneRecommendBlock } from "../recommend/SceneRecommendBlock";
 
 /** 我的书架不支持多选：给列表一个稳定空集合，避免每次渲染新建引用 */
 const EMPTY_SELECTION: Set<number> = new Set();
@@ -352,7 +353,11 @@ export function ShelfPage() {
         位置＝列表渲染完之后、页面底部之前（「我的书架」不挂：那是个人清单，不该塞推荐）。
         必须是零高：没有 min-height / 占位高度，没挂内容时不撑出任何空白。
       */}
-      {mine ? null : <div id="shelf-scene-recommend-slot" data-testid="shelf-scene-recommend-slot" />}
+      {mine ? null : (
+        <div id="shelf-scene-recommend-slot" data-testid="shelf-scene-recommend-slot">
+          <SceneRecommendBlock scene="shelf" />
+        </div>
+      )}
 
       {batchOpen ? (
         <BatchAuthorDialog
