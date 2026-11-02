@@ -17,11 +17,9 @@ import { ShelfUpdateSummary } from "./ShelfUpdateSummary";
 import { BatchAuthorDialog } from "./BatchAuthorDialog";
 import { FilterHints } from "./FilterHints";
 import { ResumeCard } from "./ResumeCard";
-import { FilterChipsRow } from "./FilterChipsRow";
-import { ShelfFilterSheet, type ShelfSheetSection } from "./ShelfFilterSheet";
+import { ShelfH5Filters } from "./ShelfH5Filters";
 import { ShelfHead } from "./ShelfHead";
 import { ShelfList } from "./ShelfList";
-import { useShelfChipFilters } from "./useShelfChipFilters";
 import { useShelfProgress } from "./useShelfProgress";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { SORTS, type SortValue } from "./shelfSorts";
@@ -41,7 +39,8 @@ const H5_PAGE_SIZE = 30;
 /**
  * 书架：两档**同一套筛选**，只换承载形态。
  * - PC：页头下方常驻工具栏（排序 + 分类/作者/书单/评分/状态 + 标签 chips），页码分页。
- * - H5：单列书卡 + 无限滚动，全部筛选收进底部弹层（排序 / 状态 / 评分 / 分类 / 作者 / 书单 / 标签）。
+ * - H5：三列书卡 + 无限滚动，筛选**平铺在列表上方**（ShelfH5Filters）——不再藏进底部弹层：
+ *   分组标题常驻，标题右侧写着当前值，选了什么、还剩什么一眼可见。
  *
  * 筛选值同时写进地址（`shelfQuery.ts`）与会话缓存：地址负责刷新 / 后退 / 分享，缓存负责返回时的列表、页码与滚动位置。
  *
@@ -58,7 +57,7 @@ export function ShelfPage() {
   // 地址上有筛选参数 = 以地址为准（刷新 / 后退 / 分享都能复现同一屏）
   const cached = useShelfCache(hasShelfQuery(searchParams) || resetRequested);
   const filters = useShelfFilters(cached);
-  const { sort, setSort, category, filtering, filterCount, resetFilters } = filters;
+  const { sort, setSort, category, filtering, resetFilters } = filters;
   // 视图（我的书架 / 全部书）进地址：?view=mine|all，默认按登录态选（B2）
   const shelfView = useShelfView();
   const shelfIds = useShelfIds();
@@ -67,9 +66,6 @@ export function ShelfPage() {
   const feedFiltering = !mine && filtering;
 
   const [statusOverrides, setStatusOverrides] = useState<Record<number, ReadStatus>>({});
-  const [sheetOpen, setSheetOpen] = useState(false);
-  // 从哪个入口点开的弹层：排序 → 排序分区，筛选 → 第一个筛选分区（默认按筛选算）
-  const [sheetSection, setSheetSection] = useState<ShelfSheetSection>("filters");
   // 多选模式：右上角「选择」进入；选中后批量设作者（循环 PATCH，纯前端）
   // 「只看有更新」是纯前端过滤（不新增接口参数）：书架取数口径不变，只把列表收窄
   const [updateOnly, setUpdateOnly] = useState(false);
@@ -81,9 +77,9 @@ export function ShelfPage() {
   const sortRef = useRef<HTMLSelectElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
 
-  // 筛选项的候选：PC 常驻在工具栏里，H5 只在弹层打开时才去取（首屏不多发三个请求）。
-  // 有筛选条件时也要取：列表顶部的回显 chip 要靠候选表把 id 翻成名字，否则只能写「指定作者」。
-  const optionsEnabled = !isH5 || sheetOpen || filtering;
+  // 筛选项的候选：两档都要用——PC 常驻工具栏；H5 的平铺面板要显示计数，回显 chip 还要把
+  // id 翻成名字。只有「我的书架」不渲染任何筛选器，这时才不发这三个请求。
+  const optionsEnabled = !mine;
   const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: optionsEnabled });
   const tagOptions = useTags({ enabled: optionsEnabled });
   const collectionOptions = useCollections({ enabled: optionsEnabled });
@@ -165,12 +161,6 @@ export function ShelfPage() {
     return () => observer.disconnect();
   }, [isH5, loadMore, items.length, hasMore]);
 
-  // 底部弹层打开时锁住页面滚动，避免背景跟着滑
-  useEffect(() => {
-    document.body.classList.toggle("h5-sheet-open", sheetOpen);
-    return () => document.body.classList.remove("h5-sheet-open");
-  }, [sheetOpen]);
-
   // 404 的「回书架」把焦点交给页标题（C-18 离开空态）
   useEffect(() => {
     if ((location.state as { focusTitle?: boolean } | null)?.focusTitle) titleRef.current?.focus();
@@ -191,19 +181,6 @@ export function ShelfPage() {
     } catch {
       /* 不影响结果 */
     }
-  }
-
-  /** 打开 H5 弹层并指定落点分区：两个入口各自直达自己要调的那一组。 */
-  function openSheet(section: ShelfSheetSection) {
-    setSheetSection(section);
-    setSheetOpen(true);
-  }
-
-  /** 弹层里的排序：选中即生效，弹层不关（用户还要接着调筛选），底部「查看 N 本」收工。 */
-  function chooseSort(next: SortValue) {
-    if (next === sort) return;
-    setSort(next);
-    scrollToTopOfList();
   }
 
   /** PC 行内排序（C-19）：选中即生效，页码由取数钩子按查询键重置为 1。 */
@@ -234,12 +211,6 @@ export function ShelfPage() {
 
   function chooseReadStatus(next: Exclude<ReadStatus, ""> | null) {
     filters.setReadStatus(next);
-    scrollToTopOfList();
-  }
-
-  /** 弹层里的其余筛选（评分 / 作者 / 书单 / 分类 / 标签）：选中即生效，弹层保持打开（连续调几项）。 */
-  function chooseInSheet(apply: () => void) {
-    apply();
     scrollToTopOfList();
   }
 
@@ -275,14 +246,6 @@ export function ShelfPage() {
 
   const selectedBooks = items.filter((book) => selected.has(book.id));
 
-  // 列表顶部的筛选回显（H5）：每个条件一个 chip，单独清 / 一键清全部
-  const filterChips = useShelfChipFilters({
-    filters,
-    authorName: authorOptions.data?.items.find((item) => item.id === filters.authorId)?.name ?? null,
-    collectionName: collectionOptions.data?.items.find((item) => item.id === filters.collection)?.name ?? null,
-    onAfterClear: scrollToTopOfList,
-  });
-
   return (
     <section className="view-shelf" data-testid="view:shelf" data-od-id="shelf">
       <ShelfHead
@@ -297,11 +260,8 @@ export function ShelfPage() {
         collection={filters.collection}
         selecting={selecting}
         selectedCount={selected.size}
-        sheetOpen={sheetOpen}
-        filterCount={filterCount}
         onToggleSelecting={toggleSelecting}
         onOpenBatch={() => setBatchOpen(true)}
-        onOpenSheet={openSheet}
         mine={mine}
       />
 
@@ -341,8 +301,20 @@ export function ShelfPage() {
 
       {isH5 || mine ? null : <FilterHints authors={authorOptions} tags={tagOptions} />}
 
-      {/* 筛选回显：只在 H5 且有筛选时出现，解释"为什么只剩这几本" */}
-      {isH5 && !mine ? <FilterChipsRow chips={filterChips} onClearAll={clearFilters} /> : null}
+      {/* H5：筛选平铺在列表上方（分组标题常驻 + 已选回显 + 清除筛选），不再走底部弹层 */}
+      {isH5 && !mine ? (
+        <ShelfH5Filters
+          filters={filters}
+          authors={authorOptions}
+          tags={tagOptions}
+          collections={collectionOptions}
+          loading={loading}
+          total={total}
+          onAfterChange={scrollToTopOfList}
+          onClearAll={clearFilters}
+          onViewResults={scrollToTopOfList}
+        />
+      ) : null}
 
       <ShelfUpdateSummary count={updateCount} active={updatesFiltering} onToggle={toggleUpdates} />
 
@@ -375,33 +347,13 @@ export function ShelfPage() {
         />
       )}
 
-      {isH5 && sheetOpen ? (
-        <ShelfFilterSheet
-          key={sheetSection}
-          initialSection={sheetSection}
-          sort={sort}
-          readStatus={filters.readStatus}
-          rating={filters.rating}
-          authorId={filters.authorId}
-          authors={authorOptions.data?.items ?? []}
-          collection={filters.collection}
-          collections={collectionOptions.data?.items ?? []}
-          category={category}
-          tag={filters.tag}
-          tags={tagOptions.data?.items ?? []}
-          filtering={filtering}
-          resultCount={loading ? null : total}
-          onChooseSort={chooseSort}
-          onChooseReadStatus={chooseReadStatus}
-          onChooseRating={(next) => chooseInSheet(() => filters.setRating(next))}
-          onChooseAuthor={(next) => chooseInSheet(() => filters.setAuthorId(next))}
-          onChooseCollection={(next) => chooseInSheet(() => filters.setCollection(next))}
-          onChooseCategory={(next) => chooseInSheet(() => filters.setCategory(next))}
-          onChooseTag={(next) => chooseInSheet(() => filters.setTag(next))}
-          onResetFilters={() => chooseInSheet(clearFilters)}
-          onClose={() => setSheetOpen(false)}
-        />
-      ) : null}
+      {/*
+        书架场景推荐位挂载点：由 leader 在合并后接 <SceneRecommendBlock scene="shelf" />。
+        位置＝列表渲染完之后、页面底部之前（「我的书架」不挂：那是个人清单，不该塞推荐）。
+        必须是零高：没有 min-height / 占位高度，没挂内容时不撑出任何空白。
+      */}
+      {mine ? null : <div id="shelf-scene-recommend-slot" data-testid="shelf-scene-recommend-slot" />}
+
       {batchOpen ? (
         <BatchAuthorDialog
           books={selectedBooks}

@@ -329,7 +329,7 @@
     margin-top: 2px;
     font-size: 12.5px;
   }
-  /* 操作行：选择 / 筛选并排，主入口（筛选）占剩余宽度、贴右拇指 */
+  /* 操作行：选择 / 批量设作者并排；筛选条已平铺到列表正上方，页头只留书库管理动作 */
   .shelf-head .shelf-head-actions {
     gap: 8px;
     justify-content: flex-start;
@@ -338,11 +338,6 @@
   .shelf-head .shelf-head-actions .btn {
     min-height: 44px;
     white-space: nowrap;
-  }
-  .shelf-head .shelf-sort-trigger {
-    flex: 1 1 auto;
-    justify-content: center;
-    min-width: 0;
   }
 }
 
@@ -557,136 +552,6 @@
 @media (max-width: 768px) {
   .filter-chip,
   .filter-chips .filter-chips-clear {
-    min-height: 44px;
-  }
-}
-
-/* 底部弹层：分区 chip。排序 / 状态 / 评分是定长集合，分类 / 书单 / 标签换行铺满，
-   筛选条件一眼看全——没有要展开才知道有什么的原生下拉 */
-.sheet .sheet-section {
-  display: grid;
-  /* 单列定宽：横排 chip 行是 nowrap + 横向滚动，不定宽会把整列撑出弹层右边缘 */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  padding-bottom: 10px;
-  margin-bottom: 8px;
-}
-.sheet .sheet-section:last-child {
-  border-bottom: 0;
-  margin-bottom: 0;
-}
-.sheet .sheet-section-title {
-  padding: 0 2px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-.sheet-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 2px;
-}
-/* 固定集合（排序 / 状态 / 评分）折行铺满：没有"还有更多"的暗示，不该露出半个被裁的 chip */
-.sheet-options.is-wrap {
-  flex-wrap: wrap;
-}
-/* 排序是 6 个等宽项：均分三列正好两行，不留一行只有两个孤项 */
-.sheet-options.is-triple {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-/* 评分是 6 个等宽短项（全部 + 1–5 星）：等分六列正好一行，不留一个孤零零的尾项 */
-.sheet-options.is-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-}
-.sheet-options.is-grid .sheet-option {
-  padding: 0 4px;
-}
-/* 不定长集合（书单 / 标签）单行横滑：区高固定，不随条目数增长 */
-.sheet-options.is-row {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
-}
-.sheet-options.is-row::-webkit-scrollbar {
-  display: none;
-}
-.sheet .sheet-option {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--fg);
-  font-size: 13px;
-  line-height: 1;
-  white-space: nowrap;
-  text-align: center;
-}
-.sheet .sheet-option.is-active {
-  border-color: var(--accent);
-  background: color-mix(in oklab, var(--accent), var(--surface) 88%);
-  color: var(--fg);
-  font-weight: 600;
-}
-/* 横排 chip 用底色 + 描边表示选中，对勾会撑开宽度、破坏单行 */
-.sheet .sheet-option.is-active::after {
-  content: none;
-}
-/* 小分类从属于上面选中的大分类：左侧竖线缩进一档，一眼看出它只对大分类生效 */
-.sheet-sub {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  margin-left: 2px;
-  padding: 4px 0 0 10px;
-  border-left: 2px solid var(--border);
-}
-.sheet-sub-title {
-  font-size: 12px;
-  color: var(--muted);
-}
-/* 已选作者只剩一个清除入口：不铺候选，也不占一整个分区标题 */
-.sheet-selected {
-  display: flex;
-  padding: 0 2px 2px;
-}
-.sheet-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-/* 内容比可视区高时，最后一行不要让吸底按钮贴住：留一段空白提示"还能往下滚" */
-.sheet .sheet-scroll {
-  padding-bottom: 10px;
-}
-.sheet-close {
-  font-size: 20px;
-  line-height: 1;
-  color: var(--muted);
-}
-.sheet .sheet-foot {
-  display: flex;
-  padding: 8px 2px 0;
-}
-.sheet .sheet-done {
-  width: 100%;
-  min-height: 44px;
-  justify-content: center;
-}
-@media (max-width: 768px) {
-  .sheet .sheet-option {
     min-height: 44px;
   }
 }

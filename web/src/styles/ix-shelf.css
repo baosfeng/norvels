@@ -240,3 +240,186 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
+
+/* ══ H5 书架筛选条：平铺在列表正上方（不再走底部弹层）════════════════════════
+   分组标题常驻、标题右侧写着当前值；排序组默认展开，其余点标题展开。
+   形态与旧弹层的 .sheet-* 刻意分开：弹层那套已在本次改动里删掉（H5 不再有弹层）。
+   面板住在 .view-shelf 里，选择器按本文件口径全部挂在 .view-shelf 下。 */
+
+.view-shelf .shelf-filter-panel {
+  display: grid;
+  gap: 2px;
+  /* 与下方书卡流分开一档：筛选条件属于页头那一组，不属于列表 */
+  margin: 0 0 var(--gap-section);
+  border-top: 1px solid var(--border-soft);
+}
+.view-shelf .shelf-filter-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+}
+.view-shelf .shelf-filter-panel-title {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+/* 清除筛选常驻（无筛选时禁用而非消失）：按钮忽隐忽现会让用户先猜一下才敢点 */
+.view-shelf .shelf-filter-clear {
+  flex: 0 0 auto;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 500;
+}
+.view-shelf .shelf-filter-clear[disabled] {
+  opacity: 0.4;
+  color: var(--muted);
+}
+
+/* 分组 = 一行标题按钮（标题 / 当前值 / 箭头）+ 展开后的选项区 */
+.view-shelf .shelf-filter-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--border-soft);
+}
+.view-shelf .shelf-filter-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+}
+.view-shelf .shelf-filter-group-title {
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+/* 当前值贴着标题：收起时这一行就是"现在选的是什么"的唯一答案 */
+.view-shelf .shelf-filter-group-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.view-shelf .shelf-filter-group-chevron {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg) translateY(-2px);
+}
+.view-shelf .shelf-filter-group-head[aria-expanded="false"] .shelf-filter-group-chevron {
+  transform: rotate(-45deg) translateX(-2px);
+}
+.view-shelf .shelf-filter-group-body {
+  padding: 0 0 10px;
+}
+/* hidden 属性被 display:grid 之类的规则覆盖时会失效：显式兜一层 */
+.view-shelf .shelf-filter-group-body[hidden] {
+  display: none;
+}
+
+/* 选项换行铺满；排序 6 项均分三列（两行），评分 6 项等分六列（一行），都不留孤零零的尾项 */
+.view-shelf .shelf-filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.view-shelf .shelf-filter-options.is-triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.view-shelf .shelf-filter-options.is-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+.view-shelf .shelf-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 12.5px;
+  line-height: 1.1;
+  white-space: nowrap;
+  word-break: keep-all;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.view-shelf .shelf-filter-options.is-triple .shelf-filter-chip,
+.view-shelf .shelf-filter-options.is-grid .shelf-filter-chip {
+  padding: 0 4px;
+}
+/* 横排 chip 用底色 + 描边表示选中：对勾会撑开宽度、把单行挤成两行 */
+.view-shelf .shelf-filter-chip.is-active {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), var(--surface) 88%);
+  font-weight: 600;
+}
+/* 小分类从属于选中的大分类：左侧竖线缩进一档，一眼看出它只对大分类生效 */
+.view-shelf .shelf-filter-sub {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+.view-shelf .shelf-filter-sub-title {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* 已选作者只剩这一行清除入口（候选留给 PC 工具栏，几十个作者横滑很难找人） */
+.view-shelf .shelf-filter-selected {
+  display: flex;
+  padding: 0 0 8px;
+}
+
+/* 底部「查看 N 本」贴在本组最后一行：选完顺手点一下，不用回头找 */
+.view-shelf .shelf-filter-panel-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--border-soft);
+}
+.view-shelf .shelf-filter-view {
+  min-width: 132px;
+}
+
+@media (max-width: 768px) {
+  /* 拇指区：分组标题按钮与每个 chip 都按 44px 给热区 */
+  .view-shelf .shelf-filter-chip {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+  .view-shelf .shelf-filter-options.is-triple .shelf-filter-chip,
+  .view-shelf .shelf-filter-options.is-grid .shelf-filter-chip {
+    padding: 0 4px;
+  }
+  /* 面板底部按钮在窄屏吃满行宽：拇指不用精确瞄准右端 */
+  .view-shelf .shelf-filter-panel-foot {
+    justify-content: stretch;
+  }
+  .view-shelf .shelf-filter-view {
+    width: 100%;
+  }
+}
