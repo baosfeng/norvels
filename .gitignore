@@ -57,3 +57,4 @@ internal/webui/dist/*
 
 # 本机专属交接信息（含真实路径，不入库）
 HANDOFF.local.md
+.worktrees/
