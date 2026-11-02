@@ -40,22 +40,26 @@ describe("?next= 收敛：登录页不是开放重定向入口", () => {
   });
 });
 
-describe("后端错误 → 下一步动作", () => {
-  it("404 账号不存在 → 给注册引导", () => {
-    const hint = accountErrorHint(new ApiError("http", "账号不存在，请先注册", 404, "account_not_found"));
-    expect(hint.action).toBe("register");
-    expect(hint.message).toBe("账号不存在，请先注册。");
+describe("后端错误 → 一句话提示（单入口下不再引导换动作）", () => {
+  it("400 名字不合规：直接用后端那句话", () => {
+    const hint = accountErrorHint(new ApiError("http", "账号名不能为空", 400, "invalid_param"));
+    expect(hint.message).toBe("账号名不能为空");
+    expect("action" in hint).toBe(false);
   });
 
-  it("409 重名 → 给直接进入（登录）引导", () => {
-    const hint = accountErrorHint(new ApiError("http", "重名", 409, "conflict"));
-    expect(hint.action).toBe("login");
-    expect(hint.message).toBe("该账号已存在，直接进入即可。");
+  it("409 default_account：说明这是书库底座，不能删", () => {
+    const hint = accountErrorHint(new ApiError("http", "默认账号（书库底座）不能删除", 409, "default_account"));
+    expect(hint.message).toContain("不能删除");
   });
 
-  it("400 名字不合规 / 网络错误 → 只提示，不给动作", () => {
-    expect(accountErrorHint(new ApiError("http", "账号名不能为空", 400, "invalid_param")).action).toBeNull();
-    expect(accountErrorHint(new ApiError("network", "网络请求失败")).action).toBeNull();
+  it("旧后端的 404 / 409 也只给提示：不再推去点第二个按钮", () => {
+    expect(accountErrorHint(new ApiError("http", "账号不存在", 404, "account_not_found")).message).toContain("刷新");
+    expect(accountErrorHint(new ApiError("http", "重名", 409, "conflict")).message).toContain("换一个");
+  });
+
+  it("401 会话失效 / 网络错误：都只说一句话，不猜原因", () => {
+    expect(accountErrorHint(new ApiError("http", "需要登录", 401, "unauthorized")).message).toContain("重新进入");
+    expect(accountErrorHint(new ApiError("network", "网络请求失败")).message).toBe("网络请求失败");
   });
 });
 

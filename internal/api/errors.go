@@ -41,6 +41,10 @@ const (
 	// codeAccountNotFound 表示「这个账号名还没注册过」（POST /api/auth/login 404）：
 	// 前端据此把提示换成「换成注册」，与泛化的 not_found 分开。
 	codeAccountNotFound = "account_not_found"
+	// codeDefaultAccount 表示要删的是默认账号（id=1 reader，409）：
+	// 它是存量数据归属与开放模式兜底，删了库不自洽。与泛化 conflict 分开，
+	// 前端据此提示「这个账号不能删」而不是「稍后重试」。
+	codeDefaultAccount = "default_account"
 	// codeContentCorrupted 表示这一章的正文压缩块损坏（局部故障，非整库不可用）。
 	codeContentCorrupted = "content_corrupted"
 

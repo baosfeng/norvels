@@ -2,18 +2,14 @@ package store
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
-// 账号与会话（迁移 0016）：只注册 + 输账号登录，**没有密码**。
+// 账号（迁移 0016）：一个入口进来，**没有密码**。会话见 user_sessions.go。
 //
 // ---- 为什么可以无密码 ----
 // 本产品的部署前提是「个人 / 家庭局域网内的私有书库」（见 deploy/nas 与 ADR-0001）。
@@ -28,22 +24,15 @@ import (
 //   - COLLATE NOCASE：否则「Alice」与「alice」也是两个账号，登录时自己也分不清。
 // 只折叠 ASCII，中文名没有大小写概念、不受影响；存储的 name 仍是用户输入的原样。
 //
-// ---- 会话口径 ----
-// token = crypto/rand 32 字节的 hex（64 字符），库里**只存它的 SHA-256**：
-// 数据库被读到也无法拿去冒充登录，明文 token 只存在于用户的 HttpOnly Cookie。
-// 选「服务端表」而不是 HMAC 签名：开放模式下没有可用的密钥（NORVELS_AUTH_TOKEN
-// 可能为空），而服务端表能立即撤销（登出删行）、能审计、也不依赖进程密钥的持久化。
+// ---- last_seen_at 的写入口只有一处 ----
+// 见 touchUserLastSeen：登录 / 单入口 / 注册即登录都走它。曾经这条链路断在
+// 「注册只建会话不刷时间」上，用户明明在用却显示「从未登录」，所以现在把
+// 「会话建立」与「活跃时间落库」绑在同一个 api 层函数里（enterAs）。
 
 // 账号名的跨边界长度（按 rune 计）。
 const (
 	minUserNameRunes = 1
 	maxUserNameRunes = 32
-)
-
-// 会话的边界：token 字节数与有效期（30 天，与旧共享口令 Cookie 一致）。
-const (
-	sessionTokenBytes = 32
-	UserSessionTTL    = 30 * 24 * time.Hour
 )
 
 // User 是一个账号。没有密码字段，也没有邮箱 / 头像之类——目前只有名字有用。
@@ -81,6 +70,11 @@ func ScopeUserID(ctx context.Context) int64 {
 }
 
 // RegisterUser 建号并返回新账号；重名返回 ErrConflict（api 映射 409）。
+//
+// 建号**不**写 last_seen_at（列表要区分「建了号却从没进来过」）：
+// 活跃时间是登录动作的产物，注册只建号——「注册即登录」由调用方另建会话时刷新，
+// 见 handleRegister / handleEnter 里的 touchUserLastSeen。若在这里写，就等于把
+// 「有人抢先建了同名号」也算成一次登录，列表会多出一条假的活跃记录。
 func (s *Store) RegisterUser(ctx context.Context, name string) (User, error) {
 	clean, err := cleanUserName(name)
 	if err != nil {
@@ -107,6 +101,63 @@ func (s *Store) RegisterUser(ctx context.Context, name string) (User, error) {
 	return u, nil
 }
 
+// TouchUser 刷新这个账号的 last_seen_at 并返回落库后的账号。
+//
+// 只在「有人带着这个账号进来了」的路径上调用（登录 / 单入口 / 注册即登录），
+// 不在每次读接口时调用：last_seen_at 的语义是「最近一次登录」，不是「最近一次翻页」。
+// 返回值从库里读回，保证回显的时间与排序用的时间是同一个字符串。
+func (s *Store) TouchUser(ctx context.Context, id int64) (User, error) {
+	if id <= 0 {
+		return User{}, fmt.Errorf("%w: 账号 id %d", ErrInvalidArgument, id)
+	}
+	if err := touchUserLastSeen(ctx, s.db, id, nil); err != nil {
+		return User{}, err
+	}
+	return s.UserByID(ctx, id)
+}
+
+// EnterUser 是单入口：账号不存在就建号并登录，存在就直接登录。created 报告是否新建。
+//
+// 先查后建，都在同一个事务里完成判重与插入（与 RegisterUser 同一口径：
+// TRIM + 大小写折叠），所以并发两个同名 enter 也只会建出一个账号——
+// 另一个撞唯一索引后回头走「已存在」分支，不会 500。
+func (s *Store) EnterUser(ctx context.Context, name string) (u User, created bool, err error) {
+	clean, err := cleanUserName(name)
+	if err != nil {
+		return User{}, false, err
+	}
+	if existing, err := s.userByName(ctx, clean); err == nil {
+		if err := touchUserLastSeen(ctx, s.db, existing.ID, &existing); err != nil {
+			return User{}, false, err
+		}
+		return existing, false, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return User{}, false, err
+	}
+	u, err = s.RegisterUser(ctx, clean)
+	if errors.Is(err, ErrConflict) {
+		// 竞态：这个名字刚刚被别人建出来了（判重时还看不见）。重新读一次按「已存在」处理，
+		// 不把内部碰撞丢给用户。读不到才是真异常，原样上报。
+		existing, readErr := s.userByName(ctx, clean)
+		if readErr != nil {
+			return User{}, false, err
+		}
+		if err := touchUserLastSeen(ctx, s.db, existing.ID, &existing); err != nil {
+			return User{}, false, err
+		}
+		return existing, false, nil
+	}
+	if err != nil {
+		return User{}, false, err
+	}
+	// 单入口 = 建号并立刻登录：返回体里的 lastSeenAt 必须是刚落库的时间，
+	// 否则「刚进来」的账号在列表里仍显示「从未登录」。
+	if u, err = s.TouchUser(ctx, u.ID); err != nil {
+		return User{}, false, err
+	}
+	return u, true, nil
+}
+
 // LoginUser 按账号名登录：不存在返回 ErrNotFound（api 映射 404 + 「请先注册」），
 // 存在则刷新 last_seen_at 并返回账号。
 func (s *Store) LoginUser(ctx context.Context, name string) (User, error) {
@@ -118,12 +169,34 @@ func (s *Store) LoginUser(ctx context.Context, name string) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
-	u.LastSeenAt = formatTime(nowUTC())
-	if _, err := s.db.ExecContext(ctx,
-		"UPDATE users SET last_seen_at = ? WHERE id = ?", u.LastSeenAt, u.ID); err != nil {
-		return User{}, fmt.Errorf("store: touch user %d: %w", u.ID, err)
+	if err := touchUserLastSeen(ctx, s.db, u.ID, &u); err != nil {
+		return User{}, err
 	}
 	return u, nil
+}
+
+// touchUserLastSeen 把 last_seen_at 刷成当前时间，并把同一个值回填到 u。
+//
+// 只在这里写时间、且只写一次：账号列表按它排序、界面按它说「上次活跃」，
+// 落库值与回显值必须是同一个字符串，否则会出现「刚登录却显示几分钟前」。
+//
+// 不在 UserBySessionToken / 每次读接口时刷新：那是每个请求一次写放大，
+// 而 last_seen_at 的语义是「最近一次登录」，不是「最近一次翻页」。
+func touchUserLastSeen(ctx context.Context, ex execer, userID int64, u *User) error {
+	at := formatTime(nowUTC())
+	if _, err := ex.ExecContext(ctx,
+		"UPDATE users SET last_seen_at = ? WHERE id = ?", at, userID); err != nil {
+		return fmt.Errorf("store: touch user %d: %w", userID, err)
+	}
+	if u != nil {
+		u.LastSeenAt = at
+	}
+	return nil
+}
+
+// execer 是 *sql.DB 与 *sql.Tx 的公共执行面（同一句写既能在事务里跑、也能单独跑）。
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 // UserByID 按 id 读账号；不存在返回 ErrNotFound。
@@ -237,86 +310,4 @@ func wrapUserNameError(err error, name string) error {
 		return fmt.Errorf("%w: 账号名 %q 已被占用", ErrConflict, name)
 	}
 	return fmt.Errorf("store: write user: %w", err)
-}
-
-// ---------- 会话 ----------
-
-// CreateUserSession 为账号建一条会话，返回**明文 token**（只此一次，库里存哈希）。
-func (s *Store) CreateUserSession(ctx context.Context, userID int64) (string, error) {
-	if userID <= 0 {
-		return "", fmt.Errorf("%w: 账号 id %d", ErrInvalidArgument, userID)
-	}
-	token, err := newSessionToken()
-	if err != nil {
-		return "", err
-	}
-	// 建会话是低频写，顺手清过期行即可，不额外起定时任务（清理失败不影响本次登录：
-	// 读会话本来就带 expires_at 过滤，残留的过期行不会让谁多出权限）。
-	_ = s.purgeExpiredSessions(ctx)
-	now := nowUTC()
-	if _, err := s.db.ExecContext(ctx,
-		"INSERT INTO user_sessions(token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-		hashSessionToken(token), userID, formatTime(now), formatTime(now.Add(UserSessionTTL))); err != nil {
-		return "", fmt.Errorf("store: create user session: %w", err)
-	}
-	return token, nil
-}
-
-// UserBySessionToken 校验会话并返回所属账号；token 无效 / 过期返回 ErrNotFound。
-func (s *Store) UserBySessionToken(ctx context.Context, token string) (User, error) {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return User{}, fmt.Errorf("%w: 会话不存在", ErrNotFound)
-	}
-	var userID int64
-	err := s.db.QueryRowContext(ctx,
-		"SELECT user_id FROM user_sessions WHERE token_hash = ? AND expires_at > ?",
-		hashSessionToken(token), formatTime(nowUTC())).Scan(&userID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return User{}, fmt.Errorf("%w: 会话不存在或已过期", ErrNotFound)
-	}
-	if err != nil {
-		return User{}, fmt.Errorf("store: read user session: %w", err)
-	}
-	return s.UserByID(ctx, userID)
-}
-
-// DeleteUserSession 撤销一条会话（登出）；本来就不存在也返回 nil（幂等）。
-func (s *Store) DeleteUserSession(ctx context.Context, token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return nil
-	}
-	if _, err := s.db.ExecContext(ctx,
-		"DELETE FROM user_sessions WHERE token_hash = ?", hashSessionToken(token)); err != nil {
-		return fmt.Errorf("store: delete user session: %w", err)
-	}
-	return nil
-}
-
-// purgeExpiredSessions 删掉已过期的会话行。
-//
-// 失败不阻断主流程：清理是后台维护动作，读会话本身已经有 expires_at 过滤，
-// 残留的过期行不会让谁多出权限。
-func (s *Store) purgeExpiredSessions(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx,
-		"DELETE FROM user_sessions WHERE expires_at <= ?", formatTime(nowUTC())); err != nil {
-		return fmt.Errorf("store: purge user sessions: %w", err)
-	}
-	return nil
-}
-
-// newSessionToken 生成不可猜的会话 token（crypto/rand，32 字节 → 64 位 hex）。
-func newSessionToken() (string, error) {
-	var b [sessionTokenBytes]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("store: generate session token: %w", err)
-	}
-	return hex.EncodeToString(b[:]), nil
-}
-
-// hashSessionToken 是库里存储会话凭据的唯一形态（SHA-256 hex）。
-func hashSessionToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
 }

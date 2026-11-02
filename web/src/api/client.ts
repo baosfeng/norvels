@@ -616,8 +616,18 @@ export const api = {
   // 那是"能不能进这个库"，与"进来之后我是谁"是两件事，互不替代。
 
   /**
+   * 单入口：账号名不存在就建号并登录（201），存在就直接登录（200），两种都下发会话 Cookie。
+   *
+   * 前端只调这一个——「这个名字有没有人用」是后端的知识，不该让用户先猜一次。
+   * 空名 / 超 32 字 400；建号撞车由后端内部消化成「直接登录」，不会把 409 抛给用户。
+   */
+  enter: (name: string, opts?: RequestOptions) =>
+    request<AuthUser>("/auth/enter", { ...opts, method: "POST", body: { name } }),
+
+  /**
    * 注册并直接登录：201 + 账号，同时下发会话 Cookie。
    * 空名 / 超 32 字 400；重名（TRIM + 大小写折叠后一致）409。
+   * 界面入口已收敛到 enter；这个保留给脚本与「显式新建」的场景。
    */
   register: (name: string, opts?: RequestOptions) =>
     request<AuthUser>("/auth/register", { ...opts, method: "POST", body: { name } }),
@@ -631,6 +641,15 @@ export const api = {
 
   /** 登出：204，幂等（本来没登录也算成功），服务端真删会话行。 */
   logout: (opts?: RequestOptions) => request<void>("/auth/logout", { ...opts, method: "POST" }),
+
+  /**
+   * 删账号（连带它自己的书架 / 进度 / 书签 / 书单 / 会话），204。
+   *
+   * 要会话：未登录 401；默认账号 id=1 是书库底座，删它 409 code=default_account。
+   * 删的就是当前账号时，服务端顺手清 Cookie，前端拿到 204 直接回未登录态。
+   */
+  deleteAccount: (id: number, opts?: RequestOptions) =>
+    request<void>(`/auth/users/${id}`, { ...opts, method: "DELETE" }),
 
   /**
    * 当前账号：200 即已登录；401 表示没有会话（开放模式下后端直接回默认账号，永不 401）。

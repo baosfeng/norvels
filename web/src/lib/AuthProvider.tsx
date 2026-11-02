@@ -40,6 +40,15 @@ function AuthProviderLive({ children }: { children: ReactNode }) {
     [notify],
   );
 
+  const enter = useCallback(
+    async (name: string) => {
+      const next = await api.enter(name);
+      adopt(next);
+      return next;
+    },
+    [adopt],
+  );
+
   const register = useCallback(
     async (name: string) => {
       const next = await api.register(name);
@@ -56,6 +65,24 @@ function AuthProviderLive({ children }: { children: ReactNode }) {
       return next;
     },
     [adopt],
+  );
+
+  /**
+   * 删账号：服务端删掉账号与它的个人数据；删的是当前账号时立刻切回未登录。
+   *
+   * 不在这里判断「是不是当前账号」——删别人的账号（换号页上的）不该清掉自己的态。
+   * 与 logout 同一套收尾：先清本地账号态，再广播让书架 ids 等派生数据失效。
+   */
+  const deleteAccount = useCallback(
+    async (id: number) => {
+      await api.deleteAccount(id);
+      if (user?.id === id) {
+        setOverride({ user: null });
+        notify();
+        reload();
+      }
+    },
+    [user, notify, reload],
   );
 
   const clearLocal = useCallback(() => {
@@ -88,13 +115,15 @@ function AuthProviderLive({ children }: { children: ReactNode }) {
       user,
       loggedIn: user !== null && !fakeOpenMode,
       loading,
+      enter,
       register,
       login,
+      deleteAccount,
       logout,
       subscribe,
       clearLocal,
     }),
-    [user, fakeOpenMode, loading, register, login, logout, subscribe, clearLocal],
+    [user, fakeOpenMode, loading, enter, register, login, deleteAccount, logout, subscribe, clearLocal],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

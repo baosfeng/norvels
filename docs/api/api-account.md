@@ -1,6 +1,6 @@
 # 账号与我的书架（0016）
 
-> 只注册 + 输账号登录，**没有密码**。书库（books/authors/chapters/tags）共享；
+> 一个入口进来（输账号名，不存在就建号），**没有密码**。书库（books/authors/chapters/tags）共享；
 > 个人记录（阅读进度 / 阅读会话 / 书签 / 书单 / 我的书架）按账号隔离。
 > 无密码的前提是「内网私有部署」；暴露公网请先换成真正的身份系统（见 [ADR-0001](../adr/0001-public-release.md)）。
 
@@ -15,27 +15,38 @@
 - **配置了口令**：Bearer / 旧 Cookie 仍可访问全部 API（管理侧、部署脚本、健康检查不受影响）；
   另可用会话 Cookie 进门。两者并存，互不替代。
 - 会话无效（过期 / 已撤销）时**回落默认账号**而不是报错：口令仍有效的地方必须继续能用。
-- 会话 token 是 `crypto/rand` 32 字节 hex；库里只存它的 SHA-256，明文只在 Cookie 里。
-  登出即删行（立即撤销），过期行在读会话时被过滤并在建会话时清理。
+- 会话 token 是 `crypto/rand` 32 字节 hex，库里只存 SHA-256；登出即删行，过期的读时过滤。
 
 ## 端点
 
-### POST /api/auth/register
+### POST /api/auth/enter（界面唯一入口）
 
-body `{"name":"账号名"}`：去首尾空白后 1–32 字（按字符计），**注册即登录**。
+body `{"name":"账号名"}`：**不存在就建号并登录，存在就直接登录**。两种都下发 `norvels_session`。
 
-- `201` + `{id,name,createdAt,lastSeenAt}`，同时下发 `norvels_session`；
-- `400` `invalid_param`：空名 / 纯空白 / 超过 32 字 / body 非 JSON 对象；
-- `409` `conflict`：「这个账号名已经有人用了」——唯一性按 **TRIM + 大小写折叠**比较
-  （`Alice` / `alice` / ` Alice ` 是同一个账号；存储的 `name` 仍是用户输入原样）。
+- `201` + 账号对象 = 这次新建了账号；
+- `200` + 账号对象 = 账号已存在，直接登录；
+- `400` `invalid_param`：空名 / 纯空白 / 超过 32 字 / body 非 JSON 对象。
 
-### POST /api/auth/login
+前端只有这一个动作：不要让用户（或前端代码）先猜「该注册还是该登录」——那件事后端知道。
+两个状态码只用于文案（新建 vs 已存在），不改变调用方式。
 
-body `{"name":"账号名"}`：存在则刷新 `lastSeenAt` 并下发新 Cookie。
+### POST /api/auth/register 与 /api/auth/login（脚本用，界面已收敛到 enter）
 
-- `200` + 账号对象；
-- `404` `account_not_found`：「账号不存在，请先注册」——这里没有密码可输错，唯一的失败原因就是没建号；
-- `400` `invalid_param`：同上。
+`/register` 只建号（`201`，重名 `409` `conflict`）；`/login` 只登录（`200`，号没建 `404` `account_not_found`）。
+两者都下发会话、都刷新 `lastSeenAt`，入参边界与 `/enter` 相同。唯一性按 **TRIM + 大小写折叠**
+比较（`Alice` / `alice` / ` Alice ` 是同一个账号；存储的 `name` 仍是用户输入原样）。
+
+### DELETE /api/auth/users/{id}
+
+删账号并**清走它的个人数据**：书架 / 阅读进度 / 阅读会话 / 书签 / 书单（含关联）+ 它的全部会话行。
+
+- `204`：删掉了。删的是当前账号时同时下发已过期的会话 Cookie，客户端可直接回未登录态；
+- `401` `unauthorized`：没有有效会话。删除是不可逆写操作，门外的人不能按 id 逐个试；
+- `409` `default_account`：`id=1`（`reader`）是默认账号——存量数据归属与开放模式兜底，删了库不自洽；
+- `404` `not_found`：账号不存在；`400` `invalid_id`：id 非正整数。
+
+**不删书**：books / authors / chapters / tags / 正文块都是全库共享的，不归任何账号；
+别的账号在同一本书上的记录也不动。
 
 ### POST /api/auth/logout
 
@@ -55,7 +66,8 @@ body `{"name":"账号名"}`：存在则刷新 `lastSeenAt` 并下发新 Cookie�
 
 - 按「最近活跃」倒序：`lastSeenAt` 倒序，从未登录（`null`）的排最后，时间相同按 `id` 倒序；
 - 最多 **50 条**；`total` 是账号总数，可能大于 `items` 长度；
-- `lastSeenAt` 为 `null` = 建号后从未登录（注册不刷新活跃时间，登录一次才有值）；
+- `lastSeenAt` 为 `null` = 建号后从未登录。**进入 / 注册 / 登录都刷新它**（三个端点走同一条
+  「刷活跃 + 建会话」落地函数），所以不存在「拿到了会话却仍显示从未登录」；
 - 时间是 RFC3339 UTC 字符串，与账号对象同口径。
 
 **这个端点不鉴权**：登录页本身就在鉴权之外，要求凭证才能拿列表等于要求先登录才能登录。
@@ -68,7 +80,8 @@ body `{"name":"账号名"}`：存在则刷新 `lastSeenAt` 并下发新 Cookie�
 { "id": 2, "name": "读者甲", "createdAt": "2026-10-29T15:51:42.697Z", "lastSeenAt": "" }
 ```
 
-`lastSeenAt` 为空串 = 建号后从未登录。时间为 UTC ISO-8601。
+`lastSeenAt` 为空串 = 建号后从未登录；任何一次进入 / 注册 / 登录之后都是本次时间。
+时间为 UTC ISO-8601，与账号列表同口径（`me()` 回显的就是落库值，前端直接展示「上次活跃」）。
 
 ## 我的书架
 

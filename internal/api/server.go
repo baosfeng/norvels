@@ -262,13 +262,17 @@ func (s *Server) miscRoutes() []route {
 		newRoute(http.MethodGet, LoginPath, s.handleLoginPage),
 		newRoute(http.MethodPost, LoginPath, s.handleLoginSubmit),
 		newRoute(http.MethodPost, logoutPath, s.handleLogout),
-		// 账号（0016）：只注册 + 输账号登录，无密码。注册即登录。
+		// 账号（0016）：无密码。用户只看到一个入口（enter）：不存在就建号并登录，存在就登录。
+		newRoute(http.MethodPost, "/api/auth/enter", s.handleEnter),
+		// register / login 保留为稳定契约（部署脚本、验收场景在用），语义仍是「只建号」「只登录」。
 		newRoute(http.MethodPost, "/api/auth/register", s.handleRegister),
 		newRoute(http.MethodPost, "/api/auth/login", s.handleLogin),
 		newRoute(http.MethodPost, "/api/auth/logout", s.handleAuthLogout),
 		newRoute(http.MethodGet, "/api/auth/me", s.handleAuthMe),
 		// 登录页的「选账号」列表：免鉴权（理由见 handleListUsers 注释）。
 		newRoute(http.MethodGet, "/api/auth/users", s.handleListUsers),
+		// 删账号（连带它的个人数据）：要求有效会话，默认账号拒绝（理由见 handleDeleteUser）。
+		newRoute(http.MethodDelete, "/api/auth/users/{id}", s.handleDeleteUser),
 	}
 }
 

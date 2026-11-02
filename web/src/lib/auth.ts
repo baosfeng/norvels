@@ -29,10 +29,23 @@ export interface AuthState {
   loggedIn: boolean;
   /** 首次判定登录态中：此时不要闪"未登录"提示。 */
   loading: boolean;
-  /** 注册并直接登录：201 回账号，会话 Cookie 由后端下发。 */
+  /**
+   * 单入口：输账号名就进——不存在则建号并登录（201），存在则直接登录（200）。
+   *
+   * 界面只调这一个。**不要**在这里判断「该注册还是该登录」：那是后端的知识，
+   * 前端猜一次只会多出「猜错了给个换个按钮的引导」这种交互噪音。
+   */
+  enter: (name: string) => Promise<AuthUser>;
+  /** 显式注册并直接登录：201 回账号；重名 409。给「确实要新建」的脚本 / 场景用。 */
   register: (name: string) => Promise<AuthUser>;
-  /** 输账号登录：200 回账号；号没建 404。 */
+  /** 显式登录：200 回账号；号没建 404。 */
   login: (name: string) => Promise<AuthUser>;
+  /**
+   * 删账号并清掉它自己的个人数据，删的是当前账号时立刻回未登录态。
+   *
+   * 完成后与 logout 一样广播「账号变了」，让书架 ids 等派生数据一起失效。
+   */
+  deleteAccount: (id: number) => Promise<void>;
   /** 退出登录：清 Cookie + 清本地账号态；请求失败也照样切回未登录。 */
   logout: () => Promise<void>;
   /** 订阅"账号变了"（书架 ids 缓存据此失效，不引第三方状态库）。 */
@@ -53,8 +66,10 @@ const ANONYMOUS: AuthState = {
   user: null,
   loggedIn: false,
   loading: false,
+  enter: () => Promise.reject(new Error("账号功能未就绪")),
   register: () => Promise.reject(new Error("账号功能未就绪")),
   login: () => Promise.reject(new Error("账号功能未就绪")),
+  deleteAccount: () => Promise.reject(new Error("账号功能未就绪")),
   logout: async () => undefined,
   subscribe: () => () => undefined,
   clearLocal: () => undefined,
