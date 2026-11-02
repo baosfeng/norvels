@@ -147,10 +147,16 @@ function ReaderScreen() {
 
   const overlayOpen = settingsOpen || drawerOpen || searchOpen || helpOpen || Boolean(deleteTarget);
 
-  const { goShelf, goBack, goBookDetail, goChapter } = useReaderNavActions(bookId);
+  const { goShelf, goBack, goBookDetail } = useReaderNavActions(bookId);
 
+  // 翻章走连续流自己的出口：窗口里通常已经有目标章，换可见章 + 落章首，
+  // 不重建整条流（重建会闪一次加载态，也丢掉已读位置的连续感）。
   // consumeFlip / goFlip 由翻章出口自己标记：只有翻章落章首，目录链接与浏览器后退按段恢复。
-  const { step: stepChapter, jump: jumpChapter, goFlip, consumeFlip } = useReaderZoneNav({ prev, next, goChapter });
+  const { step: stepChapter, jump: jumpChapter, goFlip, consumeFlip } = useReaderZoneNav({
+    prev,
+    next,
+    goChapter: stream.flipTo,
+  });
 
   /** 进度滑块松手：按章节下标跳章（滑块与手势共用同一句浮条口径）。 */
   const jumpToChapterAt = useCallback(
@@ -194,8 +200,8 @@ function ReaderScreen() {
     settings,
     updateSettings: changeSettings,
     overlayOpen,
-    next: stream.flipTarget,
-    index: stream.flipIndex,
+    next,
+    index,
     goChapter: goFlip,
     isH5,
   });
