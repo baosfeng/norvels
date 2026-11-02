@@ -6,8 +6,9 @@ require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/antchfx/htmlquery v1.3.7
 	github.com/cucumber/godog v0.16.0
+	github.com/dop251/goja v0.0.0-20261030192516-032d024709ca
 	github.com/klauspost/compress v1.20.3
-	golang.org/x/net v0.58.0
+	golang.org/x/net v0.62.0
 	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.61.0
 )
@@ -18,7 +19,6 @@ require (
 	github.com/cucumber/gherkin/go/v42 v42.0.0 // indirect
 	github.com/cucumber/messages/go/v34 v34.2.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.11.0 // indirect
-	github.com/dop251/goja v0.0.0-20261030192516-032d024709ca // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
