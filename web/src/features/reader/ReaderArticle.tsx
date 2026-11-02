@@ -76,6 +76,14 @@ export function ReaderArticle({
         );
       })}
 
+      <StreamTail
+        atEnd={atEnd}
+        loading={stream.tailLoading}
+        error={stream.tailError}
+        onRetry={stream.tailReload}
+        following={atEnd ? null : chapters[(tail?.index ?? -1) + 1] ?? null}
+      />
+
       <ReaderPager bookId={bookId} atEnd={atEnd} prev={stream.prev} onPrev={onPrev} onShelf={onShelf} />
 
       <div className="reader-progress" data-od-id="reader-progress">
@@ -98,6 +106,49 @@ export function ReaderArticle({
         />
         <p className="reader-progress-hint">拖动滑块可以跳到任意一章</p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 流尾的接续指示：读到窗口中最后一章时，下一章的正文正在下面接上来。
+ * 三类状态各一句（加载中 / 打不开 + 重试 / 还有下一章），是一行灰字与一个文字按钮，
+ * 不占正文位置、不需要点击也不打断阅读——读者继续下滑就行。
+ */
+function StreamTail({
+  atEnd,
+  loading,
+  error,
+  onRetry,
+  following,
+}: {
+  atEnd: boolean;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  following: ChapterBrief | null;
+}) {
+  if (atEnd) return null;
+  if (error) {
+    return (
+      <div className="reader-stream-tail is-error" data-testid="reader-stream-tail-error" role="status">
+        <span>下一章没能打开。</span>
+        <button className="btn" type="button" data-od-id="C-12b" onClick={onRetry}>
+          重新读取下一章
+        </button>
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="reader-stream-tail" data-testid="reader-stream-tail-loading" role="status">
+        正在读取后面的章节…
+      </div>
+    );
+  }
+  return (
+    <div className="reader-stream-tail" data-testid="reader-stream-tail" role="status">
+      {following ? `继续下滑，接着读「${following.title}」` : "继续下滑读后面的章节"}
     </div>
   );
 }

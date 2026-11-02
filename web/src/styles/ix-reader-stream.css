@@ -58,6 +58,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── 流尾接续指示：一行灰字 / 一个文字按钮，读者继续下滑就进下一章 ──
+   它压着窗口里最后一章之后，正常阅读时看不见；读到接缝处才露出来，
+   所以高度必须小、不能是卡片，否则读者会在章末被一块空白打断。 */
+.reader-stream-tail {
+  width: 100%;
+  max-width: var(--reader-width, 42rem);
+  margin: 4px auto 0;
+  padding: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--r-muted);
+  text-align: center;
+}
+.reader-stream-tail.is-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  color: var(--r-fg);
+}
+.reader-stream-tail.is-error .btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
 /* ── 流末尾：全书读完了的出口 + 轻量的章节切换 ── */
 .reader-stream-nav {
   margin-top: 18px;
