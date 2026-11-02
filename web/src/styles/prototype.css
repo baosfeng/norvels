@@ -719,20 +719,6 @@ body.is-theme-shifting .drawer{transition:background-color 150ms var(--ease-stan
     font-size: 12px;
   }
 }
-/* H5 排序弹层里的筛选分组 */
-.sheet-section {
-  display: grid;
-  gap: 2px;
-  padding-bottom: 8px;
-  margin-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-.sheet-section-title {
-  padding: 4px 12px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
 /* 章节内搜索面板：贴正文顶部，不新增长驻条 */
 .reader-search {
   position: sticky;

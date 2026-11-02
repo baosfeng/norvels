@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastHost } from "../../lib/toast";
@@ -142,18 +142,14 @@ describe("书架：H5 无限滚动与排序", () => {
     renderShelf();
     await waitFor(() => expect(cardCount()).toBe(30));
 
-    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
-    expect(within(screen.getByTestId("shelf-sort-sheet")).getByRole("dialog")).toBeTruthy();
-    // 弹层打开时锁住页面滚动；选排序只换排序，弹层继续开着（锁不解除）
-    expect(document.body.classList.contains("h5-sheet-open")).toBe(true);
+    // 排序组默认展开：选项就在页面上，点一下即生效，不再经过弹层
     fireEvent.click(screen.getByTestId("sort-option-title"));
-    expect(document.body.classList.contains("h5-sheet-open")).toBe(true);
 
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
     expect(books.mock.calls[1][0]).toMatchObject({ sort: "title", page: 1, size: 30 });
     await waitFor(() => expect(cardCount()).toBe(5));
-    // 选排序不收起弹层（还要接着调筛选），由「查看 N 本」收工
-    fireEvent.click(screen.getByTestId("sheet-done"));
+    // 换排序回到列表顶部；筛选条本身留在原位（没有开合状态可残留）
+    expect(screen.getByTestId("shelf-filter-panel")).toBeTruthy();
     expect(screen.queryByTestId("shelf-sort-sheet")).toBeNull();
     expect(window.scrollTo).toHaveBeenCalled();
   });
@@ -167,7 +163,6 @@ describe("书架：H5 无限滚动与排序", () => {
     renderShelf();
     expect(books).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
     fireEvent.click(screen.getByTestId("sort-option-words"));
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
 
@@ -215,17 +210,18 @@ describe("书架：阅读状态筛选与书卡角标", () => {
     await waitFor(() => expect(cardCount()).toBe(1));
   });
 
-  it("H5 把阅读状态收进底部弹层，选完即收起并重新取数", async () => {
+  it("H5 的阅读状态在平铺分组里：展开分组、选中即生效并重新取数", async () => {
     books.mockResolvedValueOnce(pageOf(1, 30, 30));
     books.mockResolvedValueOnce({ items: [bookAt(9)], total: 1, page: 1, size: 30 });
     renderShelf();
     await waitFor(() => expect(cardCount()).toBe(30));
 
-    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
+    fireEvent.click(screen.getByTestId("filter-group-toggle-status"));
     fireEvent.click(screen.getByTestId("read-status-option-done"));
 
-    // 选中即生效；弹层留在原地，等用户调完再收工
-    expect(screen.getByTestId("shelf-sort-sheet")).toBeTruthy();
+    // 选中即生效；分组保持展开，用户可以接着调下一项
+    expect(screen.getByTestId("filter-group-status")).toBeTruthy();
+    expect(screen.getByTestId("filter-group-toggle-status").textContent).toContain("已读");
     await waitFor(() => expect(books).toHaveBeenCalledTimes(2));
     expect(books.mock.calls[1][0]).toMatchObject({ readStatus: "done", page: 1, size: 30 });
   });

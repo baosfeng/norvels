@@ -70,74 +70,69 @@ beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
-/** 弹层里某个分区的分组元素 */
-function section(anchor: "sort" | "filters"): HTMLElement {
-  return document.querySelector<HTMLElement>(`[data-sheet-section="${anchor}"]`) as HTMLElement;
-}
-
-describe("H5 书架：排序与筛选是两个独立入口", () => {
-  it("两个按钮都在页头操作行里，各自带 aria-haspopup", async () => {
+describe("H5 书架：筛选条直接平铺在页面上", () => {
+  it("首屏就有一整条筛选分组，页头不再放「排序 / 筛选」按钮", async () => {
     renderShelf();
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
-    const sortTrigger = screen.getByTestId("shelf-sort-trigger");
-    const filterTrigger = screen.getByTestId("shelf-filter-trigger");
-    expect(sortTrigger).not.toBe(filterTrigger);
-    expect(sortTrigger.getAttribute("aria-haspopup")).toBe("dialog");
-    expect(filterTrigger.getAttribute("aria-haspopup")).toBe("dialog");
-    // 两个按钮都在 .shelf-head-actions 这一行（44px 热区由 ix-library.css 给）
-    expect(sortTrigger.closest(".shelf-head-actions")).toBeTruthy();
-    expect(filterTrigger.closest(".shelf-head-actions")).toBeTruthy();
+    expect(screen.getByTestId("shelf-filter-panel")).toBeTruthy();
+    // 页头只剩书库管理动作：排序与筛选的入口就是面板本身，不再有开弹层的按钮
+    expect(screen.queryByTestId("shelf-sort-trigger")).toBeNull();
+    expect(screen.queryByTestId("shelf-filter-trigger")).toBeNull();
+    expect(screen.queryByTestId("shelf-sort-sheet")).toBeNull();
   });
 
-  it("点「排序」直接停在排序分区：焦点落在第一个排序选项", async () => {
+  it("排序组默认展开，选项直接可点（不需要先点开任何东西）", async () => {
     renderShelf();
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
-    fireEvent.click(screen.getByTestId("shelf-sort-trigger"));
-    const sheet = within(screen.getByTestId("shelf-sort-sheet"));
-    expect(sheet.getByRole("dialog")).toBeTruthy();
-
-    await waitFor(() => expect(section("sort")).toBeTruthy());
-    expect(section("sort").getAttribute("aria-label")).toBe("排序筛选");
-    await waitFor(() => expect(document.activeElement?.getAttribute("data-testid")).toBe("sort-option-updated"));
+    expect(screen.getByTestId("filter-group-toggle-sort").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("filter-group-sort").getAttribute("aria-label")).toBe("排序筛选");
+    expect(screen.getByTestId("sort-option-updated").getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("点「筛选」停在第一个筛选分区，五类筛选都在弹层里", async () => {
-    renderShelf();
+  it("五类筛选分组都在页面上（作者只在已选时给清除入口）", async () => {
+    renderShelf("h5", ["/?author=7"]);
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
-    fireEvent.click(screen.getByTestId("shelf-filter-trigger"));
-    await waitFor(() => expect(section("filters")).toBeTruthy());
-    expect(section("filters").getAttribute("aria-label")).toBe("阅读状态筛选");
-    await waitFor(() => expect(document.activeElement?.getAttribute("data-testid")).toBe("read-status-option-all"));
-
-    const sheet = within(screen.getByTestId("shelf-sort-sheet"));
-    // 五类：阅读状态 / 评分 / 分类 / 书单 / 标签（作者块在 H5 去掉，只在已选作者时给一行清除入口；
-    // 排序是第六个分区，不在筛选之列）
     for (const label of ["阅读状态筛选", "评分筛选", "分类筛选", "书单筛选", "标签筛选"]) {
-      expect(sheet.getByRole("group", { name: label })).toBeTruthy();
+      expect(screen.getByRole("group", { name: label })).toBeTruthy();
     }
-    expect(sheet.queryByRole("group", { name: "作者筛选" })).toBeNull();
-    expect(sheet.queryByRole("group", { name: "排序筛选" })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "作者筛选" })).toBeNull();
+    expect(screen.getByTestId("author-selected-clear")).toBeTruthy();
   });
 
-  it("无筛选时筛选按钮不带强调态", async () => {
+  it("分组默认收起（排序除外），点标题才铺开选项", async () => {
     renderShelf();
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
-    expect(screen.getByTestId("shelf-filter-trigger").className).not.toContain("has-filters");
+
+    expect(screen.getByTestId("filter-group-toggle-status").getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(screen.getByTestId("filter-group-toggle-status"));
+    expect(screen.getByTestId("filter-group-toggle-status").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("read-status-option-all")).toBeTruthy();
   });
 
-  it("带两个筛选参数的地址：筛选按钮报 2 项，排序按钮报当前排序", async () => {
+  it("带两个筛选参数的地址：面板标题报 2 项，排序组标题写当前排序", async () => {
     renderShelf("h5", ["/?status=done&rating=4&sort=title"]);
     await waitFor(() => expect(screen.getByTestId("shelf-live")).toBeTruthy());
 
-    const filterTrigger = screen.getByTestId("shelf-filter-trigger");
-    expect(filterTrigger.textContent).toBe("已选 2 项");
-    expect(filterTrigger.className).toContain("has-filters");
-    expect(screen.getByTestId("shelf-sort-trigger").textContent).toBe("排序 · 书名");
+    expect(screen.getByTestId("shelf-filter-panel").textContent).toContain("已选 2 项");
+    expect(screen.getByTestId("filter-group-toggle-sort").textContent).toContain("书名");
   });
 });
+
+describe("PC 书架：仍是工具栏 + 下拉（H5 的平铺改动不影响桌面）", () => {
+  it("宽视口渲染工具栏，没有平铺筛选条、没有弹层入口", async () => {
+    renderShelf("pc");
+    await waitFor(() => expect(screen.getByTestId("shelf-toolbar")).toBeTruthy());
+
+    expect(screen.queryByTestId("shelf-filter-panel")).toBeNull();
+    expect(screen.queryByTestId("shelf-sort-trigger")).toBeNull();
+    expect(screen.queryByTestId("shelf-filter-trigger")).toBeNull();
+    expect(screen.queryByTestId("shelf-sort-sheet")).toBeNull();
+  });
+});
+
 
 describe("PC 书架：工具栏不再承载书单管理", () => {
   it("工具栏与操作区都不出现「管理书单」（书单管理已搬到 /collections 页）", async () => {

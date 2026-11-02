@@ -130,9 +130,7 @@ body {
 /* 触屏底子：控件不做文本选中、不出现点按延迟与蓝色高亮；正文仍可选中 */
 .btn,
 .chip,
-.sheet-option,
 .side-nav a,
-.shelf-sort-trigger,
 .pagination button,
 nav a,
 [role="button"],
@@ -142,8 +140,6 @@ button {
 }
 .btn,
 .chip,
-.sheet-option,
-.shelf-sort-trigger,
 .side-nav a,
 .pagination button,
 .seg button {
@@ -151,77 +147,6 @@ button {
   user-select: none;
 }
 
-/* H5 书架：排序入口与底部弹层（PC 用下拉，不渲染这段） */
-.shelf-sort-trigger {
-  flex: none;
-  align-self: flex-start;
-}
-.sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
-}
-.sheet {
-  width: 100%;
-  max-width: 560px;
-  padding: 6px 16px calc(12px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border);
-  border-radius: 16px 16px 0 0;
-  background: var(--surface);
-  color: var(--fg);
-  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
-}
-.sheet-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 2px;
-}
-/* 筛选项多（排序 + 五类筛选）时弹层不顶满整屏：内容区自己滚，头与「清除筛选」钉住 */
-.sheet-scroll {
-  max-height: min(68vh, 560px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-}
-.sheet-foot {
-  display: flex;
-  justify-content: flex-end;
-  padding: 6px 2px 0;
-  border-top: 1px solid var(--border);
-}
-.sheet-list {
-  display: grid;
-  gap: 2px;
-  padding-bottom: 6px;
-}
-.sheet-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 52px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--fg);
-  font-size: 15px;
-  text-align: left;
-}
-.sheet-option.is-active {
-  border-color: var(--accent);
-  background: var(--bg);
-  font-weight: 600;
-}
-.sheet-option.is-active::after {
-  content: "✓";
-  color: var(--accent);
-}
 .shelf-more {
   display: grid;
   gap: 8px;
