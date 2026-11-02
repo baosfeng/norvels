@@ -49,6 +49,34 @@ func registerAccountSteps(sc *godog.ScenarioContext, w *world) {
 	sc.Step("^接口应当返回 (\\d+) 账号名冲突$", func(ctx context.Context, want string) error {
 		return w.assertLastError(atoiSafe(want), "conflict")
 	})
+	// 单入口（不存在就建号）+ 删账号。
+	sc.Step("^我进入账号 \"(.+)\"$", func(ctx context.Context, name string) error {
+		return w.enterAccount(name)
+	})
+	sc.Step("^我再次进入账号 \"(.+)\"$", func(ctx context.Context, name string) error {
+		return w.enterAccount(name)
+	})
+	sc.Step("^账号总数应当为 (\\d+)$", func(ctx context.Context, want string) error {
+		return w.assertUserCount(atoiSafe(want))
+	})
+	sc.Step("^账号列表里 \"(.+)\" 的活跃时间应当非空$", func(ctx context.Context, name string) error {
+		return w.assertLastSeenPresent(name)
+	})
+	sc.Step("^我删除当前账号$", func(ctx context.Context) error {
+		return w.deleteCurrentAccount()
+	})
+	sc.Step("^我尝试删除账号 \"(.+)\"$", func(ctx context.Context, name string) error {
+		return w.deleteAccountByName(name)
+	})
+	sc.Step("^我未登录时尝试删除账号 \"(.+)\"$", func(ctx context.Context, name string) error {
+		return w.clearAccountCookies()
+	})
+	sc.Step("^接口应当返回 (\\d+) 默认账号不可删$", func(ctx context.Context, want string) error {
+		return w.assertLastError(atoiSafe(want), "default_account")
+	})
+	sc.Step("^接口应当返回 (\\d+) 未授权$", func(ctx context.Context, want string) error {
+		return w.assertLastError(atoiSafe(want), "unauthorized")
+	})
 }
 
 // accountClient 返回本场景的账号 client（首次调用时建 jar）。

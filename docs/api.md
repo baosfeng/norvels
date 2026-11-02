@@ -11,7 +11,7 @@
 - [api-dashboard.md](api/api-dashboard.md)：元信息（health/stats）、驾驶舱端点、其它端点
 - [api-p3.md](api/api-p3.md)：P3 增量（评分/系列/书单/标签 CRUD/阅读时长与历史/批量与新建章节）
 - [api-category.md](api/api-category.md)：书籍分类（0015：两级分类、导入推断、`GET /api/categories`）
-- [api-account.md](api/api-account.md)：账号（0016：注册/登录/登出/me）与我的书架；个人记录按账号隔离
+- [api-account.md](api/api-account.md)：账号（0016：进入/登录/登出/me/删除账号）与我的书架；个人记录按账号隔离
 - [api-reviews.md](api/api-reviews.md)：AI 审核（0021：升级候选列表 / 替换 / 保留 / 回滚；任何替换都要人工确认）
 - [api-recommend.md](api/api-recommend.md)：推荐与埋点（发现页：`POST /api/events`、`GET /api/recommend`）
 

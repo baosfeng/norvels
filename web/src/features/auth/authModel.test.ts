@@ -75,9 +75,8 @@ describe("切换账号开关（?switch=1）", () => {
 });
 
 describe("成功提示与「当前」标记", () => {
-  it("登录 / 注册说清是「进来了」还是「新建了」", () => {
-    expect(authToastText("login", "夜读的人")).toBe("已登录为 夜读的人");
-    expect(authToastText("register", "夜读的人")).toBe("已创建并登录为 夜读的人");
+  it("单入口只有一种说法：已登录为 X", () => {
+    expect(authToastText("夜读的人")).toBe("已登录为 夜读的人");
   });
 
   it("「当前」按 id 比，不按名字", () => {

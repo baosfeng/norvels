@@ -47,33 +47,40 @@ export function loginPath(next: string): string {
   return `/login?next=${encodeURIComponent(next)}`;
 }
 
-/** 登录页表单的两个动作。 */
-export type AuthAction = "login" | "register";
+/**
+ * 账号页只有一个写动作：**进入**（不存在就建号，存在就登录）。
+ *
+ * 以前这里分 login / register 两个值，界面据此在 404 时给「去注册」、409 时给
+ * 「去登录」——那是在让用户替后端猜「这个名字有没有人用」。单入口下这些分支
+ * 全部消失：动作只有一个值，失败提示也不再引导去点第二个按钮。
+ */
+export type AuthAction = "enter";
 
 /**
- * 后端错误 → 界面引导。
+ * 后端错误 → 界面提示。
  *
- * - 404 account_not_found：号还没建 → 直接给「注册新账号」按钮（带上已输入的名字）；
- * - 409 conflict：名字被占 → 直接给「直接进入」（登录）按钮；
- * - 400 invalid_param：名字本身不合规 → 只提示，不给动作；
- * - 其它：网络 / 超时 / 5xx → 提示重试，不猜原因。
+ * 单入口下 404 account_not_found / 409 conflict 不再可能出现（后端内部消化成
+ * 「直接登录」），保留兜底文案只为容忍旧版后端；**任何分支都不再给引导动作**。
+ *
+ * - 400 invalid_param：名字本身不合规 → 提示换一个；
+ * - 409 default_account：删账号时才出现 → 提示这个账号是书库底座，不能删；
+ * - 404 其它：账号 / 记录不在了 → 提示刷新后重试；
+ * - 网络 / 超时 / 5xx → 提示重试，不猜原因。
  */
 export interface AuthErrorHint {
   message: string;
-  /** 出现这个按钮就说明「下一步该点什么」；null = 只提示。 */
-  action: AuthAction | null;
 }
 
 export function accountErrorHint(error: ApiError): AuthErrorHint {
-  if (error.status === 404 || error.code === "account_not_found") {
-    return { message: "账号不存在，请先注册。", action: "register" };
+  if (error.status === 400) return { message: error.message || "账号名不合规，换一个试试。" };
+  if (error.code === "default_account") {
+    return { message: "这是书库的默认账号，不能删除；换成你自己的账号再删。" };
   }
-  if (error.status === 409 || error.code === "conflict") {
-    return { message: "该账号已存在，直接进入即可。", action: "login" };
-  }
-  if (error.status === 400) return { message: error.message || "账号名不合规，换一个试试。", action: null };
-  if (error.kind === "timeout") return { message: "请求超时了，稍后再试一次。", action: null };
-  return { message: error.message || "没能连上服务，稍后再试。", action: null };
+  if (error.status === 404) return { message: "账号不在了，刷新页面后再试一次。" };
+  if (error.status === 409) return { message: "这个账号名刚被占用，换一个试试。" };
+  if (error.status === 401) return { message: "登录状态失效了，重新进入一次。" };
+  if (error.kind === "timeout") return { message: "请求超时了，稍后再试一次。" };
+  return { message: error.message || "没能连上服务，稍后再试。" };
 }
 // --- 账号选择器（登录页列表 + 侧栏切换入口） ---
 
@@ -138,10 +145,18 @@ export function seenLine(raw: string | null | undefined, now: number = Date.now(
   return rel === "从未登录" ? rel : `上次活跃 ${rel}`;
 }
 
-/** 成功后的 toast：动作不同，说法不同（"创建了"和"进来了"是两件事）。 */
-export function authToastText(action: AuthAction, name: string): string {
-  return action === "register" ? `已创建并登录为 ${name}` : `已登录为 ${name}`;
+/**
+ * 成功后的 toast：单入口下只有一种说法。
+ *
+ * 不再区分「创建了」与「进来了」：那是后端状态码（201/200）的差别，
+ * 对读者是同一件事——「我现在是这个账号了」。分成两句只会让人以为选错了按钮。
+ */
+export function authToastText(name: string): string {
+  return `已登录为 ${name}`;
 }
+
+/** 删账号成功后回哪：登录页（客户端已是未登录态）。 */
+export const AUTH_AFTER_DELETE = "/login";
 
 /** 列表里给当前账号打「当前」标记：按 id 比，不按名字（重名判断在后端，前端只认身份）。 */
 export function isCurrentUser(candidate: { id: number }, current: { id: number } | null): boolean {

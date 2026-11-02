@@ -23,7 +23,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 | [api-source.md](api-source.md) | 来源规则包（书源）与能力清单 capabilities |
 | [api-source-import.md](api-source-import.md) | 导入 Legado 书源 JSON（预览 + 应用） |
 | [api-dashboard.md](api-dashboard.md) | 元信息（health/stats）、驾驶舱端点、其它端点 |
-| [api-account.md](api-account.md) | 账号（注册/登录/登出/me/列表）与我的书架；个人数据按账号隔离 |
+| [api-account.md](api-account.md) | 账号（进入/登录/登出/me/列表/删除）与我的书架；个人数据按账号隔离 |
 | [api-releases.md](api-releases.md) | 发版说明（`GET /api/releases`）：网页「更新日志」的数据源 |
 
 原 `docs/api.md` 章节号对照：§1/§7/§9 → [api-dashboard.md](api-dashboard.md)；§2/§3 → [api-books.md](api-books.md)；§4/§8/§10 → 本文件；§5/§6 → [api-import.md](api-import.md)；来源规则包 → [api-source.md](api-source.md)。
@@ -62,7 +62,8 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 |---|---|---|
 | `invalid_param` | 400 | 参数缺失/格式错（page/size/id/dir/percent 等） |
 | `unauthorized` | 401 | 启用鉴权后未提供或提供了错误的令牌 |
-| `account_not_found` | 404 | 登录时账号名还没注册过（前端引导去注册） |
+| `account_not_found` | 404 | `POST /api/auth/login` 时账号名还没注册过（界面走 `/enter`，不会遇到） |
+| `default_account` | 409 | 要删的是默认账号 `reader`(id=1)：书库底座，删了库不自洽 |
 | `query_too_short` | 400 | 搜索关键词少于 2 字符 |
 | `unsupported_format` | 400 | 上传/导入的文件格式不在 TXT/EPUB/ZIP 白名单内 |
 | `invalid_zip` `zip_too_large` `empty_zip` | 202 | zip 包被打回（逐条进 `rejected`） |
@@ -94,13 +95,15 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 - **账号体系（0016）是额外的一层**：口令管「能不能进门」，账号管「个人记录属于谁」；
   两者并存，配置口令后 Bearer / 旧 Cookie 语义完全不变。详见 [api-account.md](api-account.md)
 - 免鉴权路径：`/api/health`（容器健康检查）、`GET|POST /login`、`POST /logout`、`POST /api/auth/logout`、
-  `GET /api/auth/users`（登录页的选账号列表，取舍见 [api-account.md](api-account.md#get-apiauthusers)）
+  `GET /api/auth/users`（登录页的选账号列表，取舍见 [api-account.md](api-account.md#get-apiauthusers)）。
+  `POST /api/auth/enter` 与 `DELETE /api/auth/users/{id}` **不**免鉴权：前者能在开放模式下自助建号，
+  后者是不可逆删除
 - 未通过时：`/api/*` 返回 `401 {"error":{"code":"unauthorized",…}}` 并带 `WWW-Authenticate`；
   页面请求 303 跳到 `/login?next=<原路径>`
 - `GET /login` 是服务端渲染的内联 HTML 表单；`POST /login` 用 `token` 字段提交，
   成功后下发 `norvels_auth` Cookie（HttpOnly + SameSite=Lax + Path=/，30 天）并跳回 `next`
 - 令牌用 `crypto/subtle.ConstantTimeCompare` 恒定时间比较；`next` 只接受站内相对路径（防开放重定向）
 - 未设置时启动日志打印 `WARN: 未启用鉴权，请勿暴露到公网`；
-  此时仍可 `POST /api/auth/register` 建账号，个人记录按该账号隔离，未登录请求归默认账号
+  此时仍可 `POST /api/auth/enter`（或 `/register`）建账号，个人记录按该账号隔离，未登录请求归默认账号
 
 **公开部署（公网 VPS）必须先设 `NORVELS_AUTH_TOKEN`**，详见 [ADR-0001](../adr/0001-public-release.md)。

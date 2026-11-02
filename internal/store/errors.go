@@ -35,6 +35,11 @@ var (
 	// （已决策的记录不能再决策、没替换过的不能回滚），重试也没用；前端据此提示
 	// 「刷新后看最新状态」，而不是「稍后重试」。
 	ErrReviewState = errors.New("store: review state does not allow this operation")
+	// ErrDefaultUser 表示这次删除指向默认账号（id=1 reader，api 映射 409）。
+	//
+	// 独立哨兵而不是复用 ErrConflict：默认账号是存量数据归属与开放模式兜底，
+	// 「删不掉」不是并发冲突，前端要提示的是「这个账号是书库的底座，不能删」。
+	ErrDefaultUser = errors.New("store: default account cannot be deleted")
 	// ErrSchemaTooNew 表示库由更新版本迁移过：拒绝打开并写入，避免静默数据损坏。
 	// 具体版本在 *SchemaVersionError 上（errors.As 可取），见 schema_guard.go。
 	ErrSchemaTooNew = errors.New("store: database schema is newer than this binary")

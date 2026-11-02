@@ -8,7 +8,14 @@ import (
 	"norvels/internal/store"
 )
 
-// 账号（迁移 0016）：只注册 + 输账号登录，没有密码。
+// 账号（迁移 0016）：一个入口「输账号名就进」，没有密码。
+//
+// ---- 单入口口径 ----
+// 前端只保留一个动作（「进入」→ POST /api/auth/enter）：账号不存在就建号并登录，
+// 存在就直接登录。注册与登录不再由用户区分——「这个名字有没有人用」是后端的知识，
+// 让用户去猜、猜错了再给个「换个按钮」的引导，是把内部实现泄漏成交互步骤。
+// /register 与 /login 保留：它们是既有的稳定契约（部署脚本、验收场景在用），
+// 且两者语义在单入口下依然清晰（不是就不建 / 建失败就报错）。
 //
 // ---- 与旧共享口令的关系 ----
 // NORVELS_AUTH_TOKEN 的语义**完全不变**：配置了就仍要求 Bearer / 旧 Cookie，
@@ -23,9 +30,36 @@ import (
 // 账号名与请求体的边界。
 const maxUserNameRunes = 32
 
-// userNameRequest 是 POST /api/auth/register 与 /api/auth/login 的请求体。
+// userNameRequest 是 POST /api/auth/enter、/register 与 /login 的请求体。
 type userNameRequest struct {
 	Name string `json:"name"`
+}
+
+// handleEnter 处理 POST /api/auth/enter：单入口——不存在就建号并登录，存在就直接登录。
+//
+// 201（新建）/ 200（已存在）都下发会话 Cookie，前端不必知道走的是哪条路，
+// 只有 toast 文案会按状态码区分「新建了」与「进来了」。
+//
+// 唯一的失败是「建号失败」（重名竞态 / 名字不合规 / 库错），此时走 failUserWrite：
+// 409 / 400 / 500，与注册端点同一套映射，不另立一套口径。
+func (s *Server) handleEnter(w http.ResponseWriter, r *http.Request) {
+	name, ok := s.userNameFromBody(w, r)
+	if !ok {
+		return
+	}
+	u, created, err := s.st.EnterUser(r.Context(), name)
+	if err != nil {
+		s.failUserWrite(w, r, err, "进入失败")
+		return
+	}
+	if u, ok = s.enterAs(w, r, u.ID); !ok {
+		return
+	}
+	if created {
+		writeJSON(w, http.StatusCreated, u)
+		return
+	}
+	writeJSON(w, http.StatusOK, u)
 }
 
 // handleRegister 处理 POST /api/auth/register：201 + 账号，并直接下发会话。
@@ -41,7 +75,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		s.failUserWrite(w, r, err, "注册失败")
 		return
 	}
-	s.startUserSession(w, r, u)
+	if u, ok = s.enterAs(w, r, u.ID); !ok {
+		return
+	}
 	writeJSON(w, http.StatusCreated, u)
 }
 
@@ -63,7 +99,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.failUserWrite(w, r, err, "登录失败")
 		return
 	}
-	s.startUserSession(w, r, u)
+	if u, ok = s.enterAs(w, r, u.ID); !ok {
+		return
+	}
 	writeJSON(w, http.StatusOK, u)
 }
 
@@ -76,6 +114,41 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 		if err := s.st.DeleteUserSession(r.Context(), tok); err != nil {
 			s.logf("api: 撤销会话失败: %v", err)
 		}
+	}
+	http.SetCookie(w, sessionCookie(r, "", -1))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDeleteUser 处理 DELETE /api/auth/users/{id}：删账号并清走它的个人数据，204。
+//
+// 三条拒绝口径（都不删任何东西）：
+//   - 未登录（开放模式外的无会话请求）→ 401 unauthorized：删除是不可逆写操作，
+//     不能让「门外的人」按 id 逐个试出库里有几个账号并删掉；
+//   - id=1 默认账号 → 409 default_account：存量数据归属与开放模式兜底，删了库不自洽；
+//   - 账号不存在 → 404 not_found。
+//
+// 删除当前账号时顺手撤掉本请求带来的会话 Cookie：客户端拿到 204 直接回未登录态，
+// 不用再打一次 logout。
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	if !s.loggedIn(r) {
+		writeError(w, http.StatusUnauthorized, codeUnauthorized, "需要登录后才能删除账号")
+		return
+	}
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.badRequest(w, err, codeInvalidID)
+		return
+	}
+	switch err := s.st.DeleteUser(r.Context(), id); {
+	case errors.Is(err, store.ErrDefaultUser):
+		writeError(w, http.StatusConflict, codeDefaultAccount, "默认账号（书库底座）不能删除")
+		return
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, codeNotFound, "账号不存在")
+		return
+	case err != nil:
+		s.fail(w, r, err, "删除账号失败")
+		return
 	}
 	http.SetCookie(w, sessionCookie(r, "", -1))
 	w.WriteHeader(http.StatusNoContent)
@@ -139,6 +212,23 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userListResponse{Items: items, Total: total})
 }
 
+// enterAs 是「这个账号现在进来了」的唯一落地口：刷新活跃时间 → 建会话 → 下发 Cookie。
+//
+// 把两件事绑在一起而不是让每个 handler 各写一遍：注册即登录、单入口、以后新增的
+// 入口都必须同时产生「会话」与「活跃时间」，漏掉任何一个都会让账号列表显示
+// 「从未登录」——这正是修前的 bug（注册只建了会话，没人刷 last_seen_at）。
+//
+// 返回落库后的账号（lastSeenAt 已是本次时间），调用方直接写进响应体。
+func (s *Server) enterAs(w http.ResponseWriter, r *http.Request, id int64) (store.User, bool) {
+	u, err := s.st.TouchUser(r.Context(), id)
+	if err != nil {
+		s.fail(w, r, err, "记录登录失败")
+		return store.User{}, false
+	}
+	s.startUserSession(w, r, u)
+	return u, true
+}
+
 // startUserSession 建会话并把 token 写进 HttpOnly Cookie。
 func (s *Server) startUserSession(w http.ResponseWriter, r *http.Request, u store.User) {
 	token, err := s.st.CreateUserSession(r.Context(), u.ID)
@@ -167,6 +257,20 @@ func (s *Server) userNameFromBody(w http.ResponseWriter, r *http.Request) (strin
 	return name, true
 }
 
+// loggedIn 报告这次请求是否带着一个**有效的账号会话**。
+//
+// 判定只看会话 Cookie 能不能换出账号，不看「能不能过鉴权」：开放模式（未配口令）
+// 下任何请求都算过了鉴权，但那不代表有人登录——那种部署里 me() 回的是默认账号 reader。
+// 删除账号这类不可逆写操作必须区分这两件事。
+func (s *Server) loggedIn(r *http.Request) bool {
+	tok := sessionToken(r)
+	if tok == "" {
+		return false
+	}
+	_, err := s.st.UserBySessionToken(r.Context(), tok)
+	return err == nil
+}
+
 // failUserWrite 把账号写失败翻译成 409（重名）/400（入参）/500。
 func (s *Server) failUserWrite(w http.ResponseWriter, r *http.Request, err error, fallback string) {
 	switch {
@@ -174,6 +278,8 @@ func (s *Server) failUserWrite(w http.ResponseWriter, r *http.Request, err error
 		writeError(w, http.StatusConflict, codeConflict, "这个账号名已经有人用了，换一个吧")
 	case errors.Is(err, store.ErrInvalidArgument):
 		s.failParam(w, err)
+	case errors.Is(err, store.ErrDefaultUser):
+		writeError(w, http.StatusConflict, codeDefaultAccount, "默认账号（书库底座）不能删除")
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, codeAccountNotFound, "账号不存在，请先注册")
 	default:

@@ -17,8 +17,10 @@ function makeAuth(over: Partial<AuthState> = {}): AuthState {
     user: null,
     loggedIn: false,
     loading: false,
+    enter: vi.fn(),
     register: vi.fn(),
     login: vi.fn(),
+    deleteAccount: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
     subscribe: () => () => undefined,
     clearLocal: () => undefined,
@@ -90,6 +92,39 @@ describe("侧栏 / H5 抽屉底部的账号区", () => {
     expect(screen.queryByTestId("side-account-logout")).toBeNull();
     // 没登录就没有"切换"的对象
     expect(screen.queryByTestId("side-account-switch")).toBeNull();
+  });
+
+  it("删账号：先二次确认，确认后调 deleteAccount 并回「全部书」", async () => {
+    const deleteAccount = vi.fn(async () => undefined);
+    renderAccount("/shelf?view=mine", makeAuth({ user: USER, loggedIn: true, deleteAccount }));
+
+    // 一次点击不该删：先出确认框
+    fireEvent.click(screen.getByTestId("side-account-delete"));
+    expect(screen.getByTestId("delete-account-confirm")).toBeTruthy();
+    expect(screen.getByTestId("delete-account-confirm").textContent).toContain("一起删掉");
+    expect(screen.getByTestId("delete-account-confirm").textContent).toContain("书不受影响");
+    expect(deleteAccount).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("delete-account-confirm-button"));
+    await waitFor(() => expect(deleteAccount).toHaveBeenCalledWith(USER.id));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/shelf?view=all"));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("已删除账号"));
+  });
+
+  it("删账号确认框可以取消：不发请求、账号态不变", () => {
+    const deleteAccount = vi.fn(async () => undefined);
+    renderAccount("/shelf", makeAuth({ user: USER, loggedIn: true, deleteAccount }));
+    fireEvent.click(screen.getByTestId("side-account-delete"));
+    fireEvent.click(screen.getByTestId("delete-account-cancel"));
+    expect(screen.queryByTestId("delete-account-confirm")).toBeNull();
+    expect(deleteAccount).not.toHaveBeenCalled();
+    expect(screen.getByTestId("side-account-name").textContent).toBe("夜读的人");
+  });
+
+  it("当前账号展示活跃时间（me() 的 lastSeenAt 不为空时不再是「从未登录」）", () => {
+    const seen = new Date(Date.now() - 3 * 60_000).toISOString();
+    renderAccount("/shelf", makeAuth({ user: { ...USER, lastSeenAt: seen }, loggedIn: true }));
+    expect(screen.getByTestId("side-account-seen").textContent).toContain("3 分钟前");
   });
 
   it("⑧ 退出登录：清账号态 + 回「全部书」视图（不留在空白的我的书架）", async () => {
