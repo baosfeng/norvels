@@ -1,4 +1,4 @@
-import type { ReleaseEntry } from "../api/types";
+import type { ReleaseEntry } from "../../api/types";
 
 /**
  * 更新日志页的展示整形（纯函数，页面与测试共用）。
