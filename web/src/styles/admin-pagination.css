@@ -1,0 +1,53 @@
+/* ── 书籍管理列表：分页条（C-43） ────────────────────────────────────────────
+   报障：.page-jump 此前没有任何规则，.input 的 width:100%（prototype.css）在 flex 的
+   .pagination 里把输入框撑成整行宽，压住页码与箭头；「跳转」被挤到下一行，
+   「已经到头了」被顶到右侧。口径同 .vol-jump：一组小控件 + 固定窄输入框。 */
+.pagination {
+  flex-wrap: wrap;
+}
+
+/* 箭头 / 页码 / 分隔各自按内容宽，宽度不够时整组一起换行而不是被挤扁 */
+.pagination > button,
+.pagination > span.meta,
+.pagination > span.is-current {
+  flex: 0 0 auto;
+}
+
+/* 跳页表单：与左侧同排、按内容宽，不被 .input 的 100% 带走 */
+.pagination .page-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* 跳页输入框定宽居中，高度与相邻按钮收齐到 34px 同一基线 */
+.pagination .page-jump input {
+  flex: 0 0 auto;
+  width: 84px;
+  min-height: 34px;
+  height: 34px;
+  padding: 0 10px;
+  text-align: center;
+}
+
+/* 「跳转」（32px 的 .btn-sm）与输入框同一基线 */
+.pagination .page-jump .btn-sm {
+  min-height: 34px;
+  height: 34px;
+}
+
+/* 到头提示按 .meta 口径排在行尾，不落成一颗带框按钮 */
+.pagination > .inline-note {
+  flex: 0 0 auto;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
