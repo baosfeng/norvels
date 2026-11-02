@@ -7,6 +7,8 @@ vi.mock("../../api/hooks", () => ({
   useBooks: () => ({ data: { items: [], total: 0, page: 1, size: 5 }, loading: false, error: null, reload: () => {} }),
   useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: () => {} }),
   useReadingStats: () => ({ data: { totalSeconds: 0, todaySeconds: 0, weekSeconds: 0, streak: 0, days: [] }, loading: false, error: null, reload: () => {} }),
+  // 首页推荐位（SceneRecommendBlock）与本文件断言无关：桩成空态 → 整块不渲染。
+  useRecommendations: () => ({ data: null, loading: false, error: null, reload: () => {} }),
 }));
 
 const { HomePage } = await import("./HomePage");

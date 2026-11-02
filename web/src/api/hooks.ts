@@ -283,10 +283,11 @@ export function useRecordReadingSession() {
  * 两者进依赖——换 tab 就重取。
  * 「换一批」调 reload：key 不变所以列表不会先清空闪骨架，服务端每次都会重新随机。
  */
-export function useRecommendations(limit = 20, tab: RecommendTab = "for_you") {
+export function useRecommendations(limit = 20, tab: RecommendTab = "for_you", options: { enabled?: boolean } = {}) {
   return useResource(
     (signal: AbortSignal) => api.recommendations({ limit, tab }, { signal }),
     [limit, tab],
+    options,
   );
 }
 

@@ -15,6 +15,8 @@ vi.mock("../../api/hooks", () => ({
   useBooks: () => h.books,
   useReadingProgress: () => h.progress,
   useReadingStats: () => h.stats,
+  // 首页的推荐位（SceneRecommendBlock）与本次断言无关：桩成空态 → 整块不渲染。
+  useRecommendations: () => ({ data: null, loading: false, error: null, reload: vi.fn() }),
 }));
 
 const { HomePage } = await import("./HomePage");
