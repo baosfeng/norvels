@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 /**
- * 分页：只有一页时整条不出现；到头的那一侧禁用并把原因常驻在旁边（契约 C-43）。
+ * 分页：只有一页时整条不出现；到头的那一侧禁用并把原因常驻在旁边。
  *
  * 中间带页码输入框：838 本就是 42 页，只靠「下一页」翻到后半段太慢；
  * 输入越界数字会夹到 [1, pages]，不把用户停在空白页上。
@@ -26,7 +26,6 @@ export function Pagination({ page, pages, onPage }: { page: number; pages: numbe
         type="button"
         aria-label="上一页"
         disabled={atStart}
-        data-od-id="C-43"
         data-testid="admin-page-prev"
         onClick={() => onPage(Math.max(1, page - 1))}
       >
@@ -38,7 +37,6 @@ export function Pagination({ page, pages, onPage }: { page: number; pages: numbe
         type="button"
         aria-label="下一页"
         disabled={atEnd}
-        data-od-id="C-43"
         data-testid="admin-page-next"
         onClick={() => onPage(Math.min(pages, page + 1))}
       >

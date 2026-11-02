@@ -7,14 +7,14 @@ import { previewChapters, ruleError, type RulePreview } from "../../lib/chapterR
 import { LIMITS_UNKNOWN_HINT, chapterLimitsOf, type ChapterLimits } from "./limits";
 import { useTimedNote } from "./useTimedNote";
 
-/** 空列表与满额两条常驻说明（契约 C-12 / C-13 的边界列）；条数来自 capabilities。 */
+/** 空列表与满额两条常驻说明（边界列）；条数来自 capabilities。 */
 export const EMPTY_HINT = "还没有自定义规则，导入一律走内置切章";
 function fullHint(maxCount: number): string {
   return `最多 ${maxCount} 条，先删掉用不上的再加`;
 }
-/** 正则没闭合时的拦截文案（契约 C-11）。 */
+/** 正则没闭合时的拦截文案。 */
 export const UNCLOSED_HINT = "有一条规则的正则没闭合：括号或方括号少了收尾，先补全再保存。";
-/** 保存失败文案（契约 C-14）：不提任何实现词。 */
+/** 保存失败文案：不提任何实现词。 */
 export const SAVE_FAILED = "正则没通过校验，检查一下括号与转义。";
 
 /**
@@ -22,7 +22,7 @@ export const SAVE_FAILED = "正则没通过校验，检查一下括号与转义�
  * 保存是整体替换；试切预览在浏览器里算，不写库也不发请求。
  *
  * 编辑是**本地草稿**：删一条规则只是从这份草稿里拿掉，不点「保存规则」就不生效
- * （这就是契约 C-12 里写的撤销窗口——重新加一条或放弃编辑都能回到原样）。
+ * （这就是撤销窗口——重新加一条或放弃编辑都能回到原样）。
  */
 export function ChapterRulesPanel() {
   const { data, loading, error, reload } = useChapterRules();
@@ -98,7 +98,7 @@ function RuleEditor({
   const addRef = useRef<HTMLButtonElement>(null);
   const inputs = useRef(new Map<number, HTMLInputElement>());
 
-  // 新增一条规则后焦点进名称输入框（契约 C-13）；聚焦完把标记清掉，免得重渲染再抢焦点
+  // 新增一条规则后焦点进名称输入框；聚焦完把标记清掉，免得重渲染再抢焦点
   useEffect(() => {
     if (focusKey === null) return;
     inputs.current.get(focusKey)?.focus();
@@ -198,10 +198,10 @@ function RuleEditor({
       )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button className="btn" type="button" ref={addRef} onClick={addRow} disabled={full} data-od-id="C-13">
+        <button className="btn" type="button" ref={addRef} onClick={addRow} disabled={full}>
           新增一条规则
         </button>
-        <button className="btn btn-primary" type="button" onClick={save} disabled={saving} data-testid="rules-save" data-od-id="C-14">
+        <button className="btn btn-primary" type="button" onClick={save} disabled={saving} data-testid="rules-save">
           {saving ? "正在保存…" : "保存规则"}
         </button>
       </div>
@@ -224,7 +224,6 @@ function RuleEditor({
           rows={5}
           value={sample}
           placeholder="把切不开的那本书开头一段粘进来，看看规则能切出几章"
-          data-od-id="C-15"
           onChange={(event) => {
             setSample(event.target.value);
             setPreview(null);
@@ -232,7 +231,7 @@ function RuleEditor({
           }}
         />
       </div>
-      <button className="btn" type="button" onClick={runPreview} data-testid="rules-preview-run" data-od-id="C-16">
+      <button className="btn" type="button" onClick={runPreview} data-testid="rules-preview-run">
         试切预览
       </button>
       {previewNote ? (
@@ -244,7 +243,7 @@ function RuleEditor({
   );
 }
 
-/** 一条规则行：名称输入（C-10）+ 正则输入（C-11）+ 删除（C-12）。 */
+/** 一条规则行：名称输入 + 正则输入 + 删除。 */
 function RuleRow({
   row,
   index,
@@ -268,7 +267,6 @@ function RuleRow({
           ref={registerInput}
           value={row.name}
           placeholder="例如 分节符"
-          data-od-id="C-10"
           onChange={(event) => onPatch(row.key, "name", event.target.value)}
         />
       </div>
@@ -280,7 +278,6 @@ function RuleRow({
           value={row.pattern}
           placeholder="例如 ^=== 第\d+ 节 ===$"
           spellCheck={false}
-          data-od-id="C-11"
           onChange={(event) => onPatch(row.key, "pattern", event.target.value)}
         />
       </div>
@@ -288,7 +285,6 @@ function RuleRow({
         className="btn btn-ghost btn-danger"
         type="button"
         aria-label={`删除第 ${index + 1} 条规则`}
-        data-od-id="C-12"
         onClick={() => onRemove(row.key)}
       >
         删除

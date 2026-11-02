@@ -135,7 +135,7 @@ INSERT INTO chapters_fts(chapters_fts) VALUES('integrity-check');
 | 总字数 | **1,411,582,902**（14.1 亿字） |
 | 作者数 | 323 |
 | 库体积（旧形态，含全文索引） | **13.8 GiB**（14,842,699,776 B，导入后已 checkpoint） |
-| 库体积（v0.2 迁移 + VACUUM 后） | **1.62 GB**（正文按 1 MB 块 zstd 压缩，见 [ADR-0003](adr/0003-block-compressed-content.md)；块大小与算法后由 [ADR-0007](0007-codebook-compressed-content.md) 改为 8 MB + 字码本） |
+| 库体积（v0.2 迁移 + VACUUM 后） | **1.62 GB**（正文按 1 MB 块 zstd 压缩，见 [ADR-0003](adr/0003-block-compressed-content.md)；块大小与算法后由 [ADR-0007](adr/0007-codebook-compressed-content.md) 改为 8 MB + 字码本） |
 | 体积倍率 | 旧形态 3.4x；压缩后 **0.36x**（1.62 GB / 4.4 GB 原文） |
 
 ### 9.2 编码分布（实际入库）

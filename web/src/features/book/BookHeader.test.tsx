@@ -48,11 +48,10 @@ function renderHeader(isH5 = false) {
   );
 }
 
-describe("详情页头部锚点", () => {
-  it("C-32 署名作者指向该作者的作品页（/authors/:id），不是作者总列表", () => {
+describe("详情页头部", () => {
+  it("署名作者指向该作者的作品页（/authors/:id），不是作者总列表", () => {
     renderHeader();
     const link = screen.getByTestId("book-byline").querySelector("a") as HTMLAnchorElement;
-    expect(link.getAttribute("data-od-id")).toBe("C-32");
     expect(link.getAttribute("href")).toBe("/authors/1");
   });
 
@@ -106,25 +105,23 @@ describe("详情页头部锚点", () => {
     expect(screen.getByTestId("book-byline").textContent).toContain("林砚");
   });
 
-  it("C-09（新增）标签是按钮而不是静态文本，点一个就以该标签打开书架", async () => {
+  it("标签是按钮而不是静态文本，点一个就以该标签打开书架", async () => {
     sessionStorage.clear();
     renderHeader();
     const chips = screen.getByTestId("book-tags").querySelectorAll("button");
     expect(chips).toHaveLength(2);
-    expect(screen.getByTestId("book-tags").getAttribute("data-od-id")).toBe("C-09");
 
     fireEvent.click(chips[0]);
     expect(await screen.findByText("书架页")).toBeTruthy();
     expect(sessionStorage.getItem(SHELF_CACHE_KEY)).toContain("民国");
   });
 
-  it("PC 不渲染「展开简介」，H5 才出现并同步 aria-expanded（C-10）", () => {
+  it("PC 不渲染「展开简介」，H5 才出现并同步 aria-expanded", () => {
     const pc = renderHeader(false);
-    expect(pc.container.querySelector('[data-od-id="C-10"]')).toBeNull();
+    expect(pc.container.querySelector('[data-testid="book-intro-toggle"]')).toBeNull();
     pc.unmount();
     renderHeader(true);
     const toggle = screen.getByText("展开");
-    expect(toggle.getAttribute("data-od-id")).toBe("C-10");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 

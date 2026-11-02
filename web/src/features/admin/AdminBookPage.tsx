@@ -80,9 +80,9 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
   const [banner, setBanner] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  /** 删除确认取消后焦点要回到这里（契约 C-50 的「关闭后焦点去向」）。 */
+  /** 删除确认取消后焦点要回到这里（「关闭后焦点去向」）。 */
   const deleteRef = useRef<HTMLButtonElement>(null);
-  /** 离开确认选「留下」后焦点要回到「返回列表」（契约 C-70）。 */
+  /** 离开确认选「留下」后焦点要回到「返回列表」。 */
   const backRef = useRef<HTMLButtonElement>(null);
 
   const changed = pubChangedCount(draft, origin);
@@ -142,17 +142,17 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
     navigate("/admin");
   }
 
-  /** 关掉离开确认并回编辑：焦点回「返回列表」，不留在被卸载的弹层里（C-70）。 */
+  /** 关掉离开确认并回编辑：焦点回「返回列表」，不留在被卸载的弹层里。 */
   function stayOnPage() {
     setLeaving(false);
     window.setTimeout(() => backRef.current?.focus(), 0);
   }
 
   return (
-    <section className="ix-ops" data-testid="view:admin-book" data-od-id="admin-book">
+    <section className="ix-ops" data-testid="view:admin-book">
       <nav className="crumbs" aria-label="面包屑">
-        {/* 面包屑与「返回列表」同一条路径：有未保存改动时先弹离开确认（契约 C-45） */}
-        <button className="crumb-link" type="button" data-od-id="C-45" onClick={leave}>
+        {/* 面包屑与「返回列表」同一条路径：有未保存改动时先弹离开确认 */}
+        <button className="crumb-link" type="button" onClick={leave}>
           书籍管理
         </button>
         <span aria-hidden="true">/</span>
@@ -216,7 +216,6 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
               type="button"
               ref={deleteRef}
               data-testid="admin-book-delete"
-              data-od-id="C-50"
               onClick={() => setDeleting(true)}
             >
               删除这本书…
@@ -247,7 +246,6 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
             type="button"
             disabled={changed === 0 || saving}
             data-testid="admin-discard"
-            data-od-id="C-67"
             onClick={() => {
               setForm((prev) => ({ ...prev, draft: prev.origin }));
               setBanner({ tone: "ok", text: "已放弃更改，页面回到上次保存的样子。" });
@@ -260,12 +258,11 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
             type="button"
             disabled={changed === 0 || saving}
             data-testid="admin-save"
-            data-od-id="C-68"
             onClick={() => void save()}
           >
             {saving ? "保存中…" : "保存"}
           </button>
-          <button className="btn" type="button" ref={backRef} data-testid="admin-back" data-od-id="C-69" onClick={leave}>
+          <button className="btn" type="button" ref={backRef} data-testid="admin-back" onClick={leave}>
             返回列表
           </button>
         </div>
@@ -273,7 +270,7 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
       </div>
 
       {leaving ? (
-        <div className="confirm-backdrop ix-ops" role="presentation" data-od-id="C-70" onClick={stayOnPage}>
+        <div className="confirm-backdrop ix-ops" role="presentation" onClick={stayOnPage}>
           <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="leave-title" onClick={(e) => e.stopPropagation()}>
             <h2 id="leave-title">还有 {changed} 项更改没保存</h2>
             <p className="meta">离开这个页面会丢掉刚才的改动。</p>
@@ -298,11 +295,11 @@ function BookAdmin({ book, reload }: { book: BookDetail; reload: () => void }) {
           title={book.title}
           onClose={() => {
             setDeleting(false);
-            // 取消后焦点回「删除这本书」按钮（契约 C-50 的删除后五问之一）
+            // 取消后焦点回「删除这本书」按钮（删除后五问之一）
             deleteRef.current?.focus();
           }}
           onDeleted={() => {
-            // 跨页提示：跳回列表后仍要看得到删了什么（契约 C-52）
+            // 跨页提示：跳回列表后仍要看得到删了什么
             showToast(`已删除《${book.title}》。`);
             navigate("/admin", { state: { deletedBook: book.id } });
           }}

@@ -15,14 +15,14 @@ export function AuthorsPage() {
   const pages = Math.max(1, Math.ceil(total / 30));
   const items = data?.items ?? [];
 
-  /** 切页：页码更新后表格回到第一行（契约 C-20 / C-21 移除后）。 */
+  /** 切页：页码更新后表格回到第一行。 */
   function goPage(next: number) {
     setPage(next);
     tableRef.current?.scrollIntoView?.({ block: "start" });
   }
 
   return (
-    <section data-testid="view:authors" data-od-id="authors">
+    <section data-testid="view:authors">
       <div className="page-head">
         <div>
           <p className="eyebrow">作者 · {loading ? "读取中" : `${formatCount(total)} 位`}</p>
@@ -37,7 +37,6 @@ export function AuthorsPage() {
           <select
             className="select"
             value={sort}
-            data-od-id="C-19"
             onChange={(e) => {
               setSort(e.target.value as typeof sort);
               setPage(1);
@@ -71,11 +70,10 @@ export function AuthorsPage() {
                 {items.map((author) => (
                   <tr key={author.id}>
                     <td>
-                      {/* C-22（新增）：作者名进该作者的作品页；超长单行省略，全名仍在文本节点里 */}
+                      {/* 作者名进该作者的作品页；超长单行省略，全名仍在文本节点里 */}
                       <Link
                         className="author-link"
                         to={`/authors/${author.id}`}
-                        data-od-id="C-22"
                         data-testid={`author-link-${author.id}`}
                       >
                         {author.name || "佚名"}
@@ -96,7 +94,6 @@ export function AuthorsPage() {
           <button
             type="button"
             aria-label="上一页"
-            data-od-id="C-20"
             disabled={page <= 1}
             onClick={() => goPage(page - 1)}
           >
@@ -107,7 +104,6 @@ export function AuthorsPage() {
           <button
             type="button"
             aria-label="下一页"
-            data-od-id="C-21"
             disabled={page >= pages}
             onClick={() => goPage(page + 1)}
           >

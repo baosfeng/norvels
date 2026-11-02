@@ -101,13 +101,11 @@ describe("卷管理弹窗", () => {
     expect(createVolume).not.toHaveBeenCalled();
   });
 
-  it("C-73 新建卷是「输入 + 新建卷按钮」一对：空名给常驻文案，成功提示带卷名", async () => {
+  it("新建卷是「输入 + 新建卷按钮」一对：空名给常驻文案，成功提示带卷名", async () => {
     createVolume.mockResolvedValue({ volume: { id: 9, idx: 3, title: "卷三 · 归途", chapters: [] } });
     renderManage();
     const input = screen.getByTestId("volume-new-input");
     const button = screen.getByTestId("volume-create");
-    expect(input.getAttribute("data-od-id")).toBe("C-73");
-    expect(button.getAttribute("data-od-id")).toBe("C-73");
     fireEvent.click(button);
     expect(screen.getByTestId("volume-error").textContent).toBe("先填一个卷名。");
     fireEvent.change(input, { target: { value: "卷三 · 归途" } });
@@ -280,7 +278,7 @@ describe("章节区的卷入口", () => {
 
   it("勾选后批量条出现「移动到卷…」，点开弹窗写明目标卷", () => {
     render(<AdminChapters book={book} onChanged={vi.fn()} onError={vi.fn()} />);
-    // 未选章时按钮在但禁用（契约 C-60 前置：已选至少 1 章），勾上才解锁
+    // 未选章时按钮在但禁用（前置：已选至少 1 章），勾上才解锁
     expect((screen.getByTestId("admin-ch-move") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("admin-chapter-pick-20"));
     expect((screen.getByTestId("admin-ch-move") as HTMLButtonElement).disabled).toBe(false);

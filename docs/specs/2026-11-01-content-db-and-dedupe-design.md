@@ -1,7 +1,7 @@
 # 正文独立库 + 内容去重 + 版本择优 + AI 审核（设计定稿）
 
 - 状态：已定案（用户 2026-11-01 确认方向：正文独立库、去重先做章级、AI 只走云端、替换需人工确认）
-- 关联：[architecture](architecture.md)、[ADR-0007](adr/0007-codebook-compressed-content.md)
+- 关联：[architecture](../architecture.md)、[ADR-0007](../adr/0007-codebook-compressed-content.md)
 
 ## 目标
 

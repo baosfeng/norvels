@@ -17,7 +17,7 @@ const progress: ReadingProgress[] = [
   },
 ];
 
-describe("C-26（新增）环形图图例过滤", () => {
+describe("环形图图例过滤", () => {
   it("图例是按钮：点一下 aria-pressed 翻转、该段变淡，并说明总数不变", () => {
     const { container } = render(
       <ReadingDistChart
@@ -29,7 +29,6 @@ describe("C-26（新增）环形图图例过滤", () => {
       />,
     );
     const legend = screen.getByTestId("legend-finished");
-    expect(legend.getAttribute("data-od-id")).toBe("C-26");
     expect(legend.getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(legend);
@@ -48,18 +47,17 @@ describe("C-26（新增）环形图图例过滤", () => {
 
   it("三段各自一个可聚焦按钮（读屏仍能读到本数）", () => {
     render(<ReadingDistChart progress={progress} totalBooks={4} limitReached={false} {...idle} />);
-    const buttons = document.querySelectorAll('[data-od-id="C-26"]');
+    const buttons = document.querySelectorAll(".legend-btn");
     expect(buttons).toHaveLength(3);
     expect(buttons[0].getAttribute("aria-label")).toContain("本");
   });
 });
 
-describe("C-31（新增）图表卡重试", () => {
-  it("失败态按钮挂 C-31，点后变「重试中…」并禁用、显示骨架块，最短 240ms 后还原", async () => {
+describe("图表卡重试", () => {
+  it("失败态按钮点后变「重试中…」并禁用、显示骨架块，最短 240ms 后还原", async () => {
     const onRetry = vi.fn();
     render(<ImportTrendChart points={[]} loading={false} failed onRetry={onRetry} />);
     const button = screen.getByRole("button", { name: "重试" });
-    expect(button.getAttribute("data-od-id")).toBe("C-31");
 
     fireEvent.click(button);
     expect(onRetry).toHaveBeenCalledOnce();

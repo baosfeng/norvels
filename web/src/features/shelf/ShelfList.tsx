@@ -16,7 +16,7 @@ type Feed = {
 };
 
 /**
- * 书架内容区（C-37/C-38/C-39/C-40/C-41）：加载 / 错误 / 空态 / 列表 + H5 无限滚动或 PC 分页。
+ * 书架内容区：加载 / 错误 / 空态 / 列表 + H5 无限滚动或 PC 分页。
  *
  * 加载态用与真实书卡同尺寸的骨架（H5 两行三张 = 6 张、PC 四张），不用居中转圈——
  * 骨架先占住版面，数据回来时不跳一下。H5 追加下一页同样给骨架，只铺一行。
@@ -83,7 +83,7 @@ export function ShelfList({
 
   if (error) {
     return (
-      <div data-od-id="C-41">
+      <div>
         <ErrorPanel error={error} title="书架没能加载" onRetry={onRetry} testId="shelf-error" />
       </div>
     );
@@ -103,11 +103,11 @@ export function ShelfList({
           testId="shelf-empty"
           actions={
             filtering ? (
-              <button className="btn btn-primary" type="button" data-od-id="C-40" onClick={onResetFilters}>
+              <button className="btn btn-primary" type="button" onClick={onResetFilters}>
                 清除筛选
               </button>
             ) : isH5 ? null : (
-              <Link className="btn btn-primary" to="/import" data-od-id="C-40">
+              <Link className="btn btn-primary" to="/import">
                 去导入
               </Link>
             )
@@ -157,7 +157,7 @@ export function ShelfList({
             <>
               <div ref={sentinelRef} data-testid="shelf-sentinel" aria-hidden="true" style={{ height: 1 }} />
               {canObserve ? null : (
-                <div data-od-id="C-39">
+                <div>
                   <button className="btn" type="button" onClick={feed.loadMore} data-testid="shelf-load-more">
                     加载更多
                   </button>
@@ -175,7 +175,6 @@ export function ShelfList({
           <button
             type="button"
             aria-label="上一页"
-            data-od-id="C-37"
             disabled={feed.page <= 1}
             onClick={() => onPage(feed.page - 1)}
           >
@@ -186,7 +185,6 @@ export function ShelfList({
           <button
             type="button"
             aria-label="下一页"
-            data-od-id="C-38"
             disabled={feed.page >= pages}
             onClick={() => onPage(feed.page + 1)}
           >

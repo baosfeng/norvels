@@ -77,7 +77,6 @@ export function ReaderDrawer({
       aria-label="目录与书签"
       aria-hidden={!open}
       data-testid="reader-drawer"
-      data-od-id="reader-drawer"
     >
       <div className="drawer-head">
         <div className="drawer-tabs" role="tablist" aria-label="目录与书签" onKeyDown={onTabKeyDown}>
@@ -105,7 +104,7 @@ export function ReaderDrawer({
         <span className="meta" data-testid="drawer-meta">
           {meta}
         </span>
-        <button className="btn btn-ghost" type="button" data-od-id="C-30" onClick={onClose} aria-label="关闭目录与书签">
+        <button className="btn btn-ghost" type="button" onClick={onClose} aria-label="关闭目录与书签">
           关闭
         </button>
       </div>

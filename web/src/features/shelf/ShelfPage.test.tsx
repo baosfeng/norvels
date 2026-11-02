@@ -514,7 +514,7 @@ describe("书架：长标题与角标布局（样式契约）", () => {
   });
 });
 
-describe("书架：标签链接（C-09）", () => {
+describe("书架：标签链接", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     books.mockReset();
@@ -550,7 +550,7 @@ describe("书架：标签链接（C-09）", () => {
   });
 });
 
-describe("回归：角标不跳页 / C-40 锚点 / 驾驶舱重置筛选 / 错档提示", () => {
+describe("回归：角标不跳页 / 空态主操作 / 驾驶舱重置筛选 / 错档提示", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     books.mockReset();
@@ -560,7 +560,7 @@ describe("回归：角标不跳页 / C-40 锚点 / 驾驶舱重置筛选 / 错�
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   });
 
-  it("点书卡角标只改阅读状态，不跳详情页（C-31）", async () => {
+  it("点书卡角标只改阅读状态，不跳详情页", async () => {
     books.mockResolvedValue(pageOf(1, 1, 1));
     updateBook.mockResolvedValue({} as BookDetail);
     renderShelf("pc");
@@ -573,17 +573,18 @@ describe("回归：角标不跳页 / C-40 锚点 / 驾驶舱重置筛选 / 错�
     expect(screen.getByTestId("location").textContent).toBe("/");
   });
 
-  it("空态主操作按钮自带 C-40 锚点，不再挂在容器上", async () => {
+  it("空态主操作按钮在按钮上，不在容器上", async () => {
     books.mockResolvedValue({ items: [], total: 0, page: 1, size: 24 });
     renderShelf("pc", [`/shelf?tag=${encodeURIComponent("民国")}`]);
 
     await waitFor(() => expect(screen.getByTestId("shelf-empty")).toBeTruthy());
-    const anchor = document.querySelector<HTMLElement>('[data-od-id="C-40"]');
-    expect(anchor?.tagName).toBe("BUTTON");
-    expect(anchor?.textContent).toContain("清除筛选");
+    // 操作按钮在空态面板内部（工具栏也有同名的「清除筛选」，这里限定在面板里找）
+    const empty = screen.getByTestId("shelf-empty");
+    const action = empty.querySelector("button");
+    expect(action?.textContent).toContain("清除筛选");
   });
 
-  it("驾驶舱「全部书架」带着 resetFilters 进来时忽略会话缓存里的筛选（C-23）", async () => {
+  it("驾驶舱「全部书架」带着 resetFilters 进来时忽略会话缓存里的筛选", async () => {
     writeShelfCache({
       sort: "updated",
       authorId: null,
@@ -617,7 +618,7 @@ describe("回归：角标不跳页 / C-40 锚点 / 驾驶舱重置筛选 / 错�
     expect(screen.getByTestId("location").textContent).toBe("/shelf");
   });
 
-  it("宽屏访问首页落回书架时，浮出「首页只在窄屏提供」提示（C-04 边界）", async () => {
+  it("宽屏访问首页落回书架时，浮出「首页只在窄屏提供」提示", async () => {
     books.mockResolvedValue(pageOf(1, 1, 1));
     render(
       <TierProvider value="pc">

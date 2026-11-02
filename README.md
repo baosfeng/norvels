@@ -64,7 +64,6 @@ norvels/
 │   ├── preview.sh          # 一条命令起预览：后端 :8080 + vite HMR :5173（已在跑则复用）
 │   ├── shot.sh             # 截图（agent-browser 独立会话），配 preview 用
 │   └── tidy-pending-collection.py  # 待整理合集包：去重 → 按分类抓取到导入目录
-├── interaction/            # 交互契约与可点原型：四域 244 个锚点，见 interaction/README.md
 ├── docs/
 │   ├── architecture.md     # 组件划分与数据模型
 │   ├── api.md              # REST API 契约

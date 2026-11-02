@@ -43,8 +43,8 @@
 ## 门禁 5 的行数口径
 
 - **函数 70 行** = `func` 行到函数体结尾大括号行的物理跨度（含签名、注释、空行）；**文件 400 行** = 物理总行数；
-- 只统计 `.go`（跳过 `internal/webui/dist`、`node_modules`、`vendor`、`testdata`、隐藏目录）；
-  走 `go/ast` 而不是 `wc -l`，避免 raw string 与多行签名把函数边界算错。
+- 只统计 `.go`（跳过 `internal/webui/dist`、`node_modules`、`vendor`、`testdata`、隐藏目录），走 `go/ast` 而不是 `wc -l`：raw string 与多行签名会把函数边界算错。
+- 前端组件**不在**这两项门禁里（只统计 Go）：改到某组件时按同一口径收敛，不加硬门禁。
 
 ## 豁免登记表（门禁 4 / 5 的唯一事实源）
 

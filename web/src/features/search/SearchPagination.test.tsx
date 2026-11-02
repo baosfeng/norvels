@@ -48,7 +48,7 @@ function renderAt(path: string) {
   );
 }
 
-describe("搜索分页（新增控件 C-54 / C-55）", () => {
+describe("搜索分页", () => {
   beforeEach(() => {
     useSearch.mockReset();
     useSearch.mockReturnValue({ data: result(20), loading: false, error: null, reload: () => {} });
@@ -90,7 +90,7 @@ describe("搜索分页（新增控件 C-54 / C-55）", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input.value).toBe("");
     expect(document.activeElement).toBe(input);
-    // C-49：Esc 不只清输入，结果区与地址栏也回到默认（q 清空、回第 1 页）
+    // ：Esc 不只清输入，结果区与地址栏也回到默认（q 清空、回第 1 页）
     await waitFor(() => expect(useSearch).toHaveBeenLastCalledWith("", expect.objectContaining({ page: 1 })));
   });
 

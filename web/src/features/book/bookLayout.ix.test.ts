@@ -23,7 +23,7 @@ describe("详情页左栏操作组：主操作独占整行、次操作同组等�
   });
 
   it("只在 PC 档生效：H5 的按钮行仍由吸底条承担", () => {
-    const at = libraryCss.indexOf("/* ── C-02 / C-03 左栏操作组（PC）");
+    const at = libraryCss.indexOf("/* ── 左栏操作组（PC）");
     expect(at).toBeGreaterThan(-1);
     expect(libraryCss.slice(at, at + 400)).toMatch(/@media \(min-width: 769px\)/);
   });

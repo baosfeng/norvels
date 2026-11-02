@@ -39,7 +39,7 @@ function tipText(container: HTMLElement): string | null {
   return tip?.textContent ?? null;
 }
 
-describe("图表读数（新增）：悬停与键盘焦点都能读出数值", () => {
+describe("图表读数：悬停与键盘焦点都能读出数值", () => {
   it("导入趋势：整列可聚焦，零值那天也说明「没有导入」", () => {
     const { container } = render(<ImportTrendChart points={points} {...idle} />);
     const cols = [...container.querySelectorAll<HTMLElement>(".bar-col")];

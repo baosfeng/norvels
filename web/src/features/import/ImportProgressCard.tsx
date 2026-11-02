@@ -12,7 +12,7 @@ export function progressOf(done: number, total: number): number {
  * 进行中任务的进度卡：计数 + 进度条 + 取消（二次确认）+ 失败明细折叠条。
  *
  * 取消是「不可撤销且代价高」之外的一类——任务已产出的数据不丢，但要重新跑，
- * 所以按契约走二次确认，默认焦点落在「继续跑」，避免一次回车就把任务停了。
+ * 所以走二次确认，默认焦点落在「继续跑」，避免一次回车就把任务停了。
  */
 export function ImportProgressCard({
   job,
@@ -52,7 +52,6 @@ export function ImportProgressCard({
             ref={cancelRef}
             onClick={() => setConfirming(true)}
             data-testid="import-cancel"
-            data-od-id="C-22"
           >
             取消任务
           </button>
@@ -92,7 +91,6 @@ export function ImportProgressCard({
           className="failure-toggle"
           type="button"
           aria-expanded={showErrors}
-          data-od-id="C-23"
           onClick={() => setShowErrors((v) => !v)}
         >
           <span>{job.failed} 个文件未能导入</span>

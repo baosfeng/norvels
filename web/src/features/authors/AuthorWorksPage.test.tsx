@@ -52,7 +52,7 @@ beforeEach(() => {
   author.mockReset();
 });
 
-describe("作者作品页（C-22 的落点）", () => {
+describe("作者作品页", () => {
   it("列出该作者的作品，每本都能进详情", async () => {
     author.mockResolvedValue(detail());
     renderPage();

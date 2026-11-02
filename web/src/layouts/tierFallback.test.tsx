@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tierFallbackText } from "./tierFallback";
 
-describe("错档落点提示（契约 C-04 / C-05 边界）", () => {
+describe("错档落点提示", () => {
   it("窄屏访问 PC 专属页 → 回首页并说明「在窄屏不提供」", () => {
     expect(tierFallbackText("/dashboard")).toBe("「驾驶舱」在窄屏不提供，已回到首页。");
     expect(tierFallbackText("/authors")).toBe("「作者」在窄屏不提供，已回到首页。");

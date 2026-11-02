@@ -19,8 +19,8 @@ export function SeriesDetailPage() {
   const words = books.reduce((sum, book) => sum + (Number.isFinite(book.wordCount) ? book.wordCount : 0), 0);
 
   return (
-    <section data-testid="view:series-detail" data-od-id="series-detail">
-      <nav className="crumbs" aria-label="面包屑" data-od-id="C-62">
+    <section data-testid="view:series-detail">
+      <nav className="crumbs" aria-label="面包屑">
         <Link className="crumb-link" to="/series">
           系列
         </Link>
@@ -42,7 +42,7 @@ export function SeriesDetailPage() {
         <LoadingPanel title="正在打开系列" description="正在取回这个系列的书目。" />
       ) : feed.error ? (
         feed.error.status === 404 ? (
-          <div data-od-id="C-64">
+          <div>
             <EmptyPanel
               title="没有这个系列"
               description="系列名可能改了，或者这个系列下的书都换到了别的系列。"
@@ -55,7 +55,7 @@ export function SeriesDetailPage() {
             />
           </div>
         ) : (
-          <div data-od-id="C-65">
+          <div>
             <ErrorPanel error={feed.error} title="系列没能打开" onRetry={feed.reload} testId="series-detail-error" />
           </div>
         )
@@ -75,7 +75,7 @@ export function SeriesDetailPage() {
 /** 系列内的一本书：与书架卡片同一套结构与样式，只多一个「第 N 部」的位置提示。 */
 function SeriesBookCard({ book, order }: { book: BookSummary; order: number }) {
   return (
-    <article className="book-card" data-book-id={book.id} data-testid={`series-book-${book.id}`} data-od-id="C-63">
+    <article className="book-card" data-book-id={book.id} data-testid={`series-book-${book.id}`}>
       <Link className="book-link" to={`/book/${book.id}`}>
         <Cover
           title={book.title}

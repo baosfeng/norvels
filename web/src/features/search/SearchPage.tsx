@@ -35,7 +35,7 @@ const SEARCH_PAGE_SIZE = 8;
  * 但请求恒传 type=all、切 tab 只改渲染——结果是查目录查出一堆章节命中，用户要的书反而被挤下去。
  * 现在章节命中整块删除（后端同批删除章节检索），页面不再传 type=chapter，也不再有多余的分栏。
  *
- * 分页为服务端能力：page / size 走地址（C-54 / C-55），返回、刷新都还原同一屏。
+ * 分页为服务端能力：page / size 走地址，返回、刷新都还原同一屏。
  * 滚动位置不走地址，由 useSearchScrollRestore 记在本次会话里。
  */
 export function SearchPage() {
@@ -110,7 +110,7 @@ export function SearchPage() {
 
   function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
-      // C-49 键盘：清空关键词 + 结果区回到默认空态 + 地址栏不再留着旧 q，焦点留在输入框
+      // 键盘：清空关键词 + 结果区回到默认空态 + 地址栏不再留着旧 q，焦点留在输入框
       event.preventDefault();
       setDraft("");
       setParams({}, { replace: true });
@@ -134,7 +134,7 @@ export function SearchPage() {
 
   function retry() {
     reload();
-    // 离开错误态后焦点交给搜索框（C-53）
+    // 离开错误态后焦点交给搜索框
     searchBoxRef.current?.focus();
   }
 
@@ -151,11 +151,11 @@ export function SearchPage() {
   }
 
   return (
-    <section data-testid="view:search" data-od-id="search">
+    <section data-testid="view:search">
       <div className="search-head">
         <p className="eyebrow">搜索书库</p>
         <h1>{q ? `“${q}”` : "搜索"}</h1>
-        <form className="search-form" onSubmit={submit} role="search" data-od-id="C-49">
+        <form className="search-form" onSubmit={submit} role="search">
           <input
             ref={searchBoxRef}
             className="input"
@@ -214,7 +214,7 @@ export function SearchPage() {
           <SearchResultSkeleton count={isH5 ? 3 : 4} />
         </div>
       ) : error ? (
-        <div data-od-id="C-53">
+        <div>
           <ErrorPanel error={error} title="搜索没能完成" onRetry={retry} />
         </div>
       ) : !trimmed || tooShort || bookCount === 0 ? (
@@ -232,7 +232,7 @@ export function SearchPage() {
         </>
       ) : (
         <div className="search-layout" style={isH5 ? { gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
-          <aside aria-label="书名和作者结果" data-od-id="search-books-col">
+          <aside aria-label="书名和作者结果">
             <h2>
               书名和作者 <span className="meta">{bookCount}</span>
             </h2>
@@ -247,7 +247,7 @@ export function SearchPage() {
 
       {q && !loading && !error && pages > 1 ? (
         <nav className="pagination" aria-label="分页" data-testid="search-pagination">
-          <button type="button" aria-label="上一页" data-od-id="C-54" disabled={page <= 1} onClick={() => changePage(page - 1)}>
+          <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => changePage(page - 1)}>
             ←
           </button>
           <span className="is-current num">{page}</span>
@@ -255,7 +255,6 @@ export function SearchPage() {
           <button
             type="button"
             aria-label="下一页"
-            data-od-id="C-55"
             disabled={page >= pages}
             onClick={() => changePage(page + 1)}
           >

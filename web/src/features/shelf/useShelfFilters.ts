@@ -11,7 +11,7 @@ import { SORTS, type SortValue } from "./shelfSorts";
  * 优先级：地址 > 会话缓存 > 默认值。
  * - 地址是唯一能自证状态的载体：刷新、后退、把链接发给别人都能复现同一屏（`shelfQuery.ts`）。
  * - 缓存只解释「上次看到哪」：从详情/阅读器返回时把筛选与列表一起带回来，但换链接进来不该沿用。
- * - 带 `resetFilters` state 进来（驾驶舱「全部书架 →」，C-23）时连缓存也不读，落到全部书。
+ * - 带 `resetFilters` state 进来（驾驶舱「全部书架 →」）时连缓存也不读，落到全部书。
  */
 export function useShelfFilters(cached: {
   sort?: string;
@@ -74,7 +74,7 @@ export function useShelfFilters(cached: {
     (value) => value !== null,
   ).length;
 
-  /** 一次清空七项筛选（C-29），只清筛选不动排序。 */
+  /** 一次清空七项筛选，只清筛选不动排序。 */
   const resetFilters = useCallback(() => {
     setAuthorId(null);
     setTag(null);

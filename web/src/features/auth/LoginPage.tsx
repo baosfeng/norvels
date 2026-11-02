@@ -90,7 +90,7 @@ export function LoginPage() {
         : "不登录也能浏览全部书，只是记录不归到任何账号。";
 
   return (
-    <section className="auth-page" data-testid="view:login" data-od-id="login">
+    <section className="auth-page" data-testid="view:login">
       <div className="auth-card">
         <p className="eyebrow">账号</p>
         <h1>{switching && loggedIn ? "切换账号" : "进入你的书架"}</h1>
@@ -140,7 +140,6 @@ export function LoginPage() {
               type="submit"
               disabled={busy}
               data-testid="auth-enter"
-              data-od-id="login-submit"
             >
               {busy ? "正在进入…" : "进入"}
             </button>

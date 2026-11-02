@@ -28,19 +28,19 @@ export function AdminBatchBar({
       </span>
       {over ? <span className="inline-note">一次最多 {MAX_BATCH} 本，分批再改</span> : null}
       <div className="actions">
-        <button className="btn btn-sm" type="button" data-testid="admin-batch-author" data-od-id="C-38" onClick={onAuthor}>
+        <button className="btn btn-sm" type="button" data-testid="admin-batch-author" onClick={onAuthor}>
           批量改作者
         </button>
-        <button className="btn btn-sm" type="button" data-testid="admin-batch-tag" data-od-id="C-39" onClick={onTag}>
+        <button className="btn btn-sm" type="button" data-testid="admin-batch-tag" onClick={onTag}>
           批量改标签
         </button>
-        <button className="btn btn-sm" type="button" data-testid="admin-batch-serial" data-od-id="C-40" onClick={onSerial}>
+        <button className="btn btn-sm" type="button" data-testid="admin-batch-serial" onClick={onSerial}>
           批量改连载状态
         </button>
-        <button className="btn btn-sm btn-danger" type="button" data-testid="admin-batch-delete" data-od-id="C-41" onClick={onDelete}>
+        <button className="btn btn-sm btn-danger" type="button" data-testid="admin-batch-delete" onClick={onDelete}>
           批量删除
         </button>
-        <button className="btn btn-sm btn-ghost" type="button" data-testid="admin-batch-clear" data-od-id="C-42" onClick={onClear}>
+        <button className="btn btn-sm btn-ghost" type="button" data-testid="admin-batch-clear" onClick={onClear}>
           取消选择
         </button>
       </div>

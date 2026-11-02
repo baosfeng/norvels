@@ -14,16 +14,17 @@ const LEVEL_BG = [
   "var(--accent)",
 ];
 
+// 格子边长固定 11px：七行 × 十三周的日历必须等宽，格子随数据量变大就会破坏「一周一列」的读法
 const CELL = 11;
 const GAP = 3;
 const WEEKDAY_LABELS = ["一", "三", "五"];
-/** 点开后的浮层固定显示 5 秒（C-30 原行为）。hover / 聚焦立即显示，不再等 120ms。 */
+/** 点开后的浮层固定显示 5 秒（原行为）。hover / 聚焦立即显示，不再等 120ms。 */
 const PIN_MS = 5000;
 
 /**
  * 阅读时长卡（驾驶舱）：今日 / 本周 / 累计 / 连续天数 + 近 90 天日历热力图。
  *
- * 读数浮层与六张图共用 ChartTip（契约 C-30）：hover 与键盘聚焦都立即出读数，
+ * 读数浮层与六张图共用 ChartTip：hover 与键盘聚焦都立即出读数，
  * 浮层贴在格子上方并带小三角指回格子；点一下固定 5 秒，换格或 Esc 收起。
  * 原先要 hover 停 120ms 才浮出——11px 的小格子快速划过时几乎看不到，这是
  * 「移上去没反应」的根因之一，因此改成即时。
@@ -66,7 +67,7 @@ export function ReadingHeatmapCard({
         : `近 ${model.days.length} 天有 ${model.activeDays} 天在读，单日最长 ${formatDurationShort(model.maxSeconds)}。 指到格子上看当天读了多久。`;
 
   return (
-    <article className="chart-card" data-chart="reading-time" data-testid="chart:reading-time" data-od-id="chart:reading-time">
+    <article className="chart-card" data-chart="reading-time" data-testid="chart:reading-time">
       <div className="chart-head">
         <h3>阅读时长</h3>
         <p className="chart-note" data-testid="chart:reading-time:note">
@@ -158,7 +159,7 @@ function Figure({ label, testId, value, suffix }: { label: string; testId: strin
   );
 }
 
-/** 一格一天：可点、可聚焦、可单独读屏（契约 C-30 每格独立 aria）。 */
+/** 一格一天：可点、可聚焦、可单独读屏（每格独立 aria）。 */
 function HeatCell({
   day,
   active,
@@ -184,7 +185,6 @@ function HeatCell({
       className={`heat-cell${active ? " is-active" : ""}`}
       data-testid={`heat-cell-${day.date}`}
       data-level={day.level}
-      data-od-id="C-30"
       aria-label={day.label}
       onMouseEnter={(event) => onEnter(event.currentTarget)}
       onMouseLeave={onLeave}

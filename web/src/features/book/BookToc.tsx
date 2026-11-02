@@ -10,7 +10,7 @@ import { firstBatch, searchSummary, searchToc, tocCountLabel } from "./tocView";
 
 /**
  * 目录区（详情页右栏下半段）。
- * 锚点：C-11 目录搜索、C-12 清空搜索、C-13 卷跳转、C-14 卷头、C-15 章节行（在 ChapterList 里）。
+ * 控件：目录搜索、清空搜索、卷跳转、卷头、章节行（在 ChapterList 里）。
  *
  * 两档的加载形态不同：PC 一次铺全（宽屏装得下，也方便扫读与定位），
  * H5 先给一屏、滚到底自动续载——手机上没有「点按钮看更多」的耐心，只有下滑。
@@ -45,7 +45,7 @@ export function BookToc({
     [volumes, reversed],
   );
 
-  /** 清空关键词：恢复全量目录、滚回目录顶部、焦点回搜索框（契约 C-12 移除后）。 */
+  /** 清空关键词：恢复全量目录、滚回目录顶部、焦点回搜索框。 */
   function clearSearch() {
     setQuery("");
     searchRef.current?.focus();
@@ -86,7 +86,6 @@ export function BookToc({
           id="book-toc-search"
           className="input"
           type="search"
-          data-od-id="C-11"
           data-testid="book-toc-search"
           placeholder="搜索章节名或章号，例如「雨」"
           value={query}
@@ -217,7 +216,7 @@ function ResumeJump({
   );
 }
 
-/** 命中结果：最多 60 条，命中 0 = 空态面板（C-12「清空搜索」在这里）。 */
+/** 命中结果：最多 60 条，命中 0 = 空态面板（「清空搜索」在这里）。 */
 function SearchResults({
   bookId,
   keyword,
@@ -246,7 +245,7 @@ function SearchResults({
         <h2>没有找到章节</h2>
         <p>「{keyword.trim()}」没有命中任何章节。换个词试试，章节名与章号都能搜。</p>
         <div className="state-actions">
-          <button className="btn btn-primary" type="button" data-od-id="C-12" onClick={onClear}>
+          <button className="btn btn-primary" type="button" onClick={onClear}>
             清空搜索
           </button>
         </div>
@@ -356,7 +355,7 @@ function MultiVolumes({
   const resumeVolume = volumes.find((v) => v.chapters.some((c) => c.id === resumeChapterId));
   const openByDefault = resumeVolume?.idx ?? volumes[0].idx;
   const [open, setOpen] = useState<Set<number>>(() => new Set([openByDefault]));
-  /** 卷跳转最多同时有 4 个算「当前卷」：卷开得再多，高亮也只留最早打开的 4 个（契约 C-13）。 */
+  /** 卷跳转最多同时有 4 个算「当前卷」：卷开得再多，高亮也只留最早打开的 4 个。 */
   const activeJumps = new Set([...open].slice(0, 4));
 
   function toggle(idx: number) {
@@ -375,7 +374,7 @@ function MultiVolumes({
 
   return (
     <>
-      <div data-od-id="C-13">
+      <div>
         <div className="vol-jump" role="group" aria-label="卷跳转">
           {volumes.map((volume) => (
             <button
@@ -400,7 +399,6 @@ function MultiVolumes({
               className="vol-head"
               type="button"
               aria-expanded={open.has(volume.idx)}
-              data-od-id="C-14"
               onClick={() => toggle(volume.idx)}
             >
               <span className="vol-title">{volumeLabel(volume)}</span>

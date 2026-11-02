@@ -120,16 +120,16 @@ export function ReaderBottomBar({
         />
       </div>
       <div className="h5-reader-bar-actions">
-      <button type="button" aria-label="上一章" tabIndex={tabInert} disabled={!prev} data-od-id="C-17" onClick={onPrev}>
+      <button type="button" aria-label="上一章" tabIndex={tabInert} disabled={!prev} onClick={onPrev}>
         <IconPrev />
         <span>上一章</span>
         {!prev ? <span className="inline-note">已是首章</span> : null}
       </button>
-      <button type="button" aria-label="章节目录" tabIndex={tabInert} aria-expanded={drawerOpen && drawerTab === "toc"} data-od-id="C-18" onClick={() => onOpenDrawer("toc")}>
+      <button type="button" aria-label="章节目录" tabIndex={tabInert} aria-expanded={drawerOpen && drawerTab === "toc"} onClick={() => onOpenDrawer("toc")}>
         <IconMenu />
         <span>目录</span>
       </button>
-      <button type="button" aria-label="打开书签" tabIndex={tabInert} aria-expanded={drawerOpen && drawerTab === "bookmarks"} data-od-id="C-19" onClick={() => onOpenDrawer("bookmarks")}>
+      <button type="button" aria-label="打开书签" tabIndex={tabInert} aria-expanded={drawerOpen && drawerTab === "bookmarks"} onClick={() => onOpenDrawer("bookmarks")}>
         <IconBookmark />
         <span>书签</span>
       </button>
@@ -139,22 +139,28 @@ export function ReaderBottomBar({
         tabIndex={tabInert}
         aria-expanded={searchOpen}
         disabled={!searchEnabled}
-        data-od-id="C-20"
         onClick={onToggleSearch}
       >
         <IconSearch />
         <span>搜索</span>
         {!searchEnabled ? <span className="inline-note">正文还没载入，稍后可以搜索</span> : null}
       </button>
-      <button type="button" aria-label="返回书架" tabIndex={tabInert} data-od-id="C-21" onClick={onGoShelf}>
+      <button type="button" aria-label="返回书架" tabIndex={tabInert} onClick={onGoShelf}>
         <IconShelf />
         <span>书架</span>
       </button>
-      <button type="button" aria-label="阅读设置" tabIndex={tabInert} aria-expanded={settingsOpen} data-od-id="C-22" onClick={onToggleSettings}>
+      <button
+        type="button"
+        aria-label="阅读设置"
+        tabIndex={tabInert}
+        aria-expanded={settingsOpen}
+        data-testid="reader-bottombar-settings"
+        onClick={onToggleSettings}
+      >
         <IconSettings />
         <span>设置</span>
       </button>
-      <button type="button" aria-label="下一章" tabIndex={tabInert} disabled={!next} data-od-id="C-23" onClick={onNext}>
+      <button type="button" aria-label="下一章" tabIndex={tabInert} disabled={!next} onClick={onNext}>
         <IconNext />
         <span>下一章</span>
         {!next ? <span className="inline-note">已是末章</span> : null}

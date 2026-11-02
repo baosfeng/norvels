@@ -27,7 +27,6 @@ export function ReaderTapZone({
       className="reader-main"
       ref={swipeRef}
       data-testid="reader-swipe-area"
-      data-od-id="C-09"
       data-zones={zonesEnabled ? "on" : "off"}
       tabIndex={0}
       role="region"
@@ -40,7 +39,7 @@ export function ReaderTapZone({
           ? "单击屏幕左三成翻到上一章，右三成翻到下一章，中间唤出菜单；也可以左右滑动翻章"
           : "键盘左右方向键翻章；正文末尾有「下一章」按钮"}
       </p>
-      <div className="reader-swipe-layer" data-od-id="C-10">
+      <div className="reader-swipe-layer">
         {children}
       </div>
     </div>

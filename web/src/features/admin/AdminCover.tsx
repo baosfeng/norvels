@@ -51,7 +51,7 @@ export function AdminCover({
     setBusy(true);
     try {
       await api.deleteCover(book.id);
-      // 契约 C-47：即时生效、不加确认；提示写清后果
+      // 即时生效、不加确认；提示写清后果
       onChanged("封面已移除，列表里会回退成书名首字。");
     } catch (error) {
       onError(coverErrorText(error));
@@ -80,7 +80,6 @@ export function AdminCover({
             type="button"
             disabled={busy}
             data-testid="admin-cover-upload"
-            data-od-id="C-46"
             onClick={() => inputRef.current?.click()}
           >
             {busy ? "处理中…" : book.hasCover ? "替换封面" : "上传封面"}
@@ -91,7 +90,6 @@ export function AdminCover({
               type="button"
               disabled={busy}
               data-testid="admin-cover-remove"
-              data-od-id="C-47"
               onClick={() => void remove()}
             >
               移除封面

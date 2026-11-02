@@ -66,7 +66,7 @@ export const routeTable: RouteObject[] = [
           </TierRoute>
         ),
       },
-      // 某位作者的作品页（交互契约 C-22 的落点）：跟着作者页的档位走
+      // 某位作者的作品页：跟着作者页的档位走
       {
         path: "authors/:authorId",
         element: (

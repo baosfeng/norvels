@@ -1,7 +1,7 @@
 import type { ChapterBrief } from "../../api/types";
 
 /**
- * 目录搜索与分块（纯函数，契约 C-11 / C-12）。
+ * 目录搜索与分块（纯函数）。
  *
  * 两处口径一起放这里，是因为它们回答同一个问题：「目录这一屏到底显示哪些章」。
  * 搜索命中先给 TOC_CHUNK 条；H5 卷内先给 TOC_FIRST_BATCH 章，之后每次下滑补 TOC_CHUNK 章。

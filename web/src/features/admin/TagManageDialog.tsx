@@ -33,11 +33,11 @@ export function TagManageDialog({
   const [deleting, setDeleting] = useState<TagSummary | null>(null);
   const [note, setNote] = useState("");
   const [errorText, setErrorText] = useState("");
-  /** 删完 / 取消后要点回去的那一行（契约 C-78：焦点回本行「删除」按钮） */
+  /** 删完 / 取消后要点回去的那一行（焦点回本行「删除」按钮） */
   const deleteRefs = useRef(new Map<number, HTMLButtonElement>());
   const [focusTag, setFocusTag] = useState<number | null>(null);
   const busy = busyWith !== null;
-  /** 弹层根节点：焦点陷阱把焦点送进来、Esc 关闭、关闭后还给触发按钮（C-34 移除列）。 */
+  /** 弹层根节点：焦点陷阱把焦点送进来、Esc 关闭、关闭后还给触发按钮。 */
   const dialogRef = useRef<HTMLDivElement | null>(null);
   useFocusTrap(true, dialogRef, () => {
     if (!busy) onClose();
@@ -252,7 +252,6 @@ export function TagManageDialog({
                             type="button"
                             disabled={busy}
                             data-testid={`tag-rename-${tag.id}`}
-                            data-od-id="C-77"
                             onClick={() => {
                               setRenaming({ id: tag.id, text: tag.name });
                               setErrorText("");
@@ -265,7 +264,6 @@ export function TagManageDialog({
                             type="button"
                             disabled={busy}
                             data-testid={`tag-delete-${tag.id}`}
-                            data-od-id="C-78"
                             ref={(node) => {
                               if (node) deleteRefs.current.set(tag.id, node);
                               else deleteRefs.current.delete(tag.id);
@@ -294,7 +292,6 @@ export function TagManageDialog({
                 className="input"
                 id="tag-new"
                 data-testid="tag-new"
-                data-od-id="C-79"
                 value={name}
                 disabled={busy}
                 placeholder="新建标签，例如 武侠；同名会直接复用已有的"
@@ -308,7 +305,6 @@ export function TagManageDialog({
                 type="button"
                 disabled={busy}
                 data-testid="tag-create"
-                data-od-id="C-79"
                 onClick={() => void create()}
               >
                 {busyWith === "create" ? "正在新建…" : "新建"}

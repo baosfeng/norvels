@@ -4,7 +4,7 @@ import { formatCount, formatDate, formatWords } from "../../lib/format";
 /** 人工能做的三个动作：decide 的两个取值 + 回滚。 */
 export type ReviewAction = ReviewDecision | "rollback";
 
-/** 状态徽标文案：与契约状态机一一对应，不把英文枚举甩给用户。 */
+/** 状态徽标文案：与后端状态机一一对应，不把英文枚举甩给用户。 */
 const STATUS_LABEL: Record<ImportReview["status"], string> = {
   pending: "等待 AI",
   ready: "AI 已给结论",
@@ -227,7 +227,7 @@ function aiSummary(review: ImportReview, aiEnabled: boolean): string {
 }
 
 /**
- * 规则理由的展示时机：needs_manual 时它是人工判断的直接依据（契约要求展示）；
+ * 规则理由的展示时机：needs_manual 时它是人工判断的直接依据（要展示）；
  * 其余状态只在 AI 没有给出理由时兜底，避免同一段文案出现两次。
  */
 function ruleReasonsOf(review: ImportReview): string[] {

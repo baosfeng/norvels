@@ -354,7 +354,7 @@ describe("导入页：取消进行中的任务", () => {
     importJob.mockResolvedValueOnce({ ...runningJob, status: "canceled", imported: 3 });
     renderPage();
 
-    // 取消要二次确认：先点「取消任务」，再点弹层里的「确认取消」（契约 C-22）
+    // 取消要二次确认：先点「取消任务」，再点弹层里的「确认取消」
     fireEvent.click(screen.getByTestId("import-cancel"));
     fireEvent.click(screen.getByTestId("import-cancel-confirm-btn"));
 
@@ -431,7 +431,7 @@ describe("导入页：章节识别规则", () => {
     ]);
   });
 
-  it("C-13 新增一条规则：末尾立刻多一行，焦点进名称框（满 20 条另禁用）", () => {
+  it("一条规则：末尾立刻多一行，焦点进名称框（满 20 条另禁用）", () => {
     renderPage();
     expect(screen.getAllByTestId("rule-row")).toHaveLength(1);
     fireEvent.click(screen.getByText("新增一条规则"));
@@ -439,7 +439,7 @@ describe("导入页：章节识别规则", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("规则 2 · 名称"));
   });
 
-  it("C-12 删除这条规则：行数减一、焦点回「新增一条规则」，最后一条也能删", () => {
+  it(" 删除这条规则：行数减一、焦点回「新增一条规则」，最后一条也能删", () => {
     renderPage();
     fireEvent.click(screen.getByLabelText("删除第 1 条规则"));
     expect(screen.queryAllByTestId("rule-row")).toHaveLength(0);
@@ -450,7 +450,7 @@ describe("导入页：章节识别规则", () => {
   it("非法正则在本地就拦下：括号没闭合与写法不对分开说，都不发请求", () => {
     renderPage();
 
-    // 括号没闭合：契约 C-11 要求单独一句「没闭合」，不要混成「写得不对」
+    // 括号没闭合：要求单独一句「没闭合」，不要混成「写得不对」
     fireEvent.change(screen.getByLabelText("正则"), { target: { value: "([ " } });
     fireEvent.click(screen.getByTestId("rules-save"));
     expect(screen.getByTestId("rules-error-text").textContent).toContain("正则没闭合");
@@ -545,7 +545,7 @@ describe("导入页：只预检（dry-run）", () => {
     expect(screen.getByTestId("dry-run-failed").textContent).toBe("0");
     expect(screen.getByTestId("dry-run-total").textContent).toBe("12");
     expect(screen.getByTestId("dry-run-sample").textContent).toContain("示例书简");
-    // 告警默认收起（契约 C-20）：点折叠条才展开明细
+    // 告警默认收起：点折叠条才展开明细
     fireEvent.click(screen.getByTestId("dry-run-warnings").querySelector("button")!);
     expect(screen.getByTestId("dry-run-errors").textContent).toContain("unsupported_format");
     // 预检不建任务

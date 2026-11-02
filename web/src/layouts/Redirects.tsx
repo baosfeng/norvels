@@ -26,7 +26,7 @@ export function NotFoundPage() {
       title="这个页面不存在"
       description="链接可能过期了，回到书架重新找一本。"
       actions={
-        <button className="btn btn-primary" type="button" data-od-id="C-18" onClick={backToShelf}>
+        <button className="btn btn-primary" type="button" onClick={backToShelf}>
           回书架
         </button>
       }

@@ -4,7 +4,7 @@ import { bookmarkConfirmBody } from "../../lib/bookmark";
 import { useFocusTrap } from "../../lib/focusTrap";
 
 /**
- * 删除书签二次确认框（C-58 / C-59 / C-60）：默认焦点在「取消」，Esc 与点遮罩等价于取消。
+ * 删除书签二次确认框：默认焦点在「取消」，Esc 与点遮罩等价于取消。
  * 删除按钮在请求期间禁用并显示「正在删除…」，不给撤销条（删除不可恢复，已二次确认）。
  */
 export function BookmarkConfirmDialog({
@@ -31,16 +31,15 @@ export function BookmarkConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="bookmark-confirm-title"
-        data-od-id="C-58"
         onClick={(event) => event.stopPropagation()}
       >
         <strong id="bookmark-confirm-title">删除这条书签？</strong>
         <p>{bookmarkConfirmBody(bookmark)}</p>
         <div className="confirm-row">
-          <button className="btn" type="button" data-od-id="C-59" onClick={onCancel}>
+          <button className="btn" type="button" onClick={onCancel}>
             取消
           </button>
-          <button className="btn btn-danger" type="button" disabled={deleting} data-od-id="C-60" onClick={onConfirm}>
+          <button className="btn btn-danger" type="button" disabled={deleting} onClick={onConfirm}>
             {deleting ? "正在删除…" : "删除书签"}
           </button>
         </div>

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RESTORE_HINT_MS, ReaderRestoreHint } from "./ReaderRestoreHint";
 
 /**
- * C-16 进度恢复提示：一个只包住自己文字的胶囊，落下就说明「已回到上次读到的地方」。
+ *  进度恢复提示：一个只包住自己文字的胶囊，落下就说明「已回到上次读到的地方」。
  * 3 秒自动消失——恢复本身已经发生，不该先要求读者关掉浮条才能继续读。
  */
 describe("ReaderRestoreHint", () => {

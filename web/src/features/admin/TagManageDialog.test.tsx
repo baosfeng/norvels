@@ -54,12 +54,10 @@ describe("标签管理弹窗", () => {
     expect(screen.getByTestId("tag-manage-empty")).toBeTruthy();
   });
 
-  it("C-79 新建标签是「名称输入 + 新建按钮」一对：空名给常驻文案", () => {
+  it("新建标签是「名称输入 + 新建按钮」一对：空名给常驻文案", () => {
     renderDialog();
-    const input = screen.getByTestId("tag-new");
+    expect(screen.getByTestId("tag-new")).toBeTruthy();
     const button = screen.getByTestId("tag-create");
-    expect(input.getAttribute("data-od-id")).toBe("C-79");
-    expect(button.getAttribute("data-od-id")).toBe("C-79");
     fireEvent.click(button);
     expect(screen.getByTestId("tag-manage-error").textContent).toContain("先填一个标签名。");
     expect(createTag).not.toHaveBeenCalled();
@@ -138,13 +136,13 @@ describe("标签管理弹窗", () => {
     expect(props.onChanged).not.toHaveBeenCalled();
   });
 
-  it("C-34：弹层按 Esc 关闭（焦点陷阱把 Esc 交给 onClose）", () => {
+  it("弹层按 Esc 关闭（焦点陷阱把 Esc 交给 onClose）", () => {
     const props = renderDialog();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("C-34：打开时焦点进入弹层，卸载后还给触发按钮", () => {
+  it("打开时焦点进入弹层，卸载后还给触发按钮", () => {
     const trigger = document.createElement("button");
     document.body.appendChild(trigger);
     trigger.focus();

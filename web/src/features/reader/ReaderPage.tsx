@@ -31,6 +31,7 @@ import { ReaderErrorBoundary, ReaderErrorPanel } from "./ReaderErrorBoundary";
 import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
 import { useReaderSwipe } from "./useReaderSwipe";
+import { SURFACE_SELECTOR } from "./readerStreamLayout";
 import { useChapterStream } from "./useChapterStream";
 import { tradToSimp } from "../../lib/trad2simp";
 import { pickStoredParaIndex, useReaderProgress } from "./readerProgress";
@@ -292,7 +293,7 @@ function ReaderScreen() {
 
   function dismissHint() {
     setHintDismissedFor(chapterId);
-    const surface = document.querySelector<HTMLElement>('[data-od-id="C-09"]');
+    const surface = document.querySelector<HTMLElement>(SURFACE_SELECTOR);
     surface?.focus();
   }
 
@@ -300,7 +301,6 @@ function ReaderScreen() {
     <div
       className={`reader-shell${isH5 ? " is-h5" : ""}${controls.visible ? " is-controls" : ""}`}
       data-testid="view:reader"
-      data-od-id="reader"
       style={readerStyleVars(settings) as CSSProperties}
     >
       <ReaderTopChrome

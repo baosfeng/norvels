@@ -41,7 +41,6 @@ export function HistoryCard({
     <article
       className={"history-card" + (confirming ? " is-confirming" : "")}
       data-testid={"history-row-" + row.bookId}
-      data-od-id="C-66"
     >
       <Link className="history-link" to={"/read/" + row.bookId + "/" + row.chapterId}>
         <Cover title={row.bookTitle} bookId={row.bookId} className="cover-xs" showLabel={false} />

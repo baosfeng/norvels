@@ -154,6 +154,13 @@ function path(): string {
   return screen.getByTestId("path-probe").textContent ?? "";
 }
 
+/** 底栏收起态是 inert + aria-hidden（读屏不可达），用例按 aria-label 直接取节点点它。 */
+function clickBarButton(label: string) {
+  const button = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+  if (!button) throw new Error(`底栏里找不到「${label}」`);
+  button.click();
+}
+
 function segmentTop(chapterId: number): number {
   return document.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`)!.getBoundingClientRect().top;
 }
@@ -313,7 +320,7 @@ describe("连续阅读：翻章按钮真的加载章节", () => {
   it("点「下一章」：换成下一章并把它对齐到正文区顶", async () => {
     renderReader(["/read/7/12"]);
     act(() => {
-      document.querySelector<HTMLElement>('[data-od-id="C-23"]')!.click();
+      clickBarButton("下一章");
     });
     await waitFor(() => expect(path()).toBe("/read/7/13"));
     // 落章首：章首正好在正文区顶（连续流里 scrollTop = 0 停的是上一章的开头）
@@ -324,7 +331,7 @@ describe("连续阅读：翻章按钮真的加载章节", () => {
   it("点「上一章」：换成上一章并把它对齐到正文区顶", async () => {
     renderReader(["/read/7/12"]);
     act(() => {
-      document.querySelector<HTMLElement>('[data-od-id="C-17"]')!.click();
+      clickBarButton("上一章");
     });
     await waitFor(() => expect(path()).toBe("/read/7/11"));
     await waitFor(() => expect(segmentTop(11)).toBeCloseTo(0, 0));
@@ -333,14 +340,14 @@ describe("连续阅读：翻章按钮真的加载章节", () => {
   it("连续点「下一章」两次：每次都是真的换章，不会被判定带判回去", async () => {
     renderReader(["/read/7/12"]);
     act(() => {
-      document.querySelector<HTMLElement>('[data-od-id="C-23"]')!.click();
+      clickBarButton("下一章");
     });
     await waitFor(() => expect(path()).toBe("/read/7/13"));
     // 判定带此刻还压着旧位置：不许把可见章判回上一章
     act(() => FakeObserver.emit(12));
     expect(path()).toBe("/read/7/13");
     act(() => {
-      document.querySelector<HTMLElement>('[data-od-id="C-23"]')!.click();
+      clickBarButton("下一章");
     });
     await waitFor(() => expect(path()).toBe("/read/7/14"));
     await waitFor(() => expect(segmentTop(14)).toBeCloseTo(0, 0));
@@ -362,7 +369,7 @@ describe("连续阅读：下一章打不开", () => {
     failures.ids.add(14);
     renderReader(["/read/7/13"]);
     act(() => {
-      document.querySelector<HTMLElement>('[data-od-id="C-23"]')!.click();
+      clickBarButton("下一章");
     });
     await waitFor(() => expect(path()).toBe("/read/7/14"));
     const panel = await screen.findByTestId("reader-error");

@@ -63,8 +63,9 @@ describe("健康卡入口", () => {
 
   it("数字与口径按报告显示：章节完整显示「完整本数 / 总数」", () => {
     renderCard({ totalBooks: 838, thinBooks: 3 });
-    const card = document.querySelector('[data-od-id="dashboard:health-card"]') as HTMLElement;
-    expect(card.textContent).toContain("835 / 838");
+    expect(screen.getByRole("heading", { name: "库健康状况" }).closest(".dash-block")?.textContent).toContain(
+      "835 / 838",
+    );
   });
 
   it("点入口打开对应明细抽屉，并聚焦「关闭」", () => {

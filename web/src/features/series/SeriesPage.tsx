@@ -8,7 +8,7 @@ import { formatCount } from "../../lib/format";
 
 const PAGE_SIZE = 24;
 
-/** 系列卡的「最近更新」：契约示例是日期（10 月 24 日），这里固定用日期，不用相对时间。 */
+/** 系列卡的「最近更新」：统一用日期（10 月 24 日），不用相对时间。 */
 function updatedDate(iso: string | null | undefined): string {
   if (!iso) return "还没有章节";
   const time = Date.parse(iso);
@@ -31,7 +31,7 @@ export function SeriesPage() {
   const feed = useSeries({ q: q || undefined, page, size: PAGE_SIZE });
 
   const model = useMemo(() => buildSeriesCards(feed.data?.items ?? []), [feed.data]);
-  // 卡上的「最近更新」按契约示例显示日期（10 月 24 日），不跟随「几分钟前」的相对时间
+  // 卡上的「最近更新」统一显示日期（10 月 24 日），不跟随「几分钟前」的相对时间
   const updatedByName = useMemo(
     () => new Map((feed.data?.items ?? []).map((item) => [(item.name ?? "").trim(), item.lastUpdatedAt])),
     [feed.data],
@@ -56,7 +56,7 @@ export function SeriesPage() {
   }
 
   function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // Esc 清空并回到全部系列，焦点留在输入框（C-56）
+    // Esc 清空并回到全部系列，焦点留在输入框
     if (event.key === "Escape") {
       event.preventDefault();
       setDraft("");
@@ -87,7 +87,7 @@ export function SeriesPage() {
   }
 
   return (
-    <section data-testid="view:series" data-od-id="series">
+    <section data-testid="view:series">
       <div className="page-head">
         <div>
           <p className="eyebrow">系列 · {feed.loading ? "读取中" : `${formatCount(total)} 个`}</p>
@@ -100,7 +100,7 @@ export function SeriesPage() {
         </div>
       </div>
 
-      <form className="searchbar" onSubmit={submit} role="search" data-testid="series-search" data-od-id="C-56">
+      <form className="searchbar" onSubmit={submit} role="search" data-testid="series-search">
         <input
           ref={searchRef}
           className="input"
@@ -130,11 +130,11 @@ export function SeriesPage() {
       {feed.loading ? (
         <LoadingPanel title="正在整理系列" description="正在按系列归并书目，稍等一下。" />
       ) : feed.error ? (
-        <div data-od-id="C-59">
+        <div>
           <ErrorPanel error={feed.error} title="系列没能加载" onRetry={retry} testId="series-error" />
         </div>
       ) : model.empty ? (
-        <div data-od-id="C-58">
+        <div>
           <EmptyPanel
             title={q ? "没有匹配的系列" : "还没有系列"}
             description={
@@ -160,7 +160,7 @@ export function SeriesPage() {
         <>
           <div className="book-grid" data-testid="series-live">
             {model.cards.map((card) => (
-              <article className="book-card" key={card.name} data-testid={`series-card-${card.name}`} data-od-id="C-57">
+              <article className="book-card" key={card.name} data-testid={`series-card-${card.name}`}>
                 <Link className="book-link" to={`/series/${encodeURIComponent(card.name)}`}>
                   <Cover title={card.name} bookId={card.coverBookId} hasCover={card.hasCover} />
                   <div className="book-card-body">
@@ -179,12 +179,12 @@ export function SeriesPage() {
 
           {pages <= 1 ? null : (
             <nav className="pagination" aria-label="分页" data-testid="series-pagination">
-              <button type="button" aria-label="上一页" data-od-id="C-60" disabled={page <= 1} onClick={() => goPage(page - 1)}>
+              <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => goPage(page - 1)}>
                 ←
               </button>
               <span className="is-current num">{page}</span>
               <span className="meta">/ {pages}</span>
-              <button type="button" aria-label="下一页" data-od-id="C-61" disabled={page >= pages} onClick={() => goPage(page + 1)}>
+              <button type="button" aria-label="下一页" disabled={page >= pages} onClick={() => goPage(page + 1)}>
                 →
               </button>
             </nav>

@@ -29,10 +29,10 @@ export function ReaderPager({
           <strong>全书读完</strong>
           <span className="inline-note">已经读到最后一章，回详情页可以打分或找同作者的书。</span>
           <div className="reader-pager-end-actions">
-            <Link className="btn btn-primary" to={bookId ? `/book/${bookId}` : "/shelf"} data-od-id="C-13">
+            <Link className="btn btn-primary" to={bookId ? `/book/${bookId}` : "/shelf"}>
               回详情页
             </Link>
-            <button className="btn" type="button" data-od-id="C-13b" onClick={onShelf}>
+            <button className="btn" type="button" onClick={onShelf}>
               回书架
             </button>
           </div>
@@ -40,11 +40,11 @@ export function ReaderPager({
       ) : null}
       <nav className="reader-pager reader-stream-nav" aria-label="章节切换" data-testid="reader-stream-nav">
         <div className="reader-pager-side">
-          <button className="btn" type="button" disabled={!prev} data-od-id="C-11" onClick={onPrev}>
+          <button className="btn" type="button" disabled={!prev} onClick={onPrev}>
             ← 上一章
           </button>
           {!prev ? <span className="inline-note">已经是第一章了</span> : null}
-          <Link className="btn" to={bookId ? `/book/${bookId}` : "/shelf"} data-od-id="C-13a">
+          <Link className="btn" to={bookId ? `/book/${bookId}` : "/shelf"}>
             返回书籍详情
           </Link>
         </div>

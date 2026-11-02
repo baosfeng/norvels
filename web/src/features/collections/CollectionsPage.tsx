@@ -19,7 +19,7 @@ export function CollectionsPage() {
   const items = list.data?.items ?? [];
 
   return (
-    <section className="view-collections" data-testid="view:collections" data-od-id="collections">
+    <section className="view-collections" data-testid="view:collections">
       <div className="page-head">
         <div>
           <p className="eyebrow">书单 · {list.loading ? "读取中" : `${items.length} 个`}</p>

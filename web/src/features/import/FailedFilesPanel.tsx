@@ -73,7 +73,6 @@ export function FailedFilesPanel({
         type="button"
         data-testid="retry-all-failed"
         disabled={pending !== null || taskRunning}
-        data-od-id="C-24"
         onClick={() => void retry()}
       >
         {pending === "__all__" ? "正在重试…" : "重试全部失败"}

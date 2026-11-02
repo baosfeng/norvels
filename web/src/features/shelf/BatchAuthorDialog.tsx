@@ -42,7 +42,7 @@ export function BatchAuthorDialog({
     const failedNow: number[] = [];
     for (const book of targets) {
       try {
-        // 契约：authors 是全量替换；空数组 = 清空作者
+        // 接口语义：authors 是全量替换；空数组 = 清空作者
         await api.updateBook(book.id, { authors });
         setSucceeded((prev) => new Set(prev).add(book.id));
       } catch {
@@ -59,7 +59,6 @@ export function BatchAuthorDialog({
     <div
       className="confirm-backdrop"
       data-testid="batch-author-dialog"
-      data-od-id="C-34"
       onClick={() => {
         if (!running) onClose();
       }}

@@ -1,13 +1,13 @@
 /**
  * 重复信息自检：同一视口内同一信息不得出现两次。
- * 原型里是 window.__auditDuplicates(view)，这里抽成纯函数，既能单测也能在浏览器控制台跑。
+ * 抽成纯函数：既能单测也能在浏览器控制台跑（window.__auditDuplicates(view)）。
  */
 export const AUDIT_SELECTOR =
   ".num,.meta,.pill,.chip,.facts dd,.byline,.hit-meta,.vol-title";
 
 /**
  * 记录级容器：不同卡片之间出现的相同数字（两本书都 71 章）属于「卡片间比较」，
- * 原型验收里明确保留；同一容器内部重复才算问题。页面级（根容器）重复照旧算问题。
+ * 属正常现象；同一容器内部重复才算问题。页面级（根容器）重复照旧算问题。
  */
 export const RECORD_SELECTOR = ".book-card,.search-book,.h5-row,.dash-row,.chart-card";
 
@@ -43,7 +43,7 @@ function recordIndexOf(root: ParentNode, record: Element): number {
   const all = Array.from(root.querySelectorAll(record.tagName.toLowerCase()));
   return all.indexOf(record);
 }
-/** 可见文案不得出现的实现词（原型 0.7 第 7 条）：命中即视为术语泄漏。 */
+/** 可见文案不得出现的实现词：命中即视为术语泄漏。 */
 export const FORBIDDEN_TERMS = [
   "SQLite",
   "FTS5",

@@ -18,7 +18,7 @@ import { useTimedNote } from "./useTimedNote";
 
 /** 运行中任务的轮询间隔：进度与计数靠这一次拉取更新。 */
 const POLL_MS = 2000;
-/** 同时处理文件数的合法区间（契约 C-05）。 */
+/** 同时处理文件数的合法区间。 */
 const WORKERS_MIN = 1;
 const WORKERS_MAX = 8;
 
@@ -66,7 +66,7 @@ export function ImportPage() {
 
   usePolling(runningId, setLive, setCanceling, setCanceledNote, reload);
 
-  // 预检的已跑秒数：取消时照实显示，不假装瞬间完成（契约 C-21）
+  // 预检的已跑秒数：取消时照实显示，不假装瞬间完成
   useEffect(() => {
     if (!dryBusy) return;
     queueMicrotask(() => setDryElapsed(0));
@@ -185,7 +185,6 @@ export function ImportPage() {
                 id="dir"
                 value={dir}
                 placeholder="例如 文稿/小说，或 文稿/小说/示例书简.epub"
-                data-od-id="C-01"
                 onChange={(e) => setDir(e.target.value)}
               />
               {dir.trim() === "" ? <p className="inline-note">先填一个目录或 txt 文件路径。</p> : null}
@@ -199,7 +198,6 @@ export function ImportPage() {
                 type="checkbox"
                 checked={recursive && !isSingleFile}
                 disabled={isSingleFile}
-                data-od-id="C-02"
                 onChange={(e) => setRecursive(e.target.checked)}
               />
               <label htmlFor="rec">递归扫描子目录{isSingleFile ? "（单个文件用不上）" : ""}</label>
@@ -209,7 +207,6 @@ export function ImportPage() {
                 id="force"
                 type="checkbox"
                 checked={force}
-                data-od-id="C-03"
                 onChange={(e) => {
                   setForce(e.target.checked);
                   if (e.target.checked) setUpdate(false);
@@ -223,7 +220,6 @@ export function ImportPage() {
                 id="update"
                 type="checkbox"
                 checked={update}
-                data-od-id="C-04"
                 onChange={(e) => {
                   setUpdate(e.target.checked);
                   if (e.target.checked) setForce(false);
@@ -241,7 +237,6 @@ export function ImportPage() {
                 min={WORKERS_MIN}
                 max={WORKERS_MAX}
                 value={workers}
-                data-od-id="C-05"
                 onChange={(e) => setWorkers(e.target.value)}
               />
               {workersInvalid ? (
@@ -251,7 +246,7 @@ export function ImportPage() {
               ) : null}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn btn-primary" type="submit" disabled={busy} data-od-id="C-06">
+              <button className="btn btn-primary" type="submit" disabled={busy}>
                 {busy ? "正在开始…" : "开始导入"}
               </button>
               <button
@@ -260,7 +255,6 @@ export function ImportPage() {
                 ref={dryButton}
                 data-testid="import-dry-run"
                 disabled={busy || dryBusy}
-                data-od-id="C-07"
                 onClick={() => void runDryRun()}
               >
                 {dryBusy ? "正在预检…" : "只预检"}
@@ -295,7 +289,7 @@ export function ImportPage() {
               />
               <div className="dry-run-actions">
                 <span className="meta">已跑 {dryElapsed} 秒</span>
-                <button className="btn btn-ghost" type="button" data-testid="dry-run-cancel" data-od-id="C-21" onClick={cancelDryRun}>
+                <button className="btn btn-ghost" type="button" data-testid="dry-run-cancel" onClick={cancelDryRun}>
                   取消这次预检
                 </button>
               </div>

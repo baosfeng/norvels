@@ -10,7 +10,7 @@ export const ROW_HEIGHT = 44;
 /** 鼠标行高（PC 多列）：目录在桌面上要密，一屏才装得下几十章。 */
 export const DENSE_ROW_HEIGHT = 32;
 const DRAWER_ROW_HEIGHT = 44;
-/** 多列时列间留白（PC 目录用 20px，与原型一致）。 */
+/** 多列时列间留白（PC 目录用 20px）。 */
 const COLUMN_GAP = 20;
 /**
  * 无界高度（不传 maxHeight、也不 fill）时，行数超过这个值就退回「限高 + 内部滚动」。
@@ -149,7 +149,6 @@ export function ChapterList({
                   className={`cv-row${layout === "drawer" ? " is-drawer" : ""}${current ? " is-current" : ""}${read ? " is-read" : ""}`}
                   style={{ height: rowHeight }}
                   aria-current={current ? "true" : undefined}
-                  data-od-id="C-15"
                   data-testid={`chapter-row-${chapter.id}`}
                   onClick={() => onNavigate?.(chapter)}
                 >

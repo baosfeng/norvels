@@ -33,7 +33,7 @@ export function AdminBooksPage() {
   const [managingTags, setManagingTags] = useState(false);
   const notice = useTimedNote();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  /** 表头全选：取消选择 / 清空已选后焦点回到这里（契约 C-42 移除列）。 */
+  /** 表头全选：取消选择 / 清空已选后焦点回到这里。 */
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   const { data, loading, error, reload } = useBooks({
@@ -67,7 +67,7 @@ export function AdminBooksPage() {
   const selected = items.filter((book) => picked.has(book.id));
   const allPicked = items.length > 0 && selected.length === items.length;
 
-  // 删书后回到列表：焦点落在标题、滚动回顶部（契约 C-52 的移除后五问）
+  // 删书后回到列表：焦点落在标题、滚动回顶部（「移除后五问」）
   useEffect(() => {
     const state = location.state as { deletedBook?: number } | null;
     if (!state?.deletedBook) return;
@@ -111,7 +111,7 @@ export function AdminBooksPage() {
     setDraftQuery(filters.query);
   }
 
-  /** 重置后焦点回搜索框（契约 C-33）。 */
+  /** 重置后焦点回搜索框。 */
   function keepFocusOnSearch() {
     window.setTimeout(() => document.querySelector<HTMLInputElement>('[data-testid="admin-search"]')?.focus(), 0);
   }
@@ -129,20 +129,20 @@ export function AdminBooksPage() {
     setPicked(allPicked ? new Set() : new Set(items.slice(0, MAX_BATCH).map((book) => book.id)));
   }
 
-  /** 取消选择后批量条会卸载，焦点必须先在表头全选上再接住（C-42）。 */
+  /** 取消选择后批量条会卸载，焦点必须先在表头全选上再接住。 */
   function clearPicked() {
     setPicked(new Set());
     window.setTimeout(() => selectAllRef.current?.focus(), 0);
   }
 
-  /** 关闭标签弹层后把焦点还给入口按钮（C-34）；弹层里的焦点陷阱在卸载时也会还一次。 */
+  /** 关闭标签弹层后把焦点还给入口按钮；弹层里的焦点陷阱在卸载时也会还一次。 */
   function closeTagManage() {
     setManagingTags(false);
     window.setTimeout(() => document.querySelector<HTMLElement>('[data-testid="admin-tag-manage"]')?.focus(), 0);
   }
 
   return (
-    <section className="ix-ops" data-testid="view:admin-books" data-od-id="admin-list">
+    <section className="ix-ops" data-testid="view:admin-books">
       <div className="page-head">
         <div>
           <p className="eyebrow">书籍管理</p>
@@ -206,7 +206,6 @@ export function AdminBooksPage() {
                         type="checkbox"
                         aria-label="全选当前页"
                         data-testid="admin-select-page"
-                        data-od-id="C-35"
                         disabled={items.length === 0}
                         checked={allPicked}
                         ref={(node) => {
@@ -253,7 +252,7 @@ export function AdminBooksPage() {
           onReload={tags.reload}
           onChanged={(message) => {
             notice.show(message);
-            // 标签增删后筛选下拉与列表同步刷新（契约 C-34 / C-78）
+            // 标签增删后筛选下拉与列表同步刷新
             tags.reload();
             reload();
           }}
@@ -290,7 +289,7 @@ function anyFilter(values: FilterValues): boolean {
   return Object.values(values).some((value) => value !== "");
 }
 
-/** 空态分两种：筛选没命中给「清除筛选」，书库真空给「去导入」（契约 C-44）。 */
+/** 空态分两种：筛选没命中给「清除筛选」，书库真空给「去导入」。 */
 function ListEmpty({ filtering, onReset }: { filtering: boolean; onReset: () => void }) {
   if (filtering) {
     return (
@@ -311,7 +310,7 @@ function ListEmpty({ filtering, onReset }: { filtering: boolean; onReset: () => 
       title="书库还没有书"
       description="先在导入管理里导入一本，之后就能在这里改信息与章节。"
       actions={
-        <Link className="btn btn-primary" to="/import" data-od-id="C-44">
+        <Link className="btn btn-primary" to="/import">
           去导入
         </Link>
       }
@@ -331,7 +330,6 @@ function AdminBookRow({ book, picked, onToggle }: { book: BookSummary; picked: b
             checked={picked}
             aria-label={`选择《${book.title}》`}
             data-testid={`admin-book-pick-${book.id}`}
-            data-od-id="C-36"
             onChange={onToggle}
           />
         </label>
@@ -340,7 +338,7 @@ function AdminBookRow({ book, picked, onToggle }: { book: BookSummary; picked: b
         <Cover title={book.title} bookId={book.id} updatedAt={book.updatedAt} hasCover={book.hasCover} className="cover-xs" showLabel={false} />
       </td>
       <td>
-        <Link className="book-link" to={`/admin/books/${book.id}`} data-testid={`admin-book-open-${book.id}`} data-od-id="C-37">
+        <Link className="book-link" to={`/admin/books/${book.id}`} data-testid={`admin-book-open-${book.id}`}>
           {book.title}
         </Link>
         <span className="meta admin-author">{book.authorName || "佚名"}</span>

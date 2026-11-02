@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ApiError, api } from "../../api/client";
 
-/** 书名没抄对时的常驻提示（契约 C-51 边界列原话）。 */
+/** 书名没抄对时的常驻提示。 */
 export const DELETE_MISMATCH = "书名还没对上，确认按钮先不可用。";
 
 /**
@@ -54,7 +54,6 @@ export function DeleteBookConfirm({
         aria-modal="true"
         aria-labelledby="delete-title"
         data-testid="delete-dialog"
-        data-od-id="C-52"
         onKeyDown={(event) => {
           if (event.key === "Escape" && !busy) onClose();
         }}
@@ -71,7 +70,6 @@ export function DeleteBookConfirm({
             autoFocus
             value={typed}
             placeholder={title}
-            data-od-id="C-51"
             onChange={(event) => setTyped(event.target.value)}
           />
         </div>

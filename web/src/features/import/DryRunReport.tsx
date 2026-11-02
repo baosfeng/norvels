@@ -110,7 +110,7 @@ export function DryRunReportPanel({ report, dir }: { report: DryRunReport; dir: 
   );
 }
 
-/** 告警明细的条数上限：超过就在列表内滚动，别把整页撑长（契约 C-20 边界）。 */
+/** 告警明细的条数上限：超过就在列表内滚动，别把整页撑长（边界）。 */
 const WARN_SCROLL_AT = 20;
 
 /**
@@ -126,7 +126,6 @@ function WarningFold({ items }: { items: { source: string; reason: string }[] })
         className="failure-toggle"
         type="button"
         aria-expanded={open}
-        data-od-id="C-20"
         onClick={() => setOpen((value) => !value)}
       >
         <span>{items.length} 条告警</span>

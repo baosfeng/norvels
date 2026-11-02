@@ -9,7 +9,7 @@ import { useIsH5 } from "../../lib/tier";
 import { showToast } from "../../lib/toastStore";
 import { DiscoverCard, type DislikeScope } from "./DiscoverCard";
 
-/** 一批取多少本：契约 1–50；20 是「一屏扫得完、换一批又有新鲜感」的折中。 */
+/** 一批取多少本：接口允许 1–50；20 是「一屏扫得完、换一批又有新鲜感」的折中。 */
 export const RECOMMEND_LIMIT = 20;
 
 /**
@@ -128,7 +128,7 @@ export function DiscoverPage() {
   }
 
   return (
-    <section className="view-discover" data-testid="view:discover" data-od-id="discover">
+    <section className="view-discover" data-testid="view:discover">
       <div className="page-head discover-head">
         <div>
           <p className="eyebrow">

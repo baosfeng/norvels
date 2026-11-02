@@ -49,7 +49,6 @@ export function ShelfCard({
       className="book-status"
       type="button"
       data-testid={`book-status-${book.id}`}
-      data-od-id="C-31"
       data-status={status}
       aria-label={`阅读状态：${READ_STATUS_LABELS[status]}，点击切换`}
       onClick={(event) => {
@@ -115,7 +114,6 @@ export function ShelfCard({
       className={`book-card${selecting ? " is-selecting" : ""}${selected ? " is-selected" : ""}`}
       data-status={status}
       data-book-id={book.id}
-      data-od-id="C-30"
     >
       {selecting ? (
         <button

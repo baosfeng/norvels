@@ -93,12 +93,11 @@ export function AdminFilterBar({
           value={draftQuery}
           placeholder="搜书名或作者"
           data-testid="admin-search"
-          data-od-id="C-26"
           onChange={(event) => onDraftQuery(event.target.value)}
         />
       </label>
 
-      <FilterField id="admin-cat-l1-label" label="大分类" testId="admin-filter-category" odId="C-27">
+      <FilterField id="admin-cat-l1-label" label="大分类" testId="admin-filter-category">
         <OptionChip active={values.categoryL1 === ""} onClick={() => onChange({ categoryL1: "", categoryL2: "" })}>
           全部
         </OptionChip>
@@ -114,7 +113,7 @@ export function AdminFilterBar({
       </FilterField>
 
       {values.categoryL1 === "" ? null : (
-        <FilterField id="admin-cat-l2-label" label="小分类" testId="admin-filter-subcategory" odId="C-28">
+        <FilterField id="admin-cat-l2-label" label="小分类" testId="admin-filter-subcategory">
           {subCategories.length === 0 ? (
             <span className="inline-note">该分类暂无细分</span>
           ) : (
@@ -140,7 +139,6 @@ export function AdminFilterBar({
         id="admin-author-label"
         label="作者"
         testId="admin-filter-author"
-        odId="C-29"
         expanded={showAllAuthors}
         trailing={
           <MoreChip
@@ -184,7 +182,6 @@ export function AdminFilterBar({
         id="admin-tag-label"
         label="标签"
         testId="admin-filter-tag"
-        odId="C-30"
         expanded={showAllTags}
         trailing={
           <MoreChip
@@ -211,7 +208,7 @@ export function AdminFilterBar({
         ))}
       </FilterField>
 
-      <FilterField id="admin-serial-label" label="连载状态" testId="admin-filter-serial" odId="C-31">
+      <FilterField id="admin-serial-label" label="连载状态" testId="admin-filter-serial">
         {SERIAL_OPTIONS.map((option) => (
           <OptionChip
             key={option.value || "all"}
@@ -225,14 +222,14 @@ export function AdminFilterBar({
       </FilterField>
 
       <div className="filter-actions">
-        <button className="btn btn-sm" type="button" data-testid="admin-tag-manage" data-od-id="C-34" onClick={onTagManage}>
+        <button className="btn btn-sm" type="button" data-testid="admin-tag-manage" onClick={onTagManage}>
           标签管理…
         </button>
-        <button className="btn btn-sm" type="submit" data-testid="admin-search-submit" data-od-id="C-32">
+        <button className="btn btn-sm" type="submit" data-testid="admin-search-submit">
           搜索
         </button>
         {filtering ? (
-          <button className="btn btn-sm btn-ghost" type="button" data-testid="admin-filter-reset" data-od-id="C-33" onClick={onReset}>
+          <button className="btn btn-sm btn-ghost" type="button" data-testid="admin-filter-reset" onClick={onReset}>
             重置筛选
           </button>
         ) : null}
@@ -246,7 +243,6 @@ function FilterField({
   id,
   label,
   testId,
-  odId,
   expanded = false,
   trailing,
   under,
@@ -255,7 +251,6 @@ function FilterField({
   id: string;
   label: string;
   testId: string;
-  odId: string;
   /** 展开态：chips 改为折行 + 限高滚动（「更多」全部展开时用） */
   expanded?: boolean;
   /** 行尾固定元素（「更多 / 收起」），不跟着 chips 横向滚动 */
@@ -274,7 +269,6 @@ function FilterField({
         role="group"
         aria-labelledby={id}
         data-testid={testId}
-        data-od-id={odId}
       >
         {children}
       </div>

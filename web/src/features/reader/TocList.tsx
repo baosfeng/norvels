@@ -19,7 +19,6 @@ export function TocChapterRow({
       to={`/read/${bookId}/${chapter.id}`}
       className={`cv-row is-drawer${current ? " is-current" : ""}`}
       aria-current={current ? "true" : undefined}
-      data-od-id="C-28"
       data-toc-row
       data-current-chapter={current ? "true" : undefined}
       onClick={onNavigate}
@@ -32,7 +31,7 @@ export function TocChapterRow({
   );
 }
 
-/** 卷头（C-27）：有章节才可折叠；空卷置灰并在旁边常驻原因。 */
+/** 卷头：有章节才可折叠；空卷置灰并在旁边常驻原因。 */
 export function TocVolumeHeader({
   title,
   count,
@@ -52,7 +51,6 @@ export function TocVolumeHeader({
         type="button"
         aria-expanded={disabled ? undefined : !collapsed}
         disabled={disabled}
-        data-od-id="C-27"
         onClick={onToggle}
       >
         <svg className="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">

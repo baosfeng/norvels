@@ -22,7 +22,6 @@ export function ToastHost() {
       role="status"
       aria-live="polite"
       data-testid="toast"
-      data-od-id="C-17"
     >
       <span>{toast.text}</span>
     </div>

@@ -7,7 +7,7 @@ import { formatCount } from "../../lib/format";
 import { useResource } from "../../lib/useResource";
 
 /**
- * 某位作者的作品列表（契约 C-22 的落点）。
+ * 某位作者的作品列表。
  *
  * 作者页的表格只列「作者 / 作品数 / 总字数」，点进去看这个作者到底写了哪几本；
  * 数据来自作者详情（含作品列表），不额外拼查询条件，避免两处口径漂移。

@@ -50,7 +50,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("新增控件：正文空态 · 先读下一章（C-15）", () => {
+describe("新增控件：正文空态 · 先读下一章", () => {
   it("可点并切到下一章；末章置灰且常驻原因", () => {
     const onNext = vi.fn();
     const next = chapter(12, 2, "第三章");
@@ -78,7 +78,7 @@ describe("新增控件：正文空态 · 先读下一章（C-15）", () => {
   });
 });
 
-describe("新增控件：进度恢复提示条（C-16）", () => {
+describe("新增控件：进度恢复提示条", () => {
   it("显示「已回到上次读到的地方」，点「知道了」收起", () => {
     const onDismiss = vi.fn();
     const { rerender } = render(<ReaderRestoreHint visible onDismiss={onDismiss} />);
@@ -109,7 +109,7 @@ describe("新增控件：进度恢复提示条（C-16）", () => {
   });
 });
 
-describe("新增控件：目录卷折叠（C-27）", () => {
+describe("新增控件：目录卷折叠", () => {
   it("点卷头收起该卷章节，aria-expanded 同步；空卷置灰并给原因", () => {
     const volumes = [volume(1, "第一卷 · 江雪", 1000, 3), volume(2, "第二卷 · 山雨", 1100, 2)];
     toc(volumes);
@@ -123,7 +123,7 @@ describe("新增控件：目录卷折叠（C-27）", () => {
   });
 });
 
-describe("新增控件：目录再显示 60 章（C-29）", () => {
+describe("新增控件：目录再显示 60 章", () => {
   it("首块 60 章；点一次补 60 章，全部加载后按钮禁用并常驻原因", async () => {
     vi.useFakeTimers();
     toc([volume(1, "正文", 1000, 120)]);
@@ -144,7 +144,7 @@ describe("新增控件：目录再显示 60 章（C-29）", () => {
   });
 });
 
-describe("新增控件：目录空态清空搜索（C-31）", () => {
+describe("新增控件：目录空态清空搜索", () => {
   it("无匹配时出现；点后清空输入、恢复列表并把焦点交还搜索框", () => {
     toc([volume(1, "正文", 1000, 3)]);
     const input = screen.getByTestId("toc-search-input") as HTMLInputElement;
@@ -165,7 +165,7 @@ describe("新增控件：目录空态清空搜索（C-31）", () => {
   });
 });
 
-describe("新增控件：目录失败态两出口（C-61 / C-62）", () => {
+describe("新增控件：目录失败态两出口", () => {
   it("重试立即转 loading 并禁用；成功后错误面板消失、列表回来", () => {
     vi.useFakeTimers();
     const onRetry = vi.fn();
@@ -210,7 +210,7 @@ describe("新增控件：目录失败态两出口（C-61 / C-62）", () => {
   });
 });
 
-describe("新增控件：删除书签二次确认（C-58 / C-59 / C-60）", () => {
+describe("新增控件：删除书签二次确认", () => {
   const bookmark: Bookmark = {
     id: 99,
     chapterId: 11,

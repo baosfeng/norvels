@@ -23,7 +23,7 @@ export function ImportSuccessPanel({ job }: { job: ImportJob }) {
       <p className="meta">
         这次入库 {formatCount(imported)} 本书{job.failed > 0 ? `，另有 ${formatCount(job.failed)} 个文件没成功` : ""}。
       </p>
-      <Link className="btn" to="/admin" data-od-id="C-25">
+      <Link className="btn" to="/admin">
         去书籍管理
       </Link>
     </div>

@@ -1,8 +1,8 @@
-/* 书目域交互实现样式（契约落地，2026-10-27 夜）。只由 library 分支写。
+/* 书目域交互实现样式。
    只补「产品缺该行为」的部分：hover / focus 环 / 按下态沿用 prototype.css 的全局口径，
    这里只加各控件自己的形貌（下划线、chip 态、浮层、骨架、图例按钮）。 */
 
-/* ── C-01 面包屑「书架」：hover 直接给下划线与强调色（默认是按钮，没有链接样式） ── */
+/* ── 面包屑「书架」：hover 直接给下划线与强调色（默认是按钮，没有链接样式） ── */
 .crumbs .crumb-link {
   transition: color var(--motion-fast) var(--ease-standard);
 }
@@ -11,7 +11,7 @@
   text-decoration: underline;
 }
 
-/* ── C-02 / C-03 左栏主按钮与次按钮 ── */
+/* ── 左栏主按钮与次按钮 ── */
 .book-aside .actions .btn {
   transition:
     background-color var(--motion-fast) var(--ease-standard),
@@ -22,7 +22,7 @@
   border-color: var(--border);
 }
 
-/* ── C-02 / C-03 左栏操作组（PC）：一颗主操作 + 三颗等宽次操作 ──
+/* ── 左栏操作组（PC）：一颗主操作 + 三颗等宽次操作 ──
    prototype.css 的 .actions 是「自动换行的一排按钮」：实测 5 颗按钮宽度 221/118/90/90/104、
    排布 1+2+2，每行宽度都不一样，整体看着像散件。这里换成 3 列等宽网格——
    主操作独占整行（视觉权重最高），次操作同组等宽、同一 top、间距一致。
@@ -95,7 +95,7 @@
   margin: 0 0 12px;
 }
 
-/* ── C-05 / C-06 / C-22 / C-23 / C-24 / C-32：文字型入口统一「强调色 + 下划线」 ── */
+/* ── 文字型入口统一「强调色 + 下划线」 ── */
 .fact-link,
 .byline a,
 .author-link,
@@ -124,11 +124,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* H5 也要够 44 宽：左右各补 4px 内边距（契约 C-32 边界） */
+  /* H5 也要够 44 宽：左右各补 4px 内边距 */
   padding: 2px 4px;
   margin-left: -4px;
 }
-/* C-06 系列名：点击区 PC 32px / H5 44px（用行内高度撑，不打断 facts 行） */
+/* 系列名：点击区 PC 32px / H5 44px（用行内高度撑，不打断 facts 行） */
 .fact-link {
   display: inline-flex;
   align-items: center;
@@ -149,7 +149,7 @@
   .fact-link {
     min-height: 44px;
   }
-  /* C-32：署名链接的点击区宽度也要到 44（原为 36），左右各补 4px */
+  /* 署名链接的点击区宽度也要到 44（原为 36），左右各补 4px */
   .byline a {
     padding-left: 4px;
     padding-right: 4px;
@@ -157,7 +157,7 @@
   }
 }
 
-/* ── C-07 阅读状态下拉：保存中置灰（原因写在 .inline-note 里） ── */
+/* ── 阅读状态下拉：保存中置灰（原因写在 .inline-note 里） ── */
 .book-aside .select:hover:not(:disabled) {
   border-color: var(--muted);
 }
@@ -191,7 +191,7 @@
   flex-wrap: wrap;
 }
 
-/* ── C-08 评分：hover 只做预览，占位星也点亮但比真值淡一档 ── */
+/* ── 评分：hover 只做预览，占位星也点亮但比真值淡一档 ── */
 .rating-row .chip {
   transition:
     background-color var(--motion-fast) var(--ease-standard),
@@ -201,13 +201,13 @@
   border-color: color-mix(in oklab, var(--accent), transparent 45%);
   color: color-mix(in oklab, var(--accent), transparent 30%);
 }
-/* 保存中整组星禁用：0.4 透明度（契约 C-08） */
+/* 保存中整组星禁用：0.4 透明度 */
 .rating-row .chip:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-/* ── C-09 标签 chip：从静态 span 变成按钮，hover 与按下态都在这里 ── */
+/* ── 标签 chip：从静态 span 变成按钮，hover 与按下态都在这里 ── */
 .chips .chip {
   cursor: pointer;
   transition:
@@ -229,7 +229,7 @@
   }
 }
 
-/* ── C-11 / C-12 目录搜索：下划线式输入框，聚焦后不再响应 hover ── */
+/* ── 目录搜索：下划线式输入框，聚焦后不再响应 hover ── */
 .dir-search {
   display: flex;
   align-items: center;
@@ -280,12 +280,12 @@
   margin-top: var(--space-3);
 }
 
-/* ── C-15 当前章：accent 12% 底色（只覆盖详情页目录，抽屉沿用阅读器主题色） ── */
+/* ── 当前章：accent 12% 底色（只覆盖详情页目录，抽屉沿用阅读器主题色） ── */
 .book-main .cv-row.is-current {
   background: color-mix(in oklab, var(--accent) 12%, var(--surface));
 }
 
-/* ── C-13 卷跳转：当前展开的卷高亮（chip 高 32px，H5 由全局抬到 44px） ── */
+/* ── 卷跳转：当前展开的卷高亮（chip 高 32px，H5 由全局抬到 44px） ── */
 .vol-jump button {
   min-height: 32px;
 }
@@ -294,12 +294,12 @@
   color: var(--accent);
 }
 
-/* ── C-14 卷头：PC 40px / H5 44px ── */
+/* ── 卷头：PC 40px / H5 44px ── */
 .vol-head {
   min-height: 40px;
 }
 
-/* ── C-16 卷内「再显示 60 章」：跨满整行 ── */
+/* ── 卷内「再显示 60 章」：跨满整行 ── */
 .vol-more {
   width: 100%;
   margin-top: 6px;
@@ -314,7 +314,7 @@
   }
 }
 
-/* ── C-17 书单勾选框：整行禁用时文字变淡，hover 描边加深 ── */
+/* ── 书单勾选框：整行禁用时文字变淡，hover 描边加深 ── */
 .check-row {
   transition: color var(--motion-fast) var(--ease-standard);
 }
@@ -333,7 +333,7 @@
   color: var(--accent);
 }
 
-/* ── C-26 环形图图例：从不可点的 span 变成按钮 ── */
+/* ── 环形图图例：从不可点的 span 变成按钮 ── */
 .legend-btn {
   padding: 3px 6px;
   margin: -3px -6px;
@@ -363,7 +363,7 @@
   margin-top: var(--space-1);
 }
 
-/* ── C-27 / C-28 健康卡下一步 ── */
+/* ── 健康卡下一步 ── */
 .health-actions {
   display: flex;
   flex-wrap: wrap;
@@ -371,12 +371,12 @@
   margin-top: var(--space-3);
 }
 
-/* ── C-29 页头刷新 ── */
+/* ── 页头刷新 ── */
 .page-head > .btn {
   align-self: flex-start;
 }
 
-/* ── C-30 热力格：每格可点可聚焦（读数浮层的样式在 ix-dashboard.css 的 .chart-tip） ── */
+/* ── 热力格：每格可点可聚焦（读数浮层的样式在 ix-dashboard.css 的 .chart-tip） ── */
 .heat-cell {
   display: block;
   padding: 0;
@@ -392,7 +392,7 @@
   outline-offset: 1px;
 }
 
-/* ── C-31 图表卡重试：重试中禁用 + 骨架块 ── */
+/* ── 图表卡重试：重试中禁用 + 骨架块 ── */
 .retry-btn[disabled] {
   opacity: 0.6;
   cursor: default;
@@ -550,7 +550,7 @@
   }
 }
 
-/* 简介折叠（C-10）：入口是行内的一句「… 展开 ›」，不是独立一行的大按钮。
+/* 简介折叠：入口是行内的一句「… 展开 ›」，不是独立一行的大按钮。
    包一层专用的 .book-synopsis —— .book-intro 已被书架卡片的 2 行 clamp 占用（prototype.css），
    复用同名类会把展开态也裁成两行。 */
 .book-synopsis{position:relative;margin-bottom:18px}
@@ -625,7 +625,7 @@
   .book-aside .actions{margin-bottom:4px}
 }
 
-/* 已读章节：标题与字数一起降一档，扫目录时一眼能分出读到哪（契约 C-15 扩展） */
+/* 已读章节：标题与字数一起降一档，扫目录时一眼能分出读到哪 */
 .cv-row.is-read .cv-title,
 .cv-row.is-read .cv-word{color:var(--muted);opacity:.72}
 .cv-row.is-read{background:transparent}
@@ -640,7 +640,7 @@
 /* 目录标题里的章数：跟标题同一行，字号降一档、不加粗（PC 沿用同一形态） */
 .dir-count{font-size:var(--text-sm);font-weight:400;letter-spacing:0;color:var(--muted)}
 
-/* 阅读状态 chip 组（H5，C-07）：四个状态摊成一行，一次点中；PC 仍是下拉 */
+/* 阅读状态 chip 组（H5）：四个状态摊成一行，一次点中；PC 仍是下拉 */
 .status-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .status-chips .chip{
   border:1px solid var(--border);background:var(--surface);color:var(--fg-2);

@@ -54,19 +54,18 @@ export function Topbar({
   }
 
   return (
-    <header className="topbar" data-od-id="topbar">
+    <header className="topbar">
       <div className="topbar-inner">
         <button
           className="icon-btn nav-toggle"
           type="button"
-          data-od-id="C-14"
           onClick={(event) => nav.toggle(event.currentTarget)}
           aria-label="打开导航"
           aria-expanded={nav.open}
         >
           <MenuIcon />
         </button>
-        <form className="searchbar" onSubmit={submit} role="search" data-od-id="C-12">
+        <form className="searchbar" onSubmit={submit} role="search">
           <span className="searchbar-icon">
             <SearchIcon />
           </span>
@@ -89,7 +88,6 @@ export function Topbar({
             className="view-toggle"
             role="group"
             aria-label="视图切换"
-            data-od-id="C-13"
             onKeyDown={onToggleKeyDown}
           >
             <button type="button" data-mode="grid" aria-pressed={mode === "grid"} onClick={() => onModeChange("grid")}>

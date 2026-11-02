@@ -49,7 +49,7 @@ export function volumeRange(volume: Volume): VolumeRange {
   return { count: volume.chapters.length, first, last, words };
 }
 
-/** 区间文案：空卷写「空卷」，与原型一致。 */
+/** 区间文案：空卷写「空卷」。 */
 export function volumeRangeText(volume: Volume): string {
   const range = volumeRange(volume);
   if (range.count === 0) return "空卷";

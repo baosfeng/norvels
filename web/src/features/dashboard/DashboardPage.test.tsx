@@ -120,37 +120,36 @@ beforeEach(() => {
   for (const fn of Object.values(reloads)) fn.mockReset();
 });
 
-describe("驾驶舱锚点", () => {
-  it("C-23 / C-24 / C-25 三个入口都挂了锚点并指向正确去处", () => {
+describe("驾驶舱入口", () => {
+  it("三个入口都指向正确去处，且不再渲染已删除的章节统计入口", () => {
     renderPage();
-    expect(screen.getByText("全部书架 →").getAttribute("data-od-id")).toBe("C-23");
     expect(screen.getByText("全部书架 →").getAttribute("href")).toBe("/shelf");
-    expect(screen.getByText("前往导入管理 →").getAttribute("data-od-id")).toBe("C-24");
     expect(screen.getByText("前往导入管理 →").getAttribute("href")).toBe("/import");
-    expect(document.querySelectorAll('[data-od-id="C-25"]')).toHaveLength(0);
+    // 章节统计入口已删除：这一整块不再渲染
+    expect(screen.queryByText("章节统计")).toBeNull();
   });
 
-  it("C-27 / C-28（新增）健康卡给出下一步入口", () => {
+  it("健康卡给出下一步入口", () => {
     renderPage();
-    const admin = document.querySelector('[data-od-id="C-27"]') as HTMLAnchorElement;
-    const importer = document.querySelector('[data-od-id="C-28"]') as HTMLAnchorElement;
+    const admin = screen.getByRole("link", { name: "去书籍管理" }) as HTMLAnchorElement;
+    const importer = screen.getByRole("link", { name: "去导入" }) as HTMLAnchorElement;
     expect(admin.getAttribute("href")).toBe("/admin");
     expect(admin.textContent).toBe("去书籍管理");
     expect(importer.getAttribute("href")).toBe("/import");
     expect(importer.textContent).toBe("去导入");
   });
 
-  it("C-29 刷新概览：按钮变「正在刷新…」并禁用，重取全部数据源，完成后提示", async () => {
+  it("刷新概览：按钮变「正在刷新…」并禁用，重取全部数据源，完成后提示", async () => {
     renderPage();
-    const button = document.querySelector('[data-od-id="C-29"]') as HTMLButtonElement;
+    const button = screen.getByRole("button", { name: "刷新概览" }) as HTMLButtonElement;
     expect(button.textContent).toBe("刷新概览");
     fireEvent.click(button);
-    expect((document.querySelector('[data-od-id="C-29"]') as HTMLButtonElement).textContent).toBe("正在刷新…");
+    expect((screen.getByRole("button", { name: "正在刷新…" }) as HTMLButtonElement).disabled).toBe(true);
     expect(reloads.stats).toHaveBeenCalled();
     expect(reloads.health).toHaveBeenCalled();
     expect(reloads.reading).toHaveBeenCalled();
     await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("概览已刷新"), { timeout: 1500 });
-    expect((document.querySelector('[data-od-id="C-29"]') as HTMLButtonElement).textContent).toBe("刷新概览");
+    expect((screen.getByRole("button", { name: "刷新概览" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("概览读不到时给错误态与重试（不渲染数据区）", () => {
@@ -166,7 +165,7 @@ describe("驾驶舱锚点", () => {
   });
 });
 
-describe("回归：C-23「全部书架」要清掉上次筛选", () => {
+describe("回归：「全部书架」要清掉上次筛选", () => {
   it("链接带上 resetFilters，落到书架时 state 可读", async () => {
     function ShelfProbe() {
       const location = useLocation();
@@ -186,7 +185,7 @@ describe("回归：C-23「全部书架」要清掉上次筛选", () => {
   });
 });
 
-describe("推荐与埋点区块（新增）", () => {
+describe("推荐与埋点区块", () => {
   it("区块头有「去发现页」入口，指标卡行给出四项实测值", () => {
     renderPage();
     expect(screen.getByTestId("dashboard:recommend")).toBeTruthy();
@@ -267,13 +266,13 @@ describe("推荐与埋点区块（新增）", () => {
 
   it("刷新概览会把埋点数据一起重取", async () => {
     renderPage();
-    fireEvent.click(document.querySelector('[data-od-id="C-29"]') as HTMLButtonElement);
+    fireEvent.click(screen.getByRole("button", { name: "刷新概览" }));
     expect(reloads.recommend).toHaveBeenCalled();
     await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("概览已刷新"), { timeout: 1500 });
   });
 });
 
-describe("健康卡下钻（新增）", () => {
+describe("健康卡下钻", () => {
   it("四类问题各有「查看 N 本/个」入口，点开抽屉列出明细并链到单书管理页", () => {
     renderPage();
     expect(screen.getByTestId("health-entry-missing_author").textContent).toContain("查看 3 本");

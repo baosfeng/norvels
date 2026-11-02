@@ -4,7 +4,7 @@ import { useCollections } from "../../api/hooks";
 import { showToast } from "../../lib/toastStore";
 import { fetchCollectionMembers, toggleMember, type CollectionMembers } from "./collectionMembers";
 
-/** 勾选后的底部提示条：2 秒自散（契约 C-17 反馈）。 */
+/** 勾选后的底部提示条：2 秒自散（反馈）。 */
 const TIP_MS = 2000;
 
 /**
@@ -12,7 +12,7 @@ const TIP_MS = 2000;
  * 契约只给全量替换（PUT /collections/{id}/books），所以先取回成员再算「加上/去掉这一本」，
  * 成员取不全（超过上限）的书单直接禁用改动——宁可不给点，也不写坏别的书单。
  *
- * 锚点：C-17 每行勾选框、C-18 主按钮「完成」。
+ * 控件：每行勾选框、主按钮「完成」。
  * 移除后五问：焦点回「加入书单」（由 BookPage 在关闭时补）、滚动位置不动、
  * 书单本数即时更新、本书归属按勾选结果定格。
  */
@@ -30,7 +30,7 @@ export function AddToCollectionPanel({
   const [loadedKey, setLoadedKey] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [tip, setTip] = useState("");
-  /** 本数的就地增减：勾上 +1、取消 -1，失败回滚（契约 C-17 结果列）。 */
+  /** 本数的就地增减：勾上 +1、取消 -1，失败回滚（结果列）。 */
   const [countDelta, setCountDelta] = useState<Record<number, number>>({});
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const collections = list.data?.items ?? [];
@@ -63,7 +63,7 @@ export function AddToCollectionPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionsKey]);
 
-  /** 打开期间锁背景滚动（契约 C-04），关闭即还原。 */
+  /** 打开期间锁背景滚动，关闭即还原。 */
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -72,7 +72,7 @@ export function AddToCollectionPanel({
     };
   }, []);
 
-  /** Esc 与「完成」、点遮罩三条关闭路径等效（契约 C-18 键盘行）。 */
+  /** Esc 与「完成」、点遮罩三条关闭路径等效（键盘行）。 */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
@@ -161,7 +161,6 @@ export function AddToCollectionPanel({
                       checked={checked}
                       disabled={busyId !== null || blocked || !state}
                       data-testid={`collection-check-${item.id}`}
-                      data-od-id="C-17"
                       onChange={(event) => void toggle(item.id, event.target.checked)}
                     />
                     <span>{item.name}</span>
@@ -187,7 +186,6 @@ export function AddToCollectionPanel({
             className="btn btn-primary"
             type="button"
             data-testid="add-to-collection-close"
-            data-od-id="C-18"
             onClick={onClose}
           >
             完成

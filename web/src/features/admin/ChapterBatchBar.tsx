@@ -1,4 +1,4 @@
-/** 未选章时的常驻原因（契约 C-60 / C-61 边界列原话）。 */
+/** 未选章时的常驻原因。 */
 export const NO_PICK_HINT = "先勾选章节，才能移动或删除";
 
 /**
@@ -49,12 +49,11 @@ export function ChapterBatchBar({
           type="button"
           data-testid="admin-ch-merge"
           disabled={empty || mergeReason !== ""}
-          data-od-id="C-59"
           onClick={onMerge}
         >
           合并
         </button>
-        <button className="btn btn-sm" type="button" data-testid="admin-ch-move" disabled={empty} data-od-id="C-60" onClick={onMove}>
+        <button className="btn btn-sm" type="button" data-testid="admin-ch-move" disabled={empty} onClick={onMove}>
           移动到卷…
         </button>
         <button
@@ -62,7 +61,6 @@ export function ChapterBatchBar({
           type="button"
           data-testid="admin-ch-batch-delete"
           disabled={empty}
-          data-od-id="C-61"
           onClick={onDelete}
         >
           删除所选

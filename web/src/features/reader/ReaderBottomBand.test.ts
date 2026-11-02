@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 /**
- * H5 底部留白带的 CSS 契约：恢复提示胶囊 / 本章细条 / 本章浮标都落在正文滚动区之外，
+ * H5 底部留白带的 CSS 口径：恢复提示胶囊 / 本章细条 / 本章浮标都落在正文滚动区之外，
  * 最后一行文字始终在它们上面（390×844 与 320×640 的实测见本目录的阅读器测试口径）。
  * jsdom 不做布局，这里守住样式里的那几个数，防止有人把它们改回去。
  */
@@ -44,11 +44,16 @@ function ruleBody(block: string, selector: string): string {
 }
 
 describe("H5 阅读器底部留白带", () => {
-  it("正文滚动区让出 96px（展开态 120px），浮层不压在正文可视区里", async () => {
+  it("留白带按在场的浮层给高度（常显 40 / 胶囊 96 / 展开 120），浮层不压在正文可视区里", async () => {
     const css = await readStyles();
-    const band = h5Block(css, "padding-bottom: calc(96px");
+    const band = h5Block(css, "padding-bottom: calc(40px");
 
-    expect(ruleBody(band, ".reader-shell {")).toContain("padding-bottom: calc(96px + env(safe-area-inset-bottom))");
+    // 常显只有 3px 细条与 21px 浮标：常占 96px 会白掉近一整行多正文
+    expect(ruleBody(band, ".reader-shell {")).toContain("padding-bottom: calc(40px + env(safe-area-inset-bottom))");
+    // 恢复胶囊是被 :has() 抬到 96px 的，不是常占
+    expect(ruleBody(band, ".reader-shell:has(.restore-hint) {")).toContain(
+      "padding-bottom: calc(96px + env(safe-area-inset-bottom))",
+    );
     expect(ruleBody(band, ".reader-shell.is-controls {")).toContain(
       "padding-bottom: calc(120px + env(safe-area-inset-bottom))",
     );

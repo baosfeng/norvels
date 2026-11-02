@@ -61,7 +61,7 @@ export function HistoryPage() {
   }
 
   return (
-    <section data-testid="view:history" data-od-id="history">
+    <section data-testid="view:history">
       <div className="page-head">
         <div>
           <p className="eyebrow">阅读 · {feed.loading ? "读取中" : formatCount(total) + " 本"}</p>
@@ -105,14 +105,14 @@ function HistoryBody(props: {
   if (feed.loading) return <HistorySkeleton count={isH5 ? 4 : 5} />;
   if (feed.error) {
     return (
-      <div data-od-id="C-68">
+      <div>
         <ErrorPanel error={feed.error} title="阅读历史没能加载" onRetry={feed.reload} testId="history-error" />
       </div>
     );
   }
   if (rows.length === 0) {
     return (
-      <div data-od-id="C-67">
+      <div>
         <EmptyPanel
           title="还没有阅读记录"
           description="打开一本书读上几分钟，这里就会记下最后读到的章节和累计时长。"
@@ -143,12 +143,12 @@ function HistoryPager({ page, pages, go }: { page: number; pages: number; go: (n
   if (pages <= 1) return null;
   return (
     <nav className="pagination" aria-label="分页" data-testid="history-pagination">
-      <button type="button" aria-label="上一页" data-od-id="C-69" disabled={page <= 1} onClick={() => go(page - 1)}>
+      <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => go(page - 1)}>
         ←
       </button>
       <span className="is-current num">{page}</span>
       <span className="meta">/ {pages}</span>
-      <button type="button" aria-label="下一页" data-od-id="C-70" disabled={page >= pages} onClick={() => go(page + 1)}>
+      <button type="button" aria-label="下一页" disabled={page >= pages} onClick={() => go(page + 1)}>
         →
       </button>
     </nav>
@@ -321,7 +321,7 @@ function HistoryRow({
   onCancelDelete: () => void;
 }) {
   return (
-    <tr data-testid={`history-row-${row.bookId}`} data-od-id="C-66">
+    <tr data-testid={`history-row-${row.bookId}`}>
       <td>
         <Link className="book-title" to={`/read/${row.bookId}/${row.chapterId}`}>
           {row.bookTitle}

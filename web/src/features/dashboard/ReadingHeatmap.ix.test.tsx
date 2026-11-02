@@ -23,10 +23,10 @@ function renderCard() {
   );
 }
 
-describe("C-30（新增）热力图每格可点、可读", () => {
-  it("每格一个锚点、各自独立的 aria 文案", () => {
+describe("热力图每格可点、可读", () => {
+  it("每格独立可读，各自独立的 aria 文案", () => {
     renderCard();
-    const cells = document.querySelectorAll('[data-od-id="C-30"]');
+    const cells = document.querySelectorAll(".heat-cell");
     expect(cells).toHaveLength(3);
     expect(cells[1].getAttribute("aria-label")).toBe("10 月 20 日 · 10 分钟");
     expect(cells[2].getAttribute("aria-label")).toBe("10 月 21 日 · 2 小时");
@@ -86,6 +86,6 @@ describe("C-30（新增）热力图每格可点、可读", () => {
       />,
     );
     expect(screen.getByTestId("chart:reading-time:empty")).toBeTruthy();
-    expect(document.querySelectorAll('[data-od-id="C-30"]')).toHaveLength(0);
+    expect(document.querySelectorAll(".heat-cell")).toHaveLength(0);
   });
 });

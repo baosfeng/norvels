@@ -4,7 +4,7 @@ import { ChevronLeftIcon } from "../../components/Icons";
  * 阅读器顶栏：PC 右侧是书架 / 详情 / 书签 / 搜索 / 目录 / 帮助 / 设置；
  * H5 是「返回 + 可点的书名 + 全屏」——手机上没有横向空间再放一颗按钮，
  * 书名本来就是读者想点的地方，点它回书籍详情（aria-label 与 PC 的「详情」一致）。
- * 其余按钮带契约锚点（C-01…C-08），禁用态用常驻说明而不是悬停提示。
+ * 其余按钮是常驻操作入口，禁用态用常驻说明而不是悬停提示。
  */
 export function ReaderTopBar({
   isH5,
@@ -59,7 +59,6 @@ export function ReaderTopBar({
     <header
       className="reader-top"
       data-testid="reader-top"
-      data-od-id="reader-top"
       aria-hidden={hidden ? "true" : "false"}
       inert={hidden}
     >
@@ -68,7 +67,6 @@ export function ReaderTopBar({
         type="button"
         aria-label="返回书籍详情"
         tabIndex={hidden ? -1 : undefined}
-        data-od-id="C-01"
         onClick={onBack}
       >
         <ChevronLeftIcon />
@@ -98,7 +96,6 @@ export function ReaderTopBar({
             aria-pressed={fullscreen}
             aria-haspopup="true"
             tabIndex={hidden ? -1 : undefined}
-            data-od-id="C-02"
             onClick={onToggleFullscreen}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
@@ -107,7 +104,7 @@ export function ReaderTopBar({
           </button>
         ) : (
           <>
-            <button className="btn" type="button" aria-label="返回书架" data-od-id="C-03" onClick={onShelf}>
+            <button className="btn" type="button" aria-label="返回书架" onClick={onShelf}>
               书架
             </button>
             <button
@@ -125,7 +122,6 @@ export function ReaderTopBar({
               onClick={onOpenBookmarks}
               aria-expanded={drawerOpen}
               aria-label="打开书签"
-              data-od-id="C-04"
             >
               书签
             </button>
@@ -135,13 +131,12 @@ export function ReaderTopBar({
               aria-expanded={searchOpen}
               aria-label="搜索本章"
               disabled={!searchEnabled}
-              data-od-id="C-05"
               onClick={onToggleSearch}
             >
               搜索
             </button>
             {!searchEnabled ? <span className="inline-note">正文还没载入，稍后可以搜索</span> : null}
-            <button className="btn" type="button" onClick={onOpenDirectory} aria-expanded={drawerOpen} data-od-id="C-06">
+            <button className="btn" type="button" onClick={onOpenDirectory} aria-expanded={drawerOpen}>
               目录
             </button>
             <button
@@ -149,12 +144,17 @@ export function ReaderTopBar({
               type="button"
               aria-label="快捷键帮助"
               aria-expanded={helpOpen}
-              data-od-id="C-07"
               onClick={onToggleHelp}
             >
               ?
             </button>
-            <button className="btn" type="button" onClick={onToggleSettings} aria-expanded={settingsOpen} data-od-id="C-08">
+            <button
+              className="btn"
+              type="button"
+              onClick={onToggleSettings}
+              aria-expanded={settingsOpen}
+              data-testid="reader-top-settings"
+            >
               设置
             </button>
           </>

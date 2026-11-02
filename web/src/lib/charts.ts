@@ -23,7 +23,7 @@ import type {
 
 export interface VerticalBar {
   label: string;
-  /** 是否绘制轴标签：日期多时按原型口径稀疏显示，避免标签互相压住 */
+  /** 是否绘制轴标签：日期多时稀疏显示，避免标签互相压住 */
   labelVisible: boolean;
   value: number;
   /** 相对最大值的高度百分比，最小 2，保证 0 值也有可见基线 */
@@ -88,7 +88,7 @@ export interface ChartModel<T> {
 export function buildImportTrend(points: ImportTrendPoint[]): ChartModel<{ bars: VerticalBar[]; total: number }> {
   const bars = points.map((p, index) => ({
     label: shortDate(p.date),
-    // 原型口径：每 3 根标一次 + 最后一根；若倒数第二根也是「每 3 根」的位置会与最后一根贴住，则让位给最后一根
+    // 稀疏口径：每 3 根标一次 + 最后一根；若倒数第二根也是「每 3 根」的位置会与最后一根贴住，则让位给最后一根
     labelVisible:
       index === points.length - 1 ||
       (index % 3 === 0 && points.length - 1 - index > 1),

@@ -7,7 +7,7 @@ import { keywordsToText, parseKeywords, tagRulesError, type TagRuleLimits } from
 import { LIMITS_UNKNOWN_HINT, tagLimitsOf } from "./limits";
 import { useTimedNote } from "./useTimedNote";
 
-/** 保存失败文案（契约 C-19）：说清是哪几类问题，不提实现词。 */
+/** 保存失败文案：说清是哪几类问题，不提实现词。 */
 export const TAG_SAVE_FAILED = "词表没通过校验：条数、标签名、关键词数量或重名有问题。";
 
 /**
@@ -147,7 +147,6 @@ function TagRuleEditor({
                   id={`tag-name-${row.key}`}
                   value={row.tag}
                   placeholder="例如 奇幻"
-                  data-od-id="C-17"
                   onChange={(event) => patchRow(row.key, "tag", event.target.value)}
                 />
               </div>
@@ -159,7 +158,6 @@ function TagRuleEditor({
                   value={row.keywordsText}
                   placeholder="例如 魔法，精灵，龙"
                   spellCheck={false}
-                  data-od-id="C-18"
                   onChange={(event) => patchRow(row.key, "keywordsText", event.target.value)}
                 />
               </div>
@@ -180,7 +178,7 @@ function TagRuleEditor({
         <button className="btn" type="button" onClick={addRow} disabled={full} data-testid="tag-rule-add">
           新增词表规则
         </button>
-        <button className="btn btn-primary" type="button" onClick={save} disabled={saving} data-testid="tag-rules-save" data-od-id="C-19">
+        <button className="btn btn-primary" type="button" onClick={save} disabled={saving} data-testid="tag-rules-save">
           {saving ? "正在保存…" : "保存词表"}
         </button>
       </div>

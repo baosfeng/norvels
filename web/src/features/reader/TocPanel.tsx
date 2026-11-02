@@ -12,8 +12,8 @@ function errorText(error: ApiError | null): string {
 }
 
 /**
- * 目录页签内容：卷分组折叠（C-27）+ 分块续显（C-29）+ 搜索（C-25）
- * + 空态清空搜索（C-31）+ 失败态两出口（C-61 / C-62）。
+ * 目录页签内容：卷分组折叠 + 分块续显 + 搜索
+ * + 空态清空搜索、失败态两出口。
  * 抽屉外壳（页签与焦点陷阱）在 ReaderDrawer 里，这里只管这一页的内容。
  */
 export function TocPanel({
@@ -67,7 +67,7 @@ export function TocPanel({
     }
   }, [retrying, error]);
 
-  // 打开后把当前章滚进视口（C-06）：先确保当前章所在的块已显示，再滚过去
+  // 打开后把当前章滚进视口：先确保当前章所在的块已显示，再滚过去
   useEffect(() => {
     if (!active || loading || error || positioned.current) return;
     if (currentChapterId <= 0) return;
@@ -161,7 +161,7 @@ export function TocPanel({
     });
   }, []);
 
-  // 行间方向键：↑ ↓ 换行焦点，Home / End 到首末章（C-28 键盘行）
+  // 行间方向键：↑ ↓ 换行焦点，Home / End 到首末章
   const onListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const keys = ["ArrowUp", "ArrowDown", "Home", "End"];
     if (!keys.includes(event.key)) return;
@@ -217,7 +217,6 @@ export function TocPanel({
       <button
         className="btn toc-more"
         type="button"
-        data-od-id="C-29"
         disabled={revealed >= total || loadingMore}
         onClick={reveal}
       >
@@ -248,7 +247,6 @@ export function TocPanel({
             placeholder="搜章节名或章号"
             aria-label="搜索章节名或章号"
             data-testid="toc-search-input"
-            data-od-id="C-25"
           />
           <button
             className="btn"
@@ -257,7 +255,6 @@ export function TocPanel({
             disabled={currentIndex < 0}
             aria-label="跳到当前章"
             data-testid="toc-jump"
-            data-od-id="C-26"
           >
             跳到当前章
           </button>
@@ -287,10 +284,10 @@ export function TocPanel({
             <h2>目录没能加载</h2>
             <p>{errorText(error)}</p>
             <div className="state-actions">
-              <button className="btn btn-primary" type="button" disabled={retrying} data-od-id="C-61" onClick={retry}>
+              <button className="btn btn-primary" type="button" disabled={retrying} onClick={retry}>
                 {retrying ? "正在重试…" : "重试"}
               </button>
-              <button className="btn" type="button" data-od-id="C-62" onClick={useFlat}>
+              <button className="btn" type="button" onClick={useFlat}>
                 用平铺列表
               </button>
             </div>
@@ -305,7 +302,7 @@ export function TocPanel({
             <h2>没有匹配的章节</h2>
             <p>换个关键词试试，或清空后看全部章节。</p>
             <div className="state-actions">
-              <button className="btn" type="button" data-od-id="C-31" onClick={clearSearch}>
+              <button className="btn" type="button" onClick={clearSearch}>
                 清空搜索
               </button>
             </div>

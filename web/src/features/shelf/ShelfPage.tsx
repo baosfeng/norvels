@@ -53,7 +53,7 @@ export function ShelfPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // 驾驶舱「全部书架 →」（C-23）要落到全部书：带上这个 state 就忽略会话缓存里的筛选
+  // 驾驶舱「全部书架 →」要落到全部书：带上这个 state 就忽略会话缓存里的筛选
   const resetRequested = (location.state as { resetFilters?: boolean } | null)?.resetFilters === true;
   // 地址上有筛选参数 = 以地址为准（刷新 / 后退 / 分享都能复现同一屏）
   const cached = useShelfCache(hasShelfQuery(searchParams) || resetRequested);
@@ -74,7 +74,7 @@ export function ShelfPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // 清除筛选后焦点回到排序下拉（C-29）；404 回书架后焦点交给页标题（C-18）
+  // 清除筛选后焦点回到排序下拉；404 回书架后焦点交给页标题
   const sortRef = useRef<HTMLSelectElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
 
@@ -162,12 +162,12 @@ export function ShelfPage() {
     return () => observer.disconnect();
   }, [isH5, loadMore, items.length, hasMore]);
 
-  // 404 的「回书架」把焦点交给页标题（C-18 离开空态）
+  // 404 的「回书架」把焦点交给页标题（离开空态）
   useEffect(() => {
     if ((location.state as { focusTitle?: boolean } | null)?.focusTitle) titleRef.current?.focus();
   }, [location.state]);
 
-  // 宽屏访问首页会落到书架（C-04 边界）：把「首页只在窄屏提供」说清楚，一次性 state 用完即清
+  // 宽屏访问首页会落到书架（边界）：把「首页只在窄屏提供」说清楚，一次性 state 用完即清
   useEffect(() => {
     const text = tierFallbackText((location.state as { from?: string } | null)?.from);
     if (!text) return;
@@ -184,7 +184,7 @@ export function ShelfPage() {
     }
   }
 
-  /** PC 行内排序（C-19）：选中即生效，页码由取数钩子按查询键重置为 1。 */
+  /** PC 行内排序：选中即生效，页码由取数钩子按查询键重置为 1。 */
   function chooseSortOnPc(next: SortValue) {
     if (next === sort) return;
     setSort(next);
@@ -196,7 +196,7 @@ export function ShelfPage() {
     feed.setPage(next);
   }
 
-  /** 清空筛选（C-29）：连同「只看有更新」一起清，焦点回排序下拉。 */
+  /** 清空筛选：连同「只看有更新」一起清，焦点回排序下拉。 */
   function clearFilters() {
     resetFilters();
     setUpdateOnly(false);
@@ -248,7 +248,7 @@ export function ShelfPage() {
   const selectedBooks = items.filter((book) => selected.has(book.id));
 
   return (
-    <section className="view-shelf" data-testid="view:shelf" data-od-id="shelf">
+    <section className="view-shelf" data-testid="view:shelf">
       <ShelfHead
         isH5={isH5}
         loading={loading}

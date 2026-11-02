@@ -43,14 +43,13 @@ beforeEach(() => {
   document.body.style.overflow = "";
 });
 
-describe("书单面板的移除后与边界（C-17 / C-18）", () => {
-  it("打开后焦点落在第一个可改的勾选框上，且每行勾选框挂 C-17", async () => {
+describe("书单面板的移除后与边界", () => {
+  it("打开后焦点落在第一个可改的勾选框上", async () => {
     collections.mockResolvedValue({ items: [{ id: 1, name: "雨夜要读", bookCount: 1 }] });
     books.mockResolvedValue(bookPage([9]));
     renderPanel();
     await waitFor(() => expect(screen.getByTestId("collection-check-1")).toBeTruthy());
     const input = screen.getByTestId("collection-check-1") as HTMLInputElement;
-    expect(input.getAttribute("data-od-id")).toBe("C-17");
     await waitFor(() => expect(document.activeElement).toBe(input));
   });
 
@@ -72,7 +71,7 @@ describe("书单面板的移除后与边界（C-17 / C-18）", () => {
     expect(screen.getByTestId("collection-count-2").textContent).toBe("1 本");
     fireEvent.click(screen.getByTestId("collection-check-2"));
     await waitFor(() => expect(screen.getByTestId("add-to-collection-tip").textContent).toBe("已加入书单"));
-    // 计数联动：加入后右侧本数 +1（契约 C-17 结果列）
+    // 计数联动：加入后右侧本数 +1
     await waitFor(() => expect(screen.getByTestId("collection-count-2").textContent).toBe("2 本"));
   });
 
@@ -81,7 +80,6 @@ describe("书单面板的移除后与边界（C-17 / C-18）", () => {
     books.mockResolvedValue(bookPage([9]));
     const onClose = renderPanel();
     await waitFor(() => expect(screen.getByTestId("add-to-collection-close")).toBeTruthy());
-    expect(screen.getByTestId("add-to-collection-close").getAttribute("data-od-id")).toBe("C-18");
     fireEvent.click(screen.getByTestId("add-to-collection-close"));
     expect(onClose).toHaveBeenCalledTimes(1);
 

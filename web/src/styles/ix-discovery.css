@@ -1,7 +1,7 @@
-/* 发现域交互实现样式（契约落地，2026-10-27 夜）。只由 discovery 分支写。
+/* 发现域交互实现样式。
    仅补产品缺的行为；hover / focus 的基础样式仍在 prototype.css / globals.css。 */
 
-/* ── 外壳：侧栏 · 顶栏 · 抽屉（C-01…C-16） ── */
+/* ── 外壳：侧栏 · 顶栏 · 抽屉 ── */
 .sidebar .side-nav a {
   transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
 }
@@ -38,7 +38,7 @@
   background: var(--surface-warm);
 }
 
-/* 焦点环：契约口径 4px var(--focus-ring)；全局 :focus-visible 只给 2px outline */
+/* 焦点环：4px var(--focus-ring)；全局 :focus-visible 只给 2px outline */
 .sidebar :focus-visible,
 .topbar :focus-visible,
 .nav-scrim:focus-visible,
@@ -52,7 +52,7 @@
   .sidebar {
     transition: transform var(--motion-base) var(--ease-standard);
   }
-  /* 关闭态不占位（契约 C-16 边界）：display:none。关闭时先把遮罩淡出 240ms 再切 none，
+  /* 关闭态不占位：display:none。关闭时先把遮罩淡出 240ms 再切 none，
      打开时从 none 进场；allow-discrete 让 display 参与过渡，老浏览器退化为瞬切。 */
   .nav-scrim {
     display: none;

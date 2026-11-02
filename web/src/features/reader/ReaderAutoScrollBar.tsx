@@ -24,10 +24,10 @@ export function ReaderAutoScrollBar({
       <span className="meta num">
         {speedText} 档{paused ? " · 已暂停" : ""}
       </span>
-      <button className="btn" type="button" data-od-id="C-55" onClick={onTogglePause} data-testid="reader-autoscroll-toggle">
+      <button className="btn" type="button" onClick={onTogglePause} data-testid="reader-autoscroll-toggle">
         {running ? "暂停" : "继续"}
       </button>
-      <button className="btn btn-ghost" type="button" onClick={onExit} aria-label="退出自动滚动" data-od-id="C-56">
+      <button className="btn btn-ghost" type="button" onClick={onExit} aria-label="退出自动滚动">
         退出
       </button>
     </div>

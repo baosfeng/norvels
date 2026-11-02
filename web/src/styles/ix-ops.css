@@ -1,4 +1,4 @@
-/* 运营域交互实现样式（契约落地，2026-10-27 夜）。只由 ops 分支写。
+/* 运营域交互实现样式。
    全局已有 :focus-visible 外框与 .btn:hover（prototype.css / globals.css），这里只补
    运营域控件缺的那部分：hover 只做增强、focus 用 --focus-ring、按下 100ms 内可见、
    禁用有常驻原因（.inline-note）。 */
@@ -35,7 +35,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
-/* 单行输入不换行：超长路径在框内横向滚动，不把版面撑破（C-01 边界） */
+/* 单行输入不换行：超长路径在框内横向滚动，不把版面撑破 */
 .ix-ops .input {
   text-overflow: ellipsis;
 }
@@ -124,12 +124,12 @@
   gap: 12px;
   margin-top: 8px;
 }
-/* 弹层淡入（契约里所有「弹层 240ms 内淡入」共用） */
+/* 弹层淡入：所有「弹层 240ms 内淡入」共用 */
 .ix-ops .confirm-dialog,
 .confirm-dialog {
   animation: ix-ops-fade-in var(--motion-base) var(--ease-standard);
 }
-/* 弹层限高 + 内部滚动：标签多时关闭按钮不能被推出视口（C-34 移除列「关闭弹层」前提）。
+/* 弹层限高 + 内部滚动：标签多时关闭按钮不能被推出视口。
    backdrop 是 fixed + place-items:center，弹层不设上限就会整块溢出且不可达。 */
 .ix-ops .confirm-dialog {
   max-height: calc(100vh - 32px);
@@ -174,7 +174,7 @@
   cursor: pointer;
 }
 
-/* 勾选后的行底色（C-36 / C-57 反馈：该行底色转暖白） */
+/* 勾选后的行底色：该行底色转暖白 */
 .ix-ops .admin-table tr.is-picked td,
 .ix-ops .chapter-table tr.is-picked td {
   background: var(--surface-warm);

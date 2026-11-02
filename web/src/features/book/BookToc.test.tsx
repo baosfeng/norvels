@@ -130,7 +130,7 @@ describe("tocView 纯函数（搜索口径 + H5 首屏批次）", () => {
   });
 });
 
-describe("目录搜索（C-11 新增）", () => {
+describe("目录搜索", () => {
   it("输入即筛：只留命中章节，计数变「n 章匹配」，并说明找到几章", () => {
     renderToc(bookOf([130]));
     expect(screen.getByTestId("book-toc-count").textContent).toBe("130 章");
@@ -160,7 +160,7 @@ describe("目录搜索（C-11 新增）", () => {
     expect(screen.getByTestId("book-toc-count").textContent).toBe("129 章匹配");
   });
 
-  it("命中 0 条给空态与「清空搜索」，点完回到全量目录且焦点回搜索框（C-12）", async () => {
+  it("命中 0 条给空态与「清空搜索」，点完回到全量目录且焦点回搜索框", async () => {
     renderToc(bookOf([130]));
     const input = screen.getByTestId("book-toc-search") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "不存在的词" } });

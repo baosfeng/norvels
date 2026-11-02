@@ -65,7 +65,7 @@ function Switch({
   );
 }
 
-/** 分段选择组：一组按钮，方向键在组内移动并立即生效（契约各组键盘行）。 */
+/** 分段选择组：一组按钮，方向键在组内移动并立即生效。 */
 function SegGroup<T extends string | number>({
   label,
   values,
@@ -161,13 +161,13 @@ export function ReaderSettingsPanel({
     >
       <div className="settings-head">
         <strong>阅读设置</strong>
-        <button className="btn btn-ghost" type="button" data-od-id="C-54" onClick={onClose} aria-label="关闭阅读设置">
+        <button className="btn btn-ghost" type="button" onClick={onClose} aria-label="关闭阅读设置">
           关闭
         </button>
       </div>
 
       <Row label="字号">
-        <div className="font-stepper" data-od-id="C-42">
+        <div className="font-stepper">
           <button
             className="btn"
             type="button"
@@ -211,7 +211,7 @@ export function ReaderSettingsPanel({
       {!fontLocked && settings.font >= FONT_MAX ? <span className="inline-note">已经是最大字号</span> : null}
 
       <Row label="跟随系统字号">
-        <span data-od-id="C-43">
+        <span>
           <Switch
           checked={settings.followSystemFont}
           label="跟随系统字号"
@@ -221,7 +221,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="行距">
-        <div className="stepper" data-od-id="C-44">
+        <div className="stepper">
           <button
             type="button"
             aria-label="减小行距"
@@ -245,7 +245,7 @@ export function ReaderSettingsPanel({
       {settings.leading >= LEADING_MAX ? <span className="inline-note">已经是最大行距</span> : null}
 
       <Row label="字体">
-        <div data-od-id="C-45">
+        <div>
           <SegGroup
           label="字体"
           values={FONT_FAMILIES}
@@ -257,7 +257,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="段距">
-        <div data-od-id="C-46">
+        <div>
           <SegGroup
           label="段距"
           values={PARA_LEVELS}
@@ -269,7 +269,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="正文宽度">
-        <div data-od-id="C-47">
+        <div>
           <SegGroup
           label="正文宽度"
           values={WIDTHS}
@@ -283,7 +283,7 @@ export function ReaderSettingsPanel({
       {isH5 ? <span className="inline-note">手机上正文始终铺满屏幕</span> : null}
 
       <Row label="对齐">
-        <div data-od-id="C-48">
+        <div>
           <SegGroup
           label="对齐"
           values={ALIGNS}
@@ -295,7 +295,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="首行缩进">
-        <span data-od-id="C-49">
+        <span>
           <Switch
           checked={settings.indent}
           label="首行缩进"
@@ -305,7 +305,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="繁体转简体">
-        <span data-od-id="C-50">
+        <span>
           <Switch
           checked={settings.script}
           label="繁体转简体"
@@ -315,7 +315,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="自动滚动">
-        <span data-od-id="C-51">
+        <span>
           <Switch
           checked={settings.autoScroll}
           label="自动滚动"
@@ -327,7 +327,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="滚动速度">
-        <div className="stepper" data-od-id="C-52">
+        <div className="stepper">
           <button
             type="button"
             aria-label="减慢自动滚动"
@@ -357,7 +357,7 @@ export function ReaderSettingsPanel({
       </p>
 
       <Row label="到底自动下一章">
-        <span data-od-id="C-53">
+        <span>
           <Switch
           checked={settings.autoScrollNext}
           label="到底自动下一章"
@@ -369,7 +369,7 @@ export function ReaderSettingsPanel({
       </Row>
 
       <Row label="背景">
-        <div className="theme-swatches" role="group" aria-label="背景" data-od-id="C-41">
+        <div className="theme-swatches" role="group" aria-label="背景">
           {themes.map((value) => (
             <button
               key={value}

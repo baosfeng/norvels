@@ -66,7 +66,6 @@ export function ReaderOverlays(props: ReaderOverlaysProps) {
         className={`overlay${scrimOpen ? " is-open" : ""}`}
         type="button"
         aria-label="关闭当前面板"
-        data-od-id="C-24"
         tabIndex={scrimOpen ? 0 : -1}
         onClick={props.deleteTarget ? props.onCancelDelete : props.onClosePanels}
       />

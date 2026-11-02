@@ -52,7 +52,7 @@ export function HealthCard({
   }
 
   return (
-    <section className="dash-block" data-od-id="dashboard:health-card">
+    <section className="dash-block">
       <div className="dash-block-head">
         <h2 tabIndex={-1} ref={headingRef}>
           库健康状况
@@ -117,12 +117,12 @@ export function HealthCard({
             <p className="meta">库里最新一次导入的时间。</p>
           </div>
 
-          {/* C-27 / C-28：健康卡给出下一步入口，按指出的问题去补 */}
+          {/* 健康卡给出下一步入口，按指出的问题去补 */}
           <div className="health-actions">
-            <Link className="btn btn-sm" to="/admin" data-od-id="C-27">
+            <Link className="btn btn-sm" to="/admin">
               去书籍管理
             </Link>
-            <Link className="btn btn-sm btn-ghost" to="/import" data-od-id="C-28">
+            <Link className="btn btn-sm btn-ghost" to="/import">
               去导入
             </Link>
           </div>

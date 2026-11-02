@@ -81,7 +81,6 @@ export function AppShell() {
             className="nav-scrim"
             type="button"
             aria-label="关闭导航"
-            data-od-id="C-16"
             onClick={() => setNavOpen(false)}
             tabIndex={navOpen ? 0 : -1}
           />
@@ -94,7 +93,7 @@ export function AppShell() {
                 showViewToggle={showViewToggle}
               />
             )}
-            <main className="container" data-od-id="main">
+            <main className="container">
               <Outlet />
             </main>
           </div>

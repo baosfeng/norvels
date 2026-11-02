@@ -24,7 +24,7 @@ export function SearchResultItem({
   isH5: boolean;
 }) {
   return (
-    <article className="search-book" data-od-id="C-51">
+    <article className="search-book">
       <Link className="book-link" to={`/book/${book.id}`} data-testid={`search-book-${book.id}`}>
         <Cover title={book.title} showLabel={!isH5} />
         <div className="book-card-body">

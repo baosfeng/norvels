@@ -42,7 +42,7 @@ beforeEach(() => {
   resetState();
 });
 
-describe("H5 首页：错档落点提示（C-05 边界）", () => {
+describe("H5 首页：错档落点提示", () => {
   it("从 PC 专属页被送回首页时，浮出「在窄屏不提供」提示", async () => {
     render(
       <MemoryRouter initialEntries={[{ pathname: "/home", state: { from: "/dashboard" } }]}>

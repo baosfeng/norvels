@@ -99,7 +99,6 @@ export function ChapterBodyDrawer({
               type="button"
               aria-pressed={full}
               data-testid="chapter-body-full"
-              data-od-id="C-71"
               disabled={!data}
               onClick={() => setFull((prev) => !prev)}
             >
@@ -170,7 +169,6 @@ export function ChapterBodyDrawer({
             type="button"
             disabled={busy || !data}
             data-testid="chapter-body-save"
-            data-od-id="C-72"
             onClick={() => void save()}
           >
             {busy ? "保存中…" : "保存"}

@@ -74,7 +74,7 @@ export function DashboardPage() {
   const rec = useRecommendStats(TREND_DAYS);
   const [refreshing, setRefreshing] = useState(false);
 
-  /** 刷新概览（契约 C-29）：重取全部数据源，卡片保持旧值直到新值回来。 */
+  /** 刷新概览：重取全部数据源，卡片保持旧值直到新值回来。 */
   async function refreshOverview() {
     if (refreshing) return;
     setRefreshing(true);
@@ -115,7 +115,7 @@ export function DashboardPage() {
   const recEmpty = hasNoEvents(recSummary, recDaily.length);
 
   return (
-    <section data-testid="view:dashboard" data-od-id="dashboard">
+    <section data-testid="view:dashboard">
       <div className="page-head">
         <div>
           <p className="eyebrow">库总览</p>
@@ -125,7 +125,6 @@ export function DashboardPage() {
         <button
           className="btn btn-sm"
           type="button"
-          data-od-id="C-29"
           disabled={refreshing}
           onClick={() => void refreshOverview()}
         >
@@ -150,17 +149,17 @@ export function DashboardPage() {
       ) : (
         <div className="dash-layout">
           <div className="dash-main">
-            <div className="dash-stats" data-od-id="dashboard:stats">
+            <div className="dash-stats">
               <StatCard label="书籍总数" value={formatCount(stats.data?.books ?? 0)} hint="本" />
               <StatCard label="章节总数" value={formatCount(stats.data?.chapters ?? 0)} hint="章" />
               <StatCard label="作者" value={formatCount(stats.data?.authors ?? 0)} hint="位" />
               <StatCard label="总字数" value={formatCount(stats.data?.words ?? 0)} hint="字" />
             </div>
 
-            <section className="dash-block" data-od-id="dashboard:reading">
+            <section className="dash-block">
               <div className="dash-block-head">
                 <h2>最近在读</h2>
-                <Link className="meta" to="/shelf" state={{ resetFilters: true }} data-od-id="C-23">
+                <Link className="meta" to="/shelf" state={{ resetFilters: true }}>
                   全部书架 →
                 </Link>
               </div>
@@ -177,7 +176,6 @@ export function DashboardPage() {
                       className="dash-row"
                       key={item.bookId}
                       to={`/read/${item.bookId}/${item.chapterId}`}
-                      data-od-id="C-25"
                     >
                       <Cover title={item.bookTitle} showLabel={false} />
                       <div className="dash-row-main">
@@ -197,10 +195,10 @@ export function DashboardPage() {
               )}
             </section>
 
-            <section className="dash-block" data-od-id="dashboard:import">
+            <section className="dash-block">
               <div className="dash-block-head">
                 <h2>导入概况</h2>
-                <Link className="meta" to="/import" data-od-id="C-24">
+                <Link className="meta" to="/import">
                   前往导入管理 →
                 </Link>
               </div>
@@ -218,7 +216,7 @@ export function DashboardPage() {
 
             {/* 推荐与埋点：数据来自发现页的真实浏览（曝光 / 点击 / 停留 / 阅读）。
                 事件只有真的逛过才会产生，所以整块自己带空态，而不是画四张空图占两屏。 */}
-            <section className="dash-block" data-testid="dashboard:recommend" data-od-id="dashboard:recommend">
+            <section className="dash-block" data-testid="dashboard:recommend">
               <div className="dash-block-head">
                 <h2>推荐与埋点</h2>
                 <Link className="meta" to="/discover" data-testid="dashboard:discover-link">
@@ -268,7 +266,7 @@ export function DashboardPage() {
               )}
             </section>
 
-            <div className="chart-grid" data-testid="dashboard:charts" data-od-id="dashboard:charts">
+            <div className="chart-grid" data-testid="dashboard:charts">
               <ReadingHeatmapCard stats={reading.data} {...chartState(reading)} />
               <ImportTrendChart points={trend.data ?? []} {...chartState(trend)} />
               <TopAuthorsChart
@@ -290,7 +288,7 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <aside className="dash-side" data-od-id="dashboard:health">
+          <aside className="dash-side">
             <HealthCard
               report={health.data}
               loading={health.loading}

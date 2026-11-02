@@ -1,6 +1,6 @@
-/* 阅读域交互实现样式（契约落地，2026-10-27 夜）。只由 reader 分支写。 */
+/* 阅读域交互实现样式。 */
 
-/* ── 焦点环：契约要求每个可点控件 4px --focus-ring；全局只给了一部分元素 ── */
+/* ── 焦点环：每个可点控件 4px --focus-ring；全局只给了一部分元素 ── */
 .reader-shell :is(button, a, input, [tabindex]):focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -15,7 +15,7 @@
   outline: none;
 }
 
-/* ── 正文手势层：C-09 外层（可聚焦），C-10 内层（承载正文） ── */
+/* ── 正文手势层：外层（可聚焦），内层（承载正文） ── */
 .reader-swipe-layer {
   display: flex;
   flex-direction: column;
@@ -23,7 +23,7 @@
   min-width: 0;
 }
 
-/* ── 进度恢复提示条（C-16）：固定浮胶囊，3 秒自动消失 ──
+/* ── 进度恢复提示条：固定浮胶囊，3 秒自动消失 ──
    它原来是正文流里的第一条内容（margin 0 auto 18px），每次进来都把正文往下推一截；
    现在浮在正文之上、不占正文位置。宽度只包住自己的文字与按钮（fit-content），
    不做横贯屏幕的白条；窄屏落进正文底部留白带（见紧随其后的窄屏 @media 里的 bottom）。 */
@@ -139,7 +139,7 @@
   text-align: right;
 }
 
-/* ── 章末翻章条（C-11…C-13）：禁用原因跟在按钮旁边 ── */
+/* ── 章末翻章条：禁用原因跟在按钮旁边 ── */
 .reader-pager {
   display: flex;
   flex-wrap: wrap;
@@ -150,7 +150,7 @@
   margin-right: 8px;
 }
 
-/* ── 正文错误态的重试兜底（C-14） ── */
+/* ── 正文错误态的重试兜底 ── */
 .reader-retry-fallback {
   display: flex;
   flex-wrap: wrap;
@@ -160,7 +160,7 @@
   margin-top: 12px;
 }
 
-/* ── 目录：卷折叠（C-27）/ 分块续显（C-29）/ 搜索与跳转（C-25、C-26） ── */
+/* ── 目录：卷折叠 / 分块续显 / 搜索与跳转 ── */
 .drawer-search {
   display: flex;
   flex-wrap: wrap;
@@ -231,7 +231,7 @@
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-/* ── 删除书签确认框（C-58…C-60）：复用全局 .confirm-backdrop，内部自己排版 ── */
+/* ── 删除书签确认框：复用全局 .confirm-backdrop，内部自己排版 ── */
 .confirm {
   display: flex;
   flex-direction: column;
@@ -719,15 +719,25 @@
   }
 }
 
-/* ── H5 正文底部留白带：提示胶囊 / 本章细条 / 本章浮标都落在这一带里，最后一行字始终在它们之上 ──
+/* ── H5 正文底部留白带：本章细条 / 本章浮标 / 恢复胶囊 / 自动滚动浮条都落在这条带里 ──
    只给滚动容器加 padding 不够：滚到章中时文字仍铺到视口底边、压在浮层下面。
-   这里让外壳（H5 定高 100dvh、overflow hidden）用 padding-bottom 让出整条留白带，
+   这里让外壳（H5 定高 100dvh、overflow hidden）用 padding-bottom 让出这条带，
    滚动区随 flex 收缩到浮层之上，任何滚动位置都裁不到浮层底下。
-   收起态 96px = 胶囊高约 62 + 底距 10 + 24 呼吸；展开态 120px = 底栏约 107 + 13 呼吸。
-   留白高度只在这里定一次：globals.css 的 .reader-main 不再给底部 padding。 */
+   带宽按「此刻真的在场几个浮层」给，不常占：常显只有 3px 细条与 21px 浮标，
+   收起态 40px = 浮标底距 10 + 高 21 + 呼吸 9；恢复胶囊在场（进章 3 秒）时 96px
+   = 胶囊 62 + 底距 10 + 24 呼吸；自动滚动浮条在场时 56px；控制层展开 120px（底栏 107 + 13）。
+   外壳 padding 只改可视窗底边、内容仍顶部对齐，所以带高一变正文不跳。
+   留白高度只在这里定一次：globals.css 的 .reader-main 不给底部 padding。 */
 @media (max-width: 768px) {
   .reader-shell {
+    padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  }
+  /* 只在有浮层时抬高：胶囊 / 浮条都是瞬时的，常占会把正文挤掉一大截 */
+  .reader-shell:has(.restore-hint) {
     padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+  .reader-shell:has(.reader-autoscroll) {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
   }
   .reader-shell.is-controls {
     padding-bottom: calc(120px + env(safe-area-inset-bottom));

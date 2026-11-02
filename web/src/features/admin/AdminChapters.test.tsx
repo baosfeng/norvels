@@ -69,7 +69,7 @@ const pick = (id: number) => screen.getByTestId(`admin-chapter-pick-${id}`) as H
 const batchBar = () => screen.queryByTestId("admin-ch-batch");
 
 /**
- * 未勾选时批量条仍在，但三个动作都禁用且原因常驻（契约 C-59/C-60/C-61 边界）。
+ * 未勾选时批量条仍在，但三个动作都禁用且原因常驻。
  * 「取消选择」此时不渲染：没有选择可取消，留着只会把批量条挤成两行（1152 实测 48 → 73px）。
  */
 function expectBatchIdle() {
@@ -96,7 +96,7 @@ describe("章节勾选与批量条", () => {
     expectBatchIdle();
   });
 
-  it("C-53：章节搜索没有命中时说「没有匹配的章节」，不误报「本卷还没有章节」", () => {
+  it("章节搜索没有命中时说「没有匹配的章节」，不误报「本卷还没有章节」", () => {
     renderChapters();
     fireEvent.change(screen.getByTestId("admin-chapter-search"), { target: { value: "不存在的标题" } });
     expect(screen.getByTestId("admin-chapter-nomatch").textContent).toContain("没有匹配的章节");

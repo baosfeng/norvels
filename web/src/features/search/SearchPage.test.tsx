@@ -70,7 +70,6 @@ function renderAt(q: string, tier: "pc" | "h5" = "pc") {
 /** 章节 tab / 章节结果 / 分栏键盘导航整块删除：这些节点一个都不该再出现在 DOM 里。 */
 function expectNoChapterScope() {
   expect(document.querySelectorAll('[data-tab="chapter"]')).toHaveLength(0);
-  expect(document.querySelectorAll('[data-od-id="search-chapters-col"]')).toHaveLength(0);
   expect(document.querySelectorAll('[data-testid="search-hit"]')).toHaveLength(0);
   expect(screen.queryByRole("tablist")).toBeNull();
   expect(screen.queryByTestId("search-chapters-empty")).toBeNull();

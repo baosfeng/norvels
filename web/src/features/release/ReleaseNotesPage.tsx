@@ -29,7 +29,7 @@ export function ReleaseNotesPage() {
   const items = notes.data?.items ?? [];
 
   return (
-    <section className="view-releases" data-testid="view:releases" data-od-id="releases">
+    <section className="view-releases" data-testid="view:releases">
       <div className="page-head">
         <div>
           <p className="eyebrow">

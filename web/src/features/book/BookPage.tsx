@@ -107,16 +107,16 @@ export function BookPage() {
     void ackNewChaptersIfLast(book, chapter, reload);
   }
 
-  /** 关闭书单面板：焦点回到「加入书单」按钮（契约 C-18 移除后）。 */
+  /** 关闭书单面板：焦点回到「加入书单」按钮。 */
   function closeCollection() {
     setCollectionOpen(false);
     collectionButtonRef.current?.focus();
   }
 
   return (
-    <section data-testid="view:book" data-od-id="book-detail">
+    <section data-testid="view:book">
       <nav className="crumbs" aria-label="面包屑">
-        <button className="crumb-link" type="button" data-od-id="C-01" onClick={backToShelf}>
+        <button className="crumb-link" type="button" onClick={backToShelf}>
           书架
         </button>
         <span aria-hidden="true">/</span>

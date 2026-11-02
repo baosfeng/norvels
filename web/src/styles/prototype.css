@@ -1,4 +1,4 @@
-/* 由 .open-design/08-prototype.html 的 <style> 移植（保持逐条一致，便于 odops parity 对照）。
+/* 由 .open-design/08-prototype.html 的 <style> 移植（保持逐条一致）。
    原型里靠 body[data-view] / body[data-tier] 切视图的规则已移除：React 侧由路由与 tier 条件渲染决定。 */
 
 *,*::before,*::after{box-sizing:border-box}

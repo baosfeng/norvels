@@ -1,4 +1,4 @@
-/** 手写 SVG 图标：不引图标库，与原型保持一致。 */
+/** 手写 SVG 图标：不引图标库，笔画与尺寸由自己控制。 */
 type IconProps = { size?: number };
 
 export function SearchIcon({ size = 17 }: IconProps) {

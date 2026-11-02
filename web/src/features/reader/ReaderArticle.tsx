@@ -86,7 +86,7 @@ export function ReaderArticle({
 
       <ReaderPager bookId={bookId} atEnd={atEnd} prev={stream.prev} onPrev={onPrev} onShelf={onShelf} />
 
-      <div className="reader-progress" data-od-id="reader-progress">
+      <div className="reader-progress">
         <div className="reader-progress-row">
           <span>
             全书进度 <strong className="num">{Math.round(stream.percent * 100)}</strong>%
@@ -133,7 +133,7 @@ function StreamTail({
     return (
       <div className="reader-stream-tail is-error" data-testid="reader-stream-tail-error" role="status">
         <span>下一章没能打开。</span>
-        <button className="btn" type="button" data-od-id="C-12b" onClick={onRetry}>
+        <button className="btn" type="button" onClick={onRetry}>
           重新读取下一章
         </button>
       </div>

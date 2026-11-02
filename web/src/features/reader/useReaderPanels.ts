@@ -18,7 +18,7 @@ export function useReaderPanels({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  // 搜索打开前的滚动位置：关闭搜索条时正文回到原处（契约 C-05 / C-37 / C-40）
+  // 搜索打开前的滚动位置：关闭搜索条时正文回到原处
   const searchOrigin = useRef(0);
 
   const closeSearch = useCallback(() => {

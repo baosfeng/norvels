@@ -12,18 +12,18 @@ import {
   volumeMetaText,
 } from "../../lib/volumeOps";
 
-/** 契约 C-73 / C-74 的原文：新建卷与改卷名的措辞不同，重名共用一个说法。 */
+/** 新建卷与改卷名的措辞不同，重名共用一个说法。 */
 export const VOLUME_TAKEN_TEXT = "同名卷已经有了，换个名字。";
 export const VOLUME_EMPTY_TEXT = "先填一个卷名。";
 
-/** 新建卷的空名提示与契约对齐（改卷名仍用「卷名不能为空。」）。 */
+/** 新建卷的空名提示单独措辞（改卷名仍用「卷名不能为空。」）。 */
 function createNameText(message: string): string {
   if (message === VOLUME_NAME_EMPTY_TEXT) return VOLUME_EMPTY_TEXT;
   if (message === VOLUME_NAME_TAKEN_TEXT) return VOLUME_TAKEN_TEXT;
   return message;
 }
 
-/** 改卷名：重名换成契约原话，其它照旧（含「卷名不能为空。」）。 */
+/** 改卷名：重名换成统一说法，其它照旧（含「卷名不能为空。」）。 */
 function renameNameText(message: string): string {
   return message === VOLUME_NAME_TAKEN_TEXT ? VOLUME_TAKEN_TEXT : message;
 }
@@ -211,7 +211,6 @@ export function VolumeManageDialog({
                         className="btn btn-sm"
                         type="button"
                         data-testid={`volume-rename-open-${volume.id}`}
-                        data-od-id="C-74"
                         onClick={() => startRename(volume)}
                       >
                         重命名
@@ -221,7 +220,6 @@ export function VolumeManageDialog({
                         type="button"
                         disabled={busy !== null || reorderPreview(volumes, volume.id, -1) === null}
                         data-testid={`volume-up-${volume.id}`}
-                        data-od-id="C-75"
                         onClick={() => void reorder(volume, -1)}
                       >
                         上移
@@ -231,7 +229,6 @@ export function VolumeManageDialog({
                         type="button"
                         disabled={busy !== null || reorderPreview(volumes, volume.id, 1) === null}
                         data-testid={`volume-down-${volume.id}`}
-                        data-od-id="C-75"
                         onClick={() => void reorder(volume, 1)}
                       >
                         下移
@@ -240,7 +237,6 @@ export function VolumeManageDialog({
                         className="btn btn-sm btn-ghost"
                         type="button"
                         data-testid={`volume-delete-${volume.id}`}
-                        data-od-id="C-76"
                         onClick={() => {
                           setErrorText("");
                           setPendingDelete(volume);
@@ -255,7 +251,7 @@ export function VolumeManageDialog({
             ))}
           </div>
 
-          {/* C-73 新建卷：卷名输入 + 新建卷按钮是同一个控件（原型里两处同锚点） */}
+          {/* 新建卷：卷名输入 + 新建卷按钮是同一个控件 */}
           <div className="vol-new">
             <input
               className="input input-sm"
@@ -263,7 +259,6 @@ export function VolumeManageDialog({
               placeholder="新卷名，如 卷四 · 归途"
               aria-label="新卷名"
               data-testid="volume-new-input"
-              data-od-id="C-73"
               onChange={(event) => setNewName(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") void create();
@@ -274,7 +269,6 @@ export function VolumeManageDialog({
               type="button"
               disabled={busy !== null}
               data-testid="volume-create"
-              data-od-id="C-73"
               onClick={() => void create()}
             >
               {busy === "create" ? "新建中…" : "新建卷"}

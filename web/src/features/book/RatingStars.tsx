@@ -9,7 +9,7 @@ export const MAX_RATING = 5;
 /**
  * 0–5 星控件（纯展示 + 回调）：用按钮而不是可拖拽元素，键盘 Tab 与 Enter 天然可用。
  * 点当前星级 = 取消评分（回到 0），与「再点一次取消收藏」的习惯一致。
- * 悬停只做预览（契约 C-08 hover）：目标星及左侧临时点亮，不改 aria 与真值。
+ * 悬停只做预览（hover）：目标星及左侧临时点亮，不改 aria 与真值。
  */
 export function RatingStars({
   value,
@@ -90,7 +90,7 @@ export function BookRating({ book, onChanged }: { book: BookDetail; onChanged?: 
   }
 
   return (
-    <div className="rating-row" data-testid="book-rating" data-od-id="C-08">
+    <div className="rating-row" data-testid="book-rating">
       <RatingStars value={rating} onRate={(next) => void rate(next)} disabled={saving} testId="book-rating" />
     </div>
   );

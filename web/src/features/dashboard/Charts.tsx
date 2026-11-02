@@ -75,9 +75,9 @@ interface ChartFrameProps extends ChartState {
   children: ReactNode;
 }
 
-/** 重试最短可见时长：点完立刻成功也要让「重试中…」被看见（契约 C-31）。 */
+/** 重试最短可见时长：点完立刻成功也要让「重试中…」被看见。 */
 const RETRY_MIN_MS = 240;
-/** 连续失败到这个次数就补一句排查提示（契约 C-31 边界）。 */
+/** 连续失败到这个次数就补一句排查提示（边界）。 */
 const RETRY_HINT_AFTER = 3;
 
 function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty, stale, children }: ChartFrameProps) {
@@ -116,7 +116,7 @@ function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty
   }
 
   return (
-    <article className="chart-card" data-chart={id} data-testid={`chart:${id}`} data-od-id={`chart:${id}`}>
+    <article className="chart-card" data-chart={id} data-testid={`chart:${id}`}>
       <div className="chart-head">
         <h3 tabIndex={-1} ref={titleRef}>
           {title}
@@ -142,7 +142,6 @@ function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty
             <button
               className="load-more retry-btn"
               type="button"
-              data-od-id="C-31"
               disabled={retrying}
               onClick={retry}
             >
@@ -166,7 +165,7 @@ function ChartFrame({ id, title, note, detail, loading, failed, onRetry, isEmpty
   );
 }
 
-/** 重试时的骨架块：卡片不许在等待里闪白（契约 C-31 反馈）。 */
+/** 重试时的骨架块：卡片不许在等待里闪白（反馈）。 */
 function RetrySkeleton() {
   return (
     <div className="retry-skeleton" aria-hidden="true" data-testid="chart-retry-skeleton">
@@ -263,7 +262,7 @@ export function ReadingDistChart({
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const tip = useChartTip();
 
-  /** 图例过滤（契约 C-26）：只改这张图的显隐，不改任何数字，也不发请求。 */
+  /** 图例过滤：只改这张图的显隐，不改任何数字，也不发请求。 */
   function toggleLegend(key: string) {
     setHidden((prev) => {
       const next = new Set(prev);
@@ -304,7 +303,6 @@ export function ReadingDistChart({
               className={`legend-row legend-btn${hidden.has(segment.key) ? " is-off" : ""}`}
               key={segment.key}
               type="button"
-              data-od-id="C-26"
               data-testid={`legend-${segment.key}`}
               aria-pressed={!hidden.has(segment.key)}
               aria-label={`${segment.label} ${segment.value} 本`}

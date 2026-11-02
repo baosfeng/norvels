@@ -77,7 +77,7 @@ describe("系列列表页", () => {
     const card = screen.getByTestId("series-card-示例系列");
     expect(card.textContent).toContain("3 本");
     expect(card.textContent).toContain("12 万 字");
-    // C-57 示例口径：最近更新用日期，不用「几小时前」的相对时间
+    //  示例口径：最近更新用日期，不用「几小时前」的相对时间
     const updated = new Date("2026-10-24T12:00:00Z");
     expect(card.textContent).toContain(
       `最近更新 ${updated.getMonth() + 1} 月 ${updated.getDate()} 日`,

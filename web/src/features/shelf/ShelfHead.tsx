@@ -77,7 +77,6 @@ export function ShelfHead({
             className="btn"
             type="button"
             data-testid="shelf-select-toggle"
-            data-od-id="C-32"
             aria-pressed={selecting}
             onClick={onToggleSelecting}
           >
@@ -89,7 +88,6 @@ export function ShelfHead({
             className="btn btn-primary"
             type="button"
             data-testid="shelf-batch-author"
-            data-od-id="C-33"
             disabled={selectedCount === 0}
             onClick={onOpenBatch}
           >

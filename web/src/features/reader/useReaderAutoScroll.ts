@@ -80,7 +80,7 @@ export function useReaderAutoScroll({
     updateSettings({ autoScroll: false });
     showToast("已关闭自动滚动");
     window.setTimeout(() => {
-      document.querySelector<HTMLElement>(`[data-od-id="${isH5 ? "C-22" : "C-08"}"]`)?.focus();
+      document.querySelector<HTMLElement>(`[data-testid="${isH5 ? "reader-bottombar-settings" : "reader-top-settings"}"]`)?.focus();
     }, 0);
   }
 

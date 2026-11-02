@@ -9,7 +9,7 @@ type AuthorOption = { id: number; name: string; bookCount: number };
 type TagOption = { id: number; name: string };
 
 /**
- * PC 工具栏（C-19/C-22/C-23/C-24/C-25/C-26/C-28/C-29）：排序、四类筛选、标签 chips。
+ * PC 工具栏：排序、四类筛选、标签 chips。
  *
  * 排版口径：每组都是「一行小标题 + 一个控件」，组与组等宽、顶端对齐（样式在 ix-library.css 的
  * `.shelf-toolbar`，不改 prototype.css 的全局 .toolbar——它还被 AdminFilterBar / AuthorsPage 用）。
@@ -68,7 +68,6 @@ export function ShelfToolbar({
           ref={sortRef}
           className="select"
           value={sort}
-          data-od-id="C-19"
           onChange={(e) => onChooseSort(e.target.value as SortValue)}
         >
           {SORTS.map((s) => (
@@ -85,7 +84,6 @@ export function ShelfToolbar({
           className="select"
           value={readStatus ?? ""}
           data-testid="filter-read-status"
-          data-od-id="C-22"
           onChange={(e) => onChooseReadStatus((e.target.value || null) as Exclude<ReadStatus, ""> | null)}
         >
           {READ_STATUS_FILTERS.map((option) => (
@@ -102,7 +100,6 @@ export function ShelfToolbar({
           className="select"
           value={rating ?? ""}
           data-testid="filter-rating"
-          data-od-id="C-23"
           onChange={(e) => onRatingChange(e.target.value ? Number(e.target.value) : null)}
         >
           <option value="">全部评分</option>
@@ -121,7 +118,6 @@ export function ShelfToolbar({
           value={authorId ?? ""}
           onChange={(e) => onAuthorChange(e.target.value ? Number(e.target.value) : null)}
           data-testid="filter-author"
-          data-od-id="C-24"
         >
           <option value="">全部作者</option>
           {authors.map((author) => (
@@ -141,13 +137,13 @@ export function ShelfToolbar({
 
       <div className="shelf-toolbar-actions" data-testid="shelf-toolbar-actions">
         {filtering ? (
-          <button className="btn btn-ghost" type="button" data-od-id="C-29" onClick={onResetFilters}>
+          <button className="btn btn-ghost" type="button" onClick={onResetFilters}>
             清除筛选
           </button>
         ) : null}
       </div>
 
-      <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags" data-od-id="C-28">
+      <div className="chips" role="group" aria-label="标签筛选" data-testid="filter-tags">
         <button type="button" className={`chip${tag === null ? " is-active" : ""}`} onClick={() => onTagChange(null)}>
           全部
         </button>

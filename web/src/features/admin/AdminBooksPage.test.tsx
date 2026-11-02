@@ -223,7 +223,7 @@ describe("书籍管理列表", () => {
     expect(screen.queryByTestId("tag-manage-dialog")).toBeNull();
   });
 
-  it("C-42：取消选择后焦点回到表头全选，不是掉到 body", async () => {
+  it("取消选择后焦点回到表头全选，不是掉到 body", async () => {
     renderPage();
     fireEvent.click(screen.getByTestId("admin-book-pick-7"));
     expect(screen.getByTestId("admin-batch-bar").textContent).toContain("已选 1 本");
@@ -231,7 +231,7 @@ describe("书籍管理列表", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("admin-select-page")));
   });
 
-  it("C-34：关闭标签管理弹层后焦点回入口按钮", async () => {
+  it("关闭标签管理弹层后焦点回入口按钮", async () => {
     renderPage();
     const trigger = screen.getByTestId("admin-tag-manage");
     fireEvent.click(trigger);

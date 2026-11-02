@@ -238,7 +238,7 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     expect(headerHidden()).toBe("false");
   });
 
-  it("C-12：翻章时浮条提示「已翻到第 n 章」", () => {
+  it("翻章时浮条提示「已翻到第 n 章」", () => {
     showToast.mockClear();
     renderReader();
     act(() => {
@@ -280,7 +280,7 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     expect(screen.queryByTestId("reader-word")).toBeNull();
   });
 
-  it("浏览器没有全屏 API 时按钮照常可点：收起控制层并提示（契约 C-02）", () => {
+  it("浏览器没有全屏 API 时按钮照常可点：收起控制层并提示", () => {
     renderReader();
     act(() => tap());
     const button = screen.getByLabelText("全屏阅读");
@@ -391,7 +391,7 @@ describe("阅读器：目录抽屉（铺满 / 搜索 / 定位）", () => {
   // 当前章 id=1200 是 420 章里的第 201 章（下标 200）
   const CURRENT = "/read/7/1200";
 
-  it("目录按 60 章分块：首块 60 行，滚动交给抽屉父级（契约 C-29）", () => {
+  it("目录按 60 章分块：首块 60 行，滚动交给抽屉父级", () => {
     renderReader("pc", ["/read/7/1000"]);
     openDrawer();
 

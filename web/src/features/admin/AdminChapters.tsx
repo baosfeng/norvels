@@ -35,7 +35,7 @@ export function AdminChapters({
   onChanged: (message: string) => void;
   onError: (message: string) => void;
   /**
-   * 只重拉详情、不弹横幅。正文抽屉保存后走这条：反馈用 toast（原型如此），
+   * 只重拉详情、不弹横幅。正文抽屉保存后走这条：反馈用 toast，
    * 页面上的横幅留给元信息与其他结构操作。
    */
   onReload?: () => void;
@@ -165,7 +165,6 @@ export function AdminChapters({
             value={query}
             placeholder="搜章节标题或章号"
             data-testid="admin-chapter-search"
-            data-od-id="C-53"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -178,7 +177,6 @@ export function AdminChapters({
           className="btn btn-sm toolbar-end"
           type="button"
           data-testid="admin-chapter-new-open"
-          data-od-id="C-54"
           onClick={() => setCreating(true)}
         >
           新建章节…
@@ -187,7 +185,6 @@ export function AdminChapters({
           className="btn btn-sm"
           type="button"
           data-testid="admin-chapter-rename-open"
-          data-od-id="C-55"
           disabled={total === 0}
           onClick={() => setRenaming(true)}
         >
@@ -197,7 +194,6 @@ export function AdminChapters({
           className="btn btn-sm"
           type="button"
           data-testid="admin-volume-manage-open"
-          data-od-id="C-56"
           onClick={() => setManagingVolumes(true)}
         >
           卷管理…

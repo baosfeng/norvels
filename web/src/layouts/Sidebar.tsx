@@ -34,8 +34,8 @@ export function Sidebar({
   };
 
   return (
-    <aside ref={navRef} className="sidebar" data-testid="sidebar" data-od-id="sidebar" aria-label="站点导航">
-      <NavLink className="brand" to={isH5 ? "/home" : "/shelf"} onClick={onNavigate} data-od-id="C-01">
+    <aside ref={navRef} className="sidebar" data-testid="sidebar" aria-label="站点导航">
+      <NavLink className="brand" to={isH5 ? "/home" : "/shelf"} onClick={onNavigate}>
         <strong>norvels</strong>
         <span>本地中文小说库</span>
       </NavLink>
@@ -44,7 +44,7 @@ export function Sidebar({
           PC 专属的管理四项才按档位不渲染。不引入底部 tab bar——外壳重排风险大，抽屉已够用。 */}
       <nav className="side-nav" aria-label="主导航">
         {isH5 ? (
-          <NavLink to="/home" onClick={onNavigate} data-od-id="C-04">
+          <NavLink to="/home" onClick={onNavigate}>
             首页
           </NavLink>
         ) : null}
@@ -52,17 +52,17 @@ export function Sidebar({
         <NavLink to="/discover" onClick={onNavigate} data-testid="nav-discover">
           发现
         </NavLink>
-        <NavLink to="/shelf" onClick={onNavigate} data-od-id="C-02">
+        <NavLink to="/shelf" onClick={onNavigate}>
           书架
           {badges.books !== null ? <span className="nav-count num">{badges.books}</span> : null}
         </NavLink>
-        <NavLink to="/search" onClick={onNavigate} data-od-id="C-03">
+        <NavLink to="/search" onClick={onNavigate}>
           搜索
         </NavLink>
-        <NavLink to="/series" onClick={onNavigate} data-testid="nav-series" data-od-id="C-05">
+        <NavLink to="/series" onClick={onNavigate} data-testid="nav-series">
           系列
         </NavLink>
-        <NavLink to="/history" onClick={onNavigate} data-testid="nav-history" data-od-id="C-06">
+        <NavLink to="/history" onClick={onNavigate} data-testid="nav-history">
           阅读历史
         </NavLink>
         {/* 书单管理不再藏在书架工具栏里：它有独立页，入口与筛选能力平级 */}
@@ -75,17 +75,17 @@ export function Sidebar({
         </NavLink>
         {isH5 ? null : (
           <>
-            <NavLink to="/admin" onClick={onNavigate} data-testid="nav-admin" data-od-id="C-07">
+            <NavLink to="/admin" onClick={onNavigate} data-testid="nav-admin">
               书籍管理
             </NavLink>
-            <NavLink to="/dashboard" onClick={onNavigate} data-od-id="C-08">
+            <NavLink to="/dashboard" onClick={onNavigate}>
               驾驶舱
             </NavLink>
-            <NavLink to="/authors" onClick={onNavigate} data-od-id="C-09">
+            <NavLink to="/authors" onClick={onNavigate}>
               作者
               {badges.authors !== null ? <span className="nav-count num">{badges.authors}</span> : null}
             </NavLink>
-            <NavLink to="/import" onClick={onNavigate} data-od-id="C-10">
+            <NavLink to="/import" onClick={onNavigate}>
               导入管理
             </NavLink>
           </>
@@ -99,7 +99,6 @@ export function Sidebar({
             className="continue-card"
             to={`/read/${resume.bookId}/${resume.chapterId}`}
             onClick={onNavigate}
-            data-od-id="C-11"
           >
             <Cover title={resume.bookTitle} className="cover-xs" showLabel={false} />
             <span className="continue-text">

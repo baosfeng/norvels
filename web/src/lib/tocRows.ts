@@ -59,7 +59,7 @@ export function filterChapters(chapters: readonly ChapterBrief[], query: string)
       String(chapter.idx + 1).includes(needle),
   );
 }
-/** 目录分块续显的步长：一次补 60 章（契约 C-29）。 */
+/** 目录分块续显的步长：一次补 60 章。 */
 export const TOC_CHUNK = 60;
 
 /** 目录里的章节总数：卷内章节之和（卷为空也算 0）。 */

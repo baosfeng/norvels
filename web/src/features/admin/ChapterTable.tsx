@@ -88,7 +88,6 @@ export function ChapterTable({
                         data-testid={`admin-chapter-pick-vol-${volume.idx}`}
                         checked={rows.length > 0 && hit === rows.length}
                         disabled={rows.length === 0}
-                        data-od-id="C-58"
                         ref={(node) => {
                           if (node) node.indeterminate = hit > 0 && hit < rows.length;
                         }}
@@ -115,7 +114,6 @@ export function ChapterTable({
                         type="checkbox"
                         aria-label={`选择第 ${chapter.idx + 1} 章`}
                         data-testid={`admin-chapter-pick-${chapter.id}`}
-                        data-od-id="C-57"
                         checked={picked.has(chapter.id)}
                         onChange={() => actions.onTogglePick(chapter.id)}
                       />
@@ -159,7 +157,6 @@ export function ChapterTable({
                         className="btn btn-sm"
                         type="button"
                         data-testid={`admin-chapter-body-${chapter.id}`}
-                        data-od-id="C-62"
                         onClick={() => actions.onEditBody(chapter)}
                       >
                         正文
@@ -168,7 +165,6 @@ export function ChapterTable({
                         className="btn btn-sm"
                         type="button"
                         data-testid={`admin-chapter-edit-${chapter.id}`}
-                        data-od-id="C-63"
                         onClick={() => actions.onStartEdit(chapter)}
                       >
                         改标题
@@ -177,7 +173,6 @@ export function ChapterTable({
                         className="btn btn-sm"
                         type="button"
                         data-testid={`admin-chapter-split-${chapter.id}`}
-                        data-od-id="C-64"
                         onClick={() => actions.onSplit(chapter)}
                       >
                         拆分
@@ -186,7 +181,6 @@ export function ChapterTable({
                         className="btn btn-sm btn-ghost"
                         type="button"
                         data-testid={`admin-chapter-delete-${chapter.id}`}
-                        data-od-id="C-65"
                         onClick={() => actions.onDelete(chapter)}
                       >
                         删除
@@ -203,7 +197,6 @@ export function ChapterTable({
                     <button
                       className="btn btn-sm"
                       type="button"
-                      data-od-id="C-66"
                       data-testid={`admin-chapter-more-${volume.idx}`}
                       onClick={() => actions.onLoadMore(volume)}
                     >

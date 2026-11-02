@@ -18,7 +18,7 @@ describe("PC 点击区 ≥32 与抽屉遮罩关闭态", () => {
     expect(discoveryCss).toMatch(/\.chips \.chip\s*\{[^}]*min-height:\s*32px/);
   });
 
-  it("抽屉遮罩关闭态 display:none（C-16 边界）", () => {
+  it("抽屉遮罩关闭态 display:none", () => {
     expect(discoveryCss).toMatch(/\.nav-scrim\s*\{[^}]*display:\s*none/);
     expect(discoveryCss).toMatch(/body\.nav-open \.nav-scrim\s*\{[^}]*display:\s*block/);
   });

@@ -8,7 +8,7 @@ import { markShelfTagFilter, shelfTagHref } from "./shelfTagLink";
 
 /**
  * 详情页头部：书名 / 署名 / 连载状态 / 标签 / 简介。
- * 锚点：C-32 署名作者链接、C-09 标签 chip、C-10 简介展开（仅 H5）。
+ * 控件：署名作者链接、标签 chip、简介展开（仅 H5）。
  *
  * H5 的书名与署名移到封面右侧（见 BookAside 的 titleSlot），这里只留时间行、标签与简介；
  * PC 仍是完整头部。拆开的原因是手机上「封面独占一行、标题另起一行」会白白吃掉 100px 高度。
@@ -93,7 +93,7 @@ function BylineAuthors({ book, isH5 }: { book: BookDetail; isH5: boolean }) {
         <Fragment key={`${name}-${index}`}>
           {index > 0 ? "、" : null}
           {linkable && index === linkIndex ? (
-            <Link to={authorHref(book.authorId, isH5)} data-od-id="C-32" data-testid="book-author-link">
+            <Link to={authorHref(book.authorId, isH5)} data-testid="book-author-link">
               {name}
             </Link>
           ) : (
@@ -105,7 +105,7 @@ function BylineAuthors({ book, isH5 }: { book: BookDetail; isH5: boolean }) {
   );
 }
 
-/** 标签 chip（C-09）：写入书架筛选意图后跳转，书架按 tag= 打开并显示「民国 · n 本」。 */
+/** 标签 chip：写入书架筛选意图后跳转，书架按 tag= 打开并显示「民国 · n 本」。 */
 export function BookTags({ book }: { book: BookDetail }) {
   const navigate = useNavigate();
   const tags = book.tags ?? [];
@@ -117,7 +117,7 @@ export function BookTags({ book }: { book: BookDetail }) {
   }
 
   return (
-    <p className="chips" data-testid="book-tags" data-od-id="C-09">
+    <p className="chips" data-testid="book-tags">
       {tags.map((tag) => (
         <button key={tag} className="chip" type="button" onClick={() => openTag(tag)}>
           {tag}
@@ -128,7 +128,7 @@ export function BookTags({ book }: { book: BookDetail }) {
 }
 
 /**
- * 简介（C-10）：H5 默认收 3 行，展开入口做成**行内**的「… 展开 ›」，PC 恒为全文。
+ * 简介：H5 默认收 3 行，展开入口做成**行内**的「… 展开 ›」，PC 恒为全文。
  *
  * 入口不再独占一行大按钮——那会在简介与事实区之间多出一道空白。
  * 收起态时入口浮在第三行右端并压一层同底色渐变，读起来像正文的延续。
@@ -167,7 +167,6 @@ function IntroToggle({ open, onToggle }: { open: boolean; onToggle: () => void }
     <button
       className="intro-toggle"
       type="button"
-      data-od-id="C-10"
       data-testid="book-intro-toggle"
       aria-expanded={open}
       onClick={onToggle}

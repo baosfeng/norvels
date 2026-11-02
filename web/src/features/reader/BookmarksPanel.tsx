@@ -5,7 +5,7 @@ import type { ResourceState } from "../../lib/useResource";
 
 /**
  * 书签页签内容：列表按时间倒序，每行可跳到该段；「在这里加书签」记在当前读到的段落。
- * 删除先弹二次确认（C-58），确认框在父级渲染——这里只负责发起。
+ * 删除先弹二次确认，确认框在父级渲染——这里只负责发起。
  */
 export function BookmarksPanel({
   bookmarks,
@@ -35,7 +35,6 @@ export function BookmarksPanel({
         className="btn bookmark-add"
         type="button"
         data-testid="bookmark-add"
-        data-od-id="C-32"
         onClick={onAdd}
         disabled={!canAdd || adding}
       >
@@ -52,7 +51,7 @@ export function BookmarksPanel({
           <h2>书签没能加载</h2>
           <p>正文不受影响，可以继续往下读。</p>
           <div className="state-actions">
-            <button className="btn btn-primary" type="button" disabled={retrying} data-od-id="C-35" onClick={onRetry}>
+            <button className="btn btn-primary" type="button" disabled={retrying} onClick={onRetry}>
               {retrying ? "正在重试…" : "重试"}
             </button>
           </div>
@@ -72,7 +71,7 @@ export function BookmarksPanel({
               data-testid={`bookmark-${bookmark.id}`}
               data-current={bookmark.chapterId === currentChapterId}
             >
-              <button className="bookmark-jump" type="button" data-od-id="C-33" onClick={() => onJump(bookmark)}>
+              <button className="bookmark-jump" type="button" onClick={() => onJump(bookmark)}>
                 <span className="num">{bookmark.chapterTitle || `第 ${bookmark.chapterIdx + 1} 章`}</span>
                 <span className="bookmark-label">{bookmarkTitle(bookmark)}</span>
               </button>
@@ -81,7 +80,6 @@ export function BookmarksPanel({
                 type="button"
                 aria-label={`删除书签 ${bookmarkTitle(bookmark)}`}
                 data-testid={`bookmark-delete-${bookmark.id}`}
-                data-od-id="C-34"
                 onClick={() => onRequestDelete(bookmark)}
               >
                 删除

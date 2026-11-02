@@ -7,7 +7,7 @@ import { BookRating } from "./RatingStars";
 import { ReadStatusChips } from "./ReadStatusChips";
 
 /**
- * 详情页的书籍事实区（C-06 / C-07 / C-08 + 元信息）：字数、导入时间、系列、阅读状态、评分、
+ * 详情页的书籍事实区（+ 元信息）：字数、导入时间、系列、阅读状态、评分、
  * 书签、分类、出版信息。
  *
  * 两档都渲染：PC 放在左栏（`BookAside`），H5 放在主栏书名与简介之后。
@@ -51,7 +51,6 @@ export function BookFacts({
               className={`select${savingStatus ? " is-saving" : ""}`}
               id="book-read-status"
               data-testid="book-read-status"
-              data-od-id="C-07"
               value={readStatus}
               disabled={savingStatus}
               onChange={(event) => onReadStatusChange(event.target.value as ReadStatus)}
@@ -88,7 +87,7 @@ export function BookFacts({
       {book.categoryL1 ? (
         <div>
           <dt>分类</dt>
-          {/* 大 / 小分类各自可点：都落到书架的 l1 / l2 筛选（C-22 同口径的文字入口） */}
+          {/* 大 / 小分类各自可点：都落到书架的 l1 / l2 筛选（同口径的文字入口） */}
           <dd className="fact-category" data-testid="book-category">
             <Link className="fact-link" to={categoryHref(book.categoryL1)} data-testid="book-category-l1">
               {book.categoryL1}
@@ -120,13 +119,13 @@ export function BookFacts({
   );
 }
 
-/** 系列行：系列名可点（C-06），部数仍按纯文本跟在后面。 */
+/** 系列行：系列名可点，部数仍按纯文本跟在后面。 */
 function SeriesFact({ series, seriesIndex }: { series: string; seriesIndex?: number }) {
   return (
     <div>
       <dt>系列</dt>
       <dd>
-        <Link className="fact-link" to={`/series/${encodeURIComponent(series)}`} data-od-id="C-06">
+        <Link className="fact-link" to={`/series/${encodeURIComponent(series)}`}>
           {series}
         </Link>
         {seriesIndex ? ` · 第 ${seriesIndex} 部` : ""}

@@ -37,7 +37,6 @@ export function RandomBookButton({
       className="btn"
       type="button"
       data-testid="shelf-random"
-      data-od-id="C-35"
       disabled={busy}
       onClick={() => void pick()}
     >

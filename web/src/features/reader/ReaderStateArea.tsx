@@ -55,7 +55,7 @@ export function ReaderStateArea({
         <h2>正文没能打开</h2>
         <p>{errorText(error)}</p>
         <div className="state-actions">
-          <button className="btn btn-primary" type="button" disabled={retrying} data-od-id="C-14" onClick={onRetry}>
+          <button className="btn btn-primary" type="button" disabled={retrying} onClick={onRetry}>
             {retrying ? "正在重试…" : "重试"}
           </button>
         </div>
@@ -77,7 +77,7 @@ export function ReaderStateArea({
       testId="reader-empty"
       actions={
         <>
-          <button className="btn btn-primary" type="button" disabled={!next} data-od-id="C-15" onClick={onNext}>
+          <button className="btn btn-primary" type="button" disabled={!next} onClick={onNext}>
             先读下一章
           </button>
           {!next ? <span className="inline-note">已经是最后一章了</span> : null}

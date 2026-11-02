@@ -181,7 +181,6 @@ export function UploadPanel({ onSubmitted, disabled = false }: { onSubmitted: ()
           onClick={() => void submit()}
           disabled={!canSubmit}
           data-testid="upload-submit"
-          data-od-id="C-09"
         >
           {uploading ? "正在上传…" : picked.length > 0 ? `上传文件（${screened.accepted.length}）` : "上传文件"}
         </button>
@@ -255,7 +254,6 @@ function DropZone({
         onDrop(event.dataTransfer?.files ?? null);
       }}
       className={`upload-dropzone${dragging ? " is-dragging" : ""}${disabled ? " is-disabled" : ""}`}
-      data-od-id="C-08"
       aria-disabled={disabled}
     >
       <strong style={{ fontSize: 13 }}>拖文件到这里，或点击选择</strong>

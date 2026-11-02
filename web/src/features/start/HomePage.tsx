@@ -29,14 +29,14 @@ export function HomePage() {
   const recentRowsRef = useRef<HTMLDivElement | null>(null);
   const [awaitRetry, setAwaitRetry] = useState(false);
 
-  // 重试成功后焦点交给最近入库的第一行（C-71 离开错误态）
+  // 重试成功后焦点交给最近入库的第一行（离开错误态）
   useEffect(() => {
     if (!awaitRetry || recent.loading || recent.error) return;
     queueMicrotask(() => setAwaitRetry(false));
     recentRowsRef.current?.querySelector<HTMLElement>("a")?.focus();
   }, [awaitRetry, recent.loading, recent.error]);
 
-  // 错档落点（C-05 边界）：窄屏访问系列 / 阅读历史等 PC 页会被 TierRoute 送回首页，
+  // 错档落点：窄屏访问系列 / 阅读历史等 PC 页会被 TierRoute 送回首页，
   // 这里把「为什么回来了」用 4 秒提示说清楚，并把一次性 state 清掉，刷新不再重复播报。
   useEffect(() => {
     const text = tierFallbackText((location.state as { from?: string } | null)?.from);
@@ -75,7 +75,7 @@ export function HomePage() {
   }
 
   function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // Esc 清空并保持焦点；输入法组合期间的 Enter 不提交（C-43）
+    // Esc 清空并保持焦点；输入法组合期间的 Enter 不提交
     if (event.key === "Escape") {
       event.preventDefault();
       setQ("");
@@ -96,12 +96,11 @@ export function HomePage() {
   }
 
   return (
-    <div className="h5-home" data-testid="view:home" data-od-id="home">
+    <div className="h5-home" data-testid="view:home">
       <div className="h5-top">
         <button
           className="icon-btn h5-burger"
           type="button"
-          data-od-id="C-15"
           onClick={(event) => nav.toggle(event.currentTarget)}
           aria-label="打开导航"
           aria-expanded={nav.open}
@@ -127,8 +126,6 @@ export function HomePage() {
           className="resume-card"
           to={`/read/${resume.bookId}/${resume.chapterId}`}
           data-testid="home:resume"
-          data-od-id="C-42"
-          data-legacy-od-id="home:resume"
         >
           <Cover title={resume.bookTitle} showLabel={false} />
           <div className="resume-body">
@@ -142,7 +139,7 @@ export function HomePage() {
           </div>
         </Link>
       ) : (
-        <div data-od-id="C-45">
+        <div>
           <EmptyPanel
             title="还没有阅读记录"
             description="从书架挑一本开始读，下次回来就能从这里接着看。"
@@ -155,7 +152,7 @@ export function HomePage() {
         </div>
       )}
 
-      <form className="h5-search" onSubmit={submit} role="search" data-od-id="C-43">
+      <form className="h5-search" onSubmit={submit} role="search">
         <span className="search-icon">
           <SearchIcon />
         </span>
@@ -196,14 +193,14 @@ export function HomePage() {
       <div className="h5-section">
         <div className="h5-section-head">
           <h2>最近在读</h2>
-          <Link className="meta h5-section-link" to="/shelf" data-od-id="C-44">
+          <Link className="meta h5-section-link" to="/shelf">
             全部书架 →
           </Link>
         </div>
         {others.length > 0 ? (
           <div className="h5-list" data-testid="home:reading">
             {others.map((item) => (
-              <Link className="h5-row" key={item.bookId} to={`/read/${item.bookId}/${item.chapterId}`} data-od-id="C-46">
+              <Link className="h5-row" key={item.bookId} to={`/read/${item.bookId}/${item.chapterId}`}>
                 <Cover title={item.bookTitle} showLabel={false} />
                 <span className="h5-row-text">
                   <b>{item.bookTitle}</b>
@@ -222,7 +219,7 @@ export function HomePage() {
         <div className="h5-section" data-testid="home:recent-section">
           <div className="h5-section-head">
             <h2>最近入库</h2>
-            <Link className="meta h5-section-link" to="/shelf" data-od-id="C-47">
+            <Link className="meta h5-section-link" to="/shelf">
               全部 →
             </Link>
           </div>
@@ -234,7 +231,7 @@ export function HomePage() {
           ) : (
             <div className="h5-list" ref={recentRowsRef} data-testid="home:recent-books">
               {fresh.map((book) => (
-                <Link className="h5-row" key={book.id} to={`/book/${book.id}`} data-od-id="C-48">
+                <Link className="h5-row" key={book.id} to={`/book/${book.id}`}>
                   <Cover title={book.title} showLabel={false} />
                   <span className="h5-row-text">
                     <b>{book.title}</b>
