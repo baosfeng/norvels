@@ -9,6 +9,7 @@ import { SEARCH_HISTORY_MIN_LEN, readSearchHistory, rememberSearch } from "../..
 import { showToast } from "../../lib/toastStore";
 import { useNavDrawer } from "../../layouts/navDrawer";
 import { tierFallbackText } from "../../layouts/tierFallback";
+import { SceneRecommendBlock } from "../recommend/SceneRecommendBlock";
 
 /**
  * H5 首屏（≤768）：继续阅读 → 最近在读 → 搜索入口 → 书架列表。
@@ -187,6 +188,10 @@ export function HomePage() {
           </div>
         </div>
       ) : null}
+
+      {/* 推荐位：首屏最贵的位置之一，放在「最近在读」之前——用户还没有阅读记录时，
+          这一块是首页唯一能给出「接下来读什么」的答案（空/失败时整块不渲染，不留空框）。 */}
+      <SceneRecommendBlock scene="home" />
 
       <div className="h5-section">
         <div className="h5-section-head">

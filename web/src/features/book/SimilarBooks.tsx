@@ -4,6 +4,7 @@ import type { RecommendItem } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { ErrorPanel, RowSkeleton } from "../../components/StatePanel";
 import { track } from "../../lib/telemetry";
+import { sceneCopy } from "../recommend/sceneCopy";
 
 /** 一次给几张：横向一排 6 张，多于一屏宽就在块内横向滚动，不把页面撑宽。 */
 export const SIMILAR_LIMIT = 6;
@@ -24,7 +25,7 @@ export function SimilarBooks({ bookId }: { bookId: number }) {
   if (rec.loading) {
     return (
       <section className="similar-block" data-testid="book:similar-loading">
-        <h2 className="similar-title">你可能也喜欢</h2>
+        <h2 className="similar-title">{sceneCopy("book").title}</h2>
         <RowSkeleton count={2} testId="book:similar-skeleton" />
       </section>
     );
@@ -32,7 +33,7 @@ export function SimilarBooks({ bookId }: { bookId: number }) {
   if (rec.error) {
     return (
       <section className="similar-block" data-testid="book:similar-error-block">
-        <h2 className="similar-title">你可能也喜欢</h2>
+        <h2 className="similar-title">{sceneCopy("book").title}</h2>
         <ErrorPanel error={rec.error} title="相似推荐没能加载" onRetry={rec.reload} testId="book:similar-error" />
       </section>
     );
@@ -43,8 +44,10 @@ export function SimilarBooks({ bookId }: { bookId: number }) {
   return (
     <section className="similar-block" data-testid="book:similar">
       <div className="similar-head">
-        <h2 className="similar-title">你可能也喜欢</h2>
-        <span className="meta">按分类、作者与共读关系挑的</span>
+        <h2 className="similar-title">{sceneCopy("book").title}</h2>
+        <span className="meta" data-testid="book:similar-note">
+          {sceneCopy("book").note}
+        </span>
       </div>
       <div className="similar-row">
         {items.map((item) => (
