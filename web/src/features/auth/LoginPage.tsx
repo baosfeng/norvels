@@ -1,6 +1,9 @@
-import { useEffect, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import type { AuthUserSummary } from "../../api/types";
+import { DeleteAccountDialog } from "../../layouts/DeleteAccountDialog";
 import { DEFAULT_ACCOUNT_NAME, useAuth } from "../../lib/auth";
+import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { AuthUserList } from "./AuthUserList";
 import { AUTH_DEFAULT_NEXT, isSwitchMode, safeNext, shouldLeaveLoginPage } from "./authModel";
@@ -33,8 +36,9 @@ function formSubText(isH5: boolean): string {
  * `?switch=1` 是「我主动来换号」：已登录时默认立刻回来源页（保持鉴权重定向体验），
  * 但换号场景下跳走就等于没有入口——所以带这个参数时留在本页。
  *
- * 删账号的入口在侧栏账号面板（SideAccount）：那里才知道「我现在是谁」，
- * 删除当前账号后回到未登录态。
+ * 删账号的入口只在本页的账号列表：那是唯一能看清「全部账号」的地方，
+ * 且每次删除都走二次确认。侧栏账号菜单不放删除——那里点错一下就没有第二次机会。
+ * 删除当前账号后自动回到未登录态（AuthProvider 负责），列表就地刷新。
  *
  * 匿名可用是硬要求：本页**不拦截任何浏览**，只是需要账号的动作的落脚点。
  */
@@ -47,6 +51,8 @@ export function LoginPage() {
   const switching = isSwitchMode(params);
   const form = useAuthForm(next);
   const { user, loggedIn } = auth;
+  const [deleteTarget, setDeleteTarget] = useState<AuthUserSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const shouldLeave = shouldLeaveLoginPage(loggedIn, switching);
   // 马上要跳走就别再取列表；换号页 / 未登录页才需要
   const list = useAuthUsers(!shouldLeave);
@@ -66,6 +72,21 @@ export function LoginPage() {
   async function handle(rawName?: string) {
     const result = await form.submit(rawName);
     if (result) navigate(result.next, { replace: true });
+  }
+
+  /** 删账号：二次确认后调用，删的是当前账号时 AuthProvider 会切回未登录。 */
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await auth.deleteAccount(deleteTarget.id);
+      showToast(`已删除账号「${deleteTarget.name}」。`);
+      // 删掉的那行不该还留在列表里；删的是自己就回到未登录形态，本页不跳走
+      list.reload();
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -106,6 +127,7 @@ export function LoginPage() {
               current={loggedIn ? user : null}
               busy={busy}
               onPick={(name) => void handle(name)}
+              onDelete={setDeleteTarget}
             />
             <p className="meta auth-new-head">或者用新名字进入</p>
           </>
@@ -149,6 +171,14 @@ export function LoginPage() {
         <p className="meta auth-foot" data-testid="auth-foot">
           {footText}
         </p>
+
+        <DeleteAccountDialog
+          open={deleteTarget !== null}
+          name={deleteTarget?.name ?? ""}
+          deleting={deleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void confirmDelete()}
+        />
       </div>
     </section>
   );

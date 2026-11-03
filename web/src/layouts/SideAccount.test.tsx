@@ -118,33 +118,15 @@ describe("侧栏 / H5 抽屉底部的账号区", () => {
     expect(screen.queryByTestId("side-account-switch")).toBeNull();
   });
 
-  it("删账号：先二次确认，确认后调 deleteAccount 并回「全部书」", async () => {
-    const deleteAccount = vi.fn(async () => undefined);
-    renderAccount("/shelf?view=mine", makeAuth({ user: USER, loggedIn: true, deleteAccount }));
-
-    // 一次点击不该删：先出确认框
+  it("菜单里没有「删除此账号」：不可逆操作只放在登录页的账号列表", () => {
+    renderAccount("/shelf", makeAuth({ user: USER, loggedIn: true }));
     openMenu();
-    fireEvent.click(screen.getByTestId("side-account-delete"));
-    expect(screen.getByTestId("delete-account-confirm")).toBeTruthy();
-    expect(screen.getByTestId("delete-account-confirm").textContent).toContain("一起删掉");
-    expect(screen.getByTestId("delete-account-confirm").textContent).toContain("书不受影响");
-    expect(deleteAccount).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("delete-account-confirm-button"));
-    await waitFor(() => expect(deleteAccount).toHaveBeenCalledWith(USER.id));
-    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/shelf?view=all"));
-    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("已删除账号"));
-  });
-
-  it("删账号确认框可以取消：不发请求、账号态不变", () => {
-    const deleteAccount = vi.fn(async () => undefined);
-    renderAccount("/shelf", makeAuth({ user: USER, loggedIn: true, deleteAccount }));
-    openMenu();
-    fireEvent.click(screen.getByTestId("side-account-delete"));
-    fireEvent.click(screen.getByTestId("delete-account-cancel"));
-    expect(screen.queryByTestId("delete-account-confirm")).toBeNull();
-    expect(deleteAccount).not.toHaveBeenCalled();
-    expect(screen.getByTestId("side-account-name").textContent).toBe("夜读的人");
+    const menu = screen.getByTestId("side-account-menu");
+    expect(menu.textContent).not.toContain("删除");
+    expect(screen.queryByTestId("side-account-delete")).toBeNull();
+    // 换号与退出仍在
+    expect(screen.getByTestId("side-account-switch")).toBeTruthy();
+    expect(screen.getByTestId("side-account-logout")).toBeTruthy();
   });
 
   it("当前账号展示活跃时间（me() 的 lastSeenAt 不为空时不再是「从未登录」）", () => {

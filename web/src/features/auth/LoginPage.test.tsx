@@ -300,3 +300,37 @@ describe("进入页 H5：短说明 + 主操作占主位 + 错误提示贴输入�
     expect(screen.queryByTestId("auth-register")).toBeNull();
   });
 });
+
+/**
+ * 删账号只在这一页出现：列表每行右侧一个删除按钮，点了先出二次确认。
+ * 侧栏账号菜单不再提供删除入口（见 SideAccount.test.tsx 的反向断言）。
+ */
+describe("登录页：账号列表里删号", () => {
+  it("点删除先出二次确认，确认后才调 deleteAccount，并重拉列表", async () => {
+    authUsers.mockResolvedValue(accountList());
+    const deleteAccount = vi.fn(async () => undefined);
+    renderLogin("/login?switch=1", makeAuth({ user, loggedIn: true, deleteAccount }));
+
+    fireEvent.click(await screen.findByTestId("auth-user-delete-3"));
+    expect(screen.getByTestId("delete-account-confirm")).toBeTruthy();
+    expect(screen.getByTestId("delete-account-confirm").textContent).toContain("一起删掉");
+    expect(deleteAccount).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("delete-account-confirm-button"));
+    await waitFor(() => expect(deleteAccount).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("已删除账号"));
+    // 删完要重拉：删掉的那行不该还留在列表里
+    await waitFor(() => expect(authUsers).toHaveBeenCalledTimes(2));
+  });
+
+  it("确认框可以取消：不发请求", async () => {
+    authUsers.mockResolvedValue(accountList());
+    const deleteAccount = vi.fn(async () => undefined);
+    renderLogin("/login?switch=1", makeAuth({ user, loggedIn: true, deleteAccount }));
+
+    fireEvent.click(await screen.findByTestId("auth-user-delete-3"));
+    fireEvent.click(screen.getByTestId("delete-account-cancel"));
+    expect(screen.queryByTestId("delete-account-confirm")).toBeNull();
+    expect(deleteAccount).not.toHaveBeenCalled();
+  });
+});

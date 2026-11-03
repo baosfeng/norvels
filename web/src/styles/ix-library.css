@@ -478,8 +478,14 @@
 .auth-foot{margin:0;line-height:1.6}
 /* 账号选择器：一行一个可点区域（沿用 .btn 的边框与手感），内容左对齐、拉满宽度 */
 .auth-user-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+/* 一行 = 主按钮（点它进账号）+ 删除按钮（不可逆操作，独立热区，绝不被行按钮吃掉） */
+.auth-user-item{display:flex;align-items:center;gap:6px}
 .auth-user-row{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;
-  width:100%;min-height:44px;padding:8px 12px;text-align:left}
+  flex:1;min-width:0;min-height:44px;padding:8px 12px;text-align:left}
+.auth-user-delete{display:grid;place-items:center;flex:none;width:36px;height:36px;
+  border:0;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer}
+.auth-user-delete:hover{color:var(--danger);background:color-mix(in oklab,var(--danger),transparent 90%)}
+.auth-user-delete:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .auth-user-name{font-weight:600;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .auth-user-seen{margin-left:auto}
 .auth-new-head{margin:0}
@@ -515,6 +521,7 @@
 /* 触屏：登录页与视图切换的可点区域抬到 44px（口径见 globals.css 顶部） */
 @media (max-width: 768px) {
   .auth-page{padding:20px 12px}
+  .auth-user-delete{width:44px;height:44px}
   .shelf-view-switch .chip{min-height:44px}
   .side-account-trigger{min-height:44px}
   .side-account-item{min-height:42px}

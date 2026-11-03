@@ -4,7 +4,6 @@ import { loginHrefFor, useAuth } from "../lib/auth";
 import { absoluteSeenTitle, loginPath, seenLine, switchAccountPath } from "../features/auth/authModel";
 import { ALL_BOOKS_LINK } from "../features/shelf/shelfView";
 import { showToast } from "../lib/toastStore";
-import { DeleteAccountDialog } from "./DeleteAccountDialog";
 
 /**
  * 侧栏 / H5 抽屉底部的账号区。
@@ -12,7 +11,10 @@ import { DeleteAccountDialog } from "./DeleteAccountDialog";
  * 版面口径：**一行账号 + 一个向上弹出的菜单**。之前把「切换账号 / 退出登录 / 删除此账号」
  * 平铺成三行按钮，H5 抽屉里光这一块就吃掉四行高度，还没到正文就先滚一屏。
  * 现在只留一行（头像 + 名字 + 上次活跃），操作收进菜单里——与系统菜单同一套读法：
- * 图标 + 文字、34px 行高、危险项单独一色。
+ * 图标 + 文字、34px 行高。
+ *
+ * **删除账号不在这里**：那是不可逆操作，入口只放在登录页的账号列表里
+ * （能看清全部账号、每次都要二次确认）；侧栏这个菜单随手点开，误触代价太大。
  *
  * 口径（B2）：登录入口放在侧栏抽屉 / 设置处，**不强制拦截**——
  * 开放模式（后端未配口令）下用户根本不该看到"请先登录"，所以未登录时这里只是一行
@@ -29,7 +31,6 @@ export function SideAccount({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -68,21 +69,6 @@ export function SideAccount({ onNavigate }: { onNavigate?: () => void }) {
       leaveToAllBooks();
     } finally {
       setBusy(false);
-      onNavigate?.();
-    }
-  }
-
-  async function handleDelete() {
-    const user = auth.user;
-    if (!user) return;
-    setBusy(true);
-    try {
-      await auth.deleteAccount(user.id);
-      showToast(`已删除账号「${user.name}」。`);
-      leaveToAllBooks();
-    } finally {
-      setBusy(false);
-      setConfirmDelete(false);
       onNavigate?.();
     }
   }
@@ -171,21 +157,6 @@ export function SideAccount({ onNavigate }: { onNavigate?: () => void }) {
             <SwitchIcon />
             切换账号
           </Link>
-          {/* 删号是不可逆操作：先二次确认，确认框写明「个人记录会一起删掉、书不会」 */}
-          <button
-            className="side-account-item is-danger"
-            role="menuitem"
-            type="button"
-            disabled={busy}
-            data-testid="side-account-delete"
-            onClick={() => {
-              closeMenu();
-              setConfirmDelete(true);
-            }}
-          >
-            <TrashIcon />
-            删除此账号
-          </button>
           <div className="side-account-sep" role="separator" />
           <button
             className="side-account-item"
@@ -201,13 +172,6 @@ export function SideAccount({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       ) : null}
 
-      <DeleteAccountDialog
-        open={confirmDelete}
-        name={auth.user.name}
-        deleting={busy}
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => void handleDelete()}
-      />
     </div>
   );
 }
@@ -230,14 +194,6 @@ function SwitchIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M4 8h13l-3-3M20 16H7l3 3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

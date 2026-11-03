@@ -8,6 +8,8 @@ export interface AuthUsersState {
   loading: boolean;
   /** 取数失败（网络 / 接口未上线）：界面据此退回旧表单，不阻塞登录。 */
   failed: boolean;
+  /** 删掉一个账号后重拉列表：删掉的那行不该还留在页面上。 */
+  reload: () => void;
 }
 
 /**
@@ -19,10 +21,11 @@ export interface AuthUsersState {
  * enabled 为假（已经登录且不是来换号的）时不发请求：那种情况下页面马上就会跳走。
  */
 export function useAuthUsers(enabled: boolean): AuthUsersState {
-  const { data, loading, error } = useResource((signal) => api.authUsers({ signal }), [], { enabled });
+  const { data, loading, error, reload } = useResource((signal) => api.authUsers({ signal }), [], { enabled });
   return {
     users: data?.items ?? [],
     loading: enabled && loading,
     failed: error !== null,
+    reload,
   };
 }
