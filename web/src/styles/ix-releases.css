@@ -1,32 +1,107 @@
-/* 更新日志页：版本一节一张卡，条目按「新增 / 改进 / 修复 / 升级注意」分组。
+/* 更新日志页：左列版本目录 + 右侧版本卡片，条目按「新增 / 改进 / 修复 / 升级注意」纵向分组。
    只改这一页的密度与层级；tokens 与页头沿用全站口径（.page-head 在 page-heads.css）。 */
 
 .view-releases {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
+.release-layout {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+
+/* ── 版本目录：PC 吸顶一列 ── */
+.release-nav {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 18 个版本超过一屏：目录自己滚，不把整页顶长 */
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.release-nav-title {
+  margin: 0;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.release-nav ol {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.release-nav a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  text-decoration: none;
+}
+
+.release-nav a:hover,
+.release-nav a:focus-visible {
+  background: var(--surface-warm);
+  color: var(--fg);
+}
+
+/* 正在用的那一版：目录里也是强调色，扫一眼就知道自己在时间线哪一格 */
+.release-nav a.is-current {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.release-nav-flag {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ── 版本卡片 ── */
 .release-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .release-card {
-  border: 1px solid var(--line, rgba(0, 0, 0, 0.1));
-  border-radius: 12px;
-  padding: 14px 16px;
-  background: var(--surface, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scroll-margin-top: 16px;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
 }
 
-/* 正在使用的那一版：左侧色条 + 浅底，扫列表时一眼定位 */
+/* 正在使用的那一版：左侧色条 + 边框提亮，滚动时也能一眼认出来 */
 .release-card.is-current {
-  border-color: var(--accent, #2f6fed);
-  box-shadow: inset 3px 0 0 var(--accent, #2f6fed);
+  border-color: color-mix(in oklab, var(--accent), var(--border) 55%);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .release-head {
@@ -34,13 +109,13 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 10px;
 }
 
 .release-head h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.3;
+  font-variant-numeric: tabular-nums;
 }
 
 .release-badge {
@@ -48,74 +123,135 @@
   padding: 1px 8px;
   font-size: 11px;
   line-height: 18px;
-  color: #fff;
-  background: var(--accent, #2f6fed);
+  color: var(--bg);
+  background: var(--accent);
 }
 
 .release-date,
 .release-retro {
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 /* 回溯条目：说明是从 git 历史整理的，用虚线框把它和发版时写的区分开 */
 .release-retro {
-  border: 1px dashed currentColor;
+  border: 1px dashed color-mix(in oklab, var(--muted), transparent 45%);
   border-radius: 999px;
   padding: 0 6px;
 }
 
+/* ── 分组：左标签 + 右条目，单列纵向读下来 ── */
 .release-groups {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-/* H5 一列：窄屏两列会把条目挤成两三字一行 */
-.release-groups.is-h5 {
-  grid-template-columns: minmax(0, 1fr);
+.release-group {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 4px 14px;
+  align-items: start;
 }
 
 .release-group h3 {
-  margin: 0 0 4px;
+  margin: 0;
+  padding-top: 2px;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  opacity: 0.72;
+  letter-spacing: 0.06em;
+  color: var(--muted);
 }
 
 .release-group ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin: 0;
-  padding-left: 18px;
+  padding-left: 16px;
 }
 
 .release-group li {
-  margin: 2px 0;
-  line-height: 1.6;
+  line-height: 1.72;
+  text-wrap: pretty;
+}
+
+/* 条目里的行内 markdown：粗体是「这一条的重点」，代码是可直接执行的命令 */
+.release-group strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.release-group code {
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  font-size: 0.9em;
+  background: color-mix(in oklab, var(--fg), transparent 90%);
+}
+
+.release-group a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* 升级注意要醒目：这是唯一「不读会出事」的一组 */
 .release-upgrade {
-  grid-column: 1 / -1;
-  border-left: 3px solid var(--warn, #d9822b);
-  border-radius: 6px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--warn, #d9822b) 8%, transparent);
+  padding: 10px 12px;
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--warn), transparent 90%);
 }
 
 .release-upgrade h3 {
-  opacity: 1;
-  color: var(--warn, #d9822b);
+  color: var(--warn);
+  padding-top: 0;
 }
 
-/* 手机端：卡片内边距收紧，条目字号跟正文一致 */
+/* ── H5：目录折成顶部横滑 chips，卡片内边距收紧 ── */
 @media (max-width: 768px) {
+  .release-layout.is-h5 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .release-layout.is-h5 .release-nav {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .release-layout.is-h5 .release-nav ol {
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .release-layout.is-h5 .release-nav ol::-webkit-scrollbar {
+    display: none;
+  }
+
+  .release-layout.is-h5 .release-nav a {
+    white-space: nowrap;
+    padding: 4px 11px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+  }
+
   .release-card {
-    padding: 12px;
+    padding: 14px;
   }
 
   .release-head h2 {
     font-size: 16px;
+  }
+
+  .release-group {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 4px 10px;
   }
 }
 

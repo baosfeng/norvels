@@ -69,10 +69,6 @@ export function Sidebar({
         <NavLink to="/collections" onClick={onNavigate} data-testid="nav-collections">
           书单
         </NavLink>
-        {/* 更新日志：产品里能直接看到每个版本改了什么（说明内嵌在二进制里，不依赖外网） */}
-        <NavLink to="/changelog" onClick={onNavigate} data-testid="nav-changelog">
-          更新日志
-        </NavLink>
         {isH5 ? null : (
           <>
             <NavLink to="/admin" onClick={onNavigate} data-testid="nav-admin">

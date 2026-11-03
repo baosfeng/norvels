@@ -97,6 +97,30 @@ describe("更新日志页", () => {
     expect(screen.getByText("据 git 历史回溯")).toBeTruthy();
   });
 
+  it("条目按 markdown 渲染：粗体变成 strong，页面上不再有字面星号", async () => {
+    releases.mockResolvedValue(
+      notes([
+        entry({
+          sections: { added: ["**连续翻章**：往下翻就是下一章"], changed: [], fixed: [], upgrade: [] },
+        }),
+      ]),
+    );
+    renderPage();
+    const list = await screen.findByTestId("releases-list");
+    expect(list.querySelector("strong")?.textContent).toBe("连续翻章");
+    expect(list.textContent).not.toContain("**");
+  });
+
+  it("版本目录列出每个版本，当前版本带「在用」标记", async () => {
+    releases.mockResolvedValue(
+      notes([entry(), entry({ version: "0.8.1", date: "2026-11-01" })], "0.9.0"),
+    );
+    renderPage();
+    const nav = await screen.findByTestId("releases-nav");
+    expect(nav.querySelectorAll("a")).toHaveLength(2);
+    expect(nav.querySelector("a[aria-current='location']")?.textContent).toContain("在用");
+  });
+
   it("说明文件为空时给空态，而不是空白页", async () => {
     releases.mockResolvedValue(notes([]));
     renderPage();
