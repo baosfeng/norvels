@@ -84,10 +84,20 @@ export function scrollToChapterTop(surface: Surface | null, chapterId: number): 
   if (!surface) return false;
   const node = document.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`);
   if (!node) return false;
-  const delta = node.getBoundingClientRect().top - surface.el.getBoundingClientRect().top;
-  if (Math.abs(delta) < 0.5) return true;
-  if (surface.scrolls) surface.el.scrollTop = Math.max(0, surface.el.scrollTop + delta);
-  else window.scrollBy(0, delta);
+  const top = node.getBoundingClientRect().top;
+  if (surface.scrolls) {
+    // 容器自己滚：基准是容器可视区的顶（这个模式下容器 rect 相对视口是固定的）
+    const delta = top - surface.el.getBoundingClientRect().top;
+    if (Math.abs(delta) < 0.5) return true;
+    surface.el.scrollTop = Math.max(0, surface.el.scrollTop + delta);
+    return true;
+  }
+  // 整页滚：正文容器本身就是整条流，它的 rect.top 会随页面滚动一起跑。
+  // 拿它当基准（上面的 delta）算出来的是「这一章在流里的偏移」，再累加到当前 scrollY 上
+  // 就会滚过头——实测翻一章多滚 4500px，落位停在目标章下方几屏处，判定带随后把可见章
+  // 判成更后面那一章，顶栏章号与正文就对不上了。整页滚时只有视口顶是固定的。
+  if (Math.abs(top) < 0.5) return true;
+  window.scrollBy(0, top);
   return true;
 }
 
