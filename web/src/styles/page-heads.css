@@ -6,7 +6,10 @@
   gap: 12px;
   align-items: center;
 }
-.page-head h1 {
+/* 页标题字号只在这里定：搜索页的 .search-head 是另一套结构（眉标 + 大标题跟着搜索框），
+   但标题与全站页头同一档——它以前在 prototype.css 里单写 34px，比别的页大一截。 */
+.page-head h1,
+.search-head h1 {
   font-size: 21px;
   line-height: 1.2;
 }
