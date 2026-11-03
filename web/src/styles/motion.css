@@ -86,40 +86,22 @@ html.theme-shifting .state-panel {
   animation-fill-mode: both;
   background: var(--r-bg);
 }
-/* 转场期间别叠淡入：新章若是这次才挂载的，淡入会让快照拍到半透明的一页 */
-html[data-reader-flip] .reader-article.is-entering {
-  animation: none;
-}
+/* 方向走变量（--reader-flip-sign：下一章 1 / 上一章 -1）：
+ * view-transition 伪元素不是元素的后代，条件选择器套不上它，只有继承来的自定义属性管用。 */
 ::view-transition-old(reader-page) {
   animation-name: reader-flip-out;
 }
 ::view-transition-new(reader-page) {
   animation-name: reader-flip-in;
 }
-html[data-reader-flip="prev"] ::view-transition-old(reader-page) {
-  animation-name: reader-flip-out-back;
-}
-html[data-reader-flip="prev"] ::view-transition-new(reader-page) {
-  animation-name: reader-flip-in-back;
-}
 @keyframes reader-flip-out {
   to {
-    transform: translateX(-100%);
+    transform: translateX(calc(var(--reader-flip-sign, 1) * -100%));
   }
 }
 @keyframes reader-flip-in {
   from {
-    transform: translateX(100%);
-  }
-}
-@keyframes reader-flip-out-back {
-  to {
-    transform: translateX(100%);
-  }
-}
-@keyframes reader-flip-in-back {
-  from {
-    transform: translateX(-100%);
+    transform: translateX(calc(var(--reader-flip-sign, 1) * 100%));
   }
 }
 

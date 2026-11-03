@@ -11,14 +11,17 @@ function setViewTransition(impl: ((update: () => Promise<void>) => unknown) | nu
   else Reflect.deleteProperty(document, "startViewTransition");
 }
 
-/** 假的转场：只关心「apply 什么时候跑、promise 什么时候放行」。 */
-function installViewTransition(): { updates: Promise<void>[] } {
+/** 假的转场：只关心「apply 什么时候跑、promise 什么时候放行、动画什么时候结束」。 */
+function installViewTransition(): { updates: Promise<void>[]; finishes: (() => void)[]; skips: number[] } {
   const updates: Promise<void>[] = [];
+  const finishes: (() => void)[] = [];
+  const skips: number[] = [];
   setViewTransition((update) => {
     updates.push(update());
-    return { finished: Promise.resolve() };
+    const finished = new Promise<void>((resolve) => finishes.push(resolve));
+    return { finished, skipTransition: () => skips.push(updates.length - 1) };
   });
-  return { updates };
+  return { updates, finishes, skips };
 }
 
 /** 手势层：转场拍新快照前必须清掉跟手位移，否则新页歪着落定。 */
@@ -41,6 +44,7 @@ describe("翻章转场", () => {
     setViewTransition(null);
     vi.useRealTimers();
     document.documentElement.removeAttribute("data-reader-flip");
+    document.documentElement.style.removeProperty("--reader-flip-sign");
   });
 
   it("浏览器没有视图转场时直接换章：功能不受影响", () => {
@@ -66,6 +70,8 @@ describe("翻章转场", () => {
     const apply = vi.fn();
     startChapterFlip("next", apply);
     expect(document.documentElement.dataset.readerFlip).toBe("next");
+    // 方向走自定义属性：view-transition 伪元素只能继承它
+    expect(document.documentElement.style.getPropertyValue("--reader-flip-sign")).toBe("1");
     // update 由浏览器异步调用：这里手动放行一次微任务
     await Promise.resolve();
     expect(apply).toHaveBeenCalledTimes(1);
@@ -94,13 +100,52 @@ describe("翻章转场", () => {
     await expect(updates[0]).resolves.toBeUndefined();
   });
 
-  it("转场结束后撤掉方向标记，下一次翻章重新写", async () => {
+  it("落位时定住入场淡入：转场后不会再闪一次白", async () => {
     const { updates } = installViewTransition();
+    const article = document.createElement("section");
+    article.className = "reader-article is-entering";
+    document.body.appendChild(article);
+    startChapterFlip("next", vi.fn());
+    await Promise.resolve();
+    settleChapterFlip();
+    await expect(updates[0]).resolves.toBeUndefined();
+    expect(article.style.animation).toBe("none");
+  });
+
+  it("反向连点：被 skip 的旧转场不许删掉新转场的方向", async () => {
+    const { finishes } = installViewTransition();
+    startChapterFlip("next", vi.fn());
+    await Promise.resolve();
+    startChapterFlip("prev", vi.fn());
+    await Promise.resolve();
+    // 旧转场被浏览器 skip，它的 finished 先到——新转场的方向必须留着
+    finishes[0]();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(document.documentElement.dataset.readerFlip).toBe("prev");
+  });
+
+  it("连翻时先结束上一次转场，别让旧方向留在屏幕上", async () => {
+    const { skips } = installViewTransition();
+    startChapterFlip("next", vi.fn());
+    await Promise.resolve();
+    startChapterFlip("prev", vi.fn());
+    await Promise.resolve();
+    expect(skips).toHaveLength(1);
+    expect(document.documentElement.dataset.readerFlip).toBe("prev");
+  });
+
+  it("转场结束后撤掉方向标记，下一次翻章重新写", async () => {
+    const { updates, finishes } = installViewTransition();
     startChapterFlip("prev", vi.fn());
     await Promise.resolve();
     settleChapterFlip();
     await updates[0];
+    expect(document.documentElement.dataset.readerFlip).toBe("prev");
+    finishes[0]();
+    await Promise.resolve();
     await Promise.resolve();
     expect(document.documentElement.dataset.readerFlip).toBeUndefined();
+    expect(document.documentElement.style.getPropertyValue("--reader-flip-sign")).toBe("");
   });
 });

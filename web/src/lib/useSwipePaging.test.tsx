@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SWIPE_FOLLOW_DAMPING } from "./swipe";
 import { useSwipePaging } from "./useSwipePaging";
 
 /**
@@ -66,8 +67,8 @@ describe("useSwipePaging 跟手与翻章", () => {
     const { surface, layerOf, onNext } = mount();
     fireEvent(surface, touchEvent("touchstart", { x: 300, y: 400 }));
     fireEvent(surface, touchEvent("touchmove", { x: 300, y: 400 }, { x: 260, y: 402 }));
-    // 位移 40px：跟手偏移 = 40 × 0.32 = 12.8px，向左
-    expect(layerOf().style.transform).toBe("translateX(-12.8px)");
+    // 位移 40px：跟手偏移 = 40 × 阻尼，向左
+    expect(layerOf().style.transform).toBe(`translateX(${-40 * SWIPE_FOLLOW_DAMPING}px)`);
 
     fireEvent(surface, touchEvent("touchend", { x: 300, y: 400 }, { x: 200, y: 402 }));
     expect(onNext).toHaveBeenCalledTimes(1);

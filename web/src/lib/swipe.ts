@@ -27,7 +27,7 @@ export const SWIPE_FOLLOW_MAX = 120;
 export const SWIPE_FOLLOW_MIN = 72;
 
 /** 手指位移到正文偏移的阻尼比：跟手但比手指慢，读者才看得出「拖到头了」。 */
-export const SWIPE_FOLLOW_DAMPING = 0.32;
+export const SWIPE_FOLLOW_DAMPING = 0.5;
 
 /** 松手未达阈值时弹回原位的过渡时长（ms）。 */
 export const SWIPE_SETTLE_MS = 200;
