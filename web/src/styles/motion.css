@@ -1,8 +1,9 @@
-/* ══ 微动效：三处，克制 ══
+/* ══ 微动效：四处，克制 ══
  *
  * 1. 目录抽屉滑入 240ms cubic-bezier(0.32, 0.72, 0, 1)
  * 2. 主题切换：背景/文字色 180ms
- * 3. 章节切换：正文淡入 160ms
+ * 3. 章节切换：正文淡入 160ms（滚动跨章时的入场）
+ * 4. 显式翻章：旧页滑出、新页滑入 260ms（H5 的翻页转场）
  *
  * 全部在 prefers-reduced-motion: reduce 下禁用（见文件末尾）。
  */
@@ -69,6 +70,59 @@ html.theme-shifting .state-panel {
   }
 }
 
+/* ── 4 显式翻章：旧页滑出、新页滑入 ──
+ *
+ * 只有「点按钮 / 键盘 / 滑动」这类显式翻章走转场；滚动跨章仍是连续流，不参与。
+ * 快照由 lib/chapterFlip 触发，方向写在 html[data-reader-flip] 上。
+ * 两页都铺阅读底色：滑动中途露出来的必须是纸面，不能是背后那层 DOM。
+ */
+.reader-main {
+  view-transition-name: reader-page;
+}
+::view-transition-old(reader-page),
+::view-transition-new(reader-page) {
+  animation-duration: 260ms;
+  animation-timing-function: var(--ease-drawer);
+  animation-fill-mode: both;
+  background: var(--r-bg);
+}
+/* 转场期间别叠淡入：新章若是这次才挂载的，淡入会让快照拍到半透明的一页 */
+html[data-reader-flip] .reader-article.is-entering {
+  animation: none;
+}
+::view-transition-old(reader-page) {
+  animation-name: reader-flip-out;
+}
+::view-transition-new(reader-page) {
+  animation-name: reader-flip-in;
+}
+html[data-reader-flip="prev"] ::view-transition-old(reader-page) {
+  animation-name: reader-flip-out-back;
+}
+html[data-reader-flip="prev"] ::view-transition-new(reader-page) {
+  animation-name: reader-flip-in-back;
+}
+@keyframes reader-flip-out {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes reader-flip-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes reader-flip-out-back {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes reader-flip-in-back {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
 /* ── 无障碍：系统设置了减少动效时全部关掉 ── */
 @media (prefers-reduced-motion: reduce) {
   .drawer,
@@ -77,7 +131,9 @@ html.theme-shifting .state-panel {
   .sidebar,
   html.theme-shifting,
   html.theme-shifting *,
-  .reader-article.is-entering {
+  .reader-article.is-entering,
+  ::view-transition-old(reader-page),
+  ::view-transition-new(reader-page) {
     transition: none !important;
     animation: none !important;
   }

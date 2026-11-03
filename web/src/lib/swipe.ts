@@ -20,8 +20,11 @@ export const SWIPE_ANGLE_RATIO = 2;
 /** 方向锁定的最小位移（px）：越过它才决定这段手势归谁，之下的抖动仍是「还没决定」。 */
 export const SWIPE_LOCK_SLOP = 12;
 
-/** 跟手位移的上限（px）：再往下拖，正文最多偏移这么多。 */
-export const SWIPE_FOLLOW_MAX = 16;
+/** 跟手位移的上限（px）：一屏宽的 30% 左右，拖起来才像在掀页。 */
+export const SWIPE_FOLLOW_MAX = 120;
+
+/** 跟手上限的最小值（px）：窄屏手机上也要能拖动小半屏。 */
+export const SWIPE_FOLLOW_MIN = 72;
 
 /** 手指位移到正文偏移的阻尼比：跟手但比手指慢，读者才看得出「拖到头了」。 */
 export const SWIPE_FOLLOW_DAMPING = 0.32;
@@ -67,13 +70,23 @@ export function lockSwipe(start: SwipePoint, current: SwipePoint): SwipeLock {
 }
 
 /**
- * 跟手偏移：内容跟着手指走但更慢（阻尼），并在 {@link SWIPE_FOLLOW_MAX} 封顶。
- * 左滑 dx < 0 → 偏移为负（内容左移，露出后面的章），与方向语义一致。
+ * 跟手偏移：内容跟着手指走但更慢（阻尼），并在上限处封顶。
+ * 左滑 dx < 0 → 偏移为负（内容左移，露出后面的纸面），与方向语义一致。
+ *
+ * 上限按屏宽取 {@link followLimit}：手机上跟手到底约 1/3 屏，读者看得出这是「翻页」，
+ * 不再是 16px 那种似动不动。
  */
-export function followOffset(dx: number): number {
+export function followOffset(dx: number, max = SWIPE_FOLLOW_MAX): number {
   const raw = dx * SWIPE_FOLLOW_DAMPING;
   if (!Number.isFinite(raw)) return 0;
-  return Math.min(SWIPE_FOLLOW_MAX, Math.max(-SWIPE_FOLLOW_MAX, raw));
+  const limit = Number.isFinite(max) && max > 0 ? max : SWIPE_FOLLOW_MAX;
+  return Math.min(limit, Math.max(-limit, raw));
+}
+
+/** 跟手上限：屏宽的 30%，夹在 {@link SWIPE_FOLLOW_MIN}–{@link SWIPE_FOLLOW_MAX} 之间。 */
+export function followLimit(viewportWidth: number): number {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return SWIPE_FOLLOW_MAX;
+  return Math.min(SWIPE_FOLLOW_MAX, Math.max(SWIPE_FOLLOW_MIN, viewportWidth * 0.3));
 }
 
 /**

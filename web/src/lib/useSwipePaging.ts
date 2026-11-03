@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import {
+  followLimit,
   followOffset,
   isIgnorableSwipeTarget,
   lockSwipe,
@@ -23,8 +24,8 @@ const SETTLE_TRANSITION = `transform ${SWIPE_SETTLE_MS}ms cubic-bezier(0.2, 0, 0
  * 只在触摸设备且没有面板打开时生效（enabled）；起点落在按钮/链接/输入框或已选文字上时不接管，
  * 交给浏览器原本行为。手势一旦判定为横向就锁死方向，之后不再改判为滚动。
  *
- * 跟手反馈只写一处 inline transform（不叠 CSS 动画）：翻章成功由正文自己的 is-entering 入场，
- * 本 hook 只负责把手势层复位，避免两套动画打架。
+ * 跟手反馈只写一处 inline transform（不叠 CSS 动画）：翻章成功由页面的翻页转场接手
+ * （见 lib/chapterFlip：旧快照带着位移滑出、新页从原位进场），本 hook 不抢着复位。
  */
 export function useSwipePaging(handlers: {
   onPrev: () => void;
@@ -52,7 +53,7 @@ export function useSwipePaging(handlers: {
   /**
    * 手势层复位。
    * - 未达阈值 / 取消：带 200ms 过渡弹回，读者看得出「这次没翻」
-   * - 翻章成功：立即归零，不叠第二套动画——新章的入场由正文自己的 is-entering 负责
+   * - 翻章成功：不在这里复位（见 onTouchEnd）
    */
   const reset = useCallback((withTransition = true) => {
     const surface = element.current;
@@ -71,7 +72,7 @@ export function useSwipePaging(handlers: {
     if (!surface || latest.current.reducedMotion) return;
     const layer = surface.querySelector<HTMLElement>(FOLLOW_TARGET_SELECTOR);
     if (!layer) return;
-    const next = followOffset(dx);
+    const next = followOffset(dx, followLimit(window.innerWidth));
     if (next === offset.current) return;
     offset.current = next;
     layer.style.transition = "none";
@@ -131,8 +132,10 @@ export function useSwipePaging(handlers: {
         reset();
         return;
       }
-      // 翻章：立即复位手势层，随后由正文的 is-entering 接手入场
-      reset(false);
+      // 翻章：支持快照转场时把位移留给转场（旧页带着它滑出、新页从原位进场，
+      // 清理由 lib/chapterFlip 在拍新快照前完成）；不支持时立刻复位，别让正文歪着。
+      if (typeof document.startViewTransition !== "function") reset(false);
+      else offset.current = 0;
       if (action === "prev") latest.current.onPrev();
       else latest.current.onNext();
     };

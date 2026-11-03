@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  followLimit,
   followOffset,
   isIgnorableSwipeTarget,
   lockSwipe,
   resolveSwipe,
   SWIPE_ANGLE_RATIO,
   SWIPE_FOLLOW_MAX,
+  SWIPE_FOLLOW_MIN,
   SWIPE_FOLLOW_DAMPING,
   SWIPE_LOCK_SLOP,
   SWIPE_SETTLE_MS,
@@ -91,6 +93,15 @@ describe("followOffset 跟手位移", () => {
     expect(followOffset(-400)).toBe(-SWIPE_FOLLOW_MAX);
     expect(followOffset(400)).toBe(SWIPE_FOLLOW_MAX);
     expect(Math.abs(followOffset(-400))).toBeLessThanOrEqual(SWIPE_FOLLOW_MAX);
+  });
+
+  it("上限按屏宽取：手机上约 1/3 屏，夹在 72–120 之间", () => {
+    expect(followLimit(393)).toBeCloseTo(117.9, 5);
+    expect(followOffset(-600, followLimit(393))).toBeCloseTo(-117.9, 5);
+    // 窄屏不缩到抓不住，宽屏不放大到甩出屏外
+    expect(followLimit(200)).toBe(SWIPE_FOLLOW_MIN);
+    expect(followLimit(1440)).toBe(SWIPE_FOLLOW_MAX);
+    expect(followLimit(Number.NaN)).toBe(SWIPE_FOLLOW_MAX);
   });
 
   it("非法位移一律 0（NaN / Infinity 不写进样式）", () => {

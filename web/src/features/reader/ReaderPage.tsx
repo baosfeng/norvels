@@ -65,7 +65,7 @@ function ReaderScreen() {
   const routeChapterId = Number(params.chapterId);
 
   const book = useBook(Number.isFinite(bookId) ? bookId : null);
-  const stream = useChapterStream({ bookId, routeChapterId, book: book.data });
+  const stream = useChapterStream({ bookId, routeChapterId, book: book.data, animatedFlips: isH5 });
   const chapterId = stream.activeId;
   const saveProgress = useSaveProgress();
   const recordSession = useRecordReadingSession();

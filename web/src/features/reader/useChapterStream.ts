@@ -7,6 +7,7 @@ import { useChapterEdges } from "./useChapterEdges";
 import { useVisibleChapter } from "./useVisibleChapter";
 import { useStreamAnchor } from "./useStreamAnchor";
 import { readerSurface } from "./readerStreamLayout";
+import { settleChapterFlip, startChapterFlip } from "../../lib/chapterFlip";
 import { useReaderChapterIndex } from "./useReaderChapterIndex";
 
 export type { StreamSegment } from "./useChapterWindow";
@@ -64,10 +65,13 @@ export function useChapterStream({
   bookId,
   routeChapterId,
   book,
+  animatedFlips,
 }: {
   bookId: number;
   routeChapterId: number;
   book: BookDetail | null;
+  /** 显式翻章要不要翻页转场（H5 开；PC 整页滚，快照会跨出正文区，不参与）。 */
+  animatedFlips: boolean;
 }): ChapterStream {
   const navigate = useNavigate();
   const [activeId, setActiveId] = useState(routeChapterId);
@@ -166,17 +170,27 @@ export function useChapterStream({
     }
   });
 
-  /** 显式翻章：先换可见章与 URL，落位与补偿交给 useStreamAnchor（目标章可能还没渲染出来）。 */
+  /**
+   * 显式翻章：先换可见章与 URL，落位与补偿交给 useStreamAnchor（目标章可能还没渲染出来）。
+   *
+   * 换章这一下由翻页转场包住：旧页滑出、新页滑入。转场要等落位完成才拍照，
+   * 所以 settleChapterFlip 挂在 onFlipPlaced 上；目标章还没到时由转场自己的兜底放行。
+   */
   const flipTo = useCallback(
     (target: ChapterBrief | null) => {
       if (!target || target.id === activeId) return;
-      if (chapters.findIndex((chapter) => chapter.id === target.id) < 0) return;
+      const targetIndex = chapters.findIndex((chapter) => chapter.id === target.id);
+      if (targetIndex < 0) return;
       pendingFlip.current = target.id;
       cooldownUntil.current = performance.now() + ADVANCE_COOLDOWN_MS;
-      setActiveId(target.id);
-      navigate(`/read/${bookId}/${target.id}`, { replace: true });
+      const apply = () => {
+        setActiveId(target.id);
+        navigate(`/read/${bookId}/${target.id}`, { replace: true });
+      };
+      if (animatedFlips) startChapterFlip(targetIndex > index ? "next" : "prev", apply);
+      else apply();
     },
-    [activeId, bookId, chapters, navigate],
+    [activeId, animatedFlips, bookId, chapters, index, navigate],
   );
 
   useStreamAnchor({
@@ -186,6 +200,8 @@ export function useChapterStream({
     onFlipPlaced: () => {
       // 落位后仍要冷却一下：observer 队列里还压着落位前的交叉状态
       cooldownUntil.current = performance.now() + ADVANCE_COOLDOWN_MS;
+      // 位置对上了：转场可以拍新页，入场动画从这里开始
+      settleChapterFlip();
     },
     flipFailed: !chapterWindow.loading && Boolean(chapterWindow.error),
   });
