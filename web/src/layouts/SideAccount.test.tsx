@@ -70,16 +70,38 @@ function renderAccount(path: string, auth: AuthState, tier: "pc" | "h5" = "h5") 
   );
 }
 
+/** 账号操作收在菜单里：点开 trigger 才看得到换号 / 删号 / 退出。 */
+function openMenu() {
+  fireEvent.click(screen.getByTestId("side-account-trigger"));
+}
+
 describe("侧栏 / H5 抽屉底部的账号区", () => {
-  it("已登录：显示账号名 + 退出登录", () => {
+  it("已登录：一行账号，操作收在菜单里（默认不占四行）", () => {
     renderAccount("/shelf", makeAuth({ user: USER, loggedIn: true }));
     expect(screen.getByTestId("side-account-name").textContent).toBe("夜读的人");
-    expect(screen.getByTestId("side-account-logout").textContent).toBe("退出登录");
     expect(screen.queryByTestId("side-account-login")).toBeNull();
+    // 菜单默认收起：换号 / 退出 / 删号都不占版面
+    expect(screen.queryByTestId("side-account-menu")).toBeNull();
+    openMenu();
+    expect(screen.getByTestId("side-account-menu")).toBeTruthy();
+    expect(screen.getByTestId("side-account-logout").textContent).toBe("退出登录");
+  });
+
+  it("菜单可以收起：再点一次 trigger，或按 Esc", () => {
+    renderAccount("/shelf", makeAuth({ user: USER, loggedIn: true }));
+    openMenu();
+    expect(screen.getByTestId("side-account-menu")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("side-account-trigger"));
+    expect(screen.queryByTestId("side-account-menu")).toBeNull();
+
+    openMenu();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("side-account-menu")).toBeNull();
   });
 
   it("已登录：给「切换账号」入口，带 ?switch=1（否则登录页会立刻把已登录的人送走）", () => {
     renderAccount("/shelf?view=mine", makeAuth({ user: USER, loggedIn: true }));
+    openMenu();
     const link = screen.getByTestId("side-account-switch") as HTMLAnchorElement;
     expect(link.textContent).toBe("切换账号");
     expect(link.getAttribute("href")).toBe("/login?next=%2Fshelf%3Fview%3Dmine&switch=1");
@@ -89,6 +111,8 @@ describe("侧栏 / H5 抽屉底部的账号区", () => {
     renderAccount("/book/7", makeAuth());
     const link = screen.getByTestId("side-account-login") as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/login?next=%2Fbook%2F7");
+    // 没登录就没有可展开的菜单
+    expect(screen.queryByTestId("side-account-trigger")).toBeNull();
     expect(screen.queryByTestId("side-account-logout")).toBeNull();
     // 没登录就没有"切换"的对象
     expect(screen.queryByTestId("side-account-switch")).toBeNull();
@@ -99,6 +123,7 @@ describe("侧栏 / H5 抽屉底部的账号区", () => {
     renderAccount("/shelf?view=mine", makeAuth({ user: USER, loggedIn: true, deleteAccount }));
 
     // 一次点击不该删：先出确认框
+    openMenu();
     fireEvent.click(screen.getByTestId("side-account-delete"));
     expect(screen.getByTestId("delete-account-confirm")).toBeTruthy();
     expect(screen.getByTestId("delete-account-confirm").textContent).toContain("一起删掉");
@@ -114,6 +139,7 @@ describe("侧栏 / H5 抽屉底部的账号区", () => {
   it("删账号确认框可以取消：不发请求、账号态不变", () => {
     const deleteAccount = vi.fn(async () => undefined);
     renderAccount("/shelf", makeAuth({ user: USER, loggedIn: true, deleteAccount }));
+    openMenu();
     fireEvent.click(screen.getByTestId("side-account-delete"));
     fireEvent.click(screen.getByTestId("delete-account-cancel"));
     expect(screen.queryByTestId("delete-account-confirm")).toBeNull();
@@ -131,6 +157,7 @@ describe("侧栏 / H5 抽屉底部的账号区", () => {
     const logout = vi.fn(async () => undefined);
     renderAccount("/shelf?view=mine", makeAuth({ user: USER, loggedIn: true, logout }));
 
+    openMenu();
     fireEvent.click(screen.getByTestId("side-account-logout"));
     await waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
     // 退出后「我的书架」对当前账号已不成立：落到全部书，而不是空列表

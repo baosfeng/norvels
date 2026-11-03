@@ -488,18 +488,37 @@
 .shelf-view-switch{display:flex;gap:8px;align-items:center;margin:0 0 10px}
 .shelf-view-switch .chip{min-height:36px}
 
-/* 侧栏账号区：贴在统计条下方，长名字截断不换行把侧栏撑开 */
-.side-account{display:flex;flex-direction:column;gap:6px;padding:12px 10px;border-top:1px solid var(--border)}
-.side-account-name{margin:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.side-account-note{margin:0;line-height:1.5}
-.side-account .btn{justify-content:flex-start;padding-left:0}
-.side-account .btn:hover{background:transparent;color:var(--accent)}
+/* 侧栏账号区：一行账号 + 向上弹出的菜单。
+   之前把「切换账号 / 退出登录 / 删除此账号」平铺成三行按钮，抽屉里光这一块就吃掉四行高度。 */
+.side-account{position:relative;display:flex;flex-direction:column;gap:6px;padding:8px 8px 4px;border-top:1px solid var(--border)}
+.side-account-row{display:flex;align-items:center;gap:10px;padding:6px}
+.side-account-trigger{display:flex;align-items:center;gap:10px;width:100%;padding:5px 6px;border:0;border-radius:10px;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.side-account-trigger:hover,.side-account-trigger[aria-expanded="true"]{background:var(--surface-warm)}
+.side-account-avatar{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;background:color-mix(in oklab,var(--accent),transparent 84%);color:var(--accent);font-size:12px;font-weight:600}
+.side-account-meta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.side-account-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-account-seen{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-account-chevron{margin-left:auto;flex:none;color:var(--muted);transition:transform 160ms var(--ease-standard)}
+.side-account-trigger[aria-expanded="true"] .side-account-chevron{transform:rotate(180deg)}
+.side-account-guest{margin:0;padding:0 6px;font-size:12px;line-height:1.5;color:var(--muted)}
+.side-account-login{justify-content:flex-start;min-height:32px;padding:0 6px;font-size:13px}
+
+/* 菜单向上弹出：图标 + 文字，34px 行高，危险项单独一色（与系统菜单同一套读法） */
+.side-account-menu{position:absolute;left:8px;right:8px;bottom:calc(100% - 6px);z-index:40;display:flex;flex-direction:column;gap:1px;padding:6px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 14px 34px rgba(0,0,0,.18)}
+.side-account-item{display:flex;align-items:center;gap:9px;min-height:34px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--fg);font-size:13px;text-align:left;text-decoration:none;cursor:pointer}
+.side-account-item:hover,.side-account-item:focus-visible{background:var(--surface-warm)}
+.side-account-item svg{flex:none;opacity:.72}
+.side-account-item.is-danger{color:var(--danger)}
+.side-account-item.is-danger svg{opacity:.9}
+.side-account-sep{height:1px;margin:4px 6px;background:var(--border)}
 
 /* 触屏：登录页与视图切换的可点区域抬到 44px（口径见 globals.css 顶部） */
 @media (max-width: 768px) {
   .auth-page{padding:20px 12px}
   .shelf-view-switch .chip{min-height:44px}
-  .side-account .btn{min-height:44px}
+  .side-account-trigger{min-height:44px}
+  .side-account-item{min-height:42px}
+  .side-account-login{min-height:44px}
   .auth-hint-action{min-height:44px}
 }
 
