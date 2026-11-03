@@ -988,6 +988,11 @@ export interface RecommendItem {
   /** 空串 = 该大分类下未细分 */
   categoryL2: string;
   hasCover: boolean;
+  /** 体量信息：主库查询本来就有这几列，推荐卡直接显示，不为每张卡再查一次详情 */
+  wordCount?: number;
+  chapterCount?: number;
+  /** 连载状态：''=未知 / ongoing / completed */
+  serialStatus?: string;
   /** 推荐理由：直接展示，不由前端拼装 */
   reason: string;
   /**

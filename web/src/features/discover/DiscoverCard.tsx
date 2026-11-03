@@ -3,7 +3,19 @@ import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import type { RecommendItem } from "../../api/types";
 import { Cover } from "../../components/Cover";
+import { formatWords } from "../../lib/format";
 import { track, useImpression } from "../../lib/telemetry";
+
+/** 卡上的体量行：字数 · 章数 · 连载状态，缺什么就不写什么（不拿 0 冒充「未知」）。 */
+function statsOf(item: RecommendItem): string {
+  return [
+    item.wordCount ? formatWords(item.wordCount) : "",
+    item.chapterCount ? `${item.chapterCount} 章` : "",
+    item.serialStatus === "completed" ? "完结" : item.serialStatus === "ongoing" ? "连载中" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 /** 两个反馈粒度：只不要这本，还是连这个作者一起不要。 */
 export type DislikeScope = "book" | "author";
@@ -51,6 +63,7 @@ export function DiscoverCard({
 
   // 没有作者 id 就没法「不喜欢这个作者」：那一项置灰并说明原因，不做一个点了没反应的按钮
   const authorId = item.authorId && item.authorId > 0 ? item.authorId : null;
+  const stats = statsOf(item);
 
   /** 打开后焦点进第一项：键盘用户不必先 Tab 到菜单才看见它。 */
   useEffect(() => {
@@ -110,10 +123,15 @@ export function DiscoverCard({
         <div className="book-card-body">
           <h3 className="book-title">{item.title}</h3>
           <p className="book-author">{item.authorName || "佚名"}</p>
-          {item.categoryL1 || item.categoryL2 ? (
+          {item.categoryL1 || item.categoryL2 || stats ? (
             <p className="book-meta discover-cat">
               {item.categoryL1 ? <span>{item.categoryL1}</span> : null}
               {item.categoryL2 ? <span>{item.categoryL2}</span> : null}
+              {stats ? (
+                <span className="discover-stats" data-testid={`rec-stats-${item.bookId}`}>
+                  {stats}
+                </span>
+              ) : null}
             </p>
           ) : null}
           <p className="discover-reason">{item.reason}</p>

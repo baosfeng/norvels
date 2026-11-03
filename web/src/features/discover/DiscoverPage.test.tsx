@@ -120,6 +120,21 @@ describe("发现页：卡片流", () => {
     expect(card.querySelector(".cover")?.textContent).toContain("样");
   });
 
+  it("卡上带体量行：字数 · 章数 · 连载状态（缺哪个就不写哪个）", () => {
+    h.fallback = feed([
+      item(1, { wordCount: 123456, chapterCount: 210, serialStatus: "completed" }),
+      item(2),
+    ]);
+    renderPage();
+
+    const stats = screen.getByTestId("rec-stats-1");
+    expect(stats.textContent).toContain("123,456 字");
+    expect(stats.textContent).toContain("210 章");
+    expect(stats.textContent).toContain("完结");
+    // 旧服务端不带这三列时不编造「0 字」，整行不出现
+    expect(screen.queryByTestId("rec-stats-2")).toBeNull();
+  });
+
   it("请求条数用契约内的默认值（1–50），首个 tab 是 for_you", () => {
     renderPage();
     expect(RECOMMEND_LIMIT).toBeGreaterThanOrEqual(1);

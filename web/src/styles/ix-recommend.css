@@ -68,7 +68,19 @@
   line-height: 1.45;
   white-space: nowrap;
   overflow: hidden;
+  /* 体量行与分类同一行：窄格（PC 176px）超宽就截断，不折到第二行把卡片撑高 */
+  flex-wrap: nowrap;
+}
+.view-discover .book-card .discover-cat span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+}
+/* 体量（字数 · 章数 · 连载）跟在分类后面，用间隔点断开，免得读成「未分类 12,345 字」一坨 */
+.view-discover .book-card .discover-stats::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--meta);
 }
 /* 推荐理由：后端给的人话，长书名会把行撑长，所以允许换行且任何位置可断——
    这一条是 390 断点最容易横向溢出的地方（原型里的 .pill 是 nowrap，不放它） */
@@ -228,12 +240,39 @@
   main.container:has(> .view-discover) {
     --gutter: var(--gap-page);
   }
-  /* 390 → 2 列（每格 173px），768 的平板 → 4 列：按可用宽度铺，而不是写死两列 */
+  /* 手机上一行一本的横向卡：海报格 173px 宽的封面有 230px 高，一屏只放得下 4 本，
+     书名 / 作者 / 分类 / 理由全挤在封面下面几行。横向卡把封面收到 76px，其余信息并排在右侧，
+     一屏 6 本、理由也读得全（推荐流要的是「一眼扫过很多本」）。 */
   .view-discover .discover-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: 1fr;
+    gap: 0;
   }
+  .view-discover .book-card {
+    position: relative;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .view-discover .book-card .book-link {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .view-discover .book-card .cover {
+    flex: 0 0 76px;
+    width: 76px;
+    aspect-ratio: 3 / 4;
+  }
+  .view-discover .book-card .cover span {
+    font-size: 20px;
+  }
+  .view-discover .book-card .book-card-body {
+    flex: 1 1 auto;
+    gap: 2px;
+  }
+  /* 书名第一行右侧让出「不感兴趣」（它贴在卡片右上角），字号比 PC 收一档 */
   .view-discover .book-card h3.book-title {
     font-size: 13px;
+    padding-right: 68px;
   }
   .view-discover .book-card .book-author,
   .view-discover .discover-reason {
@@ -263,6 +302,8 @@
     padding: 0 2px;
   }
   .discover-dislike {
+    top: 8px;
+    right: 0;
     min-height: 28px;
     padding: 0 10px;
   }

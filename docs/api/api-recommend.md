@@ -39,8 +39,10 @@
   - `for_you`：全量召回（见下）；
   - `resume`：只拼「读到一半」的书（进度 0<percent<1），按进度倒序，热门/新鲜兜底保证非空；
   - `random`：随机池 + 热门，ε 探索比例从 10% 提到 **50%**（这个 tab 的用户就是要不一样）。
-- → 200 `{items:[{bookId,title,authorName,authorId,categoryL1,categoryL2,hasCover,reason,reasonCode,score}], generatedAt}`
-  （`authorId` 供前端「不喜欢这个作者」直接下发 dislike，缺作者时前端置灰）
+- → 200 `{items:[{bookId,title,authorName,authorId,categoryL1,categoryL2,hasCover,wordCount,chapterCount,serialStatus,reason,reasonCode,score}], generatedAt}`
+  （`authorId` 供前端「不喜欢这个作者」直接下发 dislike，缺作者时前端置灰；
+  `wordCount` / `chapterCount` / `serialStatus` 是卡上的体量行（`serialStatus` 空串 = 未知），
+  主库查询本来就带着这几列，下发后前端不为每张卡再查一次详情）
 - 只读、无副作用；`items` 恒为数组（冷启动可能为空，见下）。
 - `reason` 取值：「因为你常看<分类>」/「因为你喜欢「<标签>」标签」/「同系列《<系列名>》」/
   「同一个作者」/「同一分类」/「读到一半，接着读」/「读过这本书的人也在看」/「最近很多人读」/

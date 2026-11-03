@@ -56,7 +56,12 @@ type recommendItem struct {
 	CategoryL1 string `json:"categoryL1"`
 	CategoryL2 string `json:"categoryL2"`
 	HasCover   bool   `json:"hasCover"`
-	Reason     string `json:"reason"`
+	// 体量信息：推荐流里读者要靠它判断这本值不值得翻；主库查询本来就带着这些列，
+	// 下发出去前端就不必为每张卡再查一次详情。
+	WordCount    int    `json:"wordCount"`
+	ChapterCount int    `json:"chapterCount"`
+	SerialStatus string `json:"serialStatus"`
+	Reason       string `json:"reason"`
 	// ReasonCode 是理由的稳定标识（如 interest:武侠 / hot / similar.author），
 	// 埋点与看板分组都用它：文案可以改，code 不能改。
 	ReasonCode string  `json:"reasonCode"`
@@ -301,7 +306,9 @@ func itemOf(sc recommend.Scored, bs store.BookSummary) recommendItem {
 		BookID: sc.BookID, Title: bs.Title, AuthorName: bs.AuthorName,
 		AuthorID:   bs.AuthorID,
 		CategoryL1: bs.CategoryL1, CategoryL2: bs.CategoryL2,
-		HasCover: bs.HasCover, Reason: sc.Reason, ReasonCode: sc.ReasonCode, Score: sc.Score,
+		HasCover:  bs.HasCover,
+		WordCount: bs.WordCount, ChapterCount: bs.ChapterCount, SerialStatus: bs.SerialStatus,
+		Reason: sc.Reason, ReasonCode: sc.ReasonCode, Score: sc.Score,
 	}
 }
 
