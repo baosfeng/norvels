@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import {
   measureChapters,
-  nudgeScroll,
   readerSurface,
   scrollToChapterTop,
   setScrollTop,
@@ -86,15 +85,35 @@ export function useStreamAnchor({
     snapshotRef.current = now;
     const base = flipping ? scrollTopBeforeRef.current : null;
     if (flipping) scrollTopBeforeRef.current = null;
-    if (justFlipped || growth === null) return;
-    if (Math.abs(growth) < 0.5) return;
-    if (base !== null) setScrollTop(surface, base + growth);
-    else nudgeScroll(surface, growth);
+    if (justFlipped) return;
+    const currentTop = surface.scrolls ? surface.el.scrollTop : window.scrollY || 0;
+    const compensated = nextScrollTop({ growth, base, currentTop });
+    if (compensated !== null) setScrollTop(surface, compensated);
   });
 }
 
+/**
+ * 补偿后的滚动位置；不需要补偿时返回 null。
+ *
+ * - 换章提交（base 非空）：按「提交前位置 + 位移差」直接算，不能在当前值上累加——
+ *   浏览器可能已经按变矮后的高度把 scrollTop 钳过一次，累加会少补被钳掉的那段。
+ * - 其它提交：在当前值上累加。
+ */
+export function nextScrollTop({
+  growth,
+  base,
+  currentTop,
+}: {
+  growth: number | null;
+  base: number | null;
+  currentTop: number;
+}): number | null {
+  if (growth === null || Math.abs(growth) < 0.5) return null;
+  return Math.max(0, (base ?? currentTop) + growth);
+}
+
 /** 补偿量：优先用可见章自己的位移；换章时新章可能没有旧位置，退回上一个可见章。 */
-function pickGrowth(
+export function pickGrowth(
   before: Map<number, ChapterAnchor>,
   after: Map<number, ChapterAnchor>,
   activeId: number,
