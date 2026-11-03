@@ -175,6 +175,23 @@
 .drawer-search .meta {
   flex-basis: 100%;
 }
+/* H5 的搜索入口：与输入框同高同底，看上去就是那个框，点了才真的变成输入框 */
+.toc-search-open {
+  flex: 1 1 150px;
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: 12px;
+  justify-content: flex-start;
+  gap: 8px;
+  background: var(--r-bg);
+  border-color: var(--r-border);
+  color: var(--r-muted);
+  font-weight: 400;
+}
+.toc-search-open:hover {
+  border-color: var(--r-border);
+  color: var(--r-fg);
+}
 .toc-vol-head {
   display: flex;
   flex-wrap: wrap;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import type { ApiError } from "../../api/client";
 import type { Volume } from "../../api/types";
 import { filterChapters, nextReveal, shouldAutoReveal, TOC_CHUNK, takeRevealed } from "../../lib/tocRows";
+import { SearchIcon } from "../../components/Icons";
 import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { showToast } from "../../lib/toastStore";
 import { TocChapterRow, TocVolumeHeader } from "./TocList";
@@ -15,9 +16,13 @@ function errorText(error: ApiError | null): string {
  * 目录页签内容：卷分组折叠 + 分块续显 + 搜索
  * + 空态清空搜索、失败态两出口。
  * 抽屉外壳（页签与焦点陷阱）在 ReaderDrawer 里，这里只管这一页的内容。
+ *
+ * 搜索的默认态按档位分：PC 常驻输入框（有键盘，打开就能打字）；
+ * H5 收成一个「搜索章节」入口——手机上打开目录就该是目录本身，不该先弹输入法。
  */
 export function TocPanel({
   active,
+  isH5,
   loading,
   error,
   volumes,
@@ -28,6 +33,8 @@ export function TocPanel({
 }: {
   /** 本次打开且停在目录页签：只为它做「重置浏览状态 + 定位当前章」。 */
   active: boolean;
+  /** H5（≤768）：搜索默认收起成入口，读者点开才展开输入框。 */
+  isH5: boolean;
   loading: boolean;
   error: ApiError | null;
   volumes: Volume[];
@@ -37,6 +44,8 @@ export function TocPanel({
   onRetry: () => void;
 }) {
   const [query, setQuery] = useState("");
+  // H5 的搜索入口：默认收起；读者点了才展开（展开才聚焦 → 才弹输入法，是他自己叫的）
+  const [searchOpen, setSearchOpen] = useState(false);
   const [revealed, setRevealed] = useState<number>(TOC_CHUNK);
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
   const [flat, setFlat] = useState(false);
@@ -44,26 +53,34 @@ export function TocPanel({
   const [loadingMore, setLoadingMore] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const searchToggleRef = useRef<HTMLButtonElement | null>(null);
   const baseline = useRef<ApiError | null>(null);
   const positioned = useRef(false);
 
   // 每次打开抽屉本组件都重新挂载（ReaderDrawer 只在 open 时渲染内容），
   // 所以搜索 / 折叠 / 分块等浏览状态天然从干净状态开始，不需要在 effect 里重置。
-  // 切到目录页签时只把焦点交给搜索框：读者刚点过来，光标不该留在别的控件上。
+  // 打开抽屉 / 切到目录页签**不**把焦点交给搜索框：H5 上那等于一点目录就弹输入法。
+  // 读者要搜索时自己点入口，那一刻才聚焦（此时弹键盘正是他要的）。
   useEffect(() => {
-    if (!active) return;
+    if (!searchOpen) return;
     const timer = window.setTimeout(() => searchRef.current?.focus(), 0);
     return () => window.clearTimeout(timer);
-  }, [active]);
+  }, [searchOpen]);
 
-  // 重试结束：错误消失 → 焦点回搜索框、列表回顶部；错误还在 → 按钮恢复可点
+  // 重试结束：错误消失 → 列表回顶部、焦点落到当前章（没有就首章，重试按钮已消失）；
+  // 错误还在 → 按钮恢复可点
   useEffect(() => {
     if (!retrying) return;
     if (error === baseline.current) return;
     setRetrying(false);
     if (!error) {
-      searchRef.current?.focus();
       if (listRef.current) listRef.current.scrollTop = 0;
+      window.setTimeout(() => {
+        const row =
+          listRef.current?.querySelector<HTMLElement>("[data-current-chapter='true']") ??
+          listRef.current?.querySelector<HTMLElement>("[data-toc-row]");
+        row?.focus();
+      }, 0);
     }
   }, [retrying, error]);
 
@@ -87,6 +104,8 @@ export function TocPanel({
   const total = chapters.length;
   const matches = useMemo(() => filterChapters(chapters, query), [chapters, query]);
   const filtering = query.trim() !== "";
+  // PC 常驻输入框；H5 只在「点了入口」或「已经有关键词」时才把输入框放出来
+  const searchShown = !isH5 || searchOpen || filtering;
   const currentIndex = chapters.findIndex((chapter) => chapter.id === currentChapterId);
 
   const retry = useCallback(() => {
@@ -129,6 +148,15 @@ export function TocPanel({
     setRevealed(TOC_CHUNK);
     if (listRef.current) listRef.current.scrollTop = 0;
     searchRef.current?.focus();
+  }, []);
+
+  // H5 收起搜索：清词、回顶部、焦点还给入口按钮（输入框已不在 DOM 里）
+  const closeSearch = useCallback(() => {
+    setQuery("");
+    setRevealed(TOC_CHUNK);
+    setSearchOpen(false);
+    if (listRef.current) listRef.current.scrollTop = 0;
+    window.setTimeout(() => searchToggleRef.current?.focus(), 0);
   }, []);
 
   const jumpToCurrent = useCallback(() => {
@@ -237,17 +265,36 @@ export function TocPanel({
   return (
     <>
       {!loading && !error && total > 0 ? (
-        <div className="drawer-search">
-          <input
-            ref={searchRef}
-            className="input"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜章节名或章号"
-            aria-label="搜索章节名或章号"
-            data-testid="toc-search-input"
-          />
+        <div className="drawer-search" role="search">
+          {searchShown ? (
+            <input
+              ref={searchRef}
+              className="input"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜章节名或章号"
+              aria-label="搜索章节名或章号"
+              data-testid="toc-search-input"
+            />
+          ) : (
+            <button
+              ref={searchToggleRef}
+              className="btn toc-search-open"
+              type="button"
+              aria-label="搜索章节"
+              data-testid="toc-search-open"
+              onClick={() => setSearchOpen(true)}
+            >
+              <SearchIcon size={16} />
+              <span>搜索章节</span>
+            </button>
+          )}
+          {isH5 && searchShown ? (
+            <button className="btn" type="button" aria-label="收起搜索" data-testid="toc-search-close" onClick={closeSearch}>
+              取消
+            </button>
+          ) : null}
           <button
             className="btn"
             type="button"

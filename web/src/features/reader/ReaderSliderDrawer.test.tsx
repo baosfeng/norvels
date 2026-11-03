@@ -261,6 +261,21 @@ describe("目录 / 书签：合并成一个 tab 抽屉", () => {
     expect(screen.getByTestId("drawer-tab-toc").getAttribute("aria-selected")).toBe("true");
   });
 
+  it("H5 打开目录就是目录：没有输入框，焦点落在页签（不会弹输入法）", () => {
+    renderReader(["/read/7/10"], "h5");
+    act(() => {
+      fireEvent.pointerDown(screen.getByTestId("reader-swipe-area"), { clientX: 150, clientY: 300 });
+      fireEvent.pointerUp(screen.getByTestId("reader-swipe-area"), { clientX: 150, clientY: 300 });
+    });
+    fireEvent.click(screen.getByLabelText("章节目录"));
+
+    expect(drawer().getAttribute("aria-hidden")).toBe("false");
+    expect(screen.queryByTestId("toc-search-input")).toBeNull();
+    expect(screen.getByTestId("toc-search-open")).toBeTruthy();
+    // 焦点由抽屉的焦点陷阱收在面板里（第一个可聚焦元素是页签），不是搜索框
+    expect(document.activeElement).toBe(screen.getByTestId("drawer-tab-toc"));
+  });
+
   it("关闭抽屉后页签与浏览状态重置（下次打开是干净的一页）", () => {
     renderReader(["/read/7/10"], "pc");
     fireEvent.click(screen.getByRole("button", { name: "打开书签" }));

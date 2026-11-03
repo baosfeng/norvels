@@ -72,6 +72,7 @@ export function ReaderOverlays(props: ReaderOverlaysProps) {
 
       <ReaderDrawer
         open={props.drawerOpen}
+        isH5={props.isH5}
         tab={props.drawerTab}
         onTabChange={props.onTabChange}
         onClose={props.onClosePanels}

@@ -29,6 +29,7 @@ function toc(volumes: Volume[], overrides: Partial<Parameters<typeof TocPanel>[0
     <MemoryRouter>
       <TocPanel
         active
+        isH5={false}
         loading={false}
         error={null}
         volumes={volumes}
@@ -173,7 +174,7 @@ describe("新增控件：目录失败态两出口", () => {
     const volumes = [volume(1, "正文", 1000, 2)];
     const view = (err: ApiError | null, vols: Volume[]) => (
       <MemoryRouter>
-        <TocPanel active loading={false} error={err} volumes={vols} bookId={7} currentChapterId={1000} onNavigate={vi.fn()} onRetry={onRetry} />
+        <TocPanel active isH5={false} loading={false} error={err} volumes={vols} bookId={7} currentChapterId={1000} onNavigate={vi.fn()} onRetry={onRetry} />
       </MemoryRouter>
     );
     const { rerender } = render(view(error, []));
@@ -188,7 +189,8 @@ describe("新增控件：目录失败态两出口", () => {
     });
     expect(screen.queryByTestId("toc-error")).toBeNull();
     expect(rows()).toHaveLength(2);
-    expect(document.activeElement).toBe(screen.getByTestId("toc-search-input"));
+    // 重试成功后焦点落到当前章那一行（「重试」按钮已消失，不能把焦点丢给搜索框）
+    expect(document.activeElement).toBe(rows().find((row) => row.getAttribute("data-current-chapter") === "true"));
   });
 
   it("用平铺列表：卷头消失、章节仍可搜，焦点落到首行", () => {
@@ -197,7 +199,7 @@ describe("新增控件：目录失败态两出口", () => {
     const volumes = [volume(1, "第一卷", 1000, 2), volume(2, "第二卷", 1100, 2)];
     render(
       <MemoryRouter>
-        <TocPanel active loading={false} error={error} volumes={volumes} bookId={7} currentChapterId={1000} onNavigate={vi.fn()} onRetry={vi.fn()} />
+        <TocPanel active isH5={false} loading={false} error={error} volumes={volumes} bookId={7} currentChapterId={1000} onNavigate={vi.fn()} onRetry={vi.fn()} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "用平铺列表" }));
@@ -207,6 +209,63 @@ describe("新增控件：目录失败态两出口", () => {
       vi.advanceTimersByTime(20);
     });
     expect(document.activeElement).toBe(rows()[0]);
+  });
+});
+
+describe("目录搜索：默认态按档位（PC 常驻 / H5 收起）", () => {
+  it("打开目录不自动把焦点交给搜索框（H5 上那等于一点目录就弹输入法）", () => {
+    vi.useFakeTimers();
+    toc([volume(1, "正文", 1000, 3)]);
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(screen.getByTestId("toc-search-input")).toBeTruthy();
+    expect(document.activeElement).not.toBe(screen.getByTestId("toc-search-input"));
+  });
+
+  it("H5 默认只有「搜索章节」入口：目录就是目录，没有输入框", () => {
+    toc([volume(1, "正文", 1000, 3)], { isH5: true });
+    expect(screen.queryByTestId("toc-search-input")).toBeNull();
+    expect(screen.getByTestId("toc-search-open").textContent).toContain("搜索章节");
+    expect(rows()).toHaveLength(3);
+  });
+
+  it("H5 点入口才展开输入框并聚焦（弹输入法是读者自己叫的）", () => {
+    vi.useFakeTimers();
+    toc([volume(1, "正文", 1000, 3)], { isH5: true });
+    fireEvent.click(screen.getByTestId("toc-search-open"));
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+    const input = screen.getByTestId("toc-search-input") as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByTestId("toc-search-open")).toBeNull();
+  });
+
+  it("H5 点「取消」收起搜索：关键词清空、列表回来、焦点回入口", () => {
+    vi.useFakeTimers();
+    toc([volume(1, "正文", 1000, 3)], { isH5: true });
+    fireEvent.click(screen.getByTestId("toc-search-open"));
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+    fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "1002" } });
+    expect(screen.getByTestId("toc-match").textContent).toContain("匹配 1 章");
+
+    fireEvent.click(screen.getByTestId("toc-search-close"));
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+    expect(screen.queryByTestId("toc-search-input")).toBeNull();
+    expect(rows()).toHaveLength(3);
+    expect(document.activeElement).toBe(screen.getByTestId("toc-search-open"));
+  });
+
+  it("PC 仍是常驻输入框，不因 H5 收起而丢搜索", () => {
+    toc([volume(1, "正文", 1000, 3)]);
+    expect(screen.getByTestId("toc-search-input")).toBeTruthy();
+    expect(screen.queryByTestId("toc-search-open")).toBeNull();
+    expect(screen.queryByTestId("toc-search-close")).toBeNull();
   });
 });
 

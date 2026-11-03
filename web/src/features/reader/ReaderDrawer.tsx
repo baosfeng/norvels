@@ -14,6 +14,7 @@ import { TocPanel } from "./TocPanel";
  */
 export function ReaderDrawer({
   open,
+  isH5,
   tab,
   onTabChange,
   onClose,
@@ -33,6 +34,8 @@ export function ReaderDrawer({
   onBookmarksRetry,
 }: {
   open: boolean;
+  /** H5 档：目录页签里的搜索默认收起（读者点开才展开） */
+  isH5: boolean;
   tab: ReaderDrawerTab;
   onTabChange: (tab: ReaderDrawerTab) => void;
   onClose: () => void;
@@ -120,6 +123,7 @@ export function ReaderDrawer({
           >
             <TocPanel
               active={tab === "toc"}
+              isH5={isH5}
               loading={tocLoading}
               error={tocError}
               volumes={volumes}

@@ -26,6 +26,7 @@ function mount(count = 150) {
     <MemoryRouter>
       <TocPanel
         active
+        isH5={false}
         loading={false}
         error={null}
         volumes={[singleVolume(count)]}
