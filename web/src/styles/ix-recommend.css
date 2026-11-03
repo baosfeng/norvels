@@ -475,9 +475,29 @@
 }
 
 @media (max-width: 768px) {
-  /* 窄屏：固定卡宽 + 横向滚动，6 张等分会把每张压到 40px 宽，书名全断 */
+  /* 窄屏：6 张排成 3 列网格，一屏看全。
+     横向滚动在手机上既没有滚动条、也不会折行：两张卡正好占满一屏，
+     看起来就像「这里只有两本书」——首页最贵的位置反而没把 6 本露出来。 */
   .scene-rec-row {
-    grid-auto-columns: minmax(112px, 1fr);
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 9px;
+    overflow-x: visible;
+  }
+  .scene-rec-card .cover span {
+    font-size: 17px;
+  }
+  .scene-rec-card h3.book-title {
+    font-size: 12px;
+    line-height: 1.25;
+    min-height: 2.5em;
+  }
+  .scene-rec-card .book-author {
+    font-size: 10.5px;
+  }
+  /* 每本的理由在 3 列里会截成半行残句；这一档只留块头的「推荐来源」说明 */
+  .scene-rec-reason {
+    display: none;
   }
   .scene-rec {
     margin-top: var(--gap-card);
