@@ -338,7 +338,9 @@
 .similar-row {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  /* 卡宽固定：以前是 minmax(0,1fr)，结果「只有 2 条数据」时每张卡各占半屏，
+     封面被拉到 540px 宽、整块占满一屏。列宽不随数量分配，几张都同样大小。 */
+  grid-auto-columns: 148px;
   gap: var(--gap-card);
   width: 100%;
   min-width: 0;
@@ -438,7 +440,8 @@
 .scene-rec-row {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  /* 同 .similar-row：列宽固定，推荐只有 2 条时也不会把两张卡拉成半屏巨卡 */
+  grid-auto-columns: 148px;
   gap: var(--gap-card);
   width: 100%;
   min-width: 0;
@@ -570,9 +573,11 @@
 }
 
 @media (max-width: 768px) {
-  /* 窄屏：固定卡宽 + 横向滚动（6 张等分会把每张压到 40px 宽，书名全断） */
-  .similar-row {
-    grid-auto-columns: minmax(112px, 1fr);
+  /* 窄屏：固定卡宽 + 横向滚动（等分会把每张压到 40px 宽，书名全断；
+     反过来 minmax(112px,1fr) 在数据少时又会把卡拉宽，所以只给固定值） */
+  .similar-row,
+  .scene-rec-row {
+    grid-auto-columns: 112px;
   }
   .similar-block {
     margin-top: var(--gap-card);
