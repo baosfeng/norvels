@@ -30,8 +30,19 @@ export type { StreamSegment } from "./useChapterWindow";
  * - 「这次换章是被滚出来的」要留给恢复逻辑：它决定不重置滚动位置。
  */
 
-/** 换章后的判定冷却：覆盖「切换那一帧已经排队、但报告的是旧位置」的 observer 回调。 */
-const ADVANCE_COOLDOWN_MS = 220;
+/**
+ * 换章后的判定冷却：覆盖「切换那一帧已经排队、但报告的是旧位置」的 observer 回调。
+ * 翻章还套着 260ms 的翻页转场——冷却必须比转场长，否则转场没放完判定就开始读旧位置，
+ * 读者会看到「翻到下一章又自己退回上一章」。
+ */
+const ADVANCE_COOLDOWN_MS = 400;
+
+/**
+ * 翻章后的方向守卫：这段时间内，判定带不许把可见章退回「翻章前的那一章」。
+ * 转场期间 DOM 被快照、observer 的报告会滞后；补判一旦用了旧集合，
+ * 读者就会在松手后被送回上一章（实测现象：停在上一章的末尾）。
+ */
+const FLIP_BACK_GUARD_MS = 700;
 
 export interface ChapterStream {
   /** 渲染窗口：可见章前后各至少一章。 */
@@ -87,6 +98,9 @@ export function useChapterStream({
   const pendingFlip = useRef<number | null>(null);
   /** 刚由显式翻章落位：这一提交里的位置补偿必须让路（否则刚对齐的章首会被推回去）。 */
   const flipLanded = useRef(false);
+  /** 上一次显式翻章是从哪一章翻走的：方向守卫用它挡住「刚翻过去又被判回来」。 */
+  const flipFrom = useRef<number | null>(null);
+  const flipAt = useRef(0);
   /** 冷却期结束后的补判回调：judge 要引用自己，走 ref 免得 lint 报「声明前访问」。 */
   const judgeRef = useRef<() => void>(() => {});
 
@@ -132,7 +146,10 @@ export function useChapterStream({
       }
       if (!pick) return;
       const id = Number(pick.dataset.chapterId);
-      if (Number.isFinite(id)) advanceTo(id);
+      if (!Number.isFinite(id)) return;
+      // 刚翻过去：判定带还压着翻章前那一章时不许退回去
+      if (id === flipFrom.current && performance.now() - flipAt.current < FLIP_BACK_GUARD_MS) return;
+      advanceTo(id);
     },
     [advanceTo],
   );
@@ -183,6 +200,8 @@ export function useChapterStream({
       if (targetIndex < 0) return;
       pendingFlip.current = target.id;
       cooldownUntil.current = performance.now() + ADVANCE_COOLDOWN_MS;
+      flipFrom.current = activeId;
+      flipAt.current = performance.now();
       const apply = () => {
         setActiveId(target.id);
         navigate(`/read/${bookId}/${target.id}`, { replace: true });
