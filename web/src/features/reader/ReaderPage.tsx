@@ -12,7 +12,7 @@ import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
 import { ReaderTopChrome } from "./ReaderTopChrome";
 import { ReaderBody } from "./ReaderBody";
 import { ReaderScrollProgress } from "./ReaderScrollProgress";
-import { ReaderRestoreHint } from "./ReaderRestoreHint";
+import { ReaderRestoreHint, type RestoreHintDismiss } from "./ReaderRestoreHint";
 import { useReaderSearchState } from "./useReaderSearchState";
 import { useReaderPanels } from "./useReaderPanels";
 import { useReaderBookmarkActions } from "./useReaderBookmarkActions";
@@ -291,10 +291,13 @@ function ReaderScreen() {
   // PC 拼成一行；H5 主行只放章号与字数，全书/剩余交给第二行（同一份数据，不重复算）
   const progressText = isH5 || !extraLine ? chapterText : `${chapterText} · ${extraLine}`;
 
-  function dismissHint() {
+  function dismissHint(reason: RestoreHintDismiss) {
     setHintDismissedFor(chapterId);
-    const surface = document.querySelector<HTMLElement>(SURFACE_SELECTOR);
-    surface?.focus();
+    // 只有读者自己点「知道了」才把焦点交还正文：自动消失时抢焦点会打断正在读的人
+    if (reason === "user") {
+      const surface = document.querySelector<HTMLElement>(SURFACE_SELECTOR);
+      surface?.focus();
+    }
   }
 
   return (

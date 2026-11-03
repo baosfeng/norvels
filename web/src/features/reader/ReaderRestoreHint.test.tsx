@@ -32,6 +32,28 @@ describe("ReaderRestoreHint", () => {
       vi.advanceTimersByTime(1);
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
+    // 自动消失不算「读者点了知道了」：不把焦点抢回正文
+    expect(onDismiss).toHaveBeenCalledWith("timeout");
+  });
+
+  it("父组件不断重渲染（换新的 onDismiss 引用）也不会重置计时", () => {
+    vi.useFakeTimers();
+    const last = vi.fn();
+    const { rerender } = render(<ReaderRestoreHint visible onDismiss={vi.fn()} />);
+
+    // 阅读器每帧都会重渲染，回调每次都是新引用：旧实现会让 3 秒永远走不完
+    for (let i = 0; i < 5; i += 1) {
+      rerender(<ReaderRestoreHint visible onDismiss={vi.fn()} />);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+    }
+    rerender(<ReaderRestoreHint visible onDismiss={last} />);
+    act(() => {
+      vi.advanceTimersByTime(RESTORE_HINT_MS);
+    });
+
+    expect(last).toHaveBeenCalledWith("timeout");
   });
 
   it("点「知道了」立刻收起；收起后不再渲染浮条", () => {
@@ -40,6 +62,7 @@ describe("ReaderRestoreHint", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "知道了" }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledWith("user");
 
     rerender(<ReaderRestoreHint visible={false} onDismiss={onDismiss} />);
     expect(screen.queryByTestId("reader-restore-hint")).toBeNull();
