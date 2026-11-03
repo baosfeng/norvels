@@ -187,7 +187,10 @@ export function useChapterStream({
         setActiveId(target.id);
         navigate(`/read/${bookId}/${target.id}`, { replace: true });
       };
-      if (animatedFlips) startChapterFlip(targetIndex > index ? "next" : "prev", apply);
+      // 目标章还没渲染出来（正文在路上）时不做快照转场：转场会把「还没换过去」的画面拍成新页，
+      // 拍完再落位，读者看到的是翻页之后又跳一下。走直接切换，等正文到货再落章首。
+      const targetRendered = Boolean(document.querySelector(`[data-chapter-id="${target.id}"]`));
+      if (animatedFlips && targetRendered) startChapterFlip(targetIndex > index ? "next" : "prev", apply);
       else apply();
     },
     [activeId, animatedFlips, bookId, chapters, index, navigate],

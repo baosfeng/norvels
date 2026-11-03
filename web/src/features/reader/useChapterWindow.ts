@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useChapter } from "../../api/hooks";
 import type { ApiError } from "../../api/client";
 import type { ChapterBrief, ChapterDetail } from "../../api/types";
@@ -113,6 +113,11 @@ export function useChapterWindow({
   // 槽位数据变化（取到 / 换章 / 重试）要重算段落：槽位自身的 key 变化不体现在 windowIds 上
   const slotKey = slots.map((slot) => `${slot.data?.id ?? 0}:${slot.loading ? 1 : 0}:${slot.error ? 1 : 0}`).join(",");
 
+  const activePos = windowIds.indexOf(activeId);
+  const activeSlot = activePos >= 0 ? slots[activePos] : null;
+  /** 上一批渲染出来的段落：可见章正文还没到货时先顶着，别把流清空。 */
+  const lastSegments = useRef<StreamSegment[]>([]);
+
   const segments = useMemo<StreamSegment[]>(() => {
     // slotKey 只是重算信号：它把「槽位数据变了」这件事带进依赖数组
     if (!slotKey) return [];
@@ -129,9 +134,11 @@ export function useChapterWindow({
         paragraphs: splitParagraphs(data.content),
       } satisfies StreamSegment;
     };
-    // 可见章还没取到：不渲染别的章，免得翻章瞬间先闪出上一章的正文
+    // 可见章还没取到：先留着上一批正文顶着，不能把流清空——
+    // 清空会让 scrollHeight 掉到一屏，浏览器把 scrollTop 钳到 0，读者就被甩回上一章。
+    // 只有这一章确实打不开时才交回空表，让页面走错误态（pendingFlip 也才会放行）。
     const active = build(activeId);
-    if (!active) return [];
+    if (!active) return activeSlot?.error ? [] : lastSegments.current;
     // 窗口里可见章之前的章按顺序全部渲染（滚到顶多补一章时，上一章的末尾才接得上）；
     // 遇到没取到的章就停——中间留洞会让正文出现一段空白
     const head: StreamSegment[] = [];
@@ -146,12 +153,11 @@ export function useChapterWindow({
       if (!segment) break;
       list.push(segment);
     }
+    lastSegments.current = list;
     return list;
     // slotKey 是「某个槽位的数据变过」的信号；正文统一从 cache 取（同一章可能挪过槽位）
-  }, [windowIds, chapters, activeId, slotKey, cache]);
+  }, [windowIds, chapters, activeId, slotKey, cache, activeSlot?.error]);
 
-  const activePos = windowIds.indexOf(activeId);
-  const activeSlot = activePos >= 0 ? slots[activePos] : null;
   const tailSlot = slots[Math.max(0, windowCount - 1)] ?? null;
   const loaded = segments.length > 0;
 
