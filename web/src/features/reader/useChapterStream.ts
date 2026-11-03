@@ -6,7 +6,7 @@ import { useChapterWindow, type StreamSegment } from "./useChapterWindow";
 import { useChapterEdges } from "./useChapterEdges";
 import { useVisibleChapter } from "./useVisibleChapter";
 import { useStreamAnchor } from "./useStreamAnchor";
-import { readerSurface } from "./readerStreamLayout";
+import { measureChapters, readerSurface, scrollMetrics, type ChapterAnchor } from "./readerStreamLayout";
 import { settleChapterFlip, startChapterFlip } from "../../lib/chapterFlip";
 import { useReaderChapterIndex } from "./useReaderChapterIndex";
 
@@ -101,6 +101,9 @@ export function useChapterStream({
   /** 上一次显式翻章是从哪一章翻走的：方向守卫用它挡住「刚翻过去又被判回来」。 */
   const flipFrom = useRef<number | null>(null);
   const flipAt = useRef(0);
+  /** 换章前各章的位置与滚动量：提交后的补偿要拿它们对比，理由见 useStreamAnchor。 */
+  const anchorSnapshot = useRef<Map<number, ChapterAnchor>>(new Map());
+  const scrollTopBefore = useRef<number | null>(null);
   /** 冷却期结束后的补判回调：judge 要引用自己，走 ref 免得 lint 报「声明前访问」。 */
   const judgeRef = useRef<() => void>(() => {});
 
@@ -108,6 +111,9 @@ export function useChapterStream({
   const advanceTo = useCallback(
     (targetId: number) => {
       if (chapters.findIndex((chapter) => chapter.id === targetId) < 0 || targetId === activeId) return;
+      // 换章前量一次：提交后同一批章节的位置差就是补偿量（见 useStreamAnchor 的两条规则）
+      anchorSnapshot.current = measureChapters();
+      scrollTopBefore.current = scrollMetrics().scrollTop;
       advanced.current = true;
       cooldownUntil.current = performance.now() + ADVANCE_COOLDOWN_MS;
       setActiveId(targetId);
@@ -203,6 +209,8 @@ export function useChapterStream({
       flipFrom.current = activeId;
       flipAt.current = performance.now();
       const apply = () => {
+        anchorSnapshot.current = measureChapters();
+        scrollTopBefore.current = scrollMetrics().scrollTop;
         setActiveId(target.id);
         navigate(`/read/${bookId}/${target.id}`, { replace: true });
       };
@@ -219,6 +227,8 @@ export function useChapterStream({
     activeId,
     pendingFlipRef: pendingFlip,
     flipLandedRef: flipLanded,
+    snapshotRef: anchorSnapshot,
+    scrollTopBeforeRef: scrollTopBefore,
     onFlipPlaced: () => {
       // 落位后仍要冷却一下：observer 队列里还压着落位前的交叉状态
       cooldownUntil.current = performance.now() + ADVANCE_COOLDOWN_MS;

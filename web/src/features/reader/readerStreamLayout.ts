@@ -36,6 +36,16 @@ export function contentOffset(node: HTMLElement): number {
   return node.getBoundingClientRect().top - root.getBoundingClientRect().top;
 }
 
+/** 直接把滚动位置设到某个值（换章补偿用：浏览器可能已按新高度钳过一次，不能基于当前值累加）。 */
+export function setScrollTop(surface: Surface, value: number): void {
+  const next = Math.max(0, value);
+  if (surface.scrolls) {
+    surface.el.scrollTop = next;
+    return;
+  }
+  window.scrollTo(0, next);
+}
+
 /** 把滚动位置挪 delta：上方涨了多少就多滚多少、缩了多少就少滚多少，读者眼前的正文不动。 */
 export function nudgeScroll(surface: Surface, delta: number): void {
   if (surface.scrolls) {
@@ -43,6 +53,23 @@ export function nudgeScroll(surface: Surface, delta: number): void {
     return;
   }
   window.scrollTo(0, Math.max(0, pageScrollTop() + delta));
+}
+
+/** 某一章在流里的位置与高度（位置与滚动无关，只有上方内容增减才会变）。 */
+export interface ChapterAnchor {
+  offset: number;
+  height: number;
+}
+
+/** 量出流里每一章当前的位置与高度：换章前后的位移差用它算补偿量。 */
+export function measureChapters(): Map<number, ChapterAnchor> {
+  const map = new Map<number, ChapterAnchor>();
+  document.querySelectorAll<HTMLElement>("[data-chapter-id]").forEach((node) => {
+    const id = Number(node.dataset.chapterId);
+    if (!Number.isFinite(id)) return;
+    map.set(id, { offset: contentOffset(node), height: node.getBoundingClientRect().height });
+  });
+  return map;
 }
 
 /**

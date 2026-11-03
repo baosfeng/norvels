@@ -1,12 +1,12 @@
 import { useLayoutEffect, useRef } from "react";
-import { contentOffset, nudgeScroll, readerSurface, scrollToChapterTop, type Surface } from "./readerStreamLayout";
-
-/** 上一次提交时可见章在流里的位置与高度：补偿的基准。 */
-interface Anchor {
-  id: number;
-  offset: number;
-  height: number;
-}
+import {
+  measureChapters,
+  nudgeScroll,
+  readerSurface,
+  scrollToChapterTop,
+  setScrollTop,
+  type ChapterAnchor,
+} from "./readerStreamLayout";
 
 /** 一次布局要处置的两件事：显式翻章落位、上方内容增减补偿。 */
 export interface StreamAnchorOptions {
@@ -19,6 +19,10 @@ export interface StreamAnchorOptions {
   onFlipPlaced: () => void;
   /** 目标章打不开，别再等落位（否则判定带会被永久冻住）。 */
   flipFailed: boolean;
+  /** 每一章在流里的位置：换章前由调用方刷新，提交后拿同一批章节的位置对比。 */
+  snapshotRef: { current: Map<number, ChapterAnchor> };
+  /** 换章前的滚动位置：见下方 setScrollTop 的说明。 */
+  scrollTopBeforeRef: { current: number | null };
 }
 
 /**
@@ -26,16 +30,31 @@ export interface StreamAnchorOptions {
  *
  * 两件事共用一次测量：
  * - 显式翻章（按钮 / 键盘 / 滑动 / 滑块）把目标章章首对到正文区顶；
- * - 其余每一次提交都做「上方内容增减」补偿：增多少就往 scrollTop 里补多少，
- *   读者眼前的正文一动不动。基准是上一次提交时可见章的位置与高度；换章了就用
- *   上一个可见章的上沿或下沿算当前章本该在哪——相邻两章的几何是同一帧量出来的，
- *   不用猜方向。锚点章已经不在流里（目录 / 书签跳远）就只重取基准，落点交给恢复逻辑。
+ * - 其余提交做「上方内容增减」补偿，读者眼前的正文一动不动。
+ *
+ * 三条规则，各自挡住一个实测过的坑：
+ * 1. 补偿量按「同一章在提交前后的 offset 差」算，不用相邻章几何推算——
+ *    滚动跨章时同一提交里会移除最上面一章，几何基准一旦被移除就量不出真实增减量
+ *    （实测会少补约 1900px，读者看到的就是「往上顶一下」）。
+ * 2. 换章那一刻，新章可能刚进窗口（提交前还没有位置可对比），这时改用**上一个可见章**
+ *    的 offset 差：它一定还在窗口里，它上方的增减就是读者眼前内容的位移。
+ * 3. 移除一章会让流先变矮，浏览器按新高度把 scrollTop 钳一次；此时「在当前值上累加」
+ *    会少补被钳掉的那段。换章前记下滚动位置，补偿时按「提交前位置 + 位移差」直接设值。
  *
  * 不设依赖数组：每一次提交都要量。恢复提示条收起、上一章正文迟到都发生在
  * 「可见章没变」的提交里，漏量的那 80px 就足以让判定带翻到隔壁章、再被补偿推回来。
  */
-export function useStreamAnchor({ activeId, pendingFlipRef, flipLandedRef, onFlipPlaced, flipFailed }: StreamAnchorOptions) {
-  const anchorOffset = useRef<Anchor | null>(null);
+export function useStreamAnchor({
+  activeId,
+  pendingFlipRef,
+  flipLandedRef,
+  onFlipPlaced,
+  flipFailed,
+  snapshotRef,
+  scrollTopBeforeRef,
+}: StreamAnchorOptions) {
+  /** 上一次提交时的可见章：换章提交里它通常还留在窗口，位移差可以从它身上读。 */
+  const lastActive = useRef(activeId);
 
   useLayoutEffect(() => {
     const surface = readerSurface();
@@ -46,48 +65,46 @@ export function useStreamAnchor({ activeId, pendingFlipRef, flipLandedRef, onFli
       if (scrollToChapterTop(surface, target)) {
         pendingFlipRef.current = null;
         flipLandedRef.current = true;
+        scrollTopBeforeRef.current = null;
+        lastActive.current = activeId;
         onFlipPlaced();
-        anchorOffset.current = measure(activeId);
+        snapshotRef.current = measureChapters();
         return;
       }
       if (flipFailed) pendingFlipRef.current = null;
       return;
     }
-    const activeNode = document.querySelector<HTMLElement>(`[data-chapter-id="${activeId}"]`);
-    if (!activeNode) {
-      anchorOffset.current = null;
-      return;
-    }
+    const now = measureChapters();
     // 刚才那次翻章的提交不再补偿一次（会把读者推过章首）
     const justFlipped = flipLandedRef.current;
     flipLandedRef.current = false;
-    if (!justFlipped) compensate(surface, activeNode, anchorOffset.current);
-    anchorOffset.current = measure(activeId);
+    // 只有「可见章变了」的提交才用换章基准；别的提交（窗口扩展、恢复提示收起）
+    // 不该把这份基准消费掉，否则真正换章那一拍拿不到提交前的位置。
+    const flipping = activeId !== lastActive.current;
+    const growth = pickGrowth(snapshotRef.current, now, activeId, lastActive.current);
+    lastActive.current = activeId;
+    snapshotRef.current = now;
+    const base = flipping ? scrollTopBeforeRef.current : null;
+    if (flipping) scrollTopBeforeRef.current = null;
+    if (justFlipped || growth === null) return;
+    if (Math.abs(growth) < 0.5) return;
+    if (base !== null) setScrollTop(surface, base + growth);
+    else nudgeScroll(surface, growth);
   });
 }
 
-function measure(activeId: number): Anchor | null {
-  const node = document.querySelector<HTMLElement>(`[data-chapter-id="${activeId}"]`);
-  if (!node) return null;
-  return { id: activeId, offset: contentOffset(node), height: node.getBoundingClientRect().height };
-}
-
-/** 上方内容涨了多少就多滚多少、缩了多少就少滚多少。 */
-function compensate(surface: Surface, activeNode: HTMLElement, anchor: Anchor | null): void {
-  if (!anchor) return;
-  if (anchor.id === Number(activeNode.dataset.chapterId)) {
-    // 可见章没变：只有「它上方的内容」变了，差值就是要补的滚动量
-    const growth = contentOffset(activeNode) - anchor.offset;
-    if (Math.abs(growth) >= 0.5) nudgeScroll(surface, growth);
-    return;
+/** 补偿量：优先用可见章自己的位移；换章时新章可能没有旧位置，退回上一个可见章。 */
+function pickGrowth(
+  before: Map<number, ChapterAnchor>,
+  after: Map<number, ChapterAnchor>,
+  activeId: number,
+  prevActiveId: number,
+): number | null {
+  const candidates = activeId === prevActiveId ? [activeId] : [activeId, prevActiveId];
+  for (const id of candidates) {
+    const was = before.get(id);
+    const is = after.get(id);
+    if (was && is) return is.offset - was.offset;
   }
-  // 换章了：上一页的可见章通常还留在流里，与当前章相邻，
-  // 用它的下沿（它在上）或上沿（它在下）算出当前章本该在哪
-  const prevNode = document.querySelector<HTMLElement>(`[data-chapter-id="${anchor.id}"]`);
-  if (!prevNode) return;
-  const height = activeNode.getBoundingClientRect().height;
-  const prevAbove = Boolean(prevNode.compareDocumentPosition(activeNode) & Node.DOCUMENT_POSITION_FOLLOWING);
-  const base = prevAbove ? anchor.offset + anchor.height : anchor.offset - height;
-  const growth = contentOffset(activeNode) - base;
-  if (Math.abs(growth) >= 0.5) nudgeScroll(surface, growth);
+  return null;
 }
