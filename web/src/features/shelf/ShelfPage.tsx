@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { useAuthors, useCollections, useTags } from "../../api/hooks";
+import { useAuthor, useAuthors, useCollections, useTags } from "../../api/hooks";
 import type { BookSummary, ReadStatus, ReadingProgress } from "../../api/types";
 import { useShelfMode } from "../../layouts/shelfMode";
 import { tierFallbackText } from "../../layouts/tierFallback";
@@ -9,6 +9,7 @@ import { READ_STATUS_LABELS, nextReadStatus } from "../../lib/readStatus";
 import { showToast } from "../../lib/toastStore";
 import { useIsH5 } from "../../lib/tier";
 import { hasShelfQuery } from "./shelfQuery";
+import type { ShelfView } from "./shelfView";
 import { useShelfView } from "./useShelfView";
 import { useShelfIds } from "./shelfIds";
 import { ShelfMineEmpty, ShelfMineLoginPrompt } from "./ShelfMinePanel";
@@ -56,11 +57,11 @@ export function ShelfPage() {
   // 驾驶舱「全部书架 →」要落到全部书：带上这个 state 就忽略会话缓存里的筛选
   const resetRequested = (location.state as { resetFilters?: boolean } | null)?.resetFilters === true;
   // 地址上有筛选参数 = 以地址为准（刷新 / 后退 / 分享都能复现同一屏）
-  const cached = useShelfCache(hasShelfQuery(searchParams) || resetRequested);
-  const filters = useShelfFilters(cached);
-  const { sort, setSort, category, filtering, resetFilters } = filters;
-  // 视图（我的书架 / 全部书）进地址：?view=mine|all，默认按登录态选（B2）
+  // 视图（我的书架 / 全部书）先定下来：筛选的写地址 effect 要把视图一起写进地址
   const shelfView = useShelfView();
+  const cached = useShelfCache(hasShelfQuery(searchParams) || resetRequested);
+  const filters = useShelfFilters(cached, shelfView.view, shelfView.loggedIn);
+  const { sort, setSort, category, filtering, resetFilters } = filters;
   const shelfIds = useShelfIds();
   const mine = shelfView.view === "mine";
   // 我的书架按加入时间倒序、不参与筛选：那些筛选器只属于共享书库
@@ -82,6 +83,9 @@ export function ShelfPage() {
   // id 翻成名字。只有「我的书架」不渲染任何筛选器，这时才不发这三个请求。
   const optionsEnabled = !mine;
   const authorOptions = useAuthors({ sort: "books", size: 50 }, { enabled: optionsEnabled });
+  // 当前作者的显示名：候选表只有前 50 位，从详情页点进来的长尾作者要靠详情接口补
+  const authorDetail = useAuthor(mine ? null : filters.authorId);
+  const authorName = filters.authorId === null ? null : authorDetail.data?.name ?? null;
   const tagOptions = useTags({ enabled: optionsEnabled });
   const collectionOptions = useCollections({ enabled: optionsEnabled });
 
@@ -230,6 +234,17 @@ export function ShelfPage() {
     }
   }
 
+  /**
+   * 切到「我的书架」：先清掉共享书库的七项筛选，再换视图。
+   *
+   * 只删地址不够：筛选状态还在内存里，useShelfFilters 的写地址 effect 会立刻把参数写回去，
+   * 于是这一帧又被「带筛选 = 全部书」的规则拉回来，读者点不动。
+   */
+  function changeView(next: ShelfView) {
+    if (next === "mine") filters.resetFilters();
+    shelfView.setView(next);
+  }
+
   function toggleSelecting() {
     setSelecting((prev) => !prev);
     setSelected(new Set());
@@ -268,7 +283,7 @@ export function ShelfPage() {
 
       <ShelfViewSwitch
         view={shelfView.view}
-        onChange={shelfView.setView}
+        onChange={changeView}
         mineCount={shelfIds.ready ? shelfIds.ids.size : null}
       />
 
@@ -285,6 +300,7 @@ export function ShelfPage() {
           rating={filters.rating}
           onRatingChange={filters.setRating}
           authorId={filters.authorId}
+          authorName={authorName}
           onAuthorChange={filters.setAuthorId}
           authors={authorOptions.data?.items ?? []}
           collections={collectionOptions.data?.items ?? []}
@@ -306,6 +322,7 @@ export function ShelfPage() {
       {isH5 && !mine ? (
         <ShelfH5Filters
           filters={filters}
+          authorName={authorName}
           authors={authorOptions}
           tags={tagOptions}
           collections={collectionOptions}

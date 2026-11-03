@@ -87,6 +87,17 @@ export function hasShelfQuery(params: URLSearchParams): boolean {
   return SHELF_QUERY_KEYS.some((key) => params.has(key));
 }
 
+/**
+ * 地址上有没有「共享书库的筛选」（排序不算）。
+ *
+ * 作者 / 标签 / 状态 / 评分 / 书单 / 分类只属于「全部书」：「我的书架」是按加入时间的个人清单，
+ * 那些筛选器在那边既不渲染也不生效。地址一旦带了其中之一，视图就必须落在全部书——
+ * 否则从详情页点作者（/shelf?author=8）会停在空的「我的书架」，筛选条件连回显都没有。
+ */
+export function hasShelfFilterQuery(params: URLSearchParams): boolean {
+  return SHELF_QUERY_KEYS.some((key) => key !== "sort" && params.has(key));
+}
+
 /** 序列化：默认值不落地址；l2 只在有 l1 时写出。 */
 export function writeShelfQuery(filters: ShelfFilters): URLSearchParams {
   const out = new URLSearchParams();

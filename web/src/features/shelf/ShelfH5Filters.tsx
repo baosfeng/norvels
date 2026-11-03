@@ -20,6 +20,7 @@ type Query<T> = { data: T | null };
  */
 export function ShelfH5Filters({
   filters,
+  authorName,
   authors,
   tags,
   collections,
@@ -30,6 +31,8 @@ export function ShelfH5Filters({
   onViewResults,
 }: {
   filters: Filters;
+  /** 当前作者的显示名（由 ShelfPage 用作者详情解析；候选表只取前 50 位） */
+  authorName: string | null;
   authors: ReturnType<typeof useAuthors>;
   tags: ReturnType<typeof useTags>;
   collections: ReturnType<typeof useCollections>;
@@ -41,9 +44,9 @@ export function ShelfH5Filters({
   onClearAll: () => void;
   onViewResults: () => void;
 }) {
-  const authorName = authorOf(authors, filters.authorId);
+  const resolvedAuthorName = authorOf(authors, filters.authorId) ?? authorName;
   const collectionName = collectionOf(collections, filters.collection);
-  const chips = useShelfChipFilters({ filters, authorName, collectionName, onAfterClear: onAfterChange });
+  const chips = useShelfChipFilters({ filters, authorName: resolvedAuthorName, collectionName, onAfterClear: onAfterChange });
   const facetCounts = useShelfFacetCounts(facetSpecs(filters), !loading);
 
   return (
@@ -55,6 +58,7 @@ export function ShelfH5Filters({
       rating={filters.rating}
       onChooseRating={(next) => choose(filters.setRating, next, onAfterChange)}
       authorId={filters.authorId}
+      authorName={resolvedAuthorName}
       authors={authors.data?.items ?? []}
       onChooseAuthor={(next) => choose(filters.setAuthorId, next, onAfterChange)}
       collection={filters.collection}

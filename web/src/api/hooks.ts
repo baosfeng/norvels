@@ -88,6 +88,18 @@ export function useAuthors(
 }
 
 /**
+ * 单个作者详情：书架「作者：xxx」的回显要用。
+ * 候选表只取前 50 位（按书数排），长尾作者不在里面——只靠候选表回显会变成「已选作者」。
+ */
+export function useAuthor(id: number | null) {
+  return useResource(
+    (signal: AbortSignal) => api.author(id as number, { signal }),
+    [id],
+    { enabled: id !== null && Number.isFinite(id) },
+  );
+}
+
+/**
  * 搜索取数：结果按 page / size 分页，筛选参数（分类/评分/状态/作者/标签）与
  * /api/books 同名同口径，一变就重取（key 序列化进依赖）。
  * 后端要求关键词至少 2 个字符，不足时不发请求（避免把 400 当成错误态展示）。

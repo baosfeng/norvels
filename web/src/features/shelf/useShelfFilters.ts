@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { ReadStatus } from "../../api/types";
 import type { CategoryValue } from "./CategoryFilter";
 import { mergeShelfQuery, parseShelfQuery } from "./shelfQuery";
+import { shelfViewQuery, type ShelfView } from "./shelfView";
 import { SORTS, type SortValue } from "./shelfSorts";
 
 /**
@@ -13,16 +14,21 @@ import { SORTS, type SortValue } from "./shelfSorts";
  * - 缓存只解释「上次看到哪」：从详情/阅读器返回时把筛选与列表一起带回来，但换链接进来不该沿用。
  * - 带 `resetFilters` state 进来（驾驶舱「全部书架 →」）时连缓存也不读，落到全部书。
  */
-export function useShelfFilters(cached: {
-  sort?: string;
-  authorId?: number | null;
-  tag?: string | null;
-  readStatus?: Exclude<ReadStatus, ""> | null;
-  rating?: number | null;
-  collection?: number | null;
-  categoryL1?: string | null;
-  categoryL2?: string | null;
-} | null) {
+export function useShelfFilters(
+  cached: {
+    sort?: string;
+    authorId?: number | null;
+    tag?: string | null;
+    readStatus?: Exclude<ReadStatus, ""> | null;
+    rating?: number | null;
+    collection?: number | null;
+    categoryL1?: string | null;
+    categoryL2?: string | null;
+  } | null,
+  /** 当前视图与登录态：视图也由这里写进地址（写地址只能有一处，见下面的 effect） */
+  view: ShelfView,
+  loggedIn: boolean,
+) {
   const [searchParams, setSearchParams] = useSearchParams();
   // 首帧捕获地址上的筛选；之后地址跟随筛选变化（下面的 effect），不回读
   const [urlFilters] = useState(() => parseShelfQuery(searchParams));
@@ -45,23 +51,30 @@ export function useShelfFilters(cached: {
     l2: initial.categoryL2 ?? null,
   });
 
-  // 筛选变化写回地址：刷新、后退、复制链接都能复现同一屏（replace 不往后退栈里塞历史）
+  // 筛选 + 视图写回地址：刷新、后退、复制链接都能复现同一屏（replace 不往后退栈里塞历史）。
+  // 视图在这里一起写：切视图同时清筛选时，两处各自 setSearchParams 会拿同一份旧地址互相覆盖
+  // （第一次点「我的书架」被清筛选那次冲掉，要点第二次）。
   useEffect(() => {
     setSearchParams(
-      (prev) =>
-        mergeShelfQuery(prev, {
-          sort,
-          authorId,
-          tag,
-          readStatus,
-          rating,
-          collection,
-          categoryL1: category.l1,
-          categoryL2: category.l2,
-        }) ?? prev,
+      (prev) => {
+        const next =
+          mergeShelfQuery(prev, {
+            sort,
+            authorId,
+            tag,
+            readStatus,
+            rating,
+            collection,
+            categoryL1: category.l1,
+            categoryL2: category.l2,
+          }) ?? new URLSearchParams(prev);
+        next.delete("view");
+        for (const [key, value] of shelfViewQuery(view, loggedIn) ?? []) next.set(key, value);
+        return next.toString() === prev.toString() ? prev : next;
+      },
       { replace: true },
     );
-  }, [sort, authorId, tag, readStatus, rating, collection, category.l1, category.l2, setSearchParams]);
+  }, [sort, authorId, tag, readStatus, rating, collection, category.l1, category.l2, view, loggedIn, setSearchParams]);
 
   const filtering =
     authorId !== null ||

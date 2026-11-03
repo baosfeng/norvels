@@ -25,6 +25,7 @@ export function ShelfToolbar({
   rating,
   onRatingChange,
   authorId,
+  authorName,
   onAuthorChange,
   authors,
   collections,
@@ -46,6 +47,8 @@ export function ShelfToolbar({
   rating: number | null;
   onRatingChange: (next: number | null) => void;
   authorId: number | null;
+  /** 当前作者的显示名：候选表只取前 50 位，链接进来的长尾作者不在里面 */
+  authorName: string | null;
   onAuthorChange: (next: number | null) => void;
   authors: AuthorOption[];
   /** 书单候选：书架页已为 H5 弹层取过一份，PC 复用同一份（不再单独请求） */
@@ -120,6 +123,10 @@ export function ShelfToolbar({
           data-testid="filter-author"
         >
           <option value="">全部作者</option>
+          {/* 链接带进来的作者可能不在候选表里：不补一项，下拉会显示「全部作者」却实际已筛选 */}
+          {authorId !== null && !authors.some((author) => author.id === authorId) ? (
+            <option value={authorId}>{authorName || "已选作者"}</option>
+          ) : null}
           {authors.map((author) => (
             <option key={author.id} value={author.id}>
               {author.name || "佚名"}（{author.bookCount}）

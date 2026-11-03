@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookQuery, RequestOptions } from "../../api/client";
-import type { BookDetail, BookSummary, CategoryTree, Page, TagSummary } from "../../api/types";
+import type { BookDetail, BookSummary, CategoryTree, Page, ShelfItem, TagSummary } from "../../api/types";
+import { AuthContext, type AuthState } from "../../lib/auth";
 import { TierProvider } from "../../lib/tier";
 
 const books = vi.fn<(params: BookQuery, opts?: RequestOptions) => Promise<Page<BookSummary>>>();
@@ -17,6 +18,10 @@ const authors = vi.fn(async () => ({
   page: 1,
   size: 20,
 }));
+/** 「我的书架」取数：默认空书架。已登录 + 无筛选时才会走它，作者筛选的用例里断言它没被调用。 */
+const listShelf = vi.fn<(params: { page?: number; size?: number }, opts?: RequestOptions) => Promise<Page<ShelfItem>>>();
+/** 单个作者详情：作者筛选回显用（候选表只有 id=1）。 */
+const author = vi.fn<(id: number, opts?: RequestOptions) => Promise<{ id: number; name: string; bookCount: number; wordCount: number; books: [] }>>();
 
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
@@ -30,6 +35,8 @@ vi.mock("../../api/client", async () => {
       tags: () => tags(),
       collections: () => collections(),
       authors: () => authors(),
+      listShelf: (params: { page?: number; size?: number }, opts?: RequestOptions) => listShelf(params, opts),
+      author: (id: number, opts?: RequestOptions) => author(id, opts),
       updateBook: vi.fn(async () => ({}) as BookDetail),
     },
   };
@@ -75,15 +82,33 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname + location.search}</div>;
 }
 
-function renderShelf(entries: string[] = ["/"]) {
-  return render(
+function renderShelf(entries: string[] = ["/"], auth?: AuthState) {
+  const tree = (
     <TierProvider value="h5">
       <MemoryRouter initialEntries={entries}>
         <ShelfPage />
         <LocationProbe />
       </MemoryRouter>
-    </TierProvider>,
+    </TierProvider>
   );
+  return render(auth ? <AuthContext.Provider value={auth}>{tree}</AuthContext.Provider> : tree);
+}
+
+/** 已登录态：默认视图是「我的书架」，用来复现「点作者却停在空书架」的原始路径。 */
+function loggedInAuth(): AuthState {
+  const user = { id: 2, name: "示例读者", createdAt: "2026-10-01T00:00:00.000Z", lastSeenAt: "" };
+  return {
+    user,
+    loggedIn: true,
+    loading: false,
+    enter: async () => user,
+    register: async () => user,
+    login: async () => user,
+    deleteAccount: async () => undefined,
+    logout: async () => undefined,
+    subscribe: () => () => undefined,
+    clearLocal: () => undefined,
+  };
 }
 
 function currentQuery(): string {
@@ -115,6 +140,8 @@ beforeEach(() => {
   tags.mockClear();
   collections.mockClear();
   authors.mockClear();
+  listShelf.mockReset().mockResolvedValue({ items: [], total: 0, page: 1, size: 30 });
+  author.mockReset().mockImplementation(async (id: number) => ({ id, name: "作者" + id, bookCount: 1, wordCount: 1000, books: [] }));
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
@@ -380,6 +407,24 @@ describe("H5 书架：地址即筛选（刷新 / 后退 / 分享都能还原）"
     await waitFor(() => expect(books).toHaveBeenCalledTimes(1));
     expect(books.mock.calls[0][0].tag).toBe("民国");
     expect(currentQuery()).toContain("tag=民国");
+  });
+
+  it("已登录点作者昵称（?author=8）落在全部书：读 /api/books，不读空的我的书架", async () => {
+    renderShelf(["/?author=8"], loggedInAuth());
+    await waitFor(() => expect(books).toHaveBeenCalled());
+    expect(books.mock.calls[0][0]).toMatchObject({ authorId: 8, size: 30 });
+    expect(listShelf).not.toHaveBeenCalled();
+    expect(screen.getByTestId("shelf-view-all").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("shelf-view-mine").getAttribute("aria-pressed")).toBe("false");
+    // 作者不在候选前 50 位：名字由详情接口补，回显不能退化成「已选作者」
+    await waitFor(() => expect(screen.getByTestId("author-selected-clear").textContent).toContain("作者：作者8"));
+  });
+
+  it("从带筛选的地址切到「我的书架」会清掉筛选参数（否则又被拉回全部书）", async () => {
+    renderShelf(["/?author=8"]);
+    await waitFor(() => expect(books).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId("shelf-view-mine"));
+    await waitFor(() => expect(currentQuery()).not.toContain("author"));
   });
 
   it("分类筛选经会话缓存也能还原（从详情返回的兜底路径）", async () => {

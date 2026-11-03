@@ -30,6 +30,8 @@ export interface ShelfFilterPanelProps {
   rating: number | null;
   onChooseRating: (next: number | null) => void;
   authorId: number | null;
+  /** 当前作者的显示名：由调用方解析（候选表 + 作者详情），没解析到就用候选表 / 「已选作者」兜底 */
+  authorName?: string | null;
   authors: AuthorOption[];
   onChooseAuthor: (next: number | null) => void;
   collection: number | null;
@@ -77,6 +79,7 @@ export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
     rating,
     onChooseRating,
     authorId,
+    authorName,
     authors,
     onChooseAuthor,
     collection,
@@ -98,7 +101,8 @@ export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(OPEN_BY_DEFAULT));
   const categories = useCategoryOptions();
   const leaves = leavesOf(categories.nodes, category.l1);
-  const authorName = authorId === null ? null : authors.find((item) => item.id === authorId)?.name || "已选作者";
+  const authorLabel =
+    authorId === null ? null : authorName ?? (authors.find((item) => item.id === authorId)?.name || "已选作者");
 
   function toggle(id: string) {
     setOpen((prev) => {
@@ -252,16 +256,16 @@ export function ShelfFilterPanel(props: ShelfFilterPanelProps) {
       </FilterGroup>
 
       {/* 作者只留「已选」的清除入口：几十个作者横向滑很难找人，候选留给 PC 工具栏 */}
-      {authorName === null ? null : (
+      {authorLabel === null ? null : (
         <div className="shelf-filter-selected">
           <button
             type="button"
             className="shelf-filter-chip is-active"
             data-testid="author-selected-clear"
-            aria-label={"清除作者筛选：" + authorName}
+            aria-label={"清除作者筛选：" + authorLabel}
             onClick={() => onChooseAuthor(null)}
           >
-            作者：{authorName} ×
+            作者：{authorLabel} ×
           </button>
         </div>
       )}

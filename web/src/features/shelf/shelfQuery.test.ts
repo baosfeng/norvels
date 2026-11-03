@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FILTERS,
+  hasShelfFilterQuery,
   hasShelfQuery,
   mergeShelfQuery,
   parseShelfQuery,
@@ -45,5 +46,12 @@ describe("书架筛选 ⇄ 地址栏", () => {
   it("hasShelfQuery 只认书架参数：其它参数不算「以地址为准」", () => {
     expect(hasShelfQuery(new URLSearchParams("utm=x"))).toBe(false);
     expect(hasShelfQuery(new URLSearchParams("tag=民国"))).toBe(true);
+  });
+
+  it("hasShelfFilterQuery 看共享书库的筛选（排序不算）：地址带筛选 = 必须落在全部书", () => {
+    expect(hasShelfFilterQuery(new URLSearchParams("sort=title"))).toBe(false);
+    expect(hasShelfFilterQuery(new URLSearchParams("view=mine"))).toBe(false);
+    expect(hasShelfFilterQuery(new URLSearchParams("author=8"))).toBe(true);
+    expect(hasShelfFilterQuery(new URLSearchParams("l1=武侠&l2=群像"))).toBe(true);
   });
 });
