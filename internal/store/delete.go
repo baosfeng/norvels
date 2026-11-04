@@ -56,8 +56,24 @@ func (s *Store) DeleteBook(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	// 这本书的章节即将整批消失：章数、长度直方图与导入趋势都要在删之前取到旧值，
-	// 否则删完就读不出来了（缓存只能减掉已知的量）。
+	if err := deleteBookRowsWithCounts(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := refreshAuthorIDs(ctx, tx, authorIDs); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: delete book commit: %w", err)
+	}
+	s.purgeBookContent(ctx, id)
+	return nil
+}
+
+// deleteBookRowsWithCounts 删掉一本书的主库行，并把它的章节从三处预计算缓存里减掉。
+//
+// 「先读旧值再删」是必须的：章数、长度直方图与导入趋势都只能减掉**已知的量**，
+// 章节行一旦删掉就再也算不出这本书曾经贡献了多少。
+func deleteBookRowsWithCounts(ctx context.Context, tx *sql.Tx, id int64) error {
 	oldWords, err := bookChapterWordCounts(ctx, tx, id)
 	if err != nil {
 		return err
@@ -77,22 +93,7 @@ func (s *Store) DeleteBook(ctx context.Context, id int64) error {
 	if err := bumpImportDaily(ctx, tx, oldImportedAt, -1, -len(oldWords)); err != nil {
 		return err
 	}
-	if err := bumpLengthHist(ctx, tx, nil, oldWords); err != nil {
-		return err
-	}
-	for _, authorID := range authorIDs {
-		if err := refreshAuthorStats(ctx, tx, authorID); err != nil {
-			return err
-		}
-		if err := refreshAuthorAgg(ctx, tx, authorID); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("store: delete book commit: %w", err)
-	}
-	s.purgeBookContent(ctx, id)
-	return nil
+	return bumpLengthHist(ctx, tx, nil, oldWords)
 }
 
 // bookAuthorIDsForDelete 确认书存在，并返回删除后需要重算聚合列的作者 id。

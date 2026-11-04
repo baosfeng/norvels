@@ -198,18 +198,60 @@ func TestPrecomputeMissingFallsBack(t *testing.T) {
 	st := newTestStore(t)
 	seedDashboardBooks(t, st)
 
-	wantTrend := requireTrend(t, st, 7)
-	wantStats, err := st.Stats(ctx)
+	want := captureDashboardViews(t, ctx, st)
+	clearPrecomputeContent(t, ctx, st)
+
+	got := captureDashboardViews(t, ctx, st)
+	assertTrendEqual(t, "降级后", want.trend, got.trend)
+	assertStatsEqual(t, "降级后", want.stats, got.stats)
+	assertAuthorPageEqual(t, "降级后", want.authors, got.authors)
+	if got.stats.CompositionEstimated {
+		// 章节数不进预计算表（它走 store_metrics），所以这里是**仍然走缓存**：
+		// 预计算表缺失不影响 /api/stats 的章节数，仍是精确值、也不标 estimated。
+		// 「章节数缓存缺失」是另一条独立场景，见 TestStatsChapterCountCacheMiss。
+		t.Error("预计算表缺失不应影响章节数缓存（它走 store_metrics）")
+	}
+	if !got.health.Stale {
+		t.Error("降级后健康报告应标 stale")
+	}
+	if n := len(got.health.ChapterLengthBuckets); n != len(lengthBucketLabels) {
+		t.Errorf("降级后长度直方图 = %v", got.health.ChapterLengthBuckets)
+	}
+	assertBucketsEqual(t, "降级后长度直方图", want.health.ChapterLengthBuckets, got.health.ChapterLengthBuckets)
+}
+
+// dashboardViews 是四个驾驶舱读接口的一次快照（用于「降级前后必须一致」的比对）。
+type dashboardViews struct {
+	trend   []ImportTrendPoint
+	stats   Stats
+	authors Page[AuthorSummary]
+	health  HealthReport
+}
+
+// captureDashboardViews 依次取四个接口（任一失败即 Fatal）。
+func captureDashboardViews(t *testing.T, ctx context.Context, st *Store) dashboardViews {
+	t.Helper()
+	trend := requireTrend(t, st, 7)
+	stats, err := st.Stats(ctx)
 	if err != nil {
 		t.Fatalf("Stats: %v", err)
 	}
-	wantAuthors, err := st.ListAuthors(ctx, AuthorQuery{Sort: "words", Page: 1, Size: 5})
+	authors, err := st.ListAuthors(ctx, AuthorQuery{Sort: "words", Page: 1, Size: 5})
 	if err != nil {
 		t.Fatalf("ListAuthors: %v", err)
 	}
+	return dashboardViews{
+		trend:   trend,
+		stats:   stats,
+		authors: authors,
+		health:  st.HealthReport(ctx),
+	}
+}
 
-	// 模拟「三张预计算表的内容没算，只剩空壳」：三张表都在但值为 0，
-	// 且口径版本缺失——这正是「迁移跑完但回填没跑完 / 回填失败」的形态。
+// clearPrecomputeContent 模拟「三张预计算表的内容没算，只剩空壳」：
+// 表都在但值为空，且口径版本缺失——这正是「迁移跑完但回填没跑完 / 回填失败」的形态。
+func clearPrecomputeContent(t *testing.T, ctx context.Context, st *Store) {
+	t.Helper()
 	for _, table := range []string{tableChapterLengthHist, tableImportDaily, tableAuthorAgg} {
 		if _, err := st.DB().ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			t.Fatalf("清 %s: %v", table, err)
@@ -219,44 +261,59 @@ func TestPrecomputeMissingFallsBack(t *testing.T) {
 		t.Fatalf("清口径版本: %v", err)
 	}
 	st.resetPrecomputeCache()
+}
 
-	gotTrend := requireTrend(t, st, 7)
-	for i := range wantTrend {
-		if gotTrend[i] != wantTrend[i] {
-			t.Errorf("降级后第 %d 天 = %+v，期望 %+v", i, gotTrend[i], wantTrend[i])
+// assertTrendEqual 逐日比对趋势。
+func assertTrendEqual(t *testing.T, label string, want, got []ImportTrendPoint) {
+	t.Helper()
+	if len(want) != len(got) {
+		t.Fatalf("%s趋势天数 = %d，期望 %d", label, len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("%s第 %d 天 = %+v，期望 %+v", label, i, got[i], want[i])
 		}
 	}
-	gotStats, err := st.Stats(ctx)
-	if err != nil {
-		t.Fatalf("降级后 Stats: %v", err)
+}
+
+// assertStatsEqual 比对 /api/stats 的计数口径（体积构成另算，见各用例）。
+func assertStatsEqual(t *testing.T, label string, want, got Stats) {
+	t.Helper()
+	if got.Chapters != want.Chapters {
+		t.Errorf("%s章节数 = %d，期望 %d", label, got.Chapters, want.Chapters)
 	}
-	if gotStats.Chapters != wantStats.Chapters {
-		t.Errorf("降级后章节数 = %d，期望 %d", gotStats.Chapters, wantStats.Chapters)
+	if got.Books != want.Books || got.Authors != want.Authors || got.Words != want.Words {
+		t.Errorf("%s统计 = %+v，期望 books/authors/words = %d/%d/%d",
+			label, got, want.Books, want.Authors, want.Words)
 	}
-	// 章节数不进预计算表（它走 store_metrics），所以这里是**仍然走缓存**：
-	// 预计算表缺失不影响 /api/stats 的章节数，仍是精确值、也不标 estimated。
-	// 「章节数缓存缺失」是另一条独立场景，见 TestStatsChapterCountCacheMiss。
-	if gotStats.CompositionEstimated {
-		t.Error("预计算表缺失不应影响章节数缓存（它走 store_metrics）")
+}
+
+// assertAuthorPageEqual 逐条比对作者页。
+func assertAuthorPageEqual(t *testing.T, label string, want, got Page[AuthorSummary]) {
+	t.Helper()
+	if got.Total != want.Total {
+		t.Errorf("%s作者总数 = %d，期望 %d", label, got.Total, want.Total)
 	}
-	gotAuthors, err := st.ListAuthors(ctx, AuthorQuery{Sort: "words", Page: 1, Size: 5})
-	if err != nil {
-		t.Fatalf("降级后 ListAuthors: %v", err)
+	if len(got.Items) != len(want.Items) {
+		t.Fatalf("%s作者条数 = %d，期望 %d", label, len(got.Items), len(want.Items))
 	}
-	if len(gotAuthors.Items) != len(wantAuthors.Items) {
-		t.Fatalf("降级后作者条数 = %d，期望 %d", len(gotAuthors.Items), len(wantAuthors.Items))
-	}
-	for i := range wantAuthors.Items {
-		if gotAuthors.Items[i] != wantAuthors.Items[i] {
-			t.Errorf("降级后第 %d 位作者 = %+v，期望 %+v", i, gotAuthors.Items[i], wantAuthors.Items[i])
+	for i := range want.Items {
+		if got.Items[i] != want.Items[i] {
+			t.Errorf("%s第 %d 位作者 = %+v，期望 %+v", label, i, got.Items[i], want.Items[i])
 		}
 	}
-	r := st.HealthReport(ctx)
-	if !r.Stale {
-		t.Error("降级后健康报告应标 stale")
+}
+
+// assertBucketsEqual 逐桶比对直方图。
+func assertBucketsEqual(t *testing.T, label string, want, got []Bucket) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s桶数 = %d，期望 %d", label, len(got), len(want))
 	}
-	if r.ChapterLengthBuckets == nil || len(r.ChapterLengthBuckets) != len(lengthBucketLabels) {
-		t.Errorf("降级后长度直方图 = %v", r.ChapterLengthBuckets)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("%s第 %d 桶 = %+v，期望 %+v", label, i, got[i], want[i])
+		}
 	}
 }
 

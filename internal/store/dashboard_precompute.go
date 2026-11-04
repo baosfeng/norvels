@@ -255,15 +255,3 @@ func bookImportedAt(ctx context.Context, tx *sql.Tx, bookID int64) (string, erro
 	}
 	return raw, nil
 }
-
-// dropAuthorAgg 删除一位作者的聚合行（作者被删时不留下悬空行）。
-func dropAuthorAgg(ctx context.Context, tx *sql.Tx, authorID int64) error {
-	if authorID == 0 {
-		return nil
-	}
-	if _, err := tx.ExecContext(ctx,
-		"DELETE FROM "+tableAuthorAgg+" WHERE author_id = ?", authorID); err != nil {
-		return fmt.Errorf("store: drop author agg %d: %w", authorID, err)
-	}
-	return nil
-}

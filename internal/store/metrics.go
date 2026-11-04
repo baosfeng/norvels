@@ -65,26 +65,11 @@ const chapterWordSumForBookSQL = "SELECT COALESCE(SUM(word_count), 0) FROM chapt
 
 // readMetrics 读出当前缓存；值缺失或口径落后时 Stale=true。
 func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT key, value FROM store_metrics")
-	if err != nil {
-		// 未迁移的老库没有该表：按「全部过期」处理，由后台补算。
+	m, ok := s.readMetricMap(ctx)
+	if !ok {
+		// 未迁移的老库没有该表，或读表失败：按「全部过期」处理，由后台补算。
 		return metricsSnapshot{Stale: true}, nil //nolint:nilerr // 缓存不可用是降级场景
 	}
-	defer rows.Close()
-
-	m := make(map[string]int64, 8)
-	for rows.Next() {
-		var k string
-		var v int64
-		if err := rows.Scan(&k, &v); err != nil {
-			return metricsSnapshot{Stale: true}, nil //nolint:nilerr
-		}
-		m[k] = v
-	}
-	if err := rows.Err(); err != nil {
-		return metricsSnapshot{Stale: true}, nil //nolint:nilerr
-	}
-
 	snap := metricsSnapshot{
 		// TextBytes 对调用方是「正文总量」，含 books 侧的少量文本；两者分开存储是为了让
 		// 导入时的增量累加（只碰 chapters）与全量重算（都算）落在同一个口径上。
@@ -118,6 +103,32 @@ func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
 	}
 	snap.Stale = m[metricMetricsVersion] != metricsVersion || !computed
 	return snap, nil
+}
+
+// readMetricMap 把 store_metrics 整表读成 key→value；读不到（表不存在或查询失败）返回 false。
+//
+// 单独成函数而不是内联：它把「缓存不可用 = 全部过期」这个降级判断收在一处，
+// readMetrics 只剩「按口径组装快照 + 判断是否落后」两件事。
+func (s *Store) readMetricMap(ctx context.Context) (map[string]int64, bool) {
+	rows, err := s.db.QueryContext(ctx, "SELECT key, value FROM store_metrics")
+	if err != nil {
+		return nil, false
+	}
+	defer rows.Close()
+
+	m := make(map[string]int64, 8)
+	for rows.Next() {
+		var k string
+		var v int64
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, false
+		}
+		m[k] = v
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false
+	}
+	return m, true
 }
 
 // chapterCountIsZero 判断库里是否确实没有章节（用于区分「空库」与「尚未计算」）。
