@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReaderSettings } from "../readerSettings";
 import { reflowSignature } from "../useReaderRepositionAfterReflow";
-import { firstParaOnPage } from "../../../lib/paging/pageAnchor";
+import { firstParaOnPage, paragraphRangeOfPage } from "../../../lib/paging/pageAnchor";
 import type { TurnDir } from "../../../lib/paging/turnGesture";
 import type { TurnEffect } from "../../../lib/paging/turnEffects";
 import { PagedLayout } from "./PagedLayout";
@@ -28,8 +28,13 @@ export interface PagedChapterApi {
   stageRef: (node: HTMLDivElement | null) => void;
   page: number;
   pageCount: number;
+  /** 当前页覆盖的段落区间（读屏按它念，不是整章）。 */
+  pageRange: { start: number; end: number } | null;
+  /** 全章最后一段的段号（落末页时当锚点）。 */
+  lastPara: number;
   turn: (dir: TurnDir) => boolean;
-  gotoPage: (page: number) => void;
+  /** 跳到第 page 页；anchorPara 给了就把它当重排锚点（书签 / 搜索的目标段）。 */
+  gotoPage: (page: number, anchorPara?: number) => void;
   gotoPara: (paraIndex: number) => void;
   pointerDown: (x: number, y: number) => void;
   pointerMove: (x: number, y: number) => boolean;
@@ -52,7 +57,11 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const layoutRef = useRef<PagedLayout | null>(null);
   const engineRef = useRef<PageTurnEngine | null>(null);
-  const [state, setState] = useState({ page: 0, pageCount: 1 });
+  const [state, setState] = useState<{ page: number; pageCount: number; pageRange: { start: number; end: number } | null }>({
+    page: 0,
+    pageCount: 1,
+    pageRange: null,
+  });
   const anchor = useRef(initialPara ?? 0);
   const placedKey = useRef<string | null>(null);
   // 引擎回调要读到最新入参；渲染期不写 ref，统一在 layout effect 里同步
@@ -62,6 +71,13 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
   });
 
   const build = useCallback(() => buildChapterFragment(latest.current.content), []);
+
+  /** 一页的完整状态：页码、页数与这一页覆盖的段落区间（读屏按区间念，不是整章）。 */
+  const snapshot = useCallback((page: number, pageCount: number) => {
+    const layout = layoutRef.current;
+    const range = layout ? paragraphRangeOfPage(layout.anchors, page, layout.pageBox.pageW) : null;
+    return { page, pageCount, pageRange: range };
+  }, []);
 
   /** 量尺寸 → 量页数 → 落位。targetPara 优先，否则沿用锚点。 */
   const place = useCallback((targetPara: number | null, reset: boolean) => {
@@ -75,10 +91,10 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
     const page = Math.min(measured.pageCount - 1, Math.max(0, found ?? engine.currentPage));
     if (reset) engine.reset(page, measured.pageCount);
     else engine.relocate(page, measured.pageCount);
-    setState({ page: engine.currentPage, pageCount: measured.pageCount });
+    setState(snapshot(engine.currentPage, measured.pageCount));
     latest.current.onPageChange(engine.currentPage, measured.pageCount);
     if (targetPara !== null) latest.current.onAnchor(targetPara);
-  }, []);
+  }, [snapshot]);
 
   // 排版与引擎只建一次；建完立刻落一次位（见函数注释里那条铁律）。
   useLayoutEffect(() => {
@@ -96,7 +112,7 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
       onCommit: (index) => {
         const pi = firstParaOnPage(layout.anchors, index, layout.pageBox.pageW);
         if (pi !== null) anchor.current = pi;
-        setState({ page: index, pageCount: layout.pageCount });
+        setState(snapshot(index, layout.pageCount));
         latest.current.onAnchor(pi ?? anchor.current);
         latest.current.onPageChange(index, layout.pageCount);
       },
@@ -113,7 +129,7 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
       engineRef.current = null;
       placedKey.current = null;
     };
-  }, [build, place]);
+  }, [build, place, snapshot]);
 
   // 内容变化（换章 / 搜索标记）：换排版源并重新落位。
   useLayoutEffect(() => {
@@ -180,17 +196,28 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
 
   const turn = useCallback((dir: TurnDir) => engineRef.current?.turn(dir) ?? false, []);
 
-  const gotoPage = useCallback((index: number) => {
-    const layout = layoutRef.current;
-    const engine = engineRef.current;
-    if (!layout || !engine) return;
-    engine.relocate(index, layout.pageCount);
-    const pi = firstParaOnPage(layout.anchors, engine.currentPage, layout.pageBox.pageW);
-    if (pi !== null) anchor.current = pi;
-    setState({ page: engine.currentPage, pageCount: layout.pageCount });
-    latest.current.onAnchor(pi ?? anchor.current);
-    latest.current.onPageChange(engine.currentPage, layout.pageCount);
-  }, []);
+  /**
+   * 跳到某一页。
+   *
+   * anchorPara 是「这次跳转真正要落到的那一段」：书签 / 搜索给的是目标段，
+   * 不能拿页首段顶替——重排（恢复提示收起会改变页高）时按页首段找回，
+   * 段落一旦跨页边界就会滑到前一页，读者看到的是「跳过去又退一页」。
+   * 不传时才退回「该页第一个起始于本页的段」。
+   */
+  const gotoPage = useCallback(
+    (index: number, anchorPara?: number) => {
+      const layout = layoutRef.current;
+      const engine = engineRef.current;
+      if (!layout || !engine) return;
+      engine.relocate(index, layout.pageCount);
+      const pi = anchorPara ?? firstParaOnPage(layout.anchors, engine.currentPage, layout.pageBox.pageW);
+      if (pi !== null) anchor.current = pi;
+      setState(snapshot(engine.currentPage, layout.pageCount));
+      latest.current.onAnchor(pi ?? anchor.current);
+      latest.current.onPageChange(engine.currentPage, layout.pageCount);
+    },
+    [snapshot],
+  );
 
   const gotoPara = useCallback(
     (paraIndex: number) => {
@@ -199,7 +226,7 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
       const target = layout.pageOfPara(paraIndex);
       if (target === null) return;
       anchor.current = paraIndex;
-      gotoPage(target);
+      gotoPage(target, paraIndex);
     },
     [gotoPage],
   );
@@ -212,6 +239,8 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
     stageRef: stageRefCallback,
     page: state.page,
     pageCount: state.pageCount,
+    pageRange: state.pageRange,
+    lastPara: layoutRef.current?.anchors.at(-1)?.pi ?? 0,
     turn,
     gotoPage,
     gotoPara,

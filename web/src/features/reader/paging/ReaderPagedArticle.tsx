@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import type { ReaderHit } from "../../../lib/readerSearch";
 import type { TurnDir } from "../../../lib/paging/turnGesture";
 import type { ReaderSettings } from "../readerSettings";
@@ -10,6 +10,8 @@ export interface PagedReaderHandle {
   turn: (dir: TurnDir) => boolean;
   gotoPara: (paraIndex: number) => void;
   gotoPage: (page: number) => void;
+  /** 跳到最后一页（键盘 End / 往回跨章的落点）。 */
+  gotoLast: () => void;
   page: () => number;
   pageCount: () => number;
 }
@@ -63,7 +65,11 @@ export function ReaderPagedArticle(props: ReaderPagedArticleProps) {
   });
   const drag = useRef({ active: false });
   // 先解构再进渲染：把「含 ref 的 api 对象」整体带进 JSX 会让 lint 认为在读 ref
-  const { page, pageCount, stageRef, pointerDown, pointerMove, pointerUp, pointerCancel } = api;
+  const { page, pageCount, pageRange, stageRef, pointerDown, pointerMove, pointerUp, pointerCancel } = api;
+  const spoken = useMemo(
+    () => (pageRange ? props.paragraphs.slice(pageRange.start, pageRange.end + 1).join("\n") : ""),
+    [pageRange, props.paragraphs],
+  );
   useExposeHandle(handleRef, api);
   useLandAtEnd(api, props.chapterId, landAtEnd);
 
@@ -108,7 +114,20 @@ export function ReaderPagedArticle(props: ReaderPagedArticleProps) {
     >
       {/* 页码不在这里再画一个浮标：底部「本章 N%」那条浮标在分页下已经改成
           「第 p / P 页」，两处同时出现会互相压字。 */}
-      <div className="pg-stage" ref={stageRef} data-testid="pg-stage" />
+      {/* 舞台对读屏隐藏：里面是一整份多栏排版源，读屏读它会把全章念一遍 */}
+      <div
+        className="pg-stage"
+        ref={stageRef}
+        data-testid="pg-stage"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
+      {/* 读屏读这一页的文字，而不是舞台里那一整份多栏排版源：
+          页层是排版源的克隆，读屏直接读会一次念完整章；.pg-measure 已 aria-hidden。
+          用单独的文字层而不是给页层加 aria-hidden：后者会让整页对读屏消失。 */}
+      <p className="sr-only" data-testid="pg-spoken" aria-live="polite">
+        {spoken}
+      </p>
     </div>
   );
 }
@@ -125,6 +144,7 @@ function useExposeHandle(handleRef: { current: PagedReaderHandle | null }, api: 
       turn,
       gotoPara,
       gotoPage,
+      gotoLast: () => gotoPage(pageCount - 1),
       page: () => page,
       pageCount: () => pageCount,
     };
@@ -134,13 +154,19 @@ function useExposeHandle(handleRef: { current: PagedReaderHandle | null }, api: 
   }, [handleRef, turn, gotoPara, gotoPage, page, pageCount]);
 }
 
-/** 往回跨章：新章排完版后落到末页（而不是首页）。只在换章那一下生效。 */
+/**
+ * 往回跨章：新章排完版后落到末页（而不是首页）。只在换章那一下生效。
+ *
+ * 要等页数量出来（pageCount > 1）才跳：刚挂载时还是默认的 1 页，这时候跳只会停在 0。
+ */
 function useLandAtEnd(api: PagedChapterApi, chapterId: number, landAtEnd: boolean) {
   const applied = useRef<number | null>(null);
+  const { pageCount, gotoPage } = api;
   useEffect(() => {
     if (!landAtEnd || applied.current === chapterId) return;
-    if (api.pageCount <= 1) return;
+    if (pageCount <= 1) return;
     applied.current = chapterId;
-    api.gotoPage(api.pageCount - 1);
-  }, [api, chapterId, landAtEnd]);
+    // 落到末页时锚点用最后一段：重排后仍停在末页附近，不会因为段边界滑走
+    gotoPage(pageCount - 1, api.lastPara);
+  }, [chapterId, landAtEnd, pageCount, gotoPage]);
 }

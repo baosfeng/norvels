@@ -191,6 +191,7 @@ function ReaderScreen() {
     currentHit,
     searching: searchOpen,
     storedParaIndex,
+    progressLoading: progressList.loading,
     jumpPara: pendingJump && pendingJump.chapterId === chapterId ? pendingJump.paraIndex : null,
     onJumpConsumed: () => setPendingJump(null),
     prev,
@@ -204,6 +205,7 @@ function ReaderScreen() {
     retryFailures: chapterFailures,
     onRetry: retryChapter,
     onNextChapter: () => stepChapter("next"),
+    onStopAutoScroll: () => changeSettings({ autoScroll: false }),
   });
 
   const controls = useReaderControls({
@@ -253,6 +255,8 @@ function ReaderScreen() {
     prev,
     next,
     goChapterAnnounce: (target) => jumpChapter(target, "已经是最后一章了"),
+    // 分页下左右键翻页、Home/End 首末页；滚动模式仍是翻章 / 滚屏
+    paging: paging.active ? { turn: paging.turn, first: paging.first, last: paging.last } : null,
   });
 
   useReaderVisiblePara({ segments: stream.segments, onAnchor: setAnchor, enabled: !paging.active });
@@ -437,9 +441,10 @@ function ReaderScreen() {
 
       {settings.autoScroll ? (
         <ReaderAutoScrollBar
-          running={autoRunning}
+          running={autoRunning || paging.autoTurning}
           paused={autoPaused || !windowActive || overlayOpen}
           speed={settings.autoScrollSpeed}
+          paged={paging.active}
           onTogglePause={() => setAutoPaused((paused) => !paused)}
           onExit={exitAutoScroll}
         />

@@ -216,12 +216,23 @@ export class PageTurnEngine {
     this.cancelSettle = cancel;
   }
 
-  /** 落定新页：销毁双层、重建单层、通知调用方。 */
+  /**
+   * 落定新页：销毁双层、重建单层、通知调用方。
+   *
+   * 换层会重建 DOM：如果焦点原本在舞台里（键盘翻页时就是），节点一换焦点就掉到 body，
+   * 读者的下一次按键会打到页面而不是阅读器。这里在重建后把焦点接回来——
+   * 只在焦点本来就落在舞台里时补，不抢别人（搜索框 / 设置面板）的焦点。
+   */
   private land(page: number) {
+    const hadFocus = this.opts.stage.contains(document.activeElement);
     this.clearAll();
     this.page = clampPage(page, this.total);
     this.cur = this.opts.createLayer(this.page);
     this.cur.style.zIndex = CUR_Z;
+    if (hadFocus) {
+      const host = this.opts.stage.closest<HTMLElement>('[tabindex]');
+      host?.focus({ preventScroll: true });
+    }
     this.opts.onCommit(this.page);
   }
 

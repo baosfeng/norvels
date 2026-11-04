@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApiError } from "../../../api/client";
 import type { ChapterBrief } from "../../../api/types";
 import type { ReaderHit } from "../../../lib/readerSearch";
@@ -28,6 +28,8 @@ export interface ReaderPagedBodyProps {
   reducedMotion: boolean;
   /** 进章要恢复的段号（进度）；0 = 章首。只有「首次进入这一章」才用它。 */
   storedParaIndex: number;
+  /** 进度还在路上：这时不能落点，否则会先落章首、进度回来再跳一下。 */
+  progressLoading: boolean;
   /** 跨章书签：跳到该段所在页；跳完调 onJumpConsumed。 */
   jumpPara: number | null;
   onJumpConsumed: () => void;
@@ -46,6 +48,8 @@ export interface ReaderPagedBodyProps {
   retryFailures: number;
   onRetry: () => void;
   onNextChapter: () => void;
+  /** 章末不再继续时关掉自动翻页（沿用自动滚动的收尾口径）。 */
+  onStopAutoScroll?: () => void;
 }
 
 /**
@@ -60,9 +64,15 @@ export interface ReaderPagedBodyProps {
  */
 export function ReaderPagedBody(props: ReaderPagedBodyProps) {
   const { paragraphs, prev, next, jumpChapter, handleRef, jumpPara } = props;
-  const [entry, setEntry] = useState<{ chapterId: number; para: number | "END" } | null>(null);
-  /** 已初始化过的章：只有第一次进入某章才按进度恢复，之后的翻章一律落章首（或末页）。 */
-  const seen = useRef<Set<number>>(new Set());
+  /**
+   * 本章的落点：进来的那一下定下来，之后重排 / 翻页都不再改。
+   *
+   * 必须等进度就绪（progressLoading=false）再定：进度是异步的，先按 0 落章首、
+   * 回包后再跳到读到的那一段，读者会看见「进去闪一下」。
+   */
+  const [landed, setLanded] = useState<Entry | null>(null);
+  const { chapterId } = props;
+
   const onCrossChapter = useCallback(
     (dir: TurnDir) => {
       const target = dir > 0 ? next : prev;
@@ -70,7 +80,8 @@ export function ReaderPagedBody(props: ReaderPagedBodyProps) {
         showToast(dir > 0 ? "已经是最后一页了" : "已经是第一页了");
         return;
       }
-      setEntry({ chapterId: target.id, para: dir > 0 ? 0 : "END" });
+      // 下一章落第 0 页、上一章落末页：这里先定目标段的语义，末页由组件在排版后自己跳
+      setLanded({ chapterId: target.id, para: dir > 0 ? 0 : null, endOfChapter: dir < 0 });
       jumpChapter(target, dir > 0 ? "已经是最后一章了" : "已经是第一章了");
     },
     [jumpChapter, next, prev],
@@ -88,7 +99,21 @@ export function ReaderPagedBody(props: ReaderPagedBodyProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpPara, paragraphs.length, gotoPara]);
 
-  const turnPage = useCallback(() => handleRef.current?.turn(1), [handleRef]);
+  /**
+   * 自动翻页：每页停留 N 秒翻一页；到章末按「到底自动下一章」决定跨章还是停下。
+   * 与自动滚动同一个开关、同一档速度，只是把「滚一屏」换成「翻一页」。
+   */
+  const turnPage = useCallback(() => {
+    const handle = handleRef.current;
+    if (!handle) return;
+    // 章末先判断再翻：turn(1) 在末页会直接走跨章，等它返回就晚了（读者已经被送到下一章）
+    if (handle.page() >= handle.pageCount() - 1 && !props.settings.autoScrollNext) {
+      props.onStopAutoScroll?.();
+      showToast("已翻到本章末页，自动翻页暂停");
+      return;
+    }
+    handle.turn(1);
+  }, [handleRef, props]);
   usePageAutoTurn({
     enabled: props.settings.autoScroll,
     paused: props.paused || paragraphs.length === 0,
@@ -111,31 +136,13 @@ export function ReaderPagedBody(props: ReaderPagedBodyProps) {
       />
     );
   }
-  return (
-    <PagedChapterView
-      {...props}
-      entry={entry}
-      seen={seen}
-      onCrossChapter={onCrossChapter}
-      gotoPara={gotoPara}
-    />
-  );
-}
-
-function PagedChapterView(
-  props: ReaderPagedBodyProps & {
-    entry: { chapterId: number; para: number | "END" } | null;
-    seen: React.RefObject<Set<number>>;
-    onCrossChapter: (dir: TurnDir) => void;
-    gotoPara: (para: number) => void;
-  },
-) {
-  const { chapterId, entry, seen } = props;
-  const firstVisit = !seen.current.has(chapterId);
-  if (firstVisit) seen.current.add(chapterId);
-
-  const initialPara = resolveEntry(chapterId, entry, firstVisit ? props.storedParaIndex : 0, props.jumpPara);
-  const landAtEnd = entry?.chapterId === chapterId && entry.para === "END";
+  // 这一章还没落过点、且进度已就绪：现在算一次落点（渲染期派生 state，与 useChapterStream 同一写法）
+  if (!props.progressLoading && landed?.chapterId !== chapterId) {
+    setLanded(resolveEntry(chapterId, landed, props.storedParaIndex, jumpPara));
+  }
+  const initialPara = landed?.chapterId === chapterId && !landed.endOfChapter ? landed.para : null;
+  // 往回跨章：新章要排完版才知道末页是第几页，先给标记，由分页组件自己跳
+  const landAtEnd = landed?.chapterId === chapterId && landed.endOfChapter === true;
 
   return (
     <ReaderPagedArticle
@@ -150,7 +157,7 @@ function PagedChapterView(
       reducedMotion={props.reducedMotion}
       initialPara={initialPara}
       landAtEnd={landAtEnd}
-      onCrossChapter={props.onCrossChapter}
+      onCrossChapter={onCrossChapter}
       onAnchor={props.onAnchor}
       onPageChange={(page, pageCount) => props.onPageChange({ page, pageCount })}
       handleRef={props.handleRef}
@@ -158,14 +165,21 @@ function PagedChapterView(
   );
 }
 
-/** 落点：跨章末页 > 跨章/翻章首页 = 0 > 首次进入按进度段。 */
+/** 一章的落点：第 para 段；endOfChapter 表示「排完版跳末页」（往回跨章）。 */
+interface Entry {
+  chapterId: number;
+  para: number | null;
+  endOfChapter?: boolean;
+}
+
+/** 落点：书签目标 > 跨章翻页定下的段 > 首次进入按进度段。 */
 function resolveEntry(
   chapterId: number,
-  entry: { chapterId: number; para: number | "END" } | null,
+  landed: Entry | null,
   storedParaIndex: number,
   jumpPara: number | null,
-): number | null {
-  if (jumpPara !== null) return jumpPara;
-  if (entry?.chapterId === chapterId) return entry.para === "END" ? null : entry.para;
-  return storedParaIndex > 0 ? storedParaIndex : null;
+): Entry {
+  if (jumpPara !== null) return { chapterId, para: jumpPara };
+  if (landed?.chapterId === chapterId) return landed;
+  return { chapterId, para: storedParaIndex > 0 ? storedParaIndex : null };
 }

@@ -25,6 +25,11 @@ export interface PagingApi {
   pageLabel: string | null;
   /** 页码占本章的比例，给底部细条用。 */
   pagePercent: number;
+  /** 本章首页 / 末页（键盘 Home / End）。 */
+  first: () => void;
+  last: () => void;
+  /** 自动翻页是否正在跑（浮条文案用它区分「翻页中」与「待开始」）。 */
+  autoTurning: boolean;
 }
 
 /**
@@ -43,6 +48,8 @@ export function useReaderPaging(options: {
   currentHit: number;
   searching: boolean;
   storedParaIndex: number;
+  /** 进度还在路上：分页正文要等它就绪再落点，否则进去会闪一下。 */
+  progressLoading: boolean;
   jumpPara: number | null;
   onJumpConsumed: () => void;
   prev: ChapterBrief | null;
@@ -56,8 +63,10 @@ export function useReaderPaging(options: {
   retryFailures: number;
   onRetry: () => void;
   onNextChapter: () => void;
+  /** 章末停下自动翻页（关掉设置里的开关，与自动滚动同一口径）。 */
+  onStopAutoScroll?: () => void;
 }): PagingApi {
-  const { isH5, settings, chapterId, onAnchor, paused, jumpPara, storedParaIndex } = options;
+  const { isH5, settings, chapterId, onAnchor, paused, jumpPara, storedParaIndex, progressLoading } = options;
   const active = pageModeFor(isH5, settings) === "page";
   const handleRef = useRef<PagedReaderHandle | null>(null);
   const [page, setPage] = useState<PagedTurnState>({ page: 0, pageCount: 1 });
@@ -80,6 +89,9 @@ export function useReaderPaging(options: {
     [turn],
   );
 
+  const first = useCallback(() => handleRef.current?.gotoPage(0), []);
+  const last = useCallback(() => handleRef.current?.gotoLast(), []);
+
   const content = useMemo(() => {
     if (!active) return null;
     return (
@@ -94,6 +106,7 @@ export function useReaderPaging(options: {
         effect={effect}
         reducedMotion={reducedMotion}
         storedParaIndex={storedParaIndex}
+        progressLoading={progressLoading}
         jumpPara={jumpPara}
         onJumpConsumed={options.onJumpConsumed}
         prev={options.prev}
@@ -109,6 +122,7 @@ export function useReaderPaging(options: {
         retryFailures={options.retryFailures}
         onRetry={options.onRetry}
         onNextChapter={options.onNextChapter}
+        onStopAutoScroll={options.onStopAutoScroll}
       />
     );
     // options 每帧都是新对象：只挑真正会影响排版的字段做依赖
@@ -125,9 +139,11 @@ export function useReaderPaging(options: {
     effect,
     reducedMotion,
     storedParaIndex,
+    progressLoading,
     jumpPara,
     paused,
   ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   return {
     active,
@@ -137,5 +153,8 @@ export function useReaderPaging(options: {
     turn,
     pageLabel: active ? formatPageLabel(page.page, page.pageCount) : null,
     pagePercent: active && page.pageCount > 1 ? page.page / (page.pageCount - 1) : 0,
+    first,
+    last,
+    autoTurning: active && settings.autoScroll && !paused,
   };
 }

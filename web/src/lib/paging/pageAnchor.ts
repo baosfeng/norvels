@@ -38,6 +38,33 @@ export function firstParaOnPage(boxes: readonly ParaBox[], page: number, pageW: 
   return boxes[boxes.length - 1].pi;
 }
 
+/**
+ * 某页覆盖的段落区间（含首尾）：读屏用的「这一页有哪些文字」按它切。
+ *
+ * 起点 = 第一个起始于本页或之后的段落（与 firstParaOnPage 同一口径），
+ * 终点 = 最后一个**起始页 ≤ 本页**的段落。两者可能重合（一页里只有一个新段起点），
+ * 也可能差好几段（段落很短）。返回 null 表示这页没有正文（空章）。
+ */
+export function paragraphRangeOfPage(
+  boxes: readonly ParaBox[],
+  page: number,
+  pageW: number,
+): { start: number; end: number } | null {
+  if (boxes.length === 0 || !(pageW > 0)) return null;
+  const starts = boxes.map((box) => ({ pi: box.pi, at: pageOfOffset(box.left, pageW) }));
+  // 终点 = 本页最后一个「已经开始」的段落：这一页至少读到这里
+  const started = starts.filter((item) => item.at <= page);
+  const end = started.length > 0 ? started[started.length - 1].pi : starts[0].pi;
+  // 起点 = 起始页严格早于本页的最后一段（它可能是跨页长文，本页读的是后半截）；
+  // 没有跨页段时从第一个「起始于本页」的段落读起。
+  const spanning = started.filter((item) => item.at < page);
+  const start =
+    spanning.length > 0
+      ? spanning[spanning.length - 1].pi
+      : starts.find((item) => item.at >= page)?.pi ?? end;
+  return { start: Math.min(start, end), end };
+}
+
 /** 段号文案的合法化：书签 / 进度里的段号可能是后端来的脏值。 */
 export function normalizeParaIndex(value: unknown, fallback = 0): number {
   const n = typeof value === "number" ? value : Number(value);
