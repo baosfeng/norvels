@@ -163,11 +163,11 @@ make run         # 可选自查：打开 /changelog，「你在用的这一版�
 #    去掉引号后说明正文里的反引号与 $ 又会被 shell 吃掉。
 #    --cleanup=verbatim：默认的 strip 会把以 # 开头的行当注释删掉，
 #    而说明正文里全是「### 新增 / 改进」这类标题。
-git tag -a v0.9.0 --cleanup=verbatim -F <(
-  printf 'norvels v0.9.0\n\n'
-  sed -n '/^## \[0.9.0\]/,/^## \[/p' internal/releases/CHANGELOG.md | sed '1d;$d'
+git tag -a v0.10.0 --cleanup=verbatim -F <(
+  printf 'norvels v0.10.0\n\n'
+  sed -n '/^## \[0.10.0\]/,/^## \[/p' internal/releases/CHANGELOG.md | sed '1d;$d'
 )
-git push origin v0.9.0
+git push origin v0.10.0
 ```
 
 推送后自动发生：`release.yml` → 复用 CI 的四项检查 → 登录 Docker Hub → buildx 构建 amd64/arm64 → 推送镜像。
