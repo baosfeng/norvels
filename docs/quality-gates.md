@@ -11,12 +11,10 @@
 | `make gate` | 9 项**依次**执行，逐项打印，编号 1/2/4/5/6/7/9/10/11 | 提交前完整口径（CI 同口径） |
 | `scripts/gate-all.sh --parallel` | 同上 9 项并行跑、按编号顺序回放 | 本地热缓存下省约 12s |
 
-- 快环只做「格式 + 编译级」反馈：不跑测试、不算覆盖率、不查复杂度 —— 通过 ≠ 门禁通过，提交前仍必须 `make gate`。
-- 默认串行：9 项都吃 CPU，并行只快约 12s，却会在低核机器上偶发互扰（vitest 单例假红，串行复跑即绿）；门禁假红要再查一遍，比省下的十几秒贵。
-- 并行不改变语义：失败项照样跑完其余各项（一次能修多项），退出码仍是 0 全过 / 1 有未通过 / 2 环境问题；`--stop` 只对串行有意义（并行收不回已启动的项）。
-- 实测（本机 10 核）：快环 1s（首次 5s，tsc 走独立增量缓存）；门禁改前串行 308s → 改后串行 47s / 并行 35s；隐私扫描 ~220s → `--all` 4s（先做一次并集预筛，只对疑似文件逐规则精确扫）、`--changed` 1s。
-- 单项复跑：`make gate-acceptance`（2）、`gate-complexity`（4）、`gate-size`（5）、`gate-deps`（6）、`gate-cover`（7）、`privacy`（9）、`privacy-changed`（9，只扫改动）。
-- 1/10/11 没有单项 make 目标：10 = `scripts/check-build-parity.sh`，11 = `scripts/gate-frontend.sh`，1 只在 `gate-all.sh` 内部。
+- 快环只做「格式 + 编译级」反馈，通过 ≠ 门禁通过，提交前仍必须 `make gate`。默认串行：9 项都吃 CPU，并行只快约 12s 却会在低核机器上
+  偶发互扰，假红要再查一遍比省下的十几秒贵。**假红有两条独立成因**（并行互扰 / Unhandled Errors），处置相反，先判是哪一条：
+  见「门禁假红的识别」。实测（10 核）：快环 1s（首次 5s）；门禁改前串行 308s → 改后 47s / 并行 35s；隐私扫描 220s → `--all` 4s。
+- 单项复跑：`gate-acceptance`（2）、`gate-complexity`（4）、`gate-size`（5）、`gate-deps`（6）、`gate-cover`（7）、`privacy`（9）、`privacy-changed`（9，只扫改动）；1/10/11 无单项目标（10 = `check-build-parity.sh`，11 = `gate-frontend.sh`）。
 
 ## 9 项与阈值
 
@@ -29,29 +27,35 @@
 | 6 | 依赖结构 | 无循环 + 方向单向 | gatedeps（`go list` + DFS 找环） |
 | 7 | 覆盖率 | 不低于登记基线（硬门禁），85% 为渐进目标 | `go tool cover` 行覆盖率 |
 | 9 | 隐私扫描 | 零命中 | `scripts/privacy-scan.sh --all` |
-| 10 | 构建一致性 | 容器工具版本满足 `web/` 要求 | `scripts/check-build-parity.sh` |
-| 10 | （同上，v0.9.0 起的加严项） | `Makefile` 的 `VERSION` 在 `internal/releases/CHANGELOG.md` 里有 `## [x.y.z]` 一节——说明用 go:embed 打进产品，版本发了却没写 = 发布事故；删掉该节必红 | 同上 |
-| 11 | 前端类型检查 + 单元测试 | tsc 无 `error TS`；vitest 全绿 | `scripts/gate-frontend.sh`：先 `npm run typecheck`，再 vitest。**vitest 走 esbuild 不查类型**，导入路径/枚举值写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 一个文件都不查并返回 0。反向验证：注入 `const x: number = "s"` → 红 TS2322，复原即绿 |
+| 10 | 构建一致性 | 容器工具版本满足 `web/` 要求；`Makefile` 的 `VERSION` 在 `internal/releases/CHANGELOG.md` 里有 `## [x.y.z]` 一节（go:embed 打进产品，发了版没写 = 发布事故） | `scripts/check-build-parity.sh` |
+| 11 | 前端类型检查 + 单元测试 | tsc 无 `error TS`；vitest 全绿（**含进程退出码**，见「门禁假红的识别」） | `scripts/gate-frontend.sh`：先 `typecheck` 再 vitest。**vitest 走 esbuild 不查类型**，导入路径写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 不查任何文件并返回 0 |
+
+## 门禁假红的识别（两条成因，处置相反）
+
+1. **并行互扰**：只在 `gate-all.sh --parallel` 红、串行复跑即绿 → 不改代码。
+2. **Unhandled Errors**：**用例计数全绿而进程返回 1**。vitest 除 `Tests N passed` 外还判进程退出码：组件卸载后未清理的 `setTimeout`
+   仍触发，回调读 `window` 抛 `ReferenceError`（jsdom 已拆环境）→ 记为 Unhandled Error，**必须改代码**。识别：看输出有没有
+   `Unhandled Errors` 段 + `cd web && pnpm test; echo "EXIT=$?"`，不能只看用例计数。已修点位：`useChapterStream.ts` 的 `judgeTimer`
+   卸载清理，回归守卫在 `ReaderContinuous.test.tsx`（断言卸载时清的正是补判 `setTimeout` 的 id；删掉清理即红，反向验证过）。
 
 ## 没有门禁 3 与 8
 
-- **3**：「QA 流程」不是门禁，是 `make gate` 的固定顺序（单元 → 验收 → 全量套件），由脚本本身保证，不占号。
-- **8**：「防复发」与「资源护栏」是**评审规则，未纳入 gate-all**（一个要人工反向验证，一个要按写入路径定制断言，都跑不成固定命令）：
-  防复发 = 补一个能复现该 bug 的测试（修复后必绿，临时回滚修复时必须红、且失败原因正是该 bug）；没有反向验证记录的修复视为未完成。
-  资源护栏 = 持久化写入 / 高频事件 / 轮询 / 日志落盘适用，N 次事件落盘字节 ≤ 事件本体 × 1.6（含容差）；一次 CLI、纯计算、纯查询在 PR 里写「不适用 + 理由」。本库的 `SaveBook` 与导入任务状态更新适用。
+- **3** 不是门禁：「QA 流程」是 `make gate` 的固定顺序（单元 → 验收 → 全量套件），由脚本保证，不占号。
+- **8** 是两条**评审规则，未纳入 gate-all**（都要人工判断）。防复发 = 补一个能复现该 bug 的测试（修复后必绿，临时回滚修复时必须红、
+  且失败原因正是该 bug），无反向验证记录的修复视为未完成。资源护栏 = 持久化写入 / 高频事件 / 轮询 / 日志落盘适用，N 次事件落盘字节
+  ≤ 事件本体 × 1.6；一次 CLI、纯计算、纯查询在 PR 里写「不适用 + 理由」。
 
 ## 门禁 5 的行数口径
 
-- **函数 70 行** = `func` 行到函数体结尾大括号行的物理跨度（含签名、注释、空行）；**文件 400 行** = 物理总行数；
-- 只统计 `.go`（跳过 `internal/webui/dist`、`node_modules`、`vendor`、`testdata`、隐藏目录），走 `go/ast` 而不是 `wc -l`：raw string 与多行签名会把函数边界算错。
-- 前端组件**不在**这两项门禁里（只统计 Go）：改到某组件时按同一口径收敛，不加硬门禁。
+- **函数 70 行** = `func` 行到函数体结尾大括号行的物理跨度（含签名、注释、空行）；**文件 400 行** = 物理总行数。
+- 只统计 `.go`（跳过 `internal/webui/dist`、`node_modules`、`vendor`、`testdata`、隐藏目录），走 `go/ast` 而非 `wc -l`（raw string
+  与多行签名会把函数边界算错）。前端组件不在这两项门禁里，改到某组件时按同一口径收敛，不加硬门禁。
 
 ## 豁免登记表（门禁 4 / 5 的唯一事实源）
 
-> 豁免不是免检：`scripts/gate-complexity.sh` 与 `scripts/gate-size.sh` 读下表，命中项在输出里**逐条点名**（含实测值与登记值）；
-> 未登记的超标项一律报错，已登记项**不允许变差**（实测超过登记值同样报错）。每条豁免写**具体理由**与**复审条件**，新增需 PR 说明 + reviewer 确认。
-> 当前 cyclo 37 条 / size-func 1 条 / size-file 0 条（按 `scripts/gate-complexity.sh` 实测）；门禁工具自身（gostats、gatedeps）零豁免。
-> 口径：默认 ≤ 10 / ≤ 70 行；确属问题域复杂度的（中文 txt 标题与元信息的判定矩阵）逐条登记后豁免 —— 强行拆分会把判定依据散落多处，可读性更差。
+> 豁免不是免检：`gate-complexity.sh` / `gate-size.sh` 读下表，命中项在输出里**逐条点名**（含实测值与登记值）；未登记的超标项一律
+> 报错，已登记项**不允许变差**。每条写**具体理由**与**复审条件**，新增需 PR 说明 + reviewer 确认。当前 cyclo 37 条 / size-func 1 条 /
+> size-file 0 条；门禁工具自身零豁免。确属问题域复杂度的（中文 txt 标题与元信息的判定矩阵）逐条登记：强行拆分会把判定依据散落多处。
 
 | 类型 | 函数/文件 | 路径 | 登记实测 | 豁免理由 | 复审条件 |
 |---|---|---|---|---|---|
@@ -99,22 +103,18 @@
 
 `tests/tools/gatedeps/main.go` 的 `allowedDeps` 是事实源：cmd → internal/{api,importer,parser,store,source}；api → importer/parser/store/source/webui；
 importer → parser/store/source/model；parser,store → model；model、webui 为叶子。新增内部包必须先登记，否则 `make gate-deps` 以「未登记」判失败。
-`internal/source`（书源规则包）是叶子包：store、api、importer 可依赖它，它不依赖任何内部包（纯数据模型 + 校验）。
-`internal/ai`（裁决客户端）是叶子包：只依赖标准库，只外发差异段落正文，不碰解析与存储。
+叶子包 `internal/source`（书源规则）与 `internal/ai`（裁决客户端）不依赖任何内部包。
 
 ## 覆盖率：基线 + 渐进目标
 
-85% 是目标不是基线（首版 77.9%、当前 84.7%）：设成硬门禁首版就发不出去，而调低阈值或写空测试比覆盖低得多更糟。
-两级判定：**硬门禁** = 总覆盖率与核心包不得低于登记基线（值写在 `scripts/gate-cover.sh` 顶部，低于即 exit 1）；
-**报告项** = 打印距 85% 的差距，不判红。**基线只升不降**：涨了上调到新实测（无需审批）；下调必须 leader 明确同意并在脚本注释写原因。
-
-当前基线（2026-11-01 实测上调，与 `scripts/gate-cover.sh` 顶部常量一一对应）：总行覆盖率 85.0% / parser 89.0% / importer 91.4% / store 83.2% / api 87.1%。
-验证防退化：临时移走一个测试文件 → `scripts/gate-cover.sh` 必须 exit 1（实测 总覆盖 76.4%、api 71.6%）。
+85% 是目标不是基线：设成硬门禁首版就发不出去，而调低阈值或写空测试比覆盖低得多更糟。两级判定：**硬门禁** = 总覆盖率与核心包
+不得低于登记基线（值以 `scripts/gate-cover.sh` 顶部常量为准，低于即 exit 1）；**报告项** = 打印距 85% 的差距，不判红。**基线只升不降**：
+涨了上调到新实测（无需审批），下调必须 leader 同意并写原因。防退化验证：临时移走一个测试文件 → `gate-cover.sh` 必须 exit 1。
 
 ## 环境要求
 
-- Go 1.26（以 `go.mod` 的 `go 1.26.0` 为准；`go test` / `go list` / `go tool cover`）；godog 已在 `go.mod` 里，`go test` 直接跑。
-- golangci-lint v2.x（门禁 4 首选；**缺失自动回退** gostats，不跳过门禁）。`gate-complexity.sh` 测量前自带 `cache clean`：
-  缓存按绝对路径存取，会拿已删 worktree 的旧文件报「幻影超标」。脚本兼容 macOS 自带 bash 3.2（不用 `mapfile`）。
-- 验收测试 fixture 一律**合成**（书名/作者/正文都是造出来的串），不读真实语料；`scripts/privacy-scan.sh --all` 零命中是提交前硬条件（见 [privacy.md](privacy.md)）。
-- IP 类只放行 RFC 1918/3927/5737/4193 的私有、链路本地与文档保留段；公网地址一律拦截。
+- Go 1.26（以 `go.mod` 的 `go 1.26.0` 为准）；godog 已在 `go.mod` 里，`go test` 直接跑。
+- golangci-lint v2.x（门禁 4 首选；**缺失自动回退** gostats，不跳过）。`gate-complexity.sh` 测量前自带 `cache clean`（缓存按绝对路径
+  存取，会拿已删 worktree 的旧文件报「幻影超标」）；兼容 macOS bash 3.2（不用 `mapfile`）。
+- 验收 fixture 一律**合成**（书名/作者/正文都是造出来的串），不读真实语料；`privacy-scan.sh --all` 零命中是提交前硬条件。IP 类只放行
+  RFC 1918/3927/5737/4193 的私有、链路本地与文档保留段；公网地址一律拦截（见 [privacy.md](privacy.md)）。
