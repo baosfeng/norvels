@@ -24,6 +24,14 @@ export interface PagedChapterInput {
   onPageChange: (page: number, pageCount: number) => void;
 }
 
+/** 一页的完整状态：页码、页数、这一页覆盖的段区间、全章末段段号。 */
+interface PageSnapshot {
+  page: number;
+  pageCount: number;
+  pageRange: { start: number; end: number } | null;
+  lastPara: number;
+}
+
 export interface PagedChapterApi {
   stageRef: (node: HTMLDivElement | null) => void;
   page: number;
@@ -57,10 +65,11 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const layoutRef = useRef<PagedLayout | null>(null);
   const engineRef = useRef<PageTurnEngine | null>(null);
-  const [state, setState] = useState<{ page: number; pageCount: number; pageRange: { start: number; end: number } | null }>({
+  const [state, setState] = useState<PageSnapshot>({
     page: 0,
     pageCount: 1,
     pageRange: null,
+    lastPara: 0,
   });
   const anchor = useRef(initialPara ?? 0);
   const placedKey = useRef<string | null>(null);
@@ -72,11 +81,18 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
 
   const build = useCallback(() => buildChapterFragment(latest.current.content), []);
 
-  /** 一页的完整状态：页码、页数与这一页覆盖的段落区间（读屏按区间念，不是整章）。 */
-  const snapshot = useCallback((page: number, pageCount: number) => {
+  /**
+   * 一页的完整状态：页码、页数、这一页覆盖的段落区间（读屏按区间念，不是整章），
+   * 以及本章最后一段的段号（往回跨章要落末页，末页锚点就是它）。
+   *
+   * 末段段号跟着状态走而不是渲染期读 ref：读 ref 会命中 react-hooks/refs
+   * （渲染期访问 ref 在并发渲染下拿到的是哪一次的值并不确定）。
+   */
+  const snapshot = useCallback((page: number, pageCount: number): PageSnapshot => {
     const layout = layoutRef.current;
     const range = layout ? paragraphRangeOfPage(layout.anchors, page, layout.pageBox.pageW) : null;
-    return { page, pageCount, pageRange: range };
+    const lastPara = layout?.anchors.at(-1)?.pi ?? 0;
+    return { page, pageCount, pageRange: range, lastPara };
   }, []);
 
   /** 量尺寸 → 量页数 → 落位。targetPara 优先，否则沿用锚点。 */
@@ -240,7 +256,7 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
     page: state.page,
     pageCount: state.pageCount,
     pageRange: state.pageRange,
-    lastPara: layoutRef.current?.anchors.at(-1)?.pi ?? 0,
+    lastPara: state.lastPara,
     turn,
     gotoPage,
     gotoPara,

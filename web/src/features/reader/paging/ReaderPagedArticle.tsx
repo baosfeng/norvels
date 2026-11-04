@@ -161,12 +161,12 @@ function useExposeHandle(handleRef: { current: PagedReaderHandle | null }, api: 
  */
 function useLandAtEnd(api: PagedChapterApi, chapterId: number, landAtEnd: boolean) {
   const applied = useRef<number | null>(null);
-  const { pageCount, gotoPage } = api;
+  const { pageCount, gotoPage, lastPara } = api;
   useEffect(() => {
     if (!landAtEnd || applied.current === chapterId) return;
     if (pageCount <= 1) return;
     applied.current = chapterId;
     // 落到末页时锚点用最后一段：重排后仍停在末页附近，不会因为段边界滑走
-    gotoPage(pageCount - 1, api.lastPara);
-  }, [chapterId, landAtEnd, pageCount, gotoPage]);
+    gotoPage(pageCount - 1, lastPara);
+  }, [chapterId, landAtEnd, pageCount, gotoPage, lastPara]);
 }

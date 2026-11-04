@@ -143,7 +143,6 @@ export function useReaderPaging(options: {
     jumpPara,
     paused,
   ]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   return {
     active,
