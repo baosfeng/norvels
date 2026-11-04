@@ -32,7 +32,7 @@
 3. **前端只经 API**：不引入 SSR，构建产物全部 embed，运行时无需 Node。
 4. **导入可重复执行**：同一目录重复 `import` 必须幂等（文件 SHA-256 命中则跳过，除非 `--force`）。
 5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=NORMAL`。
-   驾驶舱的聚合值（体积构成、章节数、长度直方图、导入趋势、作者作品数与字数）全部在写入时同事务预计算，读接口只查表——请求路径上不做全表聚合（0022，实测见 [data-profile §10.4](data-profile.md#104-驾驶舱查询全部预计算化)）。
+   驾驶舱的聚合值（体积构成、章节数、长度直方图、导入趋势、作者作品数与字数）全部在写入时同事务预计算，读接口只查表——请求路径上不做全表聚合（0022，实测见 [data-profile §10.4.1](data-profile.md#1041-驾驶舱查询全部预计算化0022)）。
 6. **正文独立成库**（0018）：块表 `chapter_blocks` 只在正文库里，`chapters.block_id` 是**跨库弱引用**（没有外键）；两库各自一个 `*sql.DB`，`Open` 由主库路径推导兄弟文件、`Close` 双关。
 
 ## 2.1 鉴权边界与账号归属
@@ -115,7 +115,7 @@ recent_items(user_id, book_id, ts)                             -- 近期已曝�
 
 完整 DDL 见 `internal/store/migrations/0001_init.sql`（v1 快照仍保留在 `internal/store/schema.sql` 供阅读，启动不再执行它）；逐版本变更见 [deploy.md](deploy.md) §7.1 的迁移表。
 
-检索范围是**书名 / 作者**（章节标题与正文都不参与，无全文索引，理由见 [ADR-0002](adr/0002-drop-fulltext-index.md)）；几万本的容量推算见 [data-profile.md §10](data-profile.md#10-容量推算几万本)。
+检索范围是**书名 / 作者**（章节标题与正文都不参与，无全文索引，理由见 [ADR-0002](adr/0002-drop-fulltext-index.md)）；几十万到百万本的容量推算见 [data-profile.md §10](data-profile.md#10-容量推算几十万到百万本)。
 
 ## 4. 导入流水线
 

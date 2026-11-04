@@ -255,7 +255,7 @@ curl -fsS http://127.0.0.1:8080/api/health
      **迁移当次**峰值要 35 GB 以上（见 §4 的说明）。以 `/api/stats` 的 `dbBytes` 为准（它已是两个文件的合计）。
    - **拆库之后（0018）**：正文只占 `norvels-content.db`（生产约 21–22 GB），主库只剩 books/chapters/索引/用户数据，
      降到元数据量级；两者之和就是 `/api/stats` 的 `dbBytes`。备份、迁移、换盘都以「这一对文件」为单位。
-   - 几万本的体积与延迟推算见 [data-profile.md §10](data-profile.md#10-容量推算几万本)。
+   - 几十万到百万本的体积与延迟推算见 [data-profile.md §10](data-profile.md#10-容量推算几十万到百万本)。
 
 ## 6. 资源建议
 

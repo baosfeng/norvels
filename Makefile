@@ -7,11 +7,11 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.bui
 BIN := bin/norvels
 
 .PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy \
-        bench-capacity verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance \
+        bench-capacity bench-capacity-1m verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance \
         preview shot gate-fast privacy-changed
 
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
 
 all: build ## 默认：构建前端 + 后端
 
@@ -63,13 +63,16 @@ privacy-changed: ## 隐私扫描（只扫相对 HEAD 的改动，含未跟踪；
 	scripts/privacy-scan.sh --changed
 
 # ---------- 容量压测 ----------
-# 默认小规模（500 本 x 500 章，约 1 GB 临时库，几秒跑完），产物是可直接贴进
-# docs/data-profile.md 的 markdown 表格。大库压测请显式传参：
-#   python3 scripts/bench-capacity.py --books 5000 --chapters 5000
-# 脚本会先查磁盘余量，不够直接拒绝并打印需要多少 GB；跑完自动清临时库（--keep 保留）。
+# 默认小规模（500 本 x 500 章，几秒跑完），产物是可直接贴进 docs/data-profile.md §10
+# 的 markdown 表格。百万本口径请显式传参（元数据全量 + 前 N 本建章节，约 3 GB / 8 分钟）：
+#   python3 scripts/bench-capacity.py --books 1000000 --chapters 346 --sample-books 86000
+# 脚本会先查磁盘余量，不够直接拒绝（exit 2）并打印需要多少 GB；跑完自动清临时库（--keep 保留）。
 # 不碰 data/norvels.db，也不需要先编译 Go 二进制。
 bench-capacity: ## 容量压测（500 本 x 500 章合成库，输出 markdown 表格，不碰生产库）
 	@python3 scripts/bench-capacity.py
+
+bench-capacity-1m: ## 百万本口径压测（100 万本书目 + 前 8.6 万本建章节，约 8 分钟 / 3 GB 临时库）
+	@python3 scripts/bench-capacity.py --books 1000000 --chapters 346 --sample-books 86000
 
 # ---------- 质量门禁（quality-gates 9 项，逐项可单独跑）----------
 # 每个 gate-* 都如实报告：不达标即 exit 1，不调阈值、不 skip。详见 docs/quality-gates.md。
