@@ -119,7 +119,7 @@ export class PageTurnEngine {
     drag.lastT = now;
     drag.p = dragProgress(dx, this.opts.box().viewportW);
     if (this.inc) this.runner?.apply(this.frame(drag.p, drag.dir));
-    else this.applyBoundary(dx);
+    else if (this.opts.effect() !== "none") this.applyBoundary(dx);
     return true;
   }
 
@@ -132,12 +132,17 @@ export class PageTurnEngine {
       return this.page;
     }
     const dx = x - drag.x0;
+    const commit = shouldCommit(drag.p, drag.v, dx);
     if (!this.inc) {
-      this.reboundBoundary(dx);
-      this.opts.onEdge(drag.dir);
+      // 没有第二层只有两种来由：无动画效果（不跟手，松手直接换页）或越界
+      if (this.opts.effect() === "none" && this.canTurn(drag.dir)) {
+        if (commit) this.land(this.page + drag.dir);
+      } else {
+        this.reboundBoundary(dx);
+        this.opts.onEdge(drag.dir);
+      }
       return this.page;
     }
-    const commit = shouldCommit(drag.p, drag.v, dx);
     this.run(commit ? 1 : 0, drag.dir, drag.p);
     return this.page;
   }
@@ -178,13 +183,20 @@ export class PageTurnEngine {
 
   private begin(dir: TurnDir) {
     if (this.inc || !this.canTurn(dir) || !this.cur) return;
+    // 无动画效果不跟手：拖动过程中不建第二层，松手才换页（省掉一次整页克隆）
+    if (this.opts.effect() === "none") return;
     this.dir = dir;
     const target = this.page + dir;
     this.inc = this.opts.createLayer(target);
     this.inc.style.zIndex = NEXT_Z;
     this.opts.setLayerPage(this.inc, target);
+    // 只在翻页这几百毫秒里提升为合成层：常驻 will-change 会一直占显存
+    this.cur.classList.add("is-turning");
+    this.inc.classList.add("is-turning");
     const frameOf = () => this.frame(this.drag?.p ?? 0, this.dir);
     this.runner?.destroy();
+    // 效果在「开始这一次翻页」时定下来：设置面板里换效果只影响下一次翻页，
+    // 当前这一页不会被重画，也就不会闪。
     this.runner = createEffect(this.opts.effect(), frameOf);
     this.runner.apply(frameOf());
   }
@@ -238,6 +250,7 @@ export class PageTurnEngine {
     this.runner = null;
     this.inc?.remove();
     this.inc = null;
+    this.cur?.classList.remove("is-turning");
     this.cur?.style.removeProperty("transform");
   }
 

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import type { ReaderHit } from "../../../lib/readerSearch";
 import type { TurnDir } from "../../../lib/paging/turnGesture";
-import { formatPageLabel } from "../../../lib/paging/pageGeometry";
 import type { ReaderSettings } from "../readerSettings";
 import type { TurnEffect } from "../../../lib/paging/turnEffects";
 import { usePagedChapter, type PagedChapterApi } from "./usePagedChapter";
@@ -107,10 +106,9 @@ export function ReaderPagedArticle(props: ReaderPagedArticleProps) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
     >
+      {/* 页码不在这里再画一个浮标：底部「本章 N%」那条浮标在分页下已经改成
+          「第 p / P 页」，两处同时出现会互相压字。 */}
       <div className="pg-stage" ref={stageRef} data-testid="pg-stage" />
-      <p className="pg-indicator" data-testid="pg-indicator" aria-hidden="true">
-        {formatPageLabel(page, pageCount)}
-      </p>
     </div>
   );
 }

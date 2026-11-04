@@ -31,8 +31,9 @@ export interface EffectRunner {
 /** 建效果时拿到的宿主。 */
 export interface EffectHost {
   stage: HTMLElement;
+  /** 当前帧的来源函数：效果在收尾过程中也要读最新的一帧。 */
   frame: () => EffectFrame;
-  /** 建一个额外层并把标记交给引擎统一清理。 */
+  /** 建一个额外层（挂在 stage 上，销毁由效果自己负责）。 */
   addLayer(className: string, tag?: "div" | "canvas"): HTMLElement;
 }
 

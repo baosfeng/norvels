@@ -42,6 +42,9 @@
 /* 页层 = 整屏宽 × 页高的一层：位移基准是可视宽（整页滑动才对），
    里面再套 .pg-window 把可见区裁到版心 —— 裁剪必须在版心上，
    否则多栏排版源的第 2 列会从左右边缘漏出来。 */
+/* 静态页层什么都不写：will-change 常驻会一直占显存，backface-visibility:hidden
+   会诱发重新栅格化、让文字发虚。翻页过程中的合成层提升由引擎在翻页开始时临时加上、
+   收尾结束后移除（见 PageTurnEngine.promote / demote）。 */
 .pg-layer {
   position: absolute;
   left: 0;
@@ -49,8 +52,11 @@
   width: 100%;
   height: var(--pg-h, 100%);
   background: var(--r-bg);
+}
+
+/* 翻页过程中：只在这几百毫秒里提升为合成层 */
+.pg-layer.is-turning {
   will-change: transform, opacity;
-  backface-visibility: hidden;
 }
 
 .pg-window {
@@ -121,34 +127,46 @@
   z-index: 0;
 }
 
-/* 页码浮标：与「本章 N%」同一位置与观感，内容换成第 p / P 页。 */
-.pg-indicator {
+/* ── 翻页效果层 ──
+   五种效果共用一个舞台：两层 .pg-layer（当前页 / 目标页）+ 各自需要的附加层。
+   所有附加层都 pointer-events:none，不抢三区点击，也不吃手势。 */
+
+/* 覆盖：新页左缘投在旧页上的渐变投影，宽度由效果模块按 44px 写。 */
+.fx-cover-shadow {
   position: absolute;
-  right: calc(12px + env(safe-area-inset-right));
-  bottom: 8px;
-  margin: 0;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--r-muted);
-  background: color-mix(in oklab, var(--r-bg), transparent 22%);
-  border-radius: 999px;
+  top: var(--pg-top, 0px);
+  bottom: auto;
+  left: 0;
+  height: var(--pg-h, 100%);
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 220ms var(--ease-standard);
-}
-
-.reader-paged.is-turning .pg-indicator,
-.reader-paged:hover .pg-indicator {
-  opacity: 0.85;
-}
-
-.reader-shell.is-controls .pg-indicator {
+  z-index: 3;
+  background: linear-gradient(90deg, rgba(32, 25, 20, 0.3), rgba(32, 25, 20, 0));
   opacity: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .pg-indicator {
-    transition: none;
-  }
+/* 仿真折页：折痕右侧露出的纸背卷边（圆角 + 内阴影），位置与宽度每帧由效果模块写。 */
+.fx-flap {
+  position: absolute;
+  left: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    var(--r-surface, var(--r-bg)),
+    color-mix(in oklab, var(--r-surface, var(--r-bg)), var(--r-fg) 10%)
+  );
+  border-radius: 0 100% 100% 0 / 0 42% 42% 0;
+  box-shadow:
+    2px 0 10px -4px rgba(32, 25, 20, 0.35),
+    inset -14px 0 18px -14px rgba(32, 25, 20, 0.35);
+  opacity: 0;
+}
+
+/* 仿真折页：只画光影不画字，所以文字始终是矢量。 */
+.fx-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  pointer-events: none;
 }
