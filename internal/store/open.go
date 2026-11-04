@@ -30,6 +30,10 @@ type Store struct {
 	contentPath string
 	// metricsRefreshing 去重后台补算（同一时刻只允许一个 goroutine 重算）。
 	metricsRefreshing atomic.Bool
+	// precomputeReady 缓存「三张预计算表可用且口径正确」的探测结果。
+	// 按 Store 实例持有而不是包级变量：同一进程里连着两个库（生产库 + 临时库）时，
+	// 包级缓存会把「这个库有 0022」误当成「那个库也有」。
+	precomputeReady atomic.Bool
 	// staleCallback 在后台补算完成后调用（api 层用来记日志），可为 nil。
 	staleCallback func(err error)
 	// reconcile 缓存上一次正文对账结果（见 ReconcileContent）。

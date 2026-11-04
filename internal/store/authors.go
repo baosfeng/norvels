@@ -29,7 +29,16 @@ func authorOrder(sortKey string) string {
 	}
 }
 
-// ListAuthors 分页列出作者，书籍数与字数为实时聚合。
+// ListAuthors 分页列出作者，书籍数与字数来自物化聚合表（0022）。
+//
+// 原先每次请求都跑一遍「authors LEFT JOIN (UNION 子查询) LEFT JOIN books GROUP BY」：
+// UNION 两个分支各扫一遍 books / books_authors，再全量聚合后排序（NAS 生产库
+// 71,320 本 / 51,611 作者实测 319 ms，9 个驾驶舱请求并发时 1.4 s）。
+// 作者的作品数与总字数只随书的增删改变化，物化进 author_agg 后读路径是
+// 「索引取前 N 行 + LEFT JOIN 取名字」，与库规模无关。
+//
+// 缓存缺失（老库没跑 0022 / 回填未完成）时降级为原实时聚合，结果一致（有测试守着），
+// 只是慢——接口照常 200，不 500。
 func (s *Store) ListAuthors(ctx context.Context, q AuthorQuery) (Page[AuthorSummary], error) {
 	page, size := normPage(q.Page, q.Size)
 
@@ -51,30 +60,88 @@ func (s *Store) ListAuthors(ctx context.Context, q AuthorQuery) (Page[AuthorSumm
 		return Page[AuthorSummary]{}, fmt.Errorf("store: count authors: %w", err)
 	}
 
+	items, err := s.listAuthorsPage(ctx, q.Sort, whereSQL, args, size, (page-1)*size)
+	if err != nil {
+		return Page[AuthorSummary]{}, err
+	}
+	return Page[AuthorSummary]{Items: items, Total: total, Page: page, Size: size}, nil
+}
+
+// listAuthorsPage 取一页作者：优先读物化聚合表，不可用时降级为实时聚合。
+func (s *Store) listAuthorsPage(ctx context.Context, sortKey, whereSQL string,
+	args []any, size, offset int) ([]AuthorSummary, error) {
+	if ok, _ := s.PrecomputeStatus(ctx); ok {
+		items, err := s.listAuthorsFromAgg(ctx, sortKey, whereSQL, args, size, offset)
+		if err == nil {
+			return items, nil
+		}
+	}
+	return s.listAuthorsLive(ctx, sortKey, whereSQL, args, size, offset)
+}
+
+// listAuthorsFromAgg 从 author_agg 取一页（作者名按主键回查 authors）。
+//
+// 用 IN 子查询圈出这一页的 author_id 再 JOIN 名字，而不是把聚合表与 authors
+// 直接 JOIN 后 ORDER BY：前者能从 idx_author_agg_words / _books 直接取前 N 行，
+// 后者会先把两张表全部对齐再排序（物化就白做了）。
+func (s *Store) listAuthorsFromAgg(ctx context.Context, sortKey, whereSQL string,
+	args []any, size, offset int) ([]AuthorSummary, error) {
+	query := "SELECT a.id, a.name, g.book_count, g.word_count " +
+		"FROM authors a JOIN " + tableAuthorAgg + " g ON g.author_id = a.id" + whereSQL +
+		" ORDER BY " + authorAggOrder(sortKey) + " LIMIT ? OFFSET ?"
+	qargs := append(append([]any{}, args...), size, offset)
+	rows, err := s.db.QueryContext(ctx, query, qargs...)
+	if err != nil {
+		return nil, fmt.Errorf("store: list authors from agg: %w", err)
+	}
+	defer rows.Close()
+	return scanAuthorSummaries(rows, size)
+}
+
+// listAuthorsLive 是 0022 之前的实时聚合（降级路径与对账测试共用）。
+func (s *Store) listAuthorsLive(ctx context.Context, sortKey, whereSQL string,
+	args []any, size, offset int) ([]AuthorSummary, error) {
 	query := "SELECT a.id, a.name, COUNT(b.id), COALESCE(SUM(b.word_count), 0) " +
 		"FROM authors a LEFT JOIN " + authorWorks + " x ON x.aid = a.id " +
 		"LEFT JOIN books b ON b.id = x.book_id" + whereSQL +
-		" GROUP BY a.id, a.name ORDER BY " + authorOrder(q.Sort) + " LIMIT ? OFFSET ?"
-	qargs := append(append([]any{}, args...), size, (page-1)*size)
-
+		" GROUP BY a.id, a.name ORDER BY " + authorOrder(sortKey) + " LIMIT ? OFFSET ?"
+	qargs := append(append([]any{}, args...), size, offset)
 	rows, err := s.db.QueryContext(ctx, query, qargs...)
 	if err != nil {
-		return Page[AuthorSummary]{}, fmt.Errorf("store: list authors: %w", err)
+		return nil, fmt.Errorf("store: list authors: %w", err)
 	}
 	defer rows.Close()
+	return scanAuthorSummaries(rows, size)
+}
 
+// scanAuthorSummaries 把「id, name, 作品数, 字数」四列的行扫描成 AuthorSummary。
+func scanAuthorSummaries(rows *sql.Rows, size int) ([]AuthorSummary, error) {
 	items := make([]AuthorSummary, 0, size)
 	for rows.Next() {
 		var a AuthorSummary
 		if err := rows.Scan(&a.ID, &a.Name, &a.BookCount, &a.WordCount); err != nil {
-			return Page[AuthorSummary]{}, fmt.Errorf("store: scan author: %w", err)
+			return nil, fmt.Errorf("store: scan author: %w", err)
 		}
 		items = append(items, a)
 	}
 	if err := rows.Err(); err != nil {
-		return Page[AuthorSummary]{}, fmt.Errorf("store: list authors rows: %w", err)
+		return nil, fmt.Errorf("store: list authors rows: %w", err)
 	}
-	return Page[AuthorSummary]{Items: items, Total: total, Page: page, Size: size}, nil
+	return items, nil
+}
+
+// authorAggOrder 把排序键映射为物化表上的 ORDER BY 子句。
+//
+// 与 authorOrder 逐个对应（同样的兜底列，保证分页稳定），只是列来自 author_agg。
+func authorAggOrder(sortKey string) string {
+	switch sortKey {
+	case "name":
+		return "a.name COLLATE NOCASE ASC, a.id ASC"
+	case "words":
+		return "g.word_count DESC, a.name COLLATE NOCASE ASC, a.id ASC"
+	default: // books
+		return "g.book_count DESC, a.name COLLATE NOCASE ASC, a.id ASC"
+	}
 }
 
 // GetAuthor 返回作者详情与其全部作品（按更新时间倒序）。

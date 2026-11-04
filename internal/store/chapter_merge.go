@@ -233,7 +233,18 @@ func applyMergeCounts(ctx context.Context, tx *sql.Tx, bookID int64, spans []cha
 	if err := adjustBookCounts(ctx, tx, bookID, -(len(spans) - 1), 0); err != nil {
 		return err
 	}
-	if err := bumpMetrics(ctx, tx, packed, 0); err != nil {
+	if err := bumpMetricsCount(ctx, tx, packed, 0, -int64(len(spans)-1)); err != nil {
+		return err
+	}
+	// 直方图：被合并掉的各章逐条从它们的桶里减，合并后的首章按新字数落桶。
+	// 字数总和不变（首章取的就是各章之和），所以桶的净变化只来自「章数变少」。
+	removed := make([]int, len(spans))
+	mergedTotal := 0
+	for i, sp := range spans {
+		removed[i] = sp.wordCount
+		mergedTotal += sp.wordCount
+	}
+	if err := bumpLengthHist(ctx, tx, []int{mergedTotal}, removed); err != nil {
 		return err
 	}
 	return bumpMetricKey(ctx, tx, metricTextBytesRaw, raw)

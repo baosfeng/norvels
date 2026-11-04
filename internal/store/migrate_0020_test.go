@@ -10,7 +10,7 @@ import (
 
 // 本文件锁死 0020「books 七列质量分 + 聚合口径 +1」的迁移契约：
 //   - 七列都在、NOT NULL、默认 0 / ''（存量行天然是「未计算」）；
-//   - metrics_version 前进到 5（口径变更，旧缓存必然过期）；
+//   - metrics_version 前进（口径变更，旧缓存必然过期）；
 //   - 幂等：删掉版本记录重跑不报 duplicate column、不改已有质量分。
 
 // TestMigrate0020AddsQualityColumns 七列的形状与默认值。
@@ -36,8 +36,11 @@ func TestMigrate0020AddsQualityColumns(t *testing.T) {
 			t.Errorf("列 %s 的默认值 = %q，期望 %q", col.name, dflt, want)
 		}
 	}
-	if v := scalarInt(t, ctx, st, "SELECT value FROM store_metrics WHERE key = 'metrics_version'"); v != 5 {
-		t.Errorf("metrics_version = %d，期望 5（0020 质量分口径）", v)
+	// 断言的是「迁移跑完后的最终口径版本」：0020 把它推到 5，0022 又推到 6。
+	// 断言 5 会让这条测试在每次口径 +1 时误报——它真正要看的是七列的形状，
+	// 版本号只是「口径标志位确实前进了」的旁证，跟着 metricsVersion 走即可。
+	if v := scalarInt(t, ctx, st, "SELECT value FROM store_metrics WHERE key = 'metrics_version'"); v != int64(metricsVersion) {
+		t.Errorf("metrics_version = %d，期望 %d", v, metricsVersion)
 	}
 }
 

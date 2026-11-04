@@ -52,9 +52,10 @@ func TestMigrate0017RepacksLegacyBlocks(t *testing.T) {
 	t.Logf("大书块数 %d → %d；有块的书 %d 本；packed %d 字节 / 原文 %d 字节（%.1f%%）",
 		beforeBlocks[books[0]], afterBlocks[books[0]], len(afterBlocks),
 		packed, raw, 100*float64(packed)/float64(raw))
-	// 0018 把块表搬进正文库（v4）、0020 加质量分（v5）之后口径再 +1，这里断言的是最终版本。
-	if v := scalarInt(t, ctx, st, "SELECT value FROM store_metrics WHERE key = 'metrics_version'"); v != 5 {
-		t.Errorf("metrics_version = %d，期望 5（0020 质量分口径）", v)
+	// 0018 把块表搬进正文库（v4）、0020 加质量分（v5）、0022 加章节数键（v6）
+	// 之后口径再 +1，这里断言的是最终版本。
+	if v := scalarInt(t, ctx, st, "SELECT value FROM store_metrics WHERE key = 'metrics_version'"); v != 6 {
+		t.Errorf("metrics_version = %d，期望 6（0022 预计算口径）", v)
 	}
 }
 

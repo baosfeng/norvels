@@ -31,7 +31,8 @@
 2. **数据与代码分离**：主库 `/data/norvels.db` + 正文库 `/data/norvels-content.db`（同一个容器 volume），镜像内不含任何小说内容。
 3. **前端只经 API**：不引入 SSR，构建产物全部 embed，运行时无需 Node。
 4. **导入可重复执行**：同一目录重复 `import` 必须幂等（文件 SHA-256 命中则跳过，除非 `--force`）。
-5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=NORMAL`；聚合口径在导入时同事务预计算进 `store_metrics`，不回填全表。
+5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=NORMAL`。
+   驾驶舱的聚合值（体积构成、章节数、长度直方图、导入趋势、作者作品数与字数）全部在写入时同事务预计算，读接口只查表——请求路径上不做全表聚合（0022，实测见 [data-profile §10.4](data-profile.md#104-驾驶舱查询全部预计算化)）。
 6. **正文独立成库**（0018）：块表 `chapter_blocks` 只在正文库里，`chapters.block_id` 是**跨库弱引用**（没有外键）；两库各自一个 `*sql.DB`，`Open` 由主库路径推导兄弟文件、`Close` 双关。
 
 ## 2.1 鉴权边界与账号归属
@@ -88,6 +89,10 @@ books(id, title, author_id, source_path UNIQUE, source_name, file_size, file_sha
 volumes(id, book_id, idx, title)                 -- 卷/部；UNIQUE(book_id, idx)，同书 TRIM(title) 唯一（0013）
 chapters(id, book_id, volume_id, idx, title, word_count, block_id, block_off, block_len)
                                                  -- block_id 指向**正文库**的块（跨库弱引用，无外键）
+store_metrics(key PK, value, updated_at)         -- 全库聚合缓存（0004 起），读接口只查表
+chapter_length_hist(bucket PK, count)            -- 章节长度直方图（0022，随章节写入增量维护）
+import_daily(day PK, book_count, chapter_count)  -- 导入趋势按本地日聚合（0022）
+author_agg(author_id PK, book_count, word_count) -- 作者聚合物化（0022），/api/authors 的读路径
 tags(id, name) / book_tags(book_id, tag_id)       -- 检索范围只有书名/作者（LIKE），无全文索引
 import_jobs(...) / import_errors(...) / import_reviews(...)  -- 导入任务、失败明细与 AI 审核记录（0021）
 

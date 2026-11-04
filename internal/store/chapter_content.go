@@ -54,6 +54,11 @@ func (s *Store) UpdateChapterContent(ctx context.Context, bookID, chapterID int6
 		if err := applyContentCounts(ctx, wt.main, bookID, words-sp.wordCount, packed, raw); err != nil {
 			return err
 		}
+		// 整章替换不增删章，但字数变了：直方图要「先减旧值、再加新值」，
+		// 否则长章改短之后仍被算在「1万+」桶里。
+		if err := bumpLengthHist(ctx, wt.main, []int{words}, []int{sp.wordCount}); err != nil {
+			return err
+		}
 		// 顺序不能反：章节还指着旧块时它当然「有人引用」，先改 span 再回收。
 		if err := reapOrphanBlock(ctx, wt, sp.blockID); err != nil {
 			return err

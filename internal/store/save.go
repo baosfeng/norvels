@@ -217,8 +217,16 @@ func saveBookInTx(ctx context.Context, wt *writeTx, b *model.ParsedBook, w bookW
 		if err := replaceBookInTx(ctx, wt, bookID, w, authorID); err != nil {
 			return 0, err
 		}
-	} else if bookID, err = insertBookRow(ctx, tx, w, authorID); err != nil {
-		return 0, err
+	} else {
+		if bookID, err = insertBookRow(ctx, tx, w, authorID); err != nil {
+			return 0, err
+		}
+		// 新书进库：导入趋势按「这本书的入库日」+1 本书、+chapter_count 章。
+		// 覆盖写入不重复计书数——它走 replaceBookInTx，那边只减旧值，
+		// 随后 insertChapters 会把新章重新加回来（含章数与直方图）。
+		if err := bumpImportDaily(ctx, tx, w.nowText, 1, w.chapterCount); err != nil {
+			return 0, err
+		}
 	}
 
 	volMap, err := insertVolumes(ctx, tx, bookID, b, usedVols)
@@ -231,11 +239,11 @@ func saveBookInTx(ctx context.Context, wt *writeTx, b *model.ParsedBook, w bookW
 	if err := saveBookExtras(ctx, tx, bookID, b); err != nil {
 		return 0, err
 	}
-	primaryID, err := saveBookAuthorsInTx(ctx, tx, bookID, bookAuthorNames(b))
-	if err != nil {
+	if _, err := saveBookAuthorsInTx(ctx, tx, bookID, bookAuthorNames(b)); err != nil {
 		return 0, err
 	}
-	if err := refreshBookAuthors(ctx, tx, primaryID, oldAuthorID); err != nil {
+	// oldAuthorID 要显式带上：这本书可能刚从它名下换走，此刻已经查不到这条关联了。
+	if err := refreshBookAuthors(ctx, tx, bookID, oldAuthorID); err != nil {
 		return 0, err
 	}
 	return bookID, nil
@@ -251,7 +259,15 @@ func replaceBookInTx(ctx context.Context, wt *writeTx, bookID int64, w bookWrite
 	if err != nil {
 		return fmt.Errorf("store: save book old metrics: %w", err)
 	}
-	if err := bumpMetrics(ctx, tx, -old.packedBytes, -old.words); err != nil {
+	// 旧章节即将整批删掉：章数与长度直方图都要按「旧章逐个减」冲减。
+	oldWords, err := bookChapterWordCounts(ctx, tx, bookID)
+	if err != nil {
+		return err
+	}
+	if err := bumpMetricsCount(ctx, tx, -old.packedBytes, -old.words, -int64(len(oldWords))); err != nil {
+		return err
+	}
+	if err := bumpLengthHist(ctx, tx, nil, oldWords); err != nil {
 		return err
 	}
 	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, -old.rawBytes); err != nil {
@@ -352,47 +368,4 @@ func volumeIDFor(c *model.ParsedChapter, volMap map[int]int64) int64 {
 		return 0
 	}
 	return volMap[c.VolumeIdx]
-}
-
-// refreshBookAuthors 刷新新旧作者的聚合列（作者变更时两边都要重算）。
-func refreshBookAuthors(ctx context.Context, tx *sql.Tx, authorID, oldAuthorID int64) error {
-	if err := refreshAuthorStats(ctx, tx, authorID); err != nil {
-		return err
-	}
-	if oldAuthorID != 0 && oldAuthorID != authorID {
-		return refreshAuthorStats(ctx, tx, oldAuthorID)
-	}
-	return nil
-}
-
-// ensureAuthor 按名字取作者 id，不存在则创建；空名返回 0（未知作者）。
-func ensureAuthor(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
-	if name == "" {
-		return 0, nil
-	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO authors(name) VALUES (?) ON CONFLICT(name) DO NOTHING", name); err != nil {
-		return 0, fmt.Errorf("store: ensure author: %w", err)
-	}
-	var id int64
-	if err := tx.QueryRowContext(ctx, "SELECT id FROM authors WHERE name = ?", name).Scan(&id); err != nil {
-		return 0, fmt.Errorf("store: select author: %w", err)
-	}
-	return id, nil
-}
-
-// refreshAuthorStats 重算单个作者的聚合列（books 表只有千级行，成本可忽略）。
-func refreshAuthorStats(ctx context.Context, tx *sql.Tx, authorID int64) error {
-	if authorID == 0 {
-		return nil
-	}
-	_, err := tx.ExecContext(ctx,
-		"UPDATE authors SET "+
-			"book_count = (SELECT COUNT(*) FROM "+authorWorks+" WHERE aid = authors.id), "+
-			"word_count = (SELECT COALESCE(SUM(b.word_count), 0) FROM "+authorWorks+" x "+
-			"JOIN books b ON b.id = x.book_id WHERE x.aid = authors.id) "+
-			"WHERE id = ?", authorID)
-	if err != nil {
-		return fmt.Errorf("store: refresh author stats: %w", err)
-	}
-	return nil
 }

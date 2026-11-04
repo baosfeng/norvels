@@ -62,6 +62,18 @@ func writeChapterBlocks(ctx context.Context, c *contentTx, bookID int64,
 	return refs, packedTotal, rawTotal, nil
 }
 
+// chapterWordCounts 返回各章的字数（与 chapters.word_count 同一口径）。
+//
+// 单独返回而不是让调用方再算一遍：长度直方图的桶必须与写入库里的 word_count
+// 逐章一致，重算两遍迟早因为口径漂移对不上。
+func chapterWordCounts(chapters []model.ParsedChapter) []int {
+	out := make([]int, len(chapters))
+	for i := range chapters {
+		out[i] = chapterWordCount(&chapters[i])
+	}
+	return out
+}
+
 // insertChapterRows 批量写入章节行（只含块寻址与元信息），返回字数总和。
 func insertChapterRows(ctx context.Context, tx *sql.Tx, bookID int64, chapters []model.ParsedChapter,
 	volMap map[int]int64, refs []blockRef) (int64, error) {
@@ -118,10 +130,15 @@ func insertChapters(ctx context.Context, wt *writeTx, bookID int64, b *model.Par
 		return err
 	}
 
-	if err := bumpMetrics(ctx, wt.main, packedBytes, words); err != nil {
+	// 导入了 len(b.Chapters) 章：字数与章数都要进缓存，长度直方图也在这里落账
+	// （导入本来就要写这些行，顺手累加是零额外扫描）。
+	if err := bumpMetricsCount(ctx, wt.main, packedBytes, words, int64(len(b.Chapters))); err != nil {
 		return err
 	}
 	if err := bumpMetricKey(ctx, wt.main, metricTextBytesRaw, rawBytes); err != nil {
+		return err
+	}
+	if err := bumpLengthHist(ctx, wt.main, chapterWordCounts(b.Chapters), nil); err != nil {
 		return err
 	}
 	// books 侧文本量（标题/简介/路径等）随书籍主体变化，一并增量维护，
@@ -236,10 +253,13 @@ func insertChapterRowInTx(ctx context.Context, wt *writeTx, bookID int64, pos in
 	if err := adjustBookCounts(ctx, tx, bookID, 1, words); err != nil {
 		return 0, err
 	}
-	if err := bumpMetrics(ctx, tx, packed, int64(words)); err != nil {
+	if err := bumpMetricsCount(ctx, tx, packed, int64(words), 1); err != nil {
 		return 0, err
 	}
 	if err := bumpMetricKey(ctx, tx, metricTextBytesRaw, raw); err != nil {
+		return 0, err
+	}
+	if err := bumpLengthHist(ctx, tx, []int{words}, nil); err != nil {
 		return 0, err
 	}
 	if _, err := bumpBookTextBytes(ctx, tx, bookID); err != nil {

@@ -134,7 +134,8 @@ func updateBookMetaInTx(ctx context.Context, tx *sql.Tx, id int64, patch BookMet
 			return err
 		}
 	}
-	return refreshBookAuthors(ctx, tx, newAuthorID, oldAuthorID)
+	_ = newAuthorID // 作者名单已经落库，refreshBookAuthors 会按本书当前的关联重新读一遍
+	return refreshBookAuthors(ctx, tx, id, oldAuthorID)
 }
 
 // bookAuthorIDInTx 读当前作者 id；书不存在返回 ErrNotFound。

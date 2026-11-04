@@ -50,11 +50,18 @@ func (s *Store) DeleteChapters(ctx context.Context, bookID int64, cids []int64) 
 // 变成一次删除顺带修正了别的章。
 func applyDeleteCounts(ctx context.Context, tx *sql.Tx, bookID int64, spans []chapterSpan) error {
 	words := 0
-	for _, sp := range spans {
+	hist := make([]int, len(spans))
+	for i, sp := range spans {
 		words += sp.wordCount
+		hist[i] = sp.wordCount
 	}
 	if err := adjustBookCounts(ctx, tx, bookID, -len(spans), -words); err != nil {
 		return err
 	}
-	return bumpMetrics(ctx, tx, 0, -int64(words))
+	if err := bumpMetricsCount(ctx, tx, 0, -int64(words), -int64(len(spans))); err != nil {
+		return err
+	}
+	// 直方图按「删掉的这些章原本落在哪几个桶」逐个减：减桶求和而不是
+	// 「总字数变了所以重算」，因为直方图统计的是章数分布，与字数总和无关。
+	return bumpLengthHist(ctx, tx, nil, hist)
 }

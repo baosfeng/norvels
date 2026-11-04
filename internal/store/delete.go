@@ -56,11 +56,35 @@ func (s *Store) DeleteBook(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
+	// 这本书的章节即将整批消失：章数、长度直方图与导入趋势都要在删之前取到旧值，
+	// 否则删完就读不出来了（缓存只能减掉已知的量）。
+	oldWords, err := bookChapterWordCounts(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	oldImportedAt, err := bookImportedAt(ctx, tx, id)
+	if err != nil {
+		return err
+	}
 	if err := deleteBookRows(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := bumpMetricsCount(ctx, tx, 0, 0, -int64(len(oldWords))); err != nil {
+		return err
+	}
+	// 删掉的书也要从导入趋势里减掉：趋势表是「某天入库了几本」的账本，
+	// 只加不减会让历史曲线的总和大于实际书数（有测试守着增量 == 全量）。
+	if err := bumpImportDaily(ctx, tx, oldImportedAt, -1, -len(oldWords)); err != nil {
+		return err
+	}
+	if err := bumpLengthHist(ctx, tx, nil, oldWords); err != nil {
 		return err
 	}
 	for _, authorID := range authorIDs {
 		if err := refreshAuthorStats(ctx, tx, authorID); err != nil {
+			return err
+		}
+		if err := refreshAuthorAgg(ctx, tx, authorID); err != nil {
 			return err
 		}
 	}

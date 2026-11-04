@@ -16,7 +16,10 @@ import (
 //	v4：v3 同一口径，但正文搬进独立库（0018）；索引类体积改成只按主库文件算
 //	v5：v4 同一口径，但 books 多出七列质量分（0020），健康报告新增质量分覆盖率聚合；
 //	    旧快照无法证明与新口径一致，按「宁可重算一次」处理
-const metricsVersion = 5
+//	v6：v5 同一口径，但新增 chapter_count / author_count 两个键（0022）。
+//	    /api/stats 原先每次请求都 SELECT COUNT(*) FROM chapters 数 2,469 万行；
+//	    旧快照没有这两个键，判为落后并让后台补算，接口期间返回 stale（不 500）
+const metricsVersion = 6
 
 // store_metrics 的键位。全部是整数值，读接口只查表，毫秒级。
 const (
@@ -24,6 +27,7 @@ const (
 	metricTextBytesRaw    = "text_bytes_raw"    // 正文：压缩前的原文逻辑字节（供文档说明压缩比）
 	metricBookTextBytes   = "book_text_bytes"   // 正文：books 文本列（全量重算时算一次）
 	metricChapterWordSum  = "chapter_word_sum"  // 全库章节字数总和
+	metricChapterCount    = "chapter_count"     // 全库章节行数（/api/stats 的 chapters）
 	metricIndexBytes      = "index_bytes"       // 索引类字节（= 库文件大小 − 正文字节，近似）
 	metricMetricsVersion  = "metrics_version"   // 计算口径版本
 	metricRefreshedAtUnix = "refreshed_at_unix" // 上次全量重算时间（Unix 秒）
@@ -34,6 +38,7 @@ type metricsSnapshot struct {
 	TextBytes      int64 // 压缩后 packed 字节 + books 侧文本
 	TextBytesRaw   int64 // 压缩前的原文逻辑字节（books 侧同样计入）
 	ChapterWordSum int64
+	ChapterCount   int64 // 全库章节行数（0022：替代请求路径上的 COUNT(*) FROM chapters）
 	IndexBytes     int64
 	RefreshedAt    time.Time
 	Stale          bool // true 表示缓存缺失、口径落后或与当前库规模对不上
@@ -89,6 +94,7 @@ func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
 		TextBytes:      m[metricTextBytes] + m[metricBookTextBytes],
 		TextBytesRaw:   m[metricTextBytesRaw] + m[metricBookTextBytes],
 		ChapterWordSum: m[metricChapterWordSum],
+		ChapterCount:   m[metricChapterCount],
 		IndexBytes:     m[metricIndexBytes],
 	}
 	if ts := m[metricRefreshedAtUnix]; ts > 0 {
@@ -102,7 +108,10 @@ func (s *Store) readMetrics(ctx context.Context) (metricsSnapshot, error) {
 	// 或者库本来就没有章节（空库的 0 是合法结果）。
 	_, hasText := m[metricTextBytes]
 	_, hasWordSum := m[metricChapterWordSum]
-	computed := hasText && hasWordSum
+	// v6 起还要有 chapter_count：没有它，/api/stats 就得退回「每次请求数 2,469 万行」。
+	// 缺这个键的老快照按落后处理，后台补算一次。
+	_, hasChapterCount := m[metricChapterCount]
+	computed := hasText && hasWordSum && hasChapterCount
 	if snap.TextBytes == 0 && snap.ChapterWordSum == 0 {
 		// 空库场景：章节数为 0 时 0 就是正确答案，视为已算过。
 		computed = computed && s.chapterCountIsZero(ctx)
@@ -121,8 +130,17 @@ func (s *Store) chapterCountIsZero(ctx context.Context) bool {
 //
 // 导入路径调用它时与章节写入处于同一事务：要么都成功，要么都回滚，
 // 不会出现「章节进了库但 metrics 没记账」的漂移。
+//
+// chapterDelta 与 textDelta/wordDelta 分开：一章正文可能被替换（文字字节变、章数不变），
+// 也可能新增（三个都变）。三个量分成两组参数，是因为「改正文」与「增删章」的调用点不同，
+// 塞成一个结构体只会让每个调用方都要填自己不关心的字段。
 func bumpMetrics(ctx context.Context, tx *sql.Tx, textDelta, wordDelta int64) error {
-	if textDelta == 0 && wordDelta == 0 {
+	return bumpMetricsCount(ctx, tx, textDelta, wordDelta, 0)
+}
+
+// bumpMetricsCount 是 bumpMetrics 的完整形态：额外维护章节行数。
+func bumpMetricsCount(ctx context.Context, tx *sql.Tx, textDelta, wordDelta, chapterDelta int64) error {
+	if textDelta == 0 && wordDelta == 0 && chapterDelta == 0 {
 		return nil
 	}
 	now := formatTime(nowUTC())
@@ -132,6 +150,7 @@ func bumpMetrics(ctx context.Context, tx *sql.Tx, textDelta, wordDelta int64) er
 	}{
 		{metricTextBytes, textDelta},
 		{metricChapterWordSum, wordDelta},
+		{metricChapterCount, chapterDelta},
 	} {
 		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO store_metrics(key, value, updated_at) VALUES (?, ?, ?) "+
@@ -220,6 +239,11 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 	}
 	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
 
+	// 预计算（0022）：三张表与 store_metrics 一起重建。这里做全量重算而不是增量，
+	// 是因为 RefreshMetrics 就是「运维怀疑缓存漂了」时的兜底入口，必须一步到位。
+	if err := rebuildDashboardTables(ctx, tx); err != nil {
+		return err
+	}
 	for _, kv := range []struct {
 		key   string
 		value int64
@@ -228,8 +252,11 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 		{metricTextBytesRaw, m.chapterRaw},
 		{metricBookTextBytes, m.bookText},
 		{metricChapterWordSum, m.wordSum},
+		{metricChapterCount, m.chapterCount},
 		{metricIndexBytes, indexBytes},
 		{metricMetricsVersion, metricsVersion},
+		{metricPrecomputeVersion, precomputeVersion},
+		{metricPrecomputeZone, int64(currentZoneOffset())},
 		{metricRefreshedAtUnix, nowUTC().Unix()},
 	} {
 		if err := setMetric(ctx, tx, kv.key, kv.value); err != nil {
@@ -239,6 +266,7 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: metrics commit: %w", err)
 	}
+	s.resetPrecomputeCache()
 	return nil
 }
 
@@ -246,10 +274,11 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 //
 // 块口径在正文库（自动选库：0018 之前的库块还在主库），books/字数在主库。
 type metricsScalars struct {
-	bookText    int64
-	chapterText int64
-	chapterRaw  int64
-	wordSum     int64
+	bookText     int64
+	chapterText  int64
+	chapterRaw   int64
+	wordSum      int64
+	chapterCount int64 // 0022：/api/stats 的 chapters，不再每次请求数全表
 }
 
 // collectMetrics 读出四个标量；任一项失败都带上口径名返回。
@@ -270,6 +299,9 @@ func (s *Store) collectMetrics(ctx context.Context) (metricsScalars, error) {
 	}
 	if m.wordSum, err = s.scalarInt64(ctx, chapterWordSumSQL); err != nil {
 		return m, fmt.Errorf("store: metrics chapter word sum: %w", err)
+	}
+	if m.chapterCount, err = s.scalarInt64(ctx, chapterCountSQL); err != nil {
+		return m, fmt.Errorf("store: metrics chapter count: %w", err)
 	}
 	return m, nil
 }

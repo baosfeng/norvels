@@ -33,11 +33,12 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
 {
   "totalBooks": 865, "thinBooks": 3, "missingAuthor": 12, "missingIntro": 40, "hugeChapters": 0,
   "chapterBuckets": [{ "label": "1", "count": 0 }, { "label": "2-9", "count": 12 }],
-  "chapterLengthBuckets": [{ "label": "<1千字", "count": 120 }],
-  "warnings": []
+  "chapterLengthBuckets": [{ "label": "<1千", "count": 120 }],
+  "warnings": [], "stale": false
 }
 ```
 单项统计失败返回 `null` 并写入 `warnings`，不让整个接口 500。
+`stale`（增量字段）为 `true` 表示某项聚合走了降级路径（预计算表未回填/口径落后），数字仍正确。
 
 ### GET /api/health/issues?kind=missing_author&page=1&size=20
 「库健康状况」卡的下钻明细：某一类问题具体是哪些书 / 哪些章节。
@@ -89,15 +90,18 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
   → `paraIndex ≥ 0` → 章节存在且属于该书。分别返回 400 / 400 / 400 / 400 / 404，不做静默截断；
 - `GET /api/health/report` 另有 `content`（正文库对账摘要 `orphanBlocks`/`orphanBooks`/`danglingRefs`/`missingTable`/`checkedAt`，
   10 分钟缓存）、`fingerprints`（指纹覆盖率 `books`/`fingerprinted`/`missing`）与 `quality`（质量分覆盖率 `books`/`computed`/
-  `missing`，0020 起）；缺口 > 0 时 `hint` 分别指向 `backfill-fingerprints` / `backfill-quality`。分桶边界见 `internal/store/health.go`：
+  `missing`，0020 起）；缺口 > 0 时 `hint` 分别指向 `backfill-fingerprints` / `backfill-quality`。
+  `stale` 为 `true` 表示某项聚合来自降级路径（缓存未算好或口径落后），数字仍正确、只是这次走得慢。分桶边界见 `internal/store/health.go`：
   - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+
   - 章节字数：<1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+
 - `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），
-  时区取服务器本地时区，无数据日期补 0；`days` 默认 14、上限 366；
+  时区取服务器本地时区，无数据日期补 0；`days` 默认 14、上限 366。0022 起读按日预计算的
+  `import_daily`（一天一行），不再 JOIN `chapters`；预计算不可用时降级为实时聚合，结果一致；
 - `GET /api/health/issues` 的四个 kind 与报告指标一一对应（`missing_author`/`missing_intro`/`thin_book`/
   `huge_chapter`），判据（WHERE + 阈值）在 `internal/store/health_issues.go` 里只有一份，
   报告计数与明细列表都引用它，改口径只需改一处；
-- `GET /api/authors?sort=words` 复用列表接口，`ORDER BY SUM(word_count) DESC`，`size=10` 即「字数 Top 10」；
+- `GET /api/authors?sort=words` 复用列表接口，`size=10` 即「字数 Top 10」；0022 起从物化的
+  `author_agg`（按 `word_count DESC` / `book_count DESC` 有索引）取前 N 行，不再每次全表聚合；
 - 新增端点的 `limit` / `days` 越界一律 400（不静默夹紧）。
 
 ```bash

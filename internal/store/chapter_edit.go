@@ -98,7 +98,10 @@ func (s *Store) DeleteChapter(ctx context.Context, bookID, chapterID int64) erro
 		if err := adjustBookCounts(ctx, tx, bookID, -1, -sp.wordCount); err != nil {
 			return err
 		}
-		if err := bumpMetrics(ctx, tx, 0, -int64(sp.wordCount)); err != nil {
+		if err := bumpMetricsCount(ctx, tx, 0, -int64(sp.wordCount), -1); err != nil {
+			return err
+		}
+		if err := bumpLengthHist(ctx, tx, nil, []int{sp.wordCount}); err != nil {
 			return err
 		}
 		if err := reapOrphanBlock(ctx, wt, sp.blockID); err != nil {
@@ -158,6 +161,12 @@ func shiftChaptersIdx(ctx context.Context, tx *sql.Tx, bookID int64, fromIdx, de
 }
 
 // adjustBookCounts 按增量改书级计数（章节数与字数），书不存在返回 ErrNotFound。
+//
+// 顺带刷新这本书各作者的两个聚合写点：author_agg.word_count 与 authors.word_count
+// 都是 SUM(books.word_count) 的函数，书级字数一变它们就必须跟着变。
+// 放在这里而不是每个调用点各写一次，是因为改书级计数的调用点有 6 处以上
+// （删章/插章/合并/拆分/改正文/删书），漏一处就会让驾驶舱的作者榜长期漂移——
+// 而这种漂移不会报错，只会让「字数 Top 10」悄悄换成另一批作者。
 func adjustBookCounts(ctx context.Context, tx *sql.Tx, bookID int64, chapterDelta, wordDelta int) error {
 	res, err := tx.ExecContext(ctx,
 		"UPDATE books SET chapter_count = chapter_count + ?, word_count = word_count + ?, updated_at = ? "+
@@ -165,7 +174,14 @@ func adjustBookCounts(ctx context.Context, tx *sql.Tx, bookID int64, chapterDelt
 	if err != nil {
 		return fmt.Errorf("store: adjust book counts %d: %w", bookID, err)
 	}
-	return requireOneRow(res, bookID)
+	if err := requireOneRow(res, bookID); err != nil {
+		return err
+	}
+	ids, err := authorIDsOfBook(ctx, tx, bookID)
+	if err != nil {
+		return err
+	}
+	return refreshAuthorIDs(ctx, tx, ids)
 }
 
 // touchBookUpdatedAt 只刷新书的 updated_at（改章节标题用）。

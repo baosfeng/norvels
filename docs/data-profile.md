@@ -321,9 +321,9 @@ VACUUM 回收空洞页后落到 1.62 GB。
 
 | 操作 | 42 万章（实测） | 504 万章（推算） | 1,513 万章（推算） | 2,522 万章（推算） | 2,500 万章（实测） | 判定 |
 |---|---|---|---|---|---|---|
-| `COUNT(*) FROM chapters` | 0.018 ~ 0.11 s | 21 ms | 62 ms | 103 ms | 102 ms（首查 max 7.3 s） | 亚秒级，随行数线性 |
+| `COUNT(*) FROM chapters` | 0.018 ~ 0.11 s | 21 ms | 62 ms | 103 ms | 102 ms（首查 max 7.3 s） | 亚秒级，随行数线性；**已移出请求路径**（0022 读 `store_metrics`） |
 | `SUM(word_count)` | 0.05 s | 146 ms | 438 ms | 729 ms | 723 ms | 亚秒级，且已预计算进 `store_metrics` |
-| 区间 N 段计数（覆盖索引） | 0.01 ~ 0.09 s | 118 ms | 354 ms | 589 ms | 584 ms | 亚秒级，随行数线性 |
+| 区间 N 段计数（覆盖索引） | 0.01 ~ 0.09 s | 118 ms | 354 ms | 589 ms | 584 ms | 亚秒级，随行数线性；**已移出请求路径**（0022 读 `chapter_length_hist`） |
 | 单本目录查询（5,000 章） | 0.31 ms | 2.45 ms | 2.45 ms | 2.45 ms | 2.45 ms（max 11.25 ms） | **毫秒级，与总行数无关** |
 | 随机读一章正文 | P50 0.32 ms | 0.01 ~ 0.32 ms | 同左 | 同左 | P50 0.01 ms / max 0.09 ms | **毫秒级，按主键 SEARCH** |
 | 随机读一章正文（**压缩后实测**） | P50 0.08 ms / P95 1.35 ms | 同左（按块解压，与总行数无关） | 同左 | 同左 | — | **毫秒级，解压 1 个块** |
@@ -339,7 +339,8 @@ VACUUM 回收空洞页后落到 1.62 GB。
    压缩存储后读单章 P50 0.08 ms（多一次块解压），仍与总行数无关。**交互路径不受容量影响。**
 2. **亚秒级（随行数线性增长）**：全表 `COUNT`、`SUM(word_count)`、区间分桶统计。
    2,500 万章时落在 100 ~ 730 ms；5,000 万章量级会到 1.5 s 附近。
-   **这类操作的前提是「不要放进请求路径」**——而本项目恰恰没放（见 10.4）。
+   **这类操作的前提是「不要放进请求路径」**——0022 之后它们全部改读预计算表（见 10.4），
+   只剩离线的 `refresh-metrics` 还会跑一次。
 
 还要注意**首查抖动**：2,500 万章的 `COUNT(*)` 冷缓存首查实测 7.3 s，热了才 102 ms。
 拆库不改变这一点，但把「正文全表扫描」（`SUM(length(packed))`）从主库挪到了正文库：
@@ -357,10 +358,10 @@ page cache 上限 64 MB 相对几十 GB 的库可以忽略，真正兜住热路�
    现状形态（每本 17.71 MB）的 885 GB 才是真正的天花板，而这块体积 65% 是正文索引。
 2. **延迟**：交互路径（读单章、取目录、书架分页、书名检索）始终是毫秒级，与总行数无关；
    会随行数增长的只有全表聚合（`COUNT`/`SUM`/区间统计），2,500 万章实测最坏 0.73 s。
-3. **聚合不在请求路径上**：仪表盘用的 `text_bytes` / `chapter_word_sum` 等值在导入时同事务预计算
-   进 `store_metrics`（§9.7），读接口只查表（`/api/stats` P95 1.31 ms），
-   **所以全表 `SUM` 不会落在请求路径上**；章节长度分布走 `idx_chapters_wc` 覆盖索引区间 SEARCH，
-   也比全索引扫描快约一个数量级。
+3. **聚合不在请求路径上**：仪表盘用的 `text_bytes` / `chapter_word_sum` / `chapter_count` 在写入时
+   同事务预计算进 `store_metrics`（§9.7），章节长度直方图进 `chapter_length_hist`，
+   导入趋势进 `import_daily`，作者作品数与字数进 `author_agg`（§10.4，0022）；
+   读接口只查表，**全表 `SUM` / `COUNT` / 区间统计一个都不在请求路径上**。
 
 仍然要认账的边界（都在离线/运维侧，不在交互侧）：
 
@@ -369,6 +370,54 @@ page cache 上限 64 MB 相对几十 GB 的库可以忽略，真正兜住热路�
 - **冷启动第一批请求偏慢**：见 10.3 的首查抖动；
 - **压缩后的读放大**：每读一章要先解压它所在的块，真实库实测 **P50 0.08 ms / P95 1.35 ms**，
   目录查询（4,413 章的书）1.93 ms；仍远快于一次磁盘随机读，交互无感。
+
+### 10.4.1 驾驶舱查询全部预计算化（0022）
+
+上一节说「聚合不在请求路径上」在**生产规模下并不完全成立**：真实库长到 7 万本 / 2,469 万章后，
+还有四个驾驶舱接口在请求路径上扫全表。迁移 0022 把它们全部改成读预计算表。
+
+**实测基线**（NAS 生产库 71,320 本 / 24,697,647 章 / 主库 2.8 GB / 正文库 59 GB）：
+
+| 接口 | 改造前 | 根因 |
+|---|---|---|
+| `GET /api/stats/import-trend?days=14` | **28.85 s** | `chapters JOIN books` 按日归集，2,469 万行拉进 Go 逐行 `parseTime` |
+| `GET /api/health/report` | **3.35 s**（9 请求并发 25.5 s） | 章节长度直方图 5 段区间 `COUNT`，每段扫全部 `idx_chapters_wc` 索引项 |
+| `GET /api/stats` | 152 ms | 每次请求 `COUNT(*) FROM chapters` |
+| `GET /api/authors?sort=words` | 319 ms（并发 1.4 s） | `authors LEFT JOIN (UNION) LEFT JOIN books GROUP BY` 全表聚合 |
+
+**改造后**（本机合成库 71,320 本 × 346 章 = 24,676,720 章，与生产同量级；各 6 次取 P50）：
+
+| 操作 | 改造前 | 改造后 | 倍数 |
+|---|---|---|---|
+| `Stats`（含 `COUNT(*) FROM chapters`） | 169 ms | **18 ms** | 9.4x |
+| `HealthReport`（含长度直方图） | 1950 ms | **36 ms** | 54x |
+| `ImportTrend(14)` | 15973 ms | **0.03 ms** | 500000x |
+| `ListAuthors(sort=words)` | 255 ms | **15 ms** | 17x |
+| `ListAuthors(sort=books)` | 257 ms | **15 ms** | 17x |
+
+**做法**：三张预计算表 + 一个既有键，全部在写入路径同事务增量维护，迁移时回填一次。
+
+| SQL（改造前） | SQL（改造后） |
+|---|---|
+| `SELECT b.imported_at FROM chapters c JOIN books b ON b.id=c.book_id WHERE b.imported_at >= ?` | `SELECT day, book_count, chapter_count FROM import_daily` |
+| `SELECT (COUNT(*) …) FROM chapters WHERE word_count >= ? AND < ?`（×5 段） | `SELECT bucket, count FROM chapter_length_hist` |
+| `SELECT COUNT(*) FROM chapters` | `SELECT value FROM store_metrics WHERE key='chapter_count'` |
+| `authors LEFT JOIN (SELECT … UNION SELECT …) LEFT JOIN books GROUP BY a.id` | `authors a JOIN author_agg g ON g.author_id=a.id ORDER BY g.word_count DESC LIMIT ?` |
+
+**三条不变量**（都有测试守着，见 `internal/store/dashboard_precompute_test.go`）：
+
+1. **增量 == 全量**：走完导入/覆盖/追更/改正文/删章/插入/拆章/合章/删书之后，
+   增量维护出的三张表与「清空后按全表重算」逐项相等；
+2. **缓存 == 实时**：预计算路径与原实时 SQL 给出同一张趋势表、同一页作者、同一组直方图；
+3. **缺失不 500**：预计算表缺失/未回填/口径版本落后/时区偏移变化时，读接口降级为实时算
+   并标 `stale`（`/api/stats` 用 `compositionEstimated`），接口照常 200。
+
+**运维**：迁移自带回填；`norvels refresh-metrics` 会重算三张表与 `store_metrics`。
+回填期间读接口返回 stale 而不是报错，算完自动转正常。
+
+> 口径注意：`import_daily.day` 是**本地日**（与 §9.7 的 `countByDay` 同口径：`parseTime → t.Local()`），
+> 库里的 `imported_at` 是 UTC 文本；直接把 UTC 文本截前 10 位会把北京时间凌晨导入的书算到前一天。
+> 时区偏移随回填一起记进 `store_metrics.precompute_zone_offset`，偏移一变即判过期。
 
 ### 10.5 复现方式
 

@@ -516,8 +516,9 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 | 19 | `0019_chapter_fingerprints.sql` | 正文库建章级指纹 `chapter_fingerprints(hash, book_id, bytes)`（WITHOUT ROWID，主键 `(hash, book_id)`）+ 主库预置 `settings` 的 `dedupe.threshold` = 0.95；秒级，**升级后必须跑一次 `norvels backfill-fingerprints` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
 | 21 | `0021_import_reviews.sql` | AI 审核表 `import_reviews`（状态机 pending/ready/needs_manual/confirmed_keep/confirmed_replace/rolled_back）+ books 加 `superseded_by`（0 = 当前版本）+ 预置 `settings` 的 `ai.enabled` = false；秒级，升级后书架行为不变（没有 superseded 的书），AI 用法见 [§7.6](#76-ai-审核可选默认关闭) |
 | 20 | `0020_book_quality.sql` | books 加七列质量分 `garbage_ratio`/`noise_ratio`/`structure_score`/`duplicate_ratio`/`quality_chapters`/`quality_chars`/`quality_at`（NOT NULL DEFAULT 0/''，存量 = 未计算）+ `metrics_version` 4→5（旧缓存自动重算）；只加列、秒级，**跑一次 `norvels backfill-quality` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
+| 22 | `0022_dashboard_precompute.sql` | 驾驶舱预计算：建 `chapter_length_hist` / `import_daily` / `author_agg` 三张表并**在同一事务里回填** + `metrics_version` 5→6（多一个 `chapter_count` 键）。7 万本 / 2,469 万章的生产库实测回填约十几秒；期间读接口返回 `stale` 而不是报错。口径与实测见 [data-profile](data-profile.md#1041-驾驶舱查询全部预计算化0022) |
 
-> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **21**。
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **22**。
 >
 > **0017 的运维前提**：单事务内新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移期间**不监听端口**，
 > 大库按 [§7.3](#73-迁移后回收空间vacuum) 用一次性容器预跑；迁移后必须 `VACUUM` 才真正回落。

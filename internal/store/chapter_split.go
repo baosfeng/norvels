@@ -67,11 +67,12 @@ func applySplit(ctx context.Context, wt *writeTx, bookID int64, sp chapterSpan, 
 	if err := shiftChaptersIdx(ctx, tx, bookID, sp.idx, pieces-1); err != nil {
 		return err
 	}
-	total, err := rewriteHeadPiece(ctx, tx, sp, text, cuts[0], titles[0])
+	headWords, err := rewriteHeadPiece(ctx, tx, sp, text, cuts[0], titles[0])
 	if err != nil {
 		return err
 	}
-	if total, err = insertTailPieces(ctx, tx, bookID, sp, text, cuts, titles, total); err != nil {
+	total, tailWords, err := insertTailPieces(ctx, tx, bookID, sp, text, cuts, titles, headWords)
+	if err != nil {
 		return err
 	}
 	// 字数按各段实际重算，书级计数取差值（不做「拆完必然守恒」的假设：
@@ -80,7 +81,11 @@ func applySplit(ctx context.Context, wt *writeTx, bookID int64, sp chapterSpan, 
 	if err := adjustBookCounts(ctx, tx, bookID, pieces-1, delta); err != nil {
 		return err
 	}
-	if err := bumpMetrics(ctx, tx, 0, int64(delta)); err != nil {
+	if err := bumpMetricsCount(ctx, tx, 0, int64(delta), int64(pieces-1)); err != nil {
+		return err
+	}
+	// 直方图：原章从它原来的桶里减掉，各段分别落进各自的新桶。
+	if err := bumpLengthHist(ctx, tx, append([]int{headWords}, tailWords...), []int{sp.wordCount}); err != nil {
 		return err
 	}
 	return refreshBlockIdxRange(ctx, wt, sp.blockID)
@@ -97,34 +102,36 @@ func rewriteHeadPiece(ctx context.Context, tx *sql.Tx, sp chapterSpan, text stri
 	return words, nil
 }
 
-// insertTailPieces 插入第 2..N 段，返回全部段的字数总和。
+// insertTailPieces 插入第 2..N 段，返回「全部段字数总和 + 各段字数（供直方图落桶）」。
 //
 // 它们与原章共享同一个 block_id，只是 block_off/block_len 不同——这正是
 // 「一个块覆盖整数章」的自然延伸，读取侧不需要任何改动。
 func insertTailPieces(ctx context.Context, tx *sql.Tx, bookID int64, sp chapterSpan, text string,
-	cuts []int, titles []string, total int) (int, error) {
+	cuts []int, titles []string, total int) (int, []int, error) {
 	stmt, err := tx.PrepareContext(ctx, chapterInsertSQL)
 	if err != nil {
-		return 0, fmt.Errorf("store: split chapter prepare: %w", err)
+		return 0, nil, fmt.Errorf("store: split chapter prepare: %w", err)
 	}
 	defer stmt.Close() //nolint:errcheck // 只读句柄
 
 	start := cuts[0]
+	words := make([]int, 0, len(titles)-1)
 	for i := 1; i < len(titles); i++ {
 		end := len(text)
 		if i < len(cuts) {
 			end = cuts[i]
 		}
-		words := countWords(text[start:end])
+		piece := countWords(text[start:end])
 		idx := sp.idx + i
-		if _, err := stmt.ExecContext(ctx, bookID, sp.volumeID, idx, titles[i], words,
+		if _, err := stmt.ExecContext(ctx, bookID, sp.volumeID, idx, titles[i], piece,
 			sp.blockID, sp.offset+start, end-start); err != nil {
-			return 0, fmt.Errorf("store: split insert chapter idx=%d: %w", idx, err)
+			return 0, nil, fmt.Errorf("store: split insert chapter idx=%d: %w", idx, err)
 		}
-		total += words
+		total += piece
+		words = append(words, piece)
 		start = end
 	}
-	return total, nil
+	return total, words, nil
 }
 
 // splitByteOffsets 把段落切点翻译成章内字节偏移，并校验每个切点两侧都有字。

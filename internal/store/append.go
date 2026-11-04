@@ -112,10 +112,13 @@ func appendChaptersInTx(ctx context.Context, wt *writeTx, bookID int64,
 	if err != nil {
 		return err
 	}
-	if err := bumpMetrics(ctx, wt.main, packedBytes, words); err != nil {
+	if err := bumpMetricsCount(ctx, wt.main, packedBytes, words, int64(len(tail))); err != nil {
 		return err
 	}
 	if err := bumpMetricKey(ctx, wt.main, metricTextBytesRaw, rawBytes); err != nil {
+		return err
+	}
+	if err := bumpLengthHist(ctx, wt.main, chapterWordCounts(tail), nil); err != nil {
 		return err
 	}
 	_, err = bumpBookTextBytes(ctx, wt.main, bookID)
@@ -209,7 +212,12 @@ func updateBookAfterAppend(ctx context.Context, tx *sql.Tx, bookID int64, w book
 	if err != nil {
 		return fmt.Errorf("store: update book after append %d: %w", bookID, err)
 	}
-	return nil
+	// 追更改的是 books.word_count / chapter_count，作者聚合跟着变（与 adjustBookCounts 同口径）。
+	ids, err := authorIDsOfBook(ctx, tx, bookID)
+	if err != nil {
+		return err
+	}
+	return refreshAuthorIDs(ctx, tx, ids)
 }
 
 // shaTakenByOther 判断这个文件哈希是否已被另一本书占用。

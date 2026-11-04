@@ -78,6 +78,9 @@ const (
 // 真实库（42 万章）实测串行 138 ms、并发约 40 ms。
 func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	r := HealthReport{Warnings: []string{}}
+	// lengthLive 记录「长度直方图这次是实时算的」（预计算表不可用）：写在这里而不是
+	// 直接改 r.Stale，是因为它由并发 goroutine 写入，wg.Wait() 之后才允许读。
+	var lengthLive bool
 	var wg sync.WaitGroup
 	wg.Add(7)
 	go func() {
@@ -114,13 +117,17 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	}()
 	go func() {
 		defer wg.Done()
-		r.ChapterLengthBuckets = s.bucketMetric(ctx, &r, "chapterLengthBuckets",
-			lengthBucketLabels, lengthBucketEdges, "word_count", "chapters")
+		// 0022 起走预计算直方图：chapters 有 2,469 万行时，实时跑那 5 段区间 COUNT
+		// 要扫 5 遍索引（NAS 实测 3.35 s，9 个驾驶舱请求并发时 25.5 s）。
+		// 缓存缺失时降到实时算并置 Stale，接口照常 200。
+		r.ChapterLengthBuckets, lengthLive = s.lengthBuckets(ctx, &r)
 	}()
 	wg.Wait()
 
 	if snap, err := s.Metrics(ctx); err == nil {
-		r.Stale = snap.Stale
+		r.Stale = snap.Stale || lengthLive
+	} else {
+		r.Stale = lengthLive
 	}
 	// 正文库对账：孤儿块 / 悬空引用是两库（没有跨库事务）唯一会漂移的地方，
 	// 必须出现在健康报告里；对账本身是全表扫描，走缓存（10 分钟）。
@@ -171,13 +178,39 @@ func (r *HealthReport) warn(name string, err error) {
 // 为什么不用 CASE WHEN + GROUP BY：它要对索引做一次全量扫描（真实库 42 万行），
 // 纯 Go CLI 下 0.09 s、go 驱动下 143 ms；而区间 SEARCH 只走索引边界，实测 0.01 s。
 // 也不能把 42 万行拉进 Go 逐行计数：那要先读完整行记录（含数 GB 正文），实测 73.6 s。
+//
+// 0022 起章节长度直方图走预计算表（lengthBuckets → lengthHistFromTable），这条实时路径只在
+// 缓存缺失时降级使用：NAS 生产库 24,697,647 章时它要扫 5 遍索引，实测 3.35 s。
 func (s *Store) bucketMetric(ctx context.Context, r *HealthReport, name string,
 	labels []string, edges []int, column, table string) []Bucket {
-	counts, err := s.bucketCounts(ctx, column, table, edges)
+	counts, err := bucketCountsOn(ctx, s.db, column, table, edges)
 	if err != nil {
 		r.warn(name, err)
 		return nil
 	}
+	return makeBuckets(labels, counts)
+}
+
+// lengthBuckets 取章节长度直方图：优先读预计算表，缺失时降级为实时区间 COUNT。
+//
+// 返回 live=true 表示这次是**实时算的**（预计算不可用），调用方据此把报告标 stale——
+// 数字是对的，只是慢，而这一次慢必须让运维看见（否则「为什么今天驾驶舱这么卡」
+// 会变成一个没有线索的调查）。
+func (s *Store) lengthBuckets(ctx context.Context, r *HealthReport) (buckets []Bucket, live bool) {
+	if ok, _ := s.PrecomputeStatus(ctx); ok {
+		counts, err := s.lengthHistFromTable(ctx)
+		if err == nil {
+			return makeBuckets(lengthBucketLabels, counts), false
+		}
+		r.warn("chapterLengthBuckets", err)
+		return nil, false
+	}
+	return s.bucketMetric(ctx, r, "chapterLengthBuckets",
+		lengthBucketLabels, lengthBucketEdges, "word_count", "chapters"), true
+}
+
+// makeBuckets 把各桶计数配上标签（标签与计数长度必然一致，都由同一份 edges 派生）。
+func makeBuckets(labels []string, counts []int) []Bucket {
 	out := make([]Bucket, len(labels))
 	for i := range labels {
 		out[i] = Bucket{Label: labels[i], Count: counts[i]}
@@ -185,8 +218,11 @@ func (s *Store) bucketMetric(ctx context.Context, r *HealthReport, name string,
 	return out
 }
 
-// bucketCounts 用一个 SELECT 拿到各桶计数（第 i 个结果列 = 第 i 桶）。
-func (s *Store) bucketCounts(ctx context.Context, column, table string, edges []int) ([]int, error) {
+// bucketCountsOn 用一个 SELECT 拿到各桶计数（第 i 个结果列 = 第 i 桶）。
+//
+// 接受 queryer（*sql.DB / *sql.Tx）而不是绑死 s.db：0022 的回填要在迁移事务里
+// 算同一份直方图，必须读到自己刚提交前的数据（换连接读会读到旧快照）。
+func bucketCountsOn(ctx context.Context, q queryer, column, table string, edges []int) ([]int, error) {
 	args := make([]any, 0, len(edges)*2)
 	for i := range edges {
 		args = append(args, edges[i])
@@ -195,7 +231,7 @@ func (s *Store) bucketCounts(ctx context.Context, column, table string, edges []
 		}
 	}
 	counts := make([]int, len(edges))
-	row := s.db.QueryRowContext(ctx, bucketRangeSQL(column, table, edges), args...)
+	row := q.QueryRowContext(ctx, bucketRangeSQL(column, table, edges), args...)
 	dest := make([]any, len(edges))
 	for i := range counts {
 		dest[i] = &counts[i]
@@ -268,32 +304,7 @@ type ImportTrendPoint struct {
 	Chapters int    `json:"chapters"`
 }
 
-// ImportTrend 返回最近 days 天（含今天）每天的导入书数与章节数。
-//
-// 章节按所属书的 imported_at 归日（章节本身没有导入时间），
-// 没有数据的日期补 0，保证前端 x 轴连续。
-func (s *Store) ImportTrend(ctx context.Context, days int) ([]ImportTrendPoint, error) {
-	if days <= 0 {
-		days = 14
-	}
-	if days > maxTrendDays {
-		days = maxTrendDays
-	}
-	start := trendStartDay(days)
-	out := make([]ImportTrendPoint, 0, days)
-	for i := 0; i < days; i++ {
-		out = append(out, ImportTrendPoint{Date: start.AddDate(0, 0, i).Format(dateLayout)})
-	}
-	books, chapters, err := s.trendCounts(ctx, start)
-	if err != nil {
-		return nil, err
-	}
-	for i := range out {
-		out[i].Books = books[out[i].Date]
-		out[i].Chapters = chapters[out[i].Date]
-	}
-	return out, nil
-}
+// ImportTrend 的实现在 dashboard_read.go（0022 起优先读 import_daily）。
 
 const (
 	// dateLayout 是趋势图使用的本地日期键。
@@ -309,37 +320,36 @@ func trendStartDay(days int) time.Time {
 	return today.AddDate(0, 0, -(days - 1))
 }
 
-// trendCounts 按本地日期聚合书数与章节数，返回两张 date→count 表。
+// trendCounts 按本地日期聚合书数与章节数，返回两张 date→count 表（降级路径）。
+//
+// 章节不再 JOIN 24,697,647 行的 chapters 逐行 parseTime：章节数在 books.chapter_count
+// 上本来就有，按书归日再累加即可。NAS 生产库实测从 28.85 s 降到亚秒级。
 func (s *Store) trendCounts(ctx context.Context, start time.Time) (map[string]int, map[string]int, error) {
-	books, err := s.countByDay(ctx,
-		"SELECT imported_at FROM books WHERE imported_at >= ?", start)
-	if err != nil {
-		return nil, nil, err
-	}
-	chapters, err := s.countByDay(ctx,
-		"SELECT b.imported_at FROM chapters c JOIN books b ON b.id = c.book_id WHERE b.imported_at >= ?", start)
-	if err != nil {
-		return nil, nil, err
-	}
-	return books, chapters, nil
+	return s.countByDayFromBooks(ctx,
+		"SELECT imported_at, chapter_count FROM books WHERE imported_at >= ?", start)
 }
 
-// countByDay 执行「取一列时间文本」的查询并按本地日期计数。
+// countByDayFromBooks 执行「取 (时间文本, 章节数)」的查询并按本地日期聚合。
 //
 // 时间文本由 store 统一写成 UTC（YYYY-MM-DDTHH:MM:SS.sssZ），
 // 这里解析后转本地时区再取日期，避免 UTC 跨日把凌晨导入算到前一天。
-func (s *Store) countByDay(ctx context.Context, query string, args ...any) (map[string]int, error) {
+// 章节数直接取每行的 chapter_count（books 表 7 万行），不再为每一章查一次归属。
+func (s *Store) countByDayFromBooks(ctx context.Context, query string, args ...any) (map[string]int, map[string]int, error) {
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("store: import trend: %w", err)
+		return nil, nil, fmt.Errorf("store: import trend: %w", err)
 	}
 	defer rows.Close()
 
-	counts := make(map[string]int, 32)
+	books := make(map[string]int, 32)
+	chapters := make(map[string]int, 32)
 	for rows.Next() {
-		var raw sql.NullString
-		if err := rows.Scan(&raw); err != nil {
-			return nil, fmt.Errorf("store: scan import trend: %w", err)
+		var (
+			raw          sql.NullString
+			chapterCount int
+		)
+		if err := rows.Scan(&raw, &chapterCount); err != nil {
+			return nil, nil, fmt.Errorf("store: scan import trend: %w", err)
 		}
 		if !raw.Valid || raw.String == "" {
 			continue
@@ -348,12 +358,14 @@ func (s *Store) countByDay(ctx context.Context, query string, args ...any) (map[
 		if err != nil {
 			continue // 历史脏数据不影响趋势图
 		}
-		counts[t.Local().Format(dateLayout)]++
+		day := t.Local().Format(dateLayout)
+		books[day]++
+		chapters[day] += chapterCount
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: import trend rows: %w", err)
+		return nil, nil, fmt.Errorf("store: import trend rows: %w", err)
 	}
-	return counts, nil
+	return books, chapters, nil
 }
 
 var _ = errors.Is
