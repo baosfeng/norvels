@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
+import { READER_KEYS } from "./readerSettings";
 
 const chapters: ChapterBrief[] = [
   { id: 10, idx: 0, title: "第一章 起风", volumeId: 1, wordCount: 2000 },
@@ -139,6 +140,8 @@ function swipe(from: number, to: number, dy = 2) {
 
 describe("翻章与回章首", () => {
   beforeEach(() => {
+    // 横滑翻章属于滚动模式：分页模式下横滑是翻页（由翻页引擎接管）
+    localStorage.setItem(READER_KEYS.pageMode, "scroll");
     vi.clearAllMocks();
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   });

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
 import { ZONE_EDGE, resolveTapZone } from "../../lib/useReaderControls";
+import { READER_KEYS } from "./readerSettings";
 
 const chapters: ChapterBrief[] = [
   { id: 10, idx: 0, title: "第一章 起风", volumeId: 1, wordCount: 2000 },
@@ -150,6 +151,8 @@ describe("三区手势：分区判定纯函数", () => {
 describe("三区手势：H5 单击分区", () => {
   beforeEach(() => {
     localStorage.clear();
+    // 三区点击在滚动模式下是翻一章；分页模式另有专门用例守「翻一页」
+    localStorage.setItem(READER_KEYS.pageMode, "scroll");
     vi.clearAllMocks();
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     stubWidth(300);

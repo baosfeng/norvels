@@ -12,20 +12,23 @@ export function useReaderSwipe({
   overlayOpen,
   reducedMotion,
   step,
+  enabled = true,
 }: {
   isH5: boolean;
   overlayOpen: boolean;
   reducedMotion: boolean;
   step: (direction: ZoneDirection) => void;
+  /** 分页模式下由翻页引擎接管横向手势：翻章滑动必须让位，否则一次横滑会翻一章。 */
+  enabled?: boolean;
 }) {
   const handlers = useMemo(
     () => ({
-      enabled: isH5 && !overlayOpen,
+      enabled: isH5 && enabled && !overlayOpen,
       reducedMotion,
       onPrev: () => step("prev"),
       onNext: () => step("next"),
     }),
-    [isH5, overlayOpen, reducedMotion, step],
+    [isH5, enabled, overlayOpen, reducedMotion, step],
   );
   return useSwipePaging(handlers);
 }

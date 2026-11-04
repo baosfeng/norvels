@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ApiError } from "../../api/client";
 import type { ReaderHit } from "../../lib/readerSearch";
 import { ReaderArticle } from "./ReaderArticle";
@@ -29,6 +30,7 @@ export function ReaderBody({
   searching,
   bookId,
   reducedMotion,
+  pagedContent,
 }: {
   isH5: boolean;
   swipeRef: (node: HTMLElement | null) => void;
@@ -54,11 +56,22 @@ export function ReaderBody({
   searching: boolean;
   bookId: number;
   reducedMotion: boolean;
+  /**
+   * 分页正文（只有 H5 + 阅读模式 = 分页时传）。
+   * 传了就整条连续流的渲染让位给它——两条路径互斥，不在同一个 DOM 里叠。
+   */
+  pagedContent?: ReactNode;
 }) {
   const hasBody = stream.segments.length > 0;
   return (
-    <ReaderTapZone isH5={isH5} swipeRef={swipeRef} surfaceProps={surfaceProps} zonesEnabled={zonesEnabled}>
-      {hasBody ? (
+    <ReaderTapZone
+      isH5={isH5}
+      swipeRef={swipeRef}
+      surfaceProps={surfaceProps}
+      zonesEnabled={zonesEnabled}
+      paged={Boolean(pagedContent)}
+    >
+      {pagedContent ?? (hasBody ? (
         <ReaderArticle
           stream={stream}
           hitsByPara={hitsByPara}
@@ -80,7 +93,7 @@ export function ReaderBody({
           onRetry={onRetry}
           onNext={onNext}
         />
-      )}
+      ))}
     </ReaderTapZone>
   );
 }

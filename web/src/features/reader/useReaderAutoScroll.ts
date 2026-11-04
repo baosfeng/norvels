@@ -16,6 +16,7 @@ export function useReaderAutoScroll({
   index,
   goChapter,
   isH5,
+  enabled = true,
 }: {
   settings: ReaderSettings;
   updateSettings: (patch: Partial<ReaderSettings>) => void;
@@ -24,6 +25,8 @@ export function useReaderAutoScroll({
   index: number;
   goChapter: (target: ChapterBrief | null) => void;
   isH5: boolean;
+  /** 分页模式下「自动滚动」的含义是自动翻页，连续滚动这条路径必须让位。 */
+  enabled?: boolean;
 }) {
   const [autoPaused, setAutoPaused] = useState(false);
   const [windowActive, setWindowActive] = useState(true);
@@ -42,7 +45,7 @@ export function useReaderAutoScroll({
     };
   }, []);
 
-  const autoRunning = settings.autoScroll && !autoPaused && !overlayOpen && windowActive;
+  const autoRunning = enabled && settings.autoScroll && !autoPaused && !overlayOpen && windowActive;
   const autoBottomRef = useRef<() => void>(() => {});
   useEffect(() => {
     autoBottomRef.current = () => {

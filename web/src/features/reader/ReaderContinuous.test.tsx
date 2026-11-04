@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiError } from "../../api/client";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
+import { READER_KEYS } from "./readerSettings";
 
 const chapters: ChapterBrief[] = [
   { id: 10, idx: 0, title: "第一章 起风", volumeId: 1, wordCount: 2000 },
@@ -214,6 +215,8 @@ async function scrollTo(top: number) {
 }
 
 beforeEach(() => {
+  // 这些用例守的是 H5 的连续滚动：显式把阅读模式钉在 scroll（默认已是分页）
+  localStorage.setItem(READER_KEYS.pageMode, "scroll");
   FakeObserver.reset();
   failures.ids.clear();
   failures.pending.clear();

@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, Bookmark, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
+import { READER_KEYS } from "./readerSettings";
 
 const chapters: ChapterBrief[] = [
   { id: 10, idx: 0, title: "第一章 起风", volumeId: 1, wordCount: 2000 },
@@ -113,6 +114,11 @@ function renderReader(entries: string[] = ["/read/7/10"], tier: "h5" | "pc" = "h
 function slider(): HTMLInputElement {
   return screen.getByTestId("chapter-slider") as HTMLInputElement;
 }
+
+beforeEach(() => {
+  // 目录 / 滑块 / 章末衔接都按连续滚动口径守：显式钉在滚动模式
+  localStorage.setItem(READER_KEYS.pageMode, "scroll");
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

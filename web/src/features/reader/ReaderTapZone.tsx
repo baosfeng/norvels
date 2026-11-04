@@ -10,6 +10,7 @@ export function ReaderTapZone({
   swipeRef,
   surfaceProps,
   zonesEnabled,
+  paged,
   children,
 }: {
   isH5: boolean;
@@ -20,11 +21,13 @@ export function ReaderTapZone({
     onPointerCancel: () => void;
   };
   zonesEnabled: boolean;
+  /** 分页模式：正文不许滚（位置真值是页码），见 ix-reader-paging.css 的 .is-paged。 */
+  paged?: boolean;
   children: ReactNode;
 }) {
   return (
     <div
-      className="reader-main"
+      className={`reader-main${paged ? " is-paged" : ""}`}
       ref={swipeRef}
       data-testid="reader-swipe-area"
       data-zones={zonesEnabled ? "on" : "off"}
@@ -35,9 +38,11 @@ export function ReaderTapZone({
       {...surfaceProps}
     >
       <p id="reader-gesture-hint" className="sr-only">
-        {isH5
-          ? "单击屏幕左三成翻到上一章，右三成翻到下一章，中间唤出菜单；也可以左右滑动翻章"
-          : "键盘左右方向键翻章；正文末尾有「下一章」按钮"}
+        {!isH5
+          ? "键盘左右方向键翻章；正文末尾有「下一章」按钮"
+          : paged
+            ? "单击屏幕左三成翻到上一页，右三成翻到下一页，中间唤出菜单；也可以左右滑动翻页，从左右边缘翻相当于自动翻页"
+            : "单击屏幕左三成翻到上一章，右三成翻到下一章，中间唤出菜单；也可以左右滑动翻章"}
       </p>
       <div className="reader-swipe-layer">
         {children}

@@ -26,10 +26,22 @@ import {
   type ReaderWidth,
 } from "./readerSettings";
 import { speedToPxPerSec } from "../../lib/autoScroll";
+import { TURN_EFFECTS, TURN_EFFECT_LABELS, type TurnEffect } from "../../lib/paging/turnEffects";
+import type { ReaderPageMode } from "./readerSettings";
 
 import { PARA_LABELS, THEME_DOTS, THEME_LABELS } from "./readerConstants";
 
 const FONT_FAMILIES: ReaderFontFamily[] = ["serif", "sans", "system"];
+const PAGE_MODES: ReaderPageMode[] = ["page", "scroll"];
+const PAGE_MODE_LABELS: Record<ReaderPageMode, string> = { page: "左右翻页", scroll: "上下滚动" };
+/** 每种效果的一句人话：读者不知道「仿真折页」是什么，这里说清它长什么样。 */
+const TURN_EFFECT_HINTS: Record<TurnEffect, string> = {
+  slide: "整页跟着手指滑走，下一页同时跟上来",
+  cover: "新的一页从右边压上来，旧页往后退一点",
+  fade: "旧页淡出后新页淡入，中段会短暂露出纸底",
+  curl: "纸页沿折痕卷起，带纸背卷边与投影，文字保持清晰",
+  none: "松手直接换页，不跟手也没有动画",
+};
 const WIDTHS: ReaderWidth[] = ["narrow", "normal", "wide"];
 const ALIGNS: ReaderAlign[] = ["left", "justify"];
 
@@ -165,6 +177,40 @@ export function ReaderSettingsPanel({
           关闭
         </button>
       </div>
+
+      {/* 阅读模式与翻页效果：只有手机能分页（PC 的正文是整页连续滚动，切换没有意义） */}
+      <Row label="阅读模式">
+        <div>
+          <SegGroup
+            label="阅读模式"
+            values={PAGE_MODES}
+            current={settings.pageMode}
+            labelOf={(value) => PAGE_MODE_LABELS[value]}
+            disabled={!isH5}
+            onChange={(value) => onChange({ pageMode: value })}
+          />
+        </div>
+      </Row>
+      {isH5 ? null : <span className="inline-note">手机专用：电脑上始终是上下滚动</span>}
+
+      <Row label="翻页效果">
+        <div>
+          <SegGroup
+            label="翻页效果"
+            values={TURN_EFFECTS}
+            current={settings.pageEffect}
+            labelOf={(value) => TURN_EFFECT_LABELS[value]}
+            disabled={!isH5 || settings.pageMode !== "page"}
+            onChange={(value) => onChange({ pageEffect: value })}
+          />
+        </div>
+      </Row>
+      {isH5 && settings.pageMode !== "page" ? <span className="inline-note">先切到「左右翻页」再挑效果</span> : null}
+      {isH5 && settings.pageMode === "page" ? (
+        <p className="settings-note" data-testid="reader-page-effect-hint">
+          {TURN_EFFECT_HINTS[settings.pageEffect]}
+        </p>
+      ) : null}
 
       <Row label="字号">
         <div className="font-stepper">

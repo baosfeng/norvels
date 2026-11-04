@@ -11,13 +11,17 @@ import type { StreamSegment } from "./useChapterStream";
 export function useReaderVisiblePara({
   segments,
   onAnchor,
+  enabled = true,
 }: {
   /** 渲染中的章节窗口：段落节点变化时重新观察。 */
   segments: StreamSegment[];
   onAnchor: (anchor: { chapterId: number; para: number }) => void;
+  /** 分页模式下位置真相是页码，滚动锚点只会互相打架，直接关掉。 */
+  enabled?: boolean;
 }) {
   const key = segments.map((segment) => segment.id).join(",");
   useEffect(() => {
+    if (!enabled) return;
     if (typeof IntersectionObserver === "undefined") return;
     const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-para]"));
     if (nodes.length === 0) return;
@@ -44,5 +48,5 @@ export function useReaderVisiblePara({
     );
     nodes.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
-  }, [key, onAnchor]);
+  }, [enabled, key, onAnchor]);
 }

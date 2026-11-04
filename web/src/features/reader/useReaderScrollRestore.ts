@@ -43,7 +43,10 @@ export function useReaderScrollRestore({
   consumeFlip,
   consumeAdvance,
   onRestoreAnchor,
+  enabled = true,
 }: {
+  /** 分页模式下位置由页码游标负责：滚动恢复整条路径让位。 */
+  enabled?: boolean;
   searchOpen: boolean;
   currentHit: number;
   hitCount: number;
@@ -73,25 +76,26 @@ export function useReaderScrollRestore({
     takeAdvance.current = consumeAdvance;
   }, [consumeFlip, consumeAdvance]);
   useEffect(() => {
-    if (!searchOpen || hitCount === 0) return;
+    if (!enabled || !searchOpen || hitCount === 0) return;
     const node = document.querySelector<HTMLElement>(`[data-hit="${currentHit}"]`);
     if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "center" });
-  }, [searchOpen, currentHit, hitCount, chapterDataId]);
+  }, [enabled, searchOpen, currentHit, hitCount, chapterDataId]);
 
   useEffect(() => {
-    if (!pendingJump || chapterDataId !== pendingJump.chapterId) return;
+    if (!enabled || !pendingJump || chapterDataId !== pendingJump.chapterId) return;
     const node = document.getElementById(`para-${pendingJump.paraIndex}`);
     if (node && typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "start" });
     else {
       scrollSurfaceToChapter(document.querySelector<HTMLElement>(SURFACE_SELECTOR), chapterId);
       showToast("这本书签的位置变了，先带你到这一章开头");
     }
-  }, [pendingJump, chapterDataId, chapterId]);
+  }, [enabled, pendingJump, chapterDataId, chapterId]);
 
   const restoredChapter = useRef(0);
   // 进章落位用 layoutEffect：必须赶在第一次 IntersectionObserver 判定之前落位，
   // 否则「可见章」会按落位前的位置算成上一章（连续流里上一章就在上方）。
   useLayoutEffect(() => {
+    if (!enabled) return;
     if (chapterDataId === undefined || chapterDataId !== chapterId) return;
     if (restoredChapter.current === chapterId) return;
     if (progressLoading) return;
@@ -111,5 +115,5 @@ export function useReaderScrollRestore({
     // 容器内部滚动（H5 的 .reader-main 定高 overflow），window.scrollTo 对它无效——
     // 实测滚到 70% 翻章，新章直接停在 56%。这里滚的是容器，且按「本章 section」定位。
     scrollSurfaceToChapter(surface, chapterId);
-  }, [chapterDataId, chapterId, pendingJump, storedParaIndex, progressLoading, onRestoreAnchor]);
+  }, [enabled, chapterDataId, chapterId, pendingJump, storedParaIndex, progressLoading, onRestoreAnchor]);
 }

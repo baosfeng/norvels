@@ -31,6 +31,7 @@ import { ReaderErrorBoundary, ReaderErrorPanel } from "./ReaderErrorBoundary";
 import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
 import { useReaderSwipe } from "./useReaderSwipe";
+import { useReaderPaging } from "./useReaderPaging";
 import { SURFACE_SELECTOR } from "./readerStreamLayout";
 import { useChapterStream } from "./useChapterStream";
 import { tradToSimp } from "../../lib/trad2simp";
@@ -169,13 +170,6 @@ function ReaderScreen() {
     [chapters, chapterId, jumpChapter],
   );
 
-  const controls = useReaderControls({
-    isH5,
-    paused: overlayOpen,
-    onZoneTap: stepChapter,
-  });
-  const { fullscreen, canFullscreen, toggle: toggleFullscreen } = useReaderFullscreen({ onUnsupported: controls.hide });
-
   const { retryingChapter, chapterFailures, retryChapter } = useChapterRetry({
     chapter: { data: stream.chapterData, error: stream.error, reload: stream.reload },
     chapterId,
@@ -185,6 +179,40 @@ function ReaderScreen() {
     () => pickStoredParaIndex(progressList.data?.items ?? [], bookId, chapterId),
     [progressList.data, bookId, chapterId],
   );
+
+  // 分页阅读（只 H5，且阅读模式 = 分页）：三区点击在分页下是翻一页，不是翻一章
+  const paging = useReaderPaging({
+    isH5,
+    settings,
+    chapterId,
+    title: activeSegment?.title ?? "",
+    paragraphs: viewParagraphs,
+    hitsByPara,
+    currentHit,
+    searching: searchOpen,
+    storedParaIndex,
+    jumpPara: pendingJump && pendingJump.chapterId === chapterId ? pendingJump.paraIndex : null,
+    onJumpConsumed: () => setPendingJump(null),
+    prev,
+    next,
+    jumpChapter,
+    onAnchor: setAnchor,
+    paused: overlayOpen,
+    loading: stream.loading,
+    error: stream.error,
+    retrying: retryingChapter,
+    retryFailures: chapterFailures,
+    onRetry: retryChapter,
+    onNextChapter: () => stepChapter("next"),
+  });
+
+  const controls = useReaderControls({
+    isH5,
+    paused: overlayOpen,
+    // 分页下左右 30% 是翻一页（章末再翻才跨章），滚动模式下仍是翻一章
+    onZoneTap: paging.active ? paging.zoneTap : stepChapter,
+  });
+  const { fullscreen, canFullscreen, toggle: toggleFullscreen } = useReaderFullscreen({ onUnsupported: controls.hide });
 
   useReaderProgressSync({
     bookId,
@@ -200,6 +228,7 @@ function ReaderScreen() {
   const { autoRunning, autoPaused, windowActive, setAutoPaused, exitAutoScroll } = useReaderAutoScroll({
     settings,
     updateSettings: changeSettings,
+    enabled: !paging.active,
     overlayOpen,
     next,
     index,
@@ -226,9 +255,10 @@ function ReaderScreen() {
     goChapterAnnounce: (target) => jumpChapter(target, "已经是最后一章了"),
   });
 
-  useReaderVisiblePara({ segments: stream.segments, onAnchor: setAnchor });
+  useReaderVisiblePara({ segments: stream.segments, onAnchor: setAnchor, enabled: !paging.active });
 
   useReaderScrollRestore({
+    enabled: !paging.active,
     consumeFlip,
     consumeAdvance: stream.consumeAdvance,
     searchOpen,
@@ -249,7 +279,13 @@ function ReaderScreen() {
     Boolean(stream.chapterData) && storedParaIndex > 0 && !pendingJump && hintDismissedFor !== chapterId;
 
   const reducedMotion = prefersReducedMotion();
-  const swipeRef = useReaderSwipe({ isH5, overlayOpen, reducedMotion, step: stepChapter });
+  const swipeRef = useReaderSwipe({
+    isH5,
+    overlayOpen,
+    reducedMotion,
+    step: stepChapter,
+    enabled: !paging.active,
+  });
 
   const { toggleSearch, toggleSettings, toggleDirectory, toggleBookmarks } = useReaderToggles({
     searchOpen,
@@ -363,6 +399,7 @@ function ReaderScreen() {
         searching={searchOpen}
         bookId={bookId}
         reducedMotion={reducedMotion}
+        pagedContent={paging.content}
       />
 
       {/* 进度恢复提示：内容自适应的浮胶囊（3 秒自动消失），不进正文流、不把正文往下推 */}
@@ -370,7 +407,11 @@ function ReaderScreen() {
 
       {/* 恢复提示胶囊占着底部留白带时，本章浮标先让位（两个瞬时浮层不叠在一起）；
           自动滚动浮条也在那条带里，同样让它让位 */}
-      <ReaderScrollProgress resetKey={chapterId} chipSuppressed={restoreHintVisible || settings.autoScroll} />
+      <ReaderScrollProgress
+        resetKey={chapterId}
+        chipSuppressed={restoreHintVisible || settings.autoScroll}
+        paged={paging.active ? { label: paging.pageLabel ?? "", percent: paging.pagePercent } : null}
+      />
 
       {isH5 ? (
         <ReaderBottomBar

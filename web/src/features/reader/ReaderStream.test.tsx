@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
+import { READER_KEYS } from "./readerSettings";
 
 const chapters: ChapterBrief[] = [
   { id: 10, idx: 0, title: "第一章 起风", volumeId: 1, wordCount: 2000 },
@@ -202,6 +203,8 @@ function stubLayout() {
 }
 
 beforeEach(() => {
+  // 连续章节流的用例：显式钉在滚动模式（默认已是分页）
+  localStorage.setItem(READER_KEYS.pageMode, "scroll");
   FakeObserver.reset();
   vi.clearAllMocks();
   vi.stubGlobal("IntersectionObserver", FakeObserver);

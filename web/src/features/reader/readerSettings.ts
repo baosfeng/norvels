@@ -6,6 +6,8 @@
  * 隐私模式 / 手改过的脏值一律回落到默认值，绝不让阅读器打不开。
  */
 
+import { isTurnEffect, type TurnEffect } from "../../lib/paging/turnEffects";
+
 export type ReaderFontFamily = "serif" | "sans" | "system";
 export type ReaderWidth = "narrow" | "normal" | "wide";
 export type ReaderAlign = "left" | "justify";
@@ -24,6 +26,8 @@ export const READER_KEYS = {
   autoScroll: "norvels.reader.autoScroll",
   autoScrollSpeed: "norvels.reader.autoScrollSpeed",
   autoScrollNext: "norvels.reader.autoScrollNext",
+  pageMode: "norvels.reader.pageMode",
+  pageEffect: "norvels.reader.pageEffect",
 } as const;
 
 /** 段距四档（em）：紧凑 / 偏紧 / 标准 / 宽松。 */
@@ -79,6 +83,10 @@ export interface ReaderSettings {
   autoScrollSpeed: number;
   /** 滚到底自动翻下一章（默认关：避免误触跑掉位置）。 */
   autoScrollNext: boolean;
+  /** 阅读模式：scroll 上下滚动（PC 恒为此值）/ page 左右翻页（只 H5 生效）。 */
+  pageMode: ReaderPageMode;
+  /** 翻页效果；默认 slide。 */
+  pageEffect: TurnEffect;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -94,7 +102,14 @@ export const READER_DEFAULTS: ReaderSettings = {
   autoScroll: false,
   autoScrollSpeed: 3,
   autoScrollNext: false,
+  // 默认分页：读者的诉求就是「翻页体验」，默认进来就要看得见效果；
+  // 上下滚动作为可选项保留（老用户存过 scroll 的继续 scroll）。
+  pageMode: "page",
+  pageEffect: "slide",
 };
+
+/** 阅读模式：分页只给 H5，PC 永远走连续滚动。 */
+export type ReaderPageMode = "scroll" | "page";
 
 /** 只读 / 只写分开：读的调用方只需要 getItem，写的调用方只需要 setItem（测试桩不必实现全部 Storage）。 */
 type ReadStorage = Pick<Storage, "getItem"> | undefined;
@@ -129,6 +144,12 @@ function readBool(storage: ReadStorage, key: string, fallback: boolean): boolean
   return fallback;
 }
 
+/** 翻页效果读盘：脏值一律落回默认（不认「楷体」这种存错的串）。 */
+function readEffect(storage: ReadStorage, key: string): TurnEffect {
+  const value = raw(storage, key);
+  return isTurnEffect(value) ? value : READER_DEFAULTS.pageEffect;
+}
+
 /** 把任意数字吸附到最近的段距档位（手改过的 0.95 也能落到标准档）。 */
 export function snapParaLevel(value: number): number {
   let best: number = PARA_LEVELS[0];
@@ -150,6 +171,8 @@ export function readReaderSettings(storage: ReadStorage = typeof window === "und
     autoScroll: readBool(storage, READER_KEYS.autoScroll, READER_DEFAULTS.autoScroll),
     autoScrollSpeed: snapSpeed(readNumber(storage, READER_KEYS.autoScrollSpeed, READER_DEFAULTS.autoScrollSpeed, SPEED_MIN, SPEED_MAX)),
     autoScrollNext: readBool(storage, READER_KEYS.autoScrollNext, READER_DEFAULTS.autoScrollNext),
+    pageMode: readEnum(storage, READER_KEYS.pageMode, ["scroll", "page"], READER_DEFAULTS.pageMode),
+    pageEffect: readEffect(storage, READER_KEYS.pageEffect),
   };
 }
 
@@ -170,6 +193,8 @@ export function writeReaderSettings(settings: ReaderSettings, storage: WriteStor
     [READER_KEYS.autoScroll]: settings.autoScroll,
     [READER_KEYS.autoScrollSpeed]: settings.autoScrollSpeed,
     [READER_KEYS.autoScrollNext]: settings.autoScrollNext,
+    [READER_KEYS.pageMode]: settings.pageMode,
+    [READER_KEYS.pageEffect]: settings.pageEffect,
   };
   try {
     for (const [key, value] of Object.entries(entries)) target.setItem(key, String(value));

@@ -82,11 +82,13 @@ export interface ReaderScrollProgressState {
  * 浮层的显隐由一个 1.2s 定时器收口——定时器不随事件重建，也不再随卸载清理：
  * 换章时上一次的定时器自然到期收起浮层，不会把「正在滚动」留在新章上。
  */
-export function useReaderScrollPercent(resetKey: number): ReaderScrollProgressState {
+export function useReaderScrollPercent(resetKey: number, enabled = true): ReaderScrollProgressState {
   const [percent, setPercent] = useState(0);
   const [scrolling, setScrolling] = useState(false);
 
   useEffect(() => {
+    // 分页模式下位置真值是页码：这里不读滚动，浮标的显隐由页码变化驱动
+    if (!enabled) return;
     const surface = document.querySelector<HTMLElement>(SURFACE_SELECTOR);
     if (!surface) return;
 
@@ -124,7 +126,7 @@ export function useReaderScrollPercent(resetKey: number): ReaderScrollProgressSt
       window.removeEventListener("scroll", onScroll);
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [resetKey]);
+  }, [enabled, resetKey]);
 
   return { percent, scrolling };
 }

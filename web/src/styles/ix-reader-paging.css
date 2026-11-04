@@ -1,0 +1,154 @@
+/* 分页阅读（只 H5）：多栏排版源 + 页层裁剪窗口。
+   几何口径见 lib/paging/pageGeometry.ts；这里只管「怎么画」。 */
+
+/* ── 分页正文区：占满正文容器，不滚 ──
+   分页模式下 .reader-main 不许滚：滚动位置在这里没有意义（位置的真值是页码），
+   留着 overflow:auto 会让竖向拖动把页面推走，读者一松手就看见半页空白。 */
+.reader-main.is-paged {
+  overflow: hidden;
+  overscroll-behavior: none;
+  padding: 0;
+  display: flex;
+}
+
+/* 版心左右留白：分页几何由 JS 从这一个值算（页宽 = stage 宽 − 2 × 留白），
+   不用 .reader-main 的 padding —— 那会把 stage 自己缩窄，页宽与列宽就对不上了。 */
+.reader-paged {
+  --pg-pad-x: 18px;
+}
+
+.reader-paged {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  /* 横向拖动归翻页引擎：不留给浏览器做滚动 / 页面回退 */
+  touch-action: pan-y;
+  user-select: none;
+}
+
+/* 视口 = 一页的可视区。--pg-w / --pg-h / --pg-top / --pad-x 由 PagedLayout 写入。 */
+.pg-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--r-bg);
+  perspective: 1100px;
+}
+
+/* 页层 = 整屏宽 × 页高的一层：位移基准是可视宽（整页滑动才对），
+   里面再套 .pg-window 把可见区裁到版心 —— 裁剪必须在版心上，
+   否则多栏排版源的第 2 列会从左右边缘漏出来。 */
+.pg-layer {
+  position: absolute;
+  left: 0;
+  top: var(--pg-top, 0px);
+  width: 100%;
+  height: var(--pg-h, 100%);
+  background: var(--r-bg);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.pg-window {
+  position: absolute;
+  left: var(--pad-x, 0px);
+  top: 0;
+  width: var(--pg-w, 100%);
+  height: var(--pg-h, 100%);
+  overflow: hidden;
+  background: var(--r-bg);
+}
+
+/* 排版源：页数与列位置的唯一真值。
+   overflow 必须 visible —— 列是横向溢出排布的，一裁就只剩第一列，
+   translateX 再也翻不出后面的页。裁剪交给外层 .pg-window。 */
+.pg-source {
+  width: var(--pg-w, 100%);
+  height: var(--pg-h, 100%);
+  column-width: var(--pg-w, 100%);
+  column-gap: 0;
+  column-fill: auto;
+  overflow: visible;
+  font-family: var(--reader-family);
+  font-size: var(--reader-font);
+  line-height: var(--reader-leading);
+  color: var(--r-fg);
+}
+
+.pg-source h2 {
+  font-size: 1.5em;
+  line-height: 1.45;
+  margin: 0 0 1.4em;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.pg-source p {
+  text-indent: var(--reader-indent, 2em);
+  margin: 0 0 var(--reader-para, 1em);
+  text-align: var(--reader-align, left);
+  color: var(--r-fg);
+  text-wrap: pretty;
+}
+
+.pg-source p:last-child {
+  margin-bottom: 0;
+}
+
+/* 搜索命中：与连续流同一套标记（data-hit / is-current），搜索条按索引对齐。 */
+.pg-source mark {
+  background: color-mix(in oklab, var(--accent), transparent 72%);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.pg-source mark.is-current {
+  background: color-mix(in oklab, var(--accent), transparent 42%);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 70%);
+}
+
+/* 常驻测量源：隐形、不参与渲染与手势，专门算页数与段落位置。 */
+.pg-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 页码浮标：与「本章 N%」同一位置与观感，内容换成第 p / P 页。 */
+.pg-indicator {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: 8px;
+  margin: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-muted);
+  background: color-mix(in oklab, var(--r-bg), transparent 22%);
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms var(--ease-standard);
+}
+
+.reader-paged.is-turning .pg-indicator,
+.reader-paged:hover .pg-indicator {
+  opacity: 0.85;
+}
+
+.reader-shell.is-controls .pg-indicator {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-indicator {
+    transition: none;
+  }
+}

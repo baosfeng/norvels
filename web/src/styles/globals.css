@@ -436,6 +436,8 @@ body.h5-sheet-open {
 /* 阅读器的两块增量样式：都必须在 ix-reader.css 之后（它们要覆盖旧规则）。
    stream = 章间连续流（章末不再有大按钮）；toc = 目录抽屉滚动与自动续载。 */
 @import "./ix-reader-stream.css";
+/* 分页阅读（只 H5）：多栏排版源 + 页层裁剪窗口 + 翻页效果层 */
+@import "./ix-reader-paging.css";
 @import "./ix-reader-toc.css";
 @import "./ix-library.css";
 /* 书架页排版（H5 三列封面网格 / 更新角标 / 追更汇总条）：排在 ix-library.css 之后，
