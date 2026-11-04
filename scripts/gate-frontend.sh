@@ -65,4 +65,22 @@ if [ $rc -ne 0 ]; then
   exit 1
 fi
 echo "✅ 前端单元测试全部通过"
+
+# eslint 放在这里而不是开发期反复跑：它是「风格 / 规则」判定，不影响功能，
+# 但红了就必须修。实测开发期跑了 49 次共 7 分钟，而在这里只跑一次约 7s。
+# 既有告警不阻断：仓库当前有 5 条历史 error，按基线比较，只有新增才判红。
+echo "==> 前端 eslint（只判新增）"
+LINT_BASELINE=5
+# eslint 的 json 输出直接解析更准：grep 数 "severity":2 会被别的字段误伤。
+lint_json=$(./node_modules/.bin/eslint . -f json 2>/dev/null || true)
+lint_errors=$(printf "%s" "$lint_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const r=JSON.parse(s);let n=0;for(const f of r)for(const m of f.messages)if(m.severity===2)n++;console.log(n)}catch(e){console.log("")}})')
+if [ -z "$lint_errors" ] || [ "$lint_errors" -eq 0 ] && [ -z "$lint_json" ]; then
+  echo "⚠️  eslint 未产出结果，跳过（不阻断）"
+elif [ "$lint_errors" -gt "$LINT_BASELINE" ]; then
+  echo "❌ eslint 新增错误：${lint_errors} 条（基线 ${LINT_BASELINE}）"
+  echo "   本地复现：cd web && npm run lint"
+  exit 1
+else
+  echo "✅ eslint 无新增错误（${lint_errors} 条 / 基线 ${LINT_BASELINE}）"
+fi
 exit 0

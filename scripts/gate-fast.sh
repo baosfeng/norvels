@@ -58,6 +58,21 @@ check_tsc() {
       --incremental --tsBuildInfoFile "$info" )
 }
 
+# 改动的前端测试文件：只跑这几个，不跑整套。开发期想知道「我刚改的功能还对不对」，
+# 跑整套 vitest 要 20s+ 且大半与本次无关；整套留给门禁 11 在收尾跑一次。
+check_web_tests() {
+  local files
+  files=$({ git diff --name-only HEAD 2>/dev/null || git diff --name-only 2>/dev/null
+    git ls-files --others --exclude-standard 2>/dev/null
+  } | grep -E '^web/src/.*\.(test|spec)\.(ts|tsx)$' | sort -u | tr '\n' ' ')
+  if [ -z "$files" ]; then
+    printf '没有改动的测试文件，跳过\n'
+    return 0
+  fi
+  printf '改动测试：%s\n' "$files"
+  ( cd web && ./node_modules/.bin/vitest run ${files#web/} )
+}
+
 # 改动包：只取工作区里被改的 .go 文件所属目录；验收测试留给 make gate-acceptance。
 changed_pkgs() {
   { git diff --name-only HEAD 2>/dev/null || git diff --name-only 2>/dev/null
@@ -94,6 +109,7 @@ launch gofmt 'gofmt' check_gofmt
 launch vet 'go vet ./...' check_vet
 launch tsc 'tsc --noEmit' check_tsc
 [ "$WITH_TESTS" -eq 1 ] && launch tests '改动包单测' check_tests
+[ "$WITH_TESTS" -eq 1 ] && launch webtests '改动前端测试' check_web_tests
 wait
 ELAPSED=$(( $(date +%s) - START ))
 
@@ -118,6 +134,7 @@ report gofmt 'gofmt（./cmd ./internal ./tests）'
 report vet   'go vet ./...'
 report tsc   '前端 tsc --noEmit（web/tsconfig.app.json）'
 [ "$WITH_TESTS" -eq 1 ] && report tests '改动包单测'
+[ "$WITH_TESTS" -eq 1 ] && report webtests '改动前端测试（只跑改到的文件）'
 
 printf '\n'
 if [ "$fails" -gt 0 ]; then

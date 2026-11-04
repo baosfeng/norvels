@@ -7,13 +7,17 @@
 
 | 入口 | 跑什么 | 用途 |
 |---|---|---|
-| `make gate-fast` | gofmt + go vet + 前端 `tsc --noEmit`（`scripts/gate-fast.sh --tests` 再加改动包单测） | 随改随跑，秒级 |
+| `make gate-fast` | gofmt + go vet + 前端 `tsc --noEmit`（`scripts/gate-fast.sh --tests` 再加改动包单测 + **改动的那几个前端测试文件**） | 随改随跑，秒级 |
 | `make gate` | 9 项**依次**执行，逐项打印，编号 1/2/4/5/6/7/9/10/11 | 提交前完整口径（CI 同口径） |
 | `scripts/gate-all.sh --parallel` | 同上 9 项并行跑、按编号顺序回放 | 本地热缓存下省约 12s |
 
 - 快环只做「格式 + 编译级」反馈，通过 ≠ 门禁通过，提交前仍必须 `make gate`。默认串行：9 项都吃 CPU，并行只快约 12s 却会在低核机器上
   偶发互扰，假红要再查一遍比省下的十几秒贵。**假红有两条独立成因**（并行互扰 / Unhandled Errors），处置相反，先判是哪一条：
-  见「门禁假红的识别」。实测（10 核）：快环 1s（首次 5s）；门禁改前串行 308s → 改后 47s / 并行 35s；隐私扫描 220s → `--all` 4s。
+  见「门禁假红的识别」。实测（10 核）：快环 1s（首次 5s）、快环 `--tests` 1s（只跑改动的测试文件）；门禁改前串行 308s → 改后 47s / 并行 35s；隐私扫描 220s → `--all` 4s。
+- **开发期只跑快环，整套测试与全量门禁留到收尾**：功能没跑通时整套测试的红多半是噪音，而每跑一次都是 20s 起。
+  实测一次功能开发里 typecheck 53 次、vitest 48 次、lint 49 次合计 25 分钟，而一次全量门禁只要 47s——**反复跑检查比跑一次贵 30 倍**。
+- **同一套测试只跑一次**：门禁 1 已用 `go test -coverprofile` 产出 profile 落在 `$WORK/go-cover.out`，门禁 7 直接 `--profile=` 复用它
+  （省一次 `go test ./...`，16s → 0s）。单跑 `scripts/gate-cover.sh` 时行为不变，它自己跑测试。并行模式 1 与 7 同时起跑、profile 未就绪，门禁 7 自动退回自己跑。
 - 单项复跑：`gate-acceptance`（2）、`gate-complexity`（4）、`gate-size`（5）、`gate-deps`（6）、`gate-cover`（7）、`privacy`（9）、`privacy-changed`（9，只扫改动）；1/10/11 无单项目标（10 = `check-build-parity.sh`，11 = `gate-frontend.sh`）。
 
 ## 9 项与阈值
@@ -28,7 +32,7 @@
 | 7 | 覆盖率 | 不低于登记基线（硬门禁），85% 为渐进目标 | `go tool cover` 行覆盖率 |
 | 9 | 隐私扫描 | 零命中 | `scripts/privacy-scan.sh --all` |
 | 10 | 构建一致性 | 容器工具版本满足 `web/` 要求；`Makefile` 的 `VERSION` 在 `internal/releases/CHANGELOG.md` 里有 `## [x.y.z]` 一节（go:embed 打进产品，发了版没写 = 发布事故） | `scripts/check-build-parity.sh` |
-| 11 | 前端类型检查 + 单元测试 | tsc 无 `error TS`；vitest 全绿（**含进程退出码**，见「门禁假红的识别」） | `scripts/gate-frontend.sh`：先 `typecheck` 再 vitest。**vitest 走 esbuild 不查类型**，导入路径写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 不查任何文件并返回 0 |
+| 11 | 前端类型检查 + 单元测试 + eslint | tsc 无 `error TS`；vitest 全绿（**含进程退出码**，见「门禁假红的识别」）；eslint error **不超过基线** | `scripts/gate-frontend.sh`：先 `typecheck` 再 vitest 最后 eslint。**vitest 走 esbuild 不查类型**，导入路径写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 不查任何文件并返回 0。eslint 按 `LINT_BASELINE` 常量比对，只有**新增** error 才判红（既有 5 条历史问题不阻断提交） |
 
 ## 门禁假红的识别（两条成因，处置相反）
 

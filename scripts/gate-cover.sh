@@ -34,25 +34,43 @@ BASELINE_IMPORTER=91.4          # internal/importer（91.2 → 91.4，升级候�
 BASELINE_API=87.1               # internal/api（86.3 → 86.6 → 86.9 → 87.1，审核端点与 worker）
 
 DETAIL=0
-case "${1:-}" in
-  --detail) DETAIL=1 ;;
-  "" ) ;;
-  -h|--help) sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-  *) printf '[错误] 未知参数: %s\n' "$1" >&2; exit 2 ;;
-esac
+PROFILE_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    --detail) DETAIL=1 ;;
+    --profile=*) PROFILE_ARG="${arg#--profile=}" ;;
+    -h|--help) sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    "") ;;
+    *) printf '[错误] 未知参数: %s\n' "$arg" >&2; exit 2 ;;
+  esac
+done
 
+# 复用已有 profile：gate-all.sh 的门禁 1 已经跑过一次带 -coverprofile 的 go test，
+# 把那个 profile 传进来就能跳过重复执行（同一套测试跑两遍纯属浪费，实测各 16s）。
+# 不传时仍然自己跑一遍，所以本脚本单独调用时行为不变。
 PROFILE=$(mktemp -t norvels-cover)
-TESTLOG=$(mktemp -t norvels-cover-log)
-trap 'rm -f "$PROFILE" "$TESTLOG"' EXIT
+COLLECT_SELF=1
+if [ -n "$PROFILE_ARG" ]; then PROFILE="$PROFILE_ARG"; COLLECT_SELF=0; fi
+
+if [ "$COLLECT_SELF" -eq 1 ]; then
+  TESTLOG=$(mktemp -t norvels-cover-log)
+  trap 'rm -f "$PROFILE" "$TESTLOG"' EXIT
+else
+  trap '' EXIT
+fi
 
 printf '== 门禁 7：覆盖率（硬门禁 = 不低于基线；渐进目标 %d%% 仅报告）==\n' "$TARGET"
-printf '测量方式：go test ./... -count=1 -covermode=atomic -coverprofile（真实执行，不用缓存）\n\n'
-
-if ! go test ./... -count=1 -covermode=atomic -coverprofile="$PROFILE" >"$TESTLOG" 2>&1; then
-  printf '❌ 测试未全部通过，覆盖率门禁不成立。失败摘要：\n'
-  grep -E '^(FAIL|---)' "$TESTLOG" | head -20 | sed 's/^/  /'
-  exit 2
+if [ "$COLLECT_SELF" -eq 1 ]; then
+  printf '测量方式：go test ./... -count=1 -covermode=atomic -coverprofile（真实执行，不用缓存）\n\n'
+  if ! go test ./... -count=1 -covermode=atomic -coverprofile="$PROFILE" >"$TESTLOG" 2>&1; then
+    printf '❌ 测试未全部通过，覆盖率门禁不成立。失败摘要：\n'
+    grep -E '^(FAIL|---)' "$TESTLOG" | head -20 | sed 's/^/  /'
+    exit 2
+  fi
+else
+  printf '测量方式：复用门禁 1 已产出的 go test -coverprofile（本次不重复执行测试）\n\n'
 fi
+
 if [ ! -s "$PROFILE" ]; then
   printf '❌ 未生成覆盖率 profile\n' >&2
   exit 2
@@ -65,18 +83,28 @@ if [ -z "$TOTAL_LINE" ]; then
 fi
 TOTAL_NUM=$(printf '%s' "$TOTAL_LINE" | tr -d '%')
 
+# 每包覆盖率直接从 profile 聚合：profile 每行是「文件:起,止 语句数 命中次数」，
+# 按包把语句数加权求命中比例，就是 go test 报的「coverage: X% of statements」同一口径。
+# 这样不管走「自己跑测试」还是「复用门禁 1 的 profile」，算出来的数完全一致。
 PKG_TABLE=$(awk '
-  /coverage: / && / of statements/ {
-    pkg = ""; cov = ""
-    for (i = 1; i <= NF; i++) {
-      if ($i ~ /^norvels\//) { pkg = $i }
-      if ($i == "coverage:") { cov = $(i+1) }
+  NR == 1 && /^mode:/ { next }
+  {
+    split($1, parts, ":")
+    file = parts[1]
+    n = split(file, seg, "/")
+    pkg = ""
+    for (i = 1; i < n; i++) { pkg = (i == 1 ? seg[i] : pkg "/" seg[i]) }
+    stmts = $2; hits = $3
+    total[pkg] += stmts
+    if (hits > 0) covered[pkg] += stmts
+  }
+  END {
+    for (p in total) {
+      label = p
+      sub(/^norvels\//, "", label)
+      printf "%.1f\t%s\n", (total[p] > 0 ? covered[p] * 100 / total[p] : 0), label
     }
-    if (pkg == "" || cov == "") next
-    sub(/%$/, "", cov)
-    sub(/^norvels\//, "", pkg)
-    printf "%s\t%s\n", cov, pkg
-  }' "$TESTLOG" | sort -rn)
+  }' "$PROFILE" | sort -rn)
 
 # ---------- 总覆盖率 ----------
 printf '总行覆盖率：%s\n' "$TOTAL_LINE"

@@ -79,9 +79,13 @@ gofmt_check() {
   return 0
 }
 
+# 单元测试与覆盖率共用同一次 go test：两者本来都是「跑一遍全部 Go 测试」，
+# 分开跑等于同一套测试跑两遍（实测各 16s，占串行总耗时 65s 的三分之一）。
+# 门禁 1 顺手产出 profile 落到 $WORK，门禁 7 只读它算覆盖率，不再自己跑一遍。
+# 并行模式下 1 与 7 同时起跑、profile 还没生成，门禁 7 退回自己跑（行为不变）。
 unit_tests() {
   go vet ./... || return 1
-  go test ./... -count=1 || return 1
+  go test ./... -count=1 -covermode=atomic -coverprofile="$WORK/go-cover.out" || return 1
   return 0
 }
 
@@ -185,7 +189,11 @@ submit "2" "Gherkin 验收测试（godog）" gate_acceptance
 submit "4" "圈复杂度（单函数 ≤ 10，豁免须登记）" scripts/gate-complexity.sh
 submit "5" "模块大小（函数 ≤ 70 行、文件 ≤ 400 行，豁免须登记）" scripts/gate-size.sh
 submit "6" "依赖结构（方向 + 循环依赖）" scripts/gate-deps.sh
-submit "7" "覆盖率（不低于基线；85% 为渐进目标）" scripts/gate-cover.sh
+if [ "$JOBS" -eq 1 ] && [ -s "$WORK/go-cover.out" ]; then
+  submit "7" "覆盖率（不低于基线；85% 为渐进目标）" scripts/gate-cover.sh --profile="$WORK/go-cover.out"
+else
+  submit "7" "覆盖率（不低于基线；85% 为渐进目标）" scripts/gate-cover.sh
+fi
 submit "9" "隐私扫描（工作区全部文件）" scripts/privacy-scan.sh --all
 submit "10" "构建一致性（容器工具版本 vs web/ 要求）" scripts/check-build-parity.sh
 submit "11" "前端单元测试（vitest）" scripts/gate-frontend.sh
