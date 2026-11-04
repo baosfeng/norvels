@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ApiError } from "../../api/client";
 import type { BookDetail, ChapterBrief, ChapterDetail, Volume } from "../../api/types";
@@ -163,6 +163,21 @@ export function useChapterStream({
   useLayoutEffect(() => {
     judgeRef.current = () => judge(seenRef.current, orderRef.current);
   }, [judge]);
+
+  // 卸载时清掉冷却期补判的定时器。
+  //
+  // 不清的后果不只是「多一次无用回调」：读者在冷却期内离开阅读器后，定时器仍会在
+  // 组件已经卸载的情况下触发，回调里读 window / ref 会抛 ReferenceError。
+  // 测试里表现为 flaky —— vitest 报 "Unhandled Errors: window is not defined"，
+  // 1481 条用例全绿而进程退出码是 1（实测 6 次里有 1 次），门禁 11 因此偶发假红。
+  useEffect(() => {
+    return () => {
+      if (judgeTimer.current !== null) {
+        window.clearTimeout(judgeTimer.current);
+        judgeTimer.current = null;
+      }
+    };
+  }, []);
 
   useVisibleChapter({
     segmentKey: chapterWindow.windowIds.join(","),

@@ -387,3 +387,39 @@ describe("连续阅读：下一章打不开", () => {
     expect(segmentTop(12)).toBeCloseTo(before, 0);
   });
 });
+
+describe("连续阅读：冷却期补判的定时器", () => {
+  // 回归守卫：曾经漏了卸载清理，冷却期内离开阅读器后定时器仍在跑，回调读 window
+  // 抛 ReferenceError。vitest 把它算成 "Unhandled Errors" —— 1481 条用例全绿、
+  // 进程退出码却是 1（实测 6 次里 1 次），门禁 11 因此偶发假红。
+  //
+  // 断言口径：先抓住「补判定时器」的真实 id，再断言卸载时**那个 id** 被清掉。
+  // 不能只断言「clearTimeout 被调用过」——其它组件（转场、滚动补偿）也会清自己的
+  // 定时器，那样的断言在修复被移除后依然会绿（实测过）。
+  // 反向验证：临时删掉 useChapterStream 里的卸载清理，本用例必须红
+  // （AssertionError: expected [...] to include Timeout{...}），恢复即绿。
+  it("卸载时清掉冷却期补判挂上的那个定时器", async () => {
+    const setSpy = vi.spyOn(window, "setTimeout");
+    const clearSpy = vi.spyOn(window, "clearTimeout");
+    const { unmount } = renderReader(["/read/7/12"]);
+
+    // 换一次章 → 进入冷却期；冷却期内再判一次 → judge 挂上补判定时器。
+    await scrollTo(SEGMENT_HEIGHT * 8 - VIEW_HEIGHT);
+    await waitFor(() => expect(screen.getByTestId("reader-segment-14")).toBeTruthy());
+    act(() => FakeObserver.emit(13));
+    await waitFor(() => expect(path()).toBe("/read/7/13"));
+
+    const beforeJudge = setSpy.mock.results.length;
+    act(() => FakeObserver.emit(13));
+    expect(setSpy.mock.results.length).toBeGreaterThan(beforeJudge);
+    // 补判定时器的 id = 冷却期那次 setTimeout 的返回值（judge 里只挂这一个）。
+    const judgeTimerId = setSpy.mock.results[setSpy.mock.results.length - 1]?.value;
+
+    unmount();
+
+    const cleared = clearSpy.mock.calls.map((call) => call[0]);
+    expect(cleared).toContain(judgeTimerId);
+    setSpy.mockRestore();
+    clearSpy.mockRestore();
+  });
+});
