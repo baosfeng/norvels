@@ -32,6 +32,7 @@ import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
 import { useReaderSwipe } from "./useReaderSwipe";
 import { useReaderPaging } from "./useReaderPaging";
+import { pageModeFor } from "./readerPageMode";
 import { SURFACE_SELECTOR } from "./readerStreamLayout";
 import { useChapterStream } from "./useChapterStream";
 import { tradToSimp } from "../../lib/trad2simp";
@@ -151,6 +152,10 @@ function ReaderScreen() {
 
   const { goShelf, goBack, goBookDetail } = useReaderNavActions(bookId);
 
+  // 分页阅读（只 H5，且阅读模式 = 分页）：三区点击在分页下是翻一页，不是翻一章。
+  // 判断放在翻章出口之前——翻章提示要跟着模式走（分页下静默，见 useReaderZoneNav 的 quiet）。
+  const pagedMode = pageModeFor(isH5, settings) === "page";
+
   // 翻章走连续流自己的出口：窗口里通常已经有目标章，换可见章 + 落章首，
   // 不重建整条流（重建会闪一次加载态，也丢掉已读位置的连续感）。
   // consumeFlip / goFlip 由翻章出口自己标记：只有翻章落章首，目录链接与浏览器后退按段恢复。
@@ -158,6 +163,7 @@ function ReaderScreen() {
     prev,
     next,
     goChapter: stream.flipTo,
+    quiet: pagedMode,
   });
 
   /** 进度滑块松手：按章节下标跳章（滑块与手势共用同一句浮条口径）。 */
@@ -180,7 +186,7 @@ function ReaderScreen() {
     [progressList.data, bookId, chapterId],
   );
 
-  // 分页阅读（只 H5，且阅读模式 = 分页）：三区点击在分页下是翻一页，不是翻一章
+  // 分页正文：三区点击在分页下是翻一页，不是翻一章
   const paging = useReaderPaging({
     isH5,
     settings,

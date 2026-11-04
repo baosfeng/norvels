@@ -23,19 +23,20 @@ export function pageOfParagraph(boxes: readonly ParaBox[], pi: number, pageW: nu
 }
 
 /**
- * 某页的「锚点段落」= 从这一页起第一个**起始**在本页或之后的段落。
+ * 某页的「锚点段落」= 这一页页首正在被读的那一段。
  *
- * 取「起始在页首之后」而不是「页首那个字所属的段落」：后者可能是一个横跨四五页的
- * 长段落，拿它当锚点等于把读者永远钉在段落开头，字号一变就往回跳。
- * 找不到（这一页后面已经没有段落起点）时回落到最后一个段落——
- * 末页常常是某个长段的后半截，此时锚点只能是它。
+ * 口径是「最后一个**起始页 ≤ 本页**的段落」——它可能早就开始了（跨页长段），
+ * 页首那几行正是它的后半截：拿它当锚点，字号一变读者回到的是「这一段的中途」
+ * 对应的位置，而不是被弹回段首或跳到下一段开头。
+ * 一页里恰好只有新段起点时，两者是同一条；没有正文时返回 null。
  */
 export function firstParaOnPage(boxes: readonly ParaBox[], page: number, pageW: number): number | null {
   if (boxes.length === 0 || !(pageW > 0)) return null;
+  let pick: number | null = null;
   for (const box of boxes) {
-    if (pageOfOffset(box.left, pageW) >= page) return box.pi;
+    if (pageOfOffset(box.left, pageW) <= page) pick = box.pi;
   }
-  return boxes[boxes.length - 1].pi;
+  return pick ?? boxes[0].pi;
 }
 
 /**

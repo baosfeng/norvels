@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
+import { READER_KEYS } from "./readerSettings";
 
 const chapters = [
   { id: 10, idx: 0, title: "第一章", volumeId: 1, wordCount: 2000 },
@@ -171,6 +172,9 @@ function barHidden(): string | null {
 
 describe("阅读器：H5 控制层单击唤出与自动收起", () => {
   beforeEach(() => {
+    // 这一组用例描述的是滚动模式的翻章口径（翻章会给一句浮条提示）；
+    // H5 默认已经是分页阅读，分页下翻章静默，所以这里显式钉回滚动模式。
+    localStorage.setItem(READER_KEYS.pageMode, "scroll");
     vi.useFakeTimers();
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     chapterState.mockClear();

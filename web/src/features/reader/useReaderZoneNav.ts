@@ -18,10 +18,17 @@ export function useReaderZoneNav({
   prev,
   next,
   goChapter,
+  quiet = false,
 }: {
   prev: ChapterBrief | null;
   next: ChapterBrief | null;
   goChapter: (target: ChapterBrief | null) => void;
+  /**
+   * 静默翻章：不弹「已翻到第 n 章」。
+   * 分页模式用它——读者是连续翻页跨过去的，页码与章名就在页脚，再盖一条浮条等于
+   * 每跨一章糊住半屏正文 4 秒，沉浸感全没了。到头的提示仍保留（那是「为什么没动」）。
+   */
+  quiet?: boolean;
 }) {
   const flipPending = useRef(false);
 
@@ -51,10 +58,10 @@ export function useReaderZoneNav({
         showToast(edgeHint);
         return;
       }
-      showToast(`已翻到第 ${target.idx + 1} 章`);
+      if (!quiet) showToast(`已翻到第 ${target.idx + 1} 章`);
       goFlip(target);
     },
-    [goFlip],
+    [goFlip, quiet],
   );
 
   const step = useCallback(
