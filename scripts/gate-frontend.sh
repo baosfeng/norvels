@@ -99,13 +99,17 @@ else
 fi
 
 # 二、vitest 独占跑（理由见文件头：与上面两项同跑会出假红）
+#
+# --allowOnly=false：把漏在代码里的 `.only` 当成红灯。vitest 默认只在 CI 环境变量非空时才禁，
+# 本机跑全量时 .only 会把**其余用例静默跳过**而退出码仍是 0——实测一个 .only 让 6 个用例变成
+# "6 skipped"、整个套件照样绿（门禁假绿，比红更糟）。没有 .only 时该参数完全无害（实测 exit 0）。
 VITEST_START=$(date +%s)
 echo "==> 前端单元测试（vitest，独占）"
-./node_modules/.bin/vitest run > "$WORK/vitest.log" 2>&1
+./node_modules/.bin/vitest run --allowOnly=false > "$WORK/vitest.log" 2>&1
 vitest_rc=$?
 VITEST_SECS=$(( $(date +%s) - VITEST_START ))
 
-grep -aE "Test Files|Tests +[0-9]+ (passed|failed)|FAIL |Unhandled Errors" "$WORK/vitest.log" | head -20
+grep -aE "Test Files|Tests +[0-9]+ (passed|failed)|FAIL |Unhandled Errors|Unexpected .only" "$WORK/vitest.log" | head -20
 if [ "$vitest_rc" -ne 0 ]; then
   echo "❌ 前端单元测试未通过（退出码 ${vitest_rc}）"
   # 用例计数全绿而退出码非 0 = Unhandled Errors，必须改代码，不是重跑能消的。

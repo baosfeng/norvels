@@ -8,7 +8,14 @@
 #
 # 用法：
 #   scripts/gate-fast.sh            # 三步并行，每项一行结果
-#   scripts/gate-fast.sh --tests    # 额外跑「改动包」的单测（git diff 取包名，耗时随包数增长）
+#   scripts/gate-fast.sh --tests    # 额外跑「改动文件在模块图上相关」的单测
+#   scripts/gate-fast.sh --impl     # 实现期模式：在上面基础上检查「有没有提前写测试」
+#
+# --impl（实现期模式）判的是开发顺序，不是代码质量：功能没定稿前应当零新测试
+#   （见 leader-ops「开发顺序」/ quality-gates）。它检查**工作区相对 HEAD 的改动**里
+#   是否新增了测试文件或给测试文件加了断言——有就红，提示「先交付、收齐意见再写测试」。
+#   豁免：修 bug（提交信息 fix/bug）必须补复现测试，故该模式只拦 feat 类改动；
+#   确实要写测试时用 NORVELS_ALLOW_TESTS=1 显式放行，并说明理由。
 #
 # 退出码：0 = 全过；1 = 任一项失败；2 = 环境问题（如 web/node_modules 未安装）。
 # 兼容 macOS 自带 bash 3.2（不用 mapfile / 关联数组）。
@@ -18,10 +25,12 @@ ROOT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT_DIR" || exit 2
 
 WITH_TESTS=0
+IMPL_MODE=0
 case "${1:-}" in
   "") ;;
   --tests) WITH_TESTS=1 ;;
-  -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  --impl)  IMPL_MODE=1; WITH_TESTS=1 ;;
+  -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf '[错误] 未知参数: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -78,6 +87,32 @@ check_web_tests() {
   # shellcheck disable=SC2086
   ( cd web && ./node_modules/.bin/vitest related $files --run )
 }
+# 实现期检查：功能没定稿前不该新增测试。
+#
+# 判的是**开发顺序**，不是代码质量。判据刻意窄——只看「未跟踪的新测试文件」：
+# 宽判据会误伤且没有证据支撑（实测历史 feat 提交 94% 同时带测试，那是定稿后的正常提交；
+# 而「往已有测试文件里加断言」无法与「修断言」区分，不判）。
+# 修 bug 例外：fix 类必须补复现测试，故本检查只对功能开发**进行中**有意义，
+# 由调用方自觉用 --impl，不塞进门禁造成硬阻断。
+impl_mode_check() {
+  local changed nt
+  changed=$({ git diff --name-only HEAD 2>/dev/null || git diff --name-only 2>/dev/null
+    git ls-files --others --exclude-standard 2>/dev/null
+  } | sort -u)
+  [ -n "$changed" ] || { printf '工作区无改动，跳过\n'; return 0; }
+
+  # 新测试文件 = 未跟踪 + 路径像测试。已跟踪测试文件的修改不判（可能是修断言）。
+  nt=$(git ls-files --others --exclude-standard 2>/dev/null \
+    | grep -E '(^|/)(.*\.(test|spec)\.(ts|tsx)|.*_test\.go)$')
+  if [ -n "$nt" ] && [ "${NORVELS_ALLOW_TESTS:-0}" != "1" ]; then
+    printf '实现期新增了测试文件（功能定稿前应当零新测试）：\n'
+    printf '%s\n' "$nt" | sed 's/^/   /' | head -10
+    printf '先交付、收齐意见再写测试。确需现在写：NORVELS_ALLOW_TESTS=1 make gate-fast-impl\n'
+    return 1
+  fi
+  printf '未新增测试文件（改动 %s 个文件）\n' "$(printf '%s\n' "$changed" | grep -c .)"
+  return 0
+}
 
 # 改动包：只取工作区里被改的 .go 文件所属目录；验收测试留给 make gate-acceptance。
 changed_pkgs() {
@@ -116,6 +151,7 @@ launch vet 'go vet ./...' check_vet
 launch tsc 'tsc --noEmit' check_tsc
 [ "$WITH_TESTS" -eq 1 ] && launch tests '改动包单测' check_tests
 [ "$WITH_TESTS" -eq 1 ] && launch webtests '改动前端测试' check_web_tests
+[ "$IMPL_MODE" -eq 1 ] && launch impl '实现期（未新增测试）' impl_mode_check
 wait
 ELAPSED=$(( $(date +%s) - START ))
 
@@ -140,7 +176,8 @@ report gofmt 'gofmt（./cmd ./internal ./tests）'
 report vet   'go vet ./...'
 report tsc   '前端 tsc --noEmit（web/tsconfig.app.json）'
 [ "$WITH_TESTS" -eq 1 ] && report tests '改动包单测'
-[ "$WITH_TESTS" -eq 1 ] && report webtests '改动前端测试（只跑改到的文件）'
+[ "$WITH_TESTS" -eq 1 ] && report webtests '改动前端测试（模块图上相关的文件）'
+[ "$IMPL_MODE" -eq 1 ] && report impl '实现期（未新增测试文件）'
 
 printf '\n'
 if [ "$fails" -gt 0 ]; then

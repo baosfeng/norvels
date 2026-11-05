@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --allowOnly=false",
     "test:watch": "vitest"
   },
   "dependencies": {

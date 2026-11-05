@@ -8,7 +8,7 @@ BIN := bin/norvels
 
 .PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy \
         bench-capacity bench-capacity-1m verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance \
-        preview shot wait-for gate-fast privacy-changed
+        preview shot wait-for gate-fast gate-fast-impl privacy-changed
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -85,6 +85,9 @@ bench-capacity-1m: ## 百万本口径压测（100 万本书目 + 前 8.6 万本�
 
 gate-fast: ## 快环：gofmt + go vet + 前端 tsc --noEmit（秒级；通过 ≠ 门禁通过）
 	@scripts/gate-fast.sh
+
+gate-fast-impl: ## 快环 + 实现期检查（功能定稿前不该新增测试；确需写测试用 NORVELS_ALLOW_TESTS=1）
+	@scripts/gate-fast.sh --impl
 
 gate-complexity: ## 门禁 4：圈复杂度（单函数 ≤ 10，豁免须在 docs 登记）
 	@scripts/gate-complexity.sh
