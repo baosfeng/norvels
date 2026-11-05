@@ -38,16 +38,16 @@ describe("仿真折页：裁剪而不是 3D", () => {
     expect(cur.style.clipPath).toContain("path(");
     expect(cur.style.clipPath).toContain("C ");
     // 不做 3D：不写 perspective / rotateY 那套
-    expect(cur.style.transform).toBe("translate3d(0,0,0)");
+    expect(cur.style.transform).toMatch(/^translate3d\((?:0|0px),\s*(?:0|0px),\s*(?:0|0px)\)$/);
   });
 
   it("折痕位置随进度左移：p 越大，露出的当前页越窄", () => {
     const { cur, frame } = setup();
     const effect = createCurlEffect(() => frame);
     effect.apply({ ...frame, p: 0.2, dir: 1 });
-    const near = Number(/H([\d.]+) C/.exec(cur.style.clipPath)?.[1] ?? "0");
+    const near = Number(/H\s+([\d.]+)\s+C/.exec(cur.style.clipPath)?.[1] ?? "0");
     effect.apply({ ...frame, p: 0.7, dir: 1 });
-    const far = Number(/H([\d.]+) C/.exec(cur.style.clipPath)?.[1] ?? "0");
+    const far = Number(/H\s+([\d.]+)\s+C/.exec(cur.style.clipPath)?.[1] ?? "0");
     expect(far).toBeLessThan(near);
   });
 
@@ -68,7 +68,7 @@ describe("仿真折页：裁剪而不是 3D", () => {
     const { cur, frame } = setup();
     const effect = createCurlEffect(() => frame);
     effect.apply({ ...frame, p: 1, dir: 1 });
-    const crease = Number(/H([\d.]+) C/.exec(cur.style.clipPath)?.[1] ?? "-1");
+    const crease = Number(/H\s+([\d.]+)\s+C/.exec(cur.style.clipPath)?.[1] ?? "-1");
     expect(crease).toBeCloseTo(box.padX, 1);
   });
 

@@ -26,8 +26,8 @@ describe("覆盖效果：两层位移与投影", () => {
     const { cur, inc, frame } = setup();
     const effect = createCoverEffect(() => frame);
     effect.apply({ ...frame, p: 0.5, dir: 1 });
-    // 新页位移 (1-p)·可视宽 = 195
-    expect(inc.style.transform).toBe("translate3d(195px,0,0)");
+    // 新页位移 (1-p)·可视宽 = 195（jsdom 31 起 CSS 值按规范序列化为 translate3d(195px, 0px, 0px)）
+    expect(xOf(inc.style.transform)).toBeCloseTo(195, 1);
     // 旧页后退 14% × 195 = 27.3
     expect(xOf(cur.style.transform)).toBeCloseTo(-27.3, 1);
   });
@@ -47,8 +47,8 @@ describe("覆盖效果：两层位移与投影", () => {
     const { cur, inc, frame } = setup();
     const effect = createCoverEffect(() => frame);
     effect.apply({ ...frame, p: 0.4, dir: -1 });
-    expect(cur.style.transform).toBe("translate3d(156px,0,0)");
-    expect(inc.style.transform).toBe("translate3d(0,0,0)");
+    expect(xOf(cur.style.transform)).toBeCloseTo(156, 1);
+    expect(xOf(inc.style.transform)).toBeCloseTo(0, 1);
   });
 
   it("销毁时清掉投影层与内联位移，回到静态页", () => {
