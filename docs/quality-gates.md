@@ -9,21 +9,18 @@
 | `make gate-fast` | gofmt + go vet + 前端 `tsc --noEmit`（`--tests` 再加改动包单测 + **模块图上相关的那些前端测试**） | 随改随跑，秒级 |
 | `make gate-fast-impl` | 上面全部 + **实现期检查**：工作区新增了测试文件就判红 | 功能没定稿时自查开发顺序 |
 | `make gate` | 9 项**依次**执行，编号 1/2/4/5/6/7/9/10/11 | 提交前完整口径（CI 同口径） |
-| `scripts/gate-all.sh --parallel` | 同上 9 项并行跑、按编号回放 | 本地热缓存下省约 12s |
+| `scripts/gate-all.sh --parallel` | 同上 9 项并行跑、按编号回放 | 本地热缓存下省约 10s |
 
-- 快环只做「格式 + 编译级」反馈，通过 ≠ 门禁通过，提交前仍必须 `make gate`。默认串行：9 项都吃 CPU，并行只省约 12s 却会偶发互扰，假红
-  要再查一遍更贵（**假红有两类**，见「门禁假红的识别」）。实测（10 核）：快环 1s、`--tests` 改源码 2s（15 个文件 / 130 用例）、全量门禁 46s。
-- **开发期只跑快环，整套测试留到收尾**：功能没跑通时整套测试的红多半是噪音。实测开发期 typecheck 53 次 + vitest 48 次 + lint 49 次
-  合计 25 分钟，而一次全量门禁只要 46s——**反复跑检查比跑一次贵 30 倍**。
+- 快环只做「格式 + 编译级」反馈，通过 ≠ 门禁通过，提交前仍必须 `make gate`。默认串行：9 项都吃 CPU，并行只省约 10s 却会偶发互扰，假红
+  要再查一遍更贵（**假红有两类**，见「门禁假红的识别」）。实测（10 核）：快环 1s、`--tests` 改源码 2s（15 个文件 / 130 用例）、全量门禁 50s。
+- **开发期只跑快环，整套测试留到收尾**：功能没跑通时整套测试的红多半是噪音。实测开发期 typecheck 53 次 + vitest 48 次 + lint 49 次合计
+  25 分钟，而一次全量门禁只要 50s——**反复跑检查比跑一次贵 30 倍**。
 - **实现期不写测试**：顺序是「功能 → 一次性交付收意见 → 意见收敛 → lint → 测试」（见 `leader-ops` §八）。`make gate-fast-impl` 兜底：
   工作区**新增了测试文件**就判红（`NORVELS_ALLOW_TESTS=1` 放行）；只判新文件、不进 `make gate`——修 bug 必须补复现测试。
-- **`.only` 残留判红**：vitest 默认只在 `CI` 非空时禁 `.only`，本机跑全量时它会把其余用例**静默跳过**而退出码仍是 0（实测 6 个用例
-  变 skipped、整套照样绿）。门禁 11 与 `pnpm test` 都带 `--allowOnly=false`，无 `.only` 时无副作用。
-- **门禁内部不重复跑**：①门禁 1 跑 `go test ./... -v -coverprofile` 落 `$WORK/go-test.log`（`-v` 只多 0.8s），门禁 7 用它算覆盖率
-  （16s → 0s）、门禁 2 取 godog 统计行（7.5s → 0s）；拿不到日志就各自退回自己跑，门禁 2 显式看 `FAIL<TAB>…/tests/acceptance` 判红。
-  ②门禁 11 里 tsc 与 eslint 并行（各带增量缓存，约 2s），**vitest 独占**——同跑实测出过 `Unhandled Errors` 假红。串行 34s → 23s。
-- 单项复跑：`gate-acceptance`（2）、`gate-complexity`（4）、`gate-size`（5）、`gate-deps`（6）、`gate-cover`（7）、`privacy`（9）；
-  1/10/11 无单项目标（10 = `check-build-parity.sh`，11 = `gate-frontend.sh`）。
+- **`.only` 残留与「静默少测」判红**：vitest 默认只在 `CI` 非空时禁 `.only`，本机全量会把其余用例**静默跳过**而退出码仍是 0（实测 6 个用例变
+  skipped、整套照样绿）。门禁 11 与 `pnpm test` 都带 `--allowOnly=false`；门禁 11 另跑 `--coverage` 并钉阈值（`web/vitest.config.ts`
+  的 `thresholds`，实测 92.11/89.47/78.99 三次一致）——Go 侧删测试会被门禁 7 抓住，前端此前毫无防线：实测删掉 `pageGeometry.test.ts` 后
+  vitest 照报 166/1521 全绿、门禁 11 全绿，加阈值才红。
 
 ## 9 项与阈值
 
@@ -37,7 +34,7 @@
 | 7 | 覆盖率 | 不低于登记基线（硬门禁），85% 为渐进目标 | `go tool cover` 行覆盖率 |
 | 9 | 隐私扫描 | 零命中 | `scripts/privacy-scan.sh --all` |
 | 10 | 构建一致性 | 容器工具版本满足 `web/` 要求；`Makefile` 的 `VERSION` 在 `internal/releases/CHANGELOG.md` 里有 `## [x.y.z]` 一节（go:embed 打进产品，发了版没写 = 发布事故） | `scripts/check-build-parity.sh` |
-| 11 | 前端类型检查 + 单元测试 + eslint | tsc 无 `error TS`；vitest 全绿（**含进程退出码**，见「门禁假红的识别」）；eslint error **不超过基线** | `scripts/gate-frontend.sh`：`typecheck` 与 `eslint` 并行（各带增量缓存），vitest 随后独占跑。**vitest 走 esbuild 不查类型**，导入路径写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 不查任何文件并返回 0。eslint 按 `LINT_BASELINE` 常量比对，只有**新增** error 才判红（既有 5 条历史问题不阻断提交） |
+| 11 | 前端类型检查 + 单元测试 + 覆盖率 + eslint | tsc 无 `error TS`；vitest 全绿（**含进程退出码**，见「门禁假红的识别」）+ **覆盖率不低于基线**；eslint error **不超过基线** | `scripts/gate-frontend.sh`：`typecheck` 与 `eslint` 并行（各带增量缓存），vitest 随后独占跑。**vitest 走 esbuild 不查类型**，导入路径写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 不查任何文件并返回 0。eslint 按 `LINT_BASELINE` 常量比对，只有**新增** error 才判红（既有 5 条历史问题不阻断提交） |
 
 ## 门禁假红的识别（两类，处置相反）
 
@@ -113,7 +110,7 @@ source/webui；importer → parser/store/source/model；parser,store → model�
 
 ## 环境要求
 
-- Go 1.26（以 `go.mod` 的 `go 1.26.0` 为准）；godog 已在 `go.mod` 里，`go test` 直接跑。
+- Go 1.27（以 `go.mod` 的 `go 1.27.0` 为准）；godog 已在 `go.mod` 里，`go test` 直接跑。
 - golangci-lint v2.x（门禁 4 首选；**缺失自动回退** gostats）。`gate-complexity.sh` 测量前自带 `cache clean`（缓存按绝对路径存取，
   会拿已删 worktree 的旧文件报「幻影超标」）；兼容 macOS bash 3.2（不用 `mapfile`）。
 - 验收 fixture 一律**合成**，不读真实语料；`privacy-scan.sh --all` 零命中是提交前硬条件。IP 类只放行 RFC 1918/3927/5737/4193 的私有与

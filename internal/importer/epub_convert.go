@@ -8,13 +8,9 @@ import (
 	"norvels/internal/parser"
 )
 
-// epubToParsedBook 把 ebook.Book 转成 store 认识的 ParsedBook：元数据与封面原样搬运，
+// epubToParsedBookWithRules 把 ebook.Book 转成 store 认识的 ParsedBook：元数据与封面原样搬运，
 // 章节按 spine 顺序编号；「整本一页」的大书改走 txt 切章策略（spec §4）。
-func epubToParsedBook(p *parser.Parser, eb *ebook.Book) *model.ParsedBook {
-	return epubToParsedBookWithRules(p, eb, nil)
-}
-
-// epubToParsedBookWithRules 是 epubToParsedBook 的带规则版本。
+// rules 是本次导入生效的自定义切章规则（nil = 只用内置策略）。
 func epubToParsedBookWithRules(p *parser.Parser, eb *ebook.Book, rules []parser.Rule) *model.ParsedBook {
 	book := &model.ParsedBook{
 		Title:        eb.Title,
@@ -48,13 +44,8 @@ func epubToParsedBookWithRules(p *parser.Parser, eb *ebook.Book, rules []parser.
 	return book
 }
 
-// splitByParser 把「spine 只有一两个 XHTML」的全文交给 txt 解析器重新切章，
+// splitByParserWithRules 把「spine 只有一两个 XHTML」的全文交给 txt 解析器重新切章，
 // 复用 di-unit 等既有策略；切章失败时退回 spine 原章节，不让一本书因此导入失败。
-func splitByParser(p *parser.Parser, book *model.ParsedBook, eb *ebook.Book) {
-	splitByParserWithRules(p, book, eb, nil)
-}
-
-// splitByParserWithRules 是 splitByParser 的带规则版本。
 func splitByParserWithRules(p *parser.Parser, book *model.ParsedBook, eb *ebook.Book, rules []parser.Rule) {
 	parsed, err := p.ParseBytesWithRules(book.Title+".txt", []byte(eb.FullText()), rules)
 	if err != nil || parsed == nil || len(parsed.Chapters) == 0 {

@@ -26,10 +26,13 @@ cd "$ROOT_DIR" || exit 2
 # 上调基线本身不需要额外审批，但下调必须有 leader 明确同意并在此处写原因。
 TARGET=85                       # 渐进目标（报告项，不判红）
 BASELINE_TOTAL=85.0             # 总行覆盖率基线（实测上调：83.2 → 84.7 → 85.0，0020 质量分/版本择优带上来的）
-BASELINE_STORE=83.2             # internal/store（82.3 → 82.5 → 82.9 → 83.2，0021 AI 审核与替换语义）
-BASELINE_PARSER=89.0            # internal/parser（88.4 → 88.6 → 89.0）
-# internal/importer 实测在 91.2~91.4 之间抖动（个别用例的覆盖路径不固定），钉 91.3 会让门禁偶发红，
-# 因此保持 91.2 这个已经稳定成立的底；只升不降的约束不受影响（没有下调）。
+# internal/store 的 83.2 在可复现口径下不成立，按实测重钉（leader 同意，非下调救火）：
+# 同一基线 commit（feb867c）的干净检出也是 82.7；放开 2 个 testing.CoverMode() skip 的
+# 性能用例后仍是 82.7；go1.26.0 与 go1.27.3 双工具链跑出同一个值。补测后实测 83.5。
+BASELINE_STORE=83.5             # internal/store（82.3 → 82.5 → 82.9 → 83.2(不成立) → 83.5 补测后实测）
+BASELINE_PARSER=89.1            # internal/parser（88.4 → 88.6 → 89.0 → 89.1，补齐 cleaner 版权/水印丢弃分支）
+# internal/importer 的覆盖路径随合集拆分与压缩包分支有 0.1~0.2 个百分点抖动（补测后实测 91.6~91.7）。
+# 91.4 是「升级候选落审核记录」那次的实测值：不随最新实测继续上调，把这段差留给抖动。
 BASELINE_IMPORTER=91.4          # internal/importer（91.2 → 91.4，升级候选落审核记录）
 BASELINE_API=87.1               # internal/api（86.3 → 86.6 → 86.9 → 87.1，审核端点与 worker）
 

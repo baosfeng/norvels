@@ -103,17 +103,22 @@ fi
 # --allowOnly=false：把漏在代码里的 `.only` 当成红灯。vitest 默认只在 CI 环境变量非空时才禁，
 # 本机跑全量时 .only 会把**其余用例静默跳过**而退出码仍是 0——实测一个 .only 让 6 个用例变成
 # "6 skipped"、整个套件照样绿（门禁假绿，比红更糟）。没有 .only 时该参数完全无害（实测 exit 0）。
+# 覆盖率与用例一起跑（--coverage 只多约 6s：21s -> 28s），用「基线只升不降」防退化。
+# 为什么必须有：Go 侧删掉一个测试文件会被门禁 7 的覆盖率抓住，前端此前完全没有防线——
+# 实测删掉 pageGeometry.test.ts，vitest 照常报 166/1521 全绿、退出码 0，门禁 11 全绿。
+# 覆盖率把这种「静默少测」变成红灯。数值实测三次完全一致（92.11 / 89.47 / 78.99），
+# 所以基线可以钉到一位小数，不会像 go 侧 importer 那样抖动。
 VITEST_START=$(date +%s)
-echo "==> 前端单元测试（vitest，独占）"
-./node_modules/.bin/vitest run --allowOnly=false > "$WORK/vitest.log" 2>&1
+echo "==> 前端单元测试 + 覆盖率（vitest，独占）"
+./node_modules/.bin/vitest run --allowOnly=false --coverage > "$WORK/vitest.log" 2>&1
 vitest_rc=$?
 VITEST_SECS=$(( $(date +%s) - VITEST_START ))
 
-grep -aE "Test Files|Tests +[0-9]+ (passed|failed)|FAIL |Unhandled Errors|Unexpected .only" "$WORK/vitest.log" | head -20
+grep -aE "Test Files|Tests +[0-9]+ (passed|failed)|FAIL |Unhandled Errors|Unexpected .only|^All files" "$WORK/vitest.log" | head -20
 if [ "$vitest_rc" -ne 0 ]; then
   echo "❌ 前端单元测试未通过（退出码 ${vitest_rc}）"
   # 用例计数全绿而退出码非 0 = Unhandled Errors，必须改代码，不是重跑能消的。
-  sed 's/^/   /' "$WORK/vitest.log" | grep -aE "FAIL|AssertionError|Unhandled|Error:" | head -20
+  sed 's/^/   /' "$WORK/vitest.log" | grep -aE "FAIL|AssertionError|Unhandled|Error:|threshold" | head -20
   echo "   本地复现：cd web && pnpm test  （要看退出码：echo \$?）"
   fails=$((fails + 1))
 else
