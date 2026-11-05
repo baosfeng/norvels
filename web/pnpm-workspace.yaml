@@ -1,3 +1,11 @@
 # 只为 esbuild 放开构建脚本（Vite 依赖它取平台二进制），其余依赖不跑安装脚本。
 allowBuilds:
   esbuild: true
+# pnpm 11 的 minimumReleaseAge（发布年龄门）会拒绝刚发布的包；这两条是本次升级目标版本，显式放行。
+minimumReleaseAgeExclude:
+  - jsdom@31.0.0
+  - vite@8.3.6
+# jsdom@31 依赖 parse5 ^8.1.0，而 parse5-parser-stream@8.1.0 的 ^8.0.0 被 pnpm 解到 8.0.1，
+# 两份 parse5 并存时 tokenizer API 错配（tokenizer.flushCharacters is not a function）。
+overrides:
+  parse5: 8.1.0

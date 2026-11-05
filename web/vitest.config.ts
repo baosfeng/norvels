@@ -16,7 +16,12 @@ export default defineConfig({
       provider: "v8",
       include: ["src/api/**", "src/lib/**"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/test-setup.ts", "src/api/types.ts"],
-      thresholds: { lines: 70, functions: 70, branches: 70, statements: 70 },
+      // 防退化基线（只升不降）。数值 = vitest 5 新口径实测（88.2 / 85.14 / 80.87 / 90.26）留 0.3 余量。
+      // 口径变化：@vitest/coverage-v8 5 把 v8-to-istanbul（sourcemap 逐行映射）换成 ast-v8-to-istanbul，
+      // 同一份代码从旧口径 92.11 / 89.47 / 78.99 / 92.11 变为 88.2 / 85.14 / 80.87 / 90.26；
+      // istanbul provider 实测同量级（88.2 / 84.41 / 80.87 / 90.26），确认不是单一 provider 的映射问题。
+      // 旧值不可直接沿用（沿用会恒红），本行基线待 leader 按新口径重钉。
+      thresholds: { lines: 89.9, functions: 80.5, branches: 84.8, statements: 87.9 },
     },
   },
 });
