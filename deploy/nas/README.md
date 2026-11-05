@@ -88,7 +88,7 @@ sudo ./update.sh --backfill       # 0019/0020 之后补存量指纹与质量分�
 
 > 两条维护命令都走 sudoers 白名单（只免密 `update.sh` 本身），大库建议 `nohup` 后台跑并盯日志。
 
-脚本按顺序做四件事：**成对备份数据库**（`backup/norvels-<旧版本>-<时间>.db` + 同名 `-content.db`，正文库存在时一并备份，默认保留 3 组，`NORVELS_BACKUP_KEEP` 可改）→ 拉镜像 → 一次性容器预跑迁移 → 重启并轮询健康。任何一步失败都会**自动把镜像版本回滚**到升级前，并提示按「备份」一节恢复数据库（schema 只前进，镜像回滚不恢复数据）。
+脚本按顺序做四件事：拉镜像 → 一次性容器预跑迁移 → 重启并轮询健康。**默认不备份数据库**（正文库 121 GB，成对备份要再占一份空间）——加 `--backup` 才恢复成对备份（`backup/norvels-<旧版本>-<时间>.db` + 同名 `-content.db`，保留 3 组）。任何一步失败都会**自动把镜像版本回滚**到升级前；**数据不会回滚**（schema 只前进，回滚镜像不还原库）。
 
 > **0018 之后正文在 `norvels-content.db`**：恢复备份必须两个文件一起放回，只恢复主库会得到「章节在、正文空」的半套数据；正文库缺失时服务会按未迁移库只读降级。
 
@@ -107,7 +107,13 @@ Docker Hub API 或 registry 直连——国内这两条常常超时。镜像 17 
 
 ## 备份
 
-`update.sh` 每次升级前自动备份到 `backup/`（保留 3 份）。需要额外归档时：
+`update.sh` 默认**不备份**：正文库 121 GB + 主库 5.9 GB，成对备份要再占一份空间。需要备份时显式加 `--backup`：
+
+```bash
+sudo ./update.sh --backup --latest    # 升级前成对备份主库 + 正文库
+```
+
+手动归档（必须先停服，避免拷到半写状态）：
 
 ```bash
 sudo docker compose stop && sudo cp /vol1/norvels/data/norvels.db /vol1/norvels/backup/manual-$(date +%F).db && sudo docker compose start
@@ -122,4 +128,4 @@ sudo docker compose stop && sudo cp /vol1/norvels/data/norvels.db /vol1/norvels/
 | 启动即退出 | `docker compose logs --tail 50 norvels`；确认 `/data` 属主是 65532 |
 | 页面 502/连不上 | `docker compose ps` 看健康状态；端口是否被占 |
 | 迁移很久不动 | 正常，42 万章约 23 分钟；`docker compose logs -f` 看进度 |
-| 要回滚版本 | 先恢复数据库备份，再把 `.env` 版本改小——**schema 只前进，不回滚** |
+| 要回滚版本 | 没有 `--backup` 副本时只能把 `.env` 版本改小重启；升级过的库不能给旧版本用——**schema 只前进** |

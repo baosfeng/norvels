@@ -12,6 +12,11 @@ export default defineConfig({
     // 默认 5s 在门禁（go test + 覆盖率插桩 + vitest 并行）叠加时会把 100ms 的用例判成超时，
     // 失败用例每次都不一样。放宽到 20s：真挂死的用例仍会失败，但不再因机器忙而假红。
     testTimeout: 20000,
+    // 10 核机器上默认按核数开满 worker，叠加 --coverage 插桩后，机器一忙就会出现
+    // 「每次失败的文件都不同」的超时假红（实测遇到过 ReaderA11y / HistoryPage / BookAside /
+    // AdminBookPage / BookPage / Charts.ix / ReaderProgress，单独跑每个都通过）。
+    // 限到 4 个 worker 换稳定：并发度降下来后单个 worker 拿到的 CPU 更确定。
+    maxWorkers: 4,
     coverage: {
       provider: "v8",
       include: ["src/api/**", "src/lib/**"],

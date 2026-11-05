@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# norvels 一键更新：备份 → 拉新镜像 → 预跑 schema 迁移 → 重启 → 等健康；失败自动回滚镜像版本。
+# norvels 一键更新：拉新镜像 → 预跑 schema 迁移 → 重启 → 等健康；失败自动回滚镜像版本。
+#
+# **默认不备份数据库**：正文库已达 121 GB，成对备份要再占一份空间。代价是 schema 只前进，
+# 迁移失败时没有可回滚的数据副本（镜像会回滚，数据不会）。空间允许时加 --backup 恢复旧行为。
 #
 # 用法（必须有 docker 权限，飞牛上就是 root）：
 #   sudo ./update.sh              # 按 .env 里现有的 NORVELS_VERSION 更新
 #   sudo ./update.sh --latest     # 自动升级到 Docker Hub 上的最新正式版
 #   sudo ./update.sh 0.9.0        # 切到指定版本，并写回 .env
+#   sudo ./update.sh --backup     # 升级前成对备份主库+正文库（占 2 倍数据空间）
 #   sudo ./update.sh --check      # 只看当前状态，不动任何东西
 #   sudo ./update.sh --check-updates  # 问一下上游有没有新版本，不升级
 #
-# 环境变量：
+# 环境变量（只在 --backup 时生效）：
 #   NORVELS_BACKUP_KEEP  保留几份数据库备份，默认 3
 #   NORVELS_BACKUP_DIR   备份目录，默认 <数据目录的父目录>/backup
 set -euo pipefail
@@ -29,6 +33,7 @@ CHECKPOINT_ONLY=0
 SQL_ONLY=0
 RESTART_ONLY=0
 REFRESH_ONLY=0
+DO_BACKUP=0
 SQL_DB=""
 SQL_TEXT=""
 NEW_VERSION=""
@@ -44,6 +49,8 @@ for arg in "$@"; do
     --latest) USE_LATEST=1 ;;
     --vacuum) VACUUM_ONLY=1 ;;
     --backfill) BACKFILL_ONLY=1 ;;
+    --backup) DO_BACKUP=1 ;;
+    --no-backup) DO_BACKUP=0 ;;
     -* ) die "未知参数 $arg" ;;
     *  )
       if [ "$SQL_ONLY" = "1" ]; then
@@ -213,12 +220,15 @@ if [ "$USE_LATEST" = "1" ]; then
   NEW_VERSION="$LATEST_VER"
 fi
 
-# ---------- 备份 ----------
+# ---------- 备份（默认跳过，--backup 启用）----------
 BACKUP_DIR="${NORVELS_BACKUP_DIR:-$(dirname -- "$DATA_DIR")/backup}"
 KEEP="${NORVELS_BACKUP_KEEP:-3}"
 case "$KEEP" in (''|*[!0-9]*) die "NORVELS_BACKUP_KEEP 必须是数字" ;; esac
 
-if [ -f "$DATA_DIR/norvels.db" ]; then
+if [ "$DO_BACKUP" != "1" ]; then
+  echo "== 跳过数据库备份（默认行为；要备份加 --backup）=="
+  echo "   schema 只前进：迁移一旦写库就无法退回旧版本，镜像回滚不会还原数据。"
+elif [ -f "$DATA_DIR/norvels.db" ]; then
   mkdir -p "$BACKUP_DIR"
   echo "== 备份数据库（主库 + 正文库成对备份，保留最近 $KEEP 份）=="
   docker compose stop
@@ -262,6 +272,10 @@ IMAGE="bsfeng/norvels:$VERSION"
 # ---------- 拉镜像 ----------
 echo "== 拉取 $IMAGE =="
 docker pull "$IMAGE"
+
+# 迁移前先停服务：一次性容器要独占数据库（WAL 上还有另一个写者会锁冲突）。
+# 备份分支里已经停过一次，compose stop 是幂等的。
+docker compose stop >/dev/null 2>&1 || true
 
 # ---------- 预跑迁移 ----------
 # --entrypoint /norvels 不能少：镜像 ENTRYPOINT 是 "norvels serve"，不覆盖就会
