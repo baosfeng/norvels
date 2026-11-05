@@ -79,13 +79,29 @@ gofmt_check() {
   return 0
 }
 
-# 单元测试与覆盖率共用同一次 go test：两者本来都是「跑一遍全部 Go 测试」，
-# 分开跑等于同一套测试跑两遍（实测各 16s，占串行总耗时 65s 的三分之一）。
-# 门禁 1 顺手产出 profile 落到 $WORK，门禁 7 只读它算覆盖率，不再自己跑一遍。
-# 并行模式下 1 与 7 同时起跑、profile 还没生成，门禁 7 退回自己跑（行为不变）。
+# 一次 go test ./... 供三项门禁共用：单元测试（1）、覆盖率（7）、Gherkin 验收（2）。
+# 三者本来都是「跑一遍全部 Go 测试」，各跑一次等于同一套测试跑三遍。
+# 实测：各 16s → 合并后 1 与 7 省 16s；门禁 2 单独跑 acceptance 要 7.5s，而 tests/acceptance
+# 本来就是 go test ./... 里的一个包，只需 -v 多花 0.8s 就能拿到它的 godog 统计行。
+# 产物：$WORK/go-cover.out（覆盖率 profile）、$WORK/go-test.log（-v 完整输出）。
+# 并行模式下 2 与 7 会在门禁 1 产出前起跑，此时它们各自退回自己跑（行为不变）。
 unit_tests() {
   go vet ./... || return 1
-  go test ./... -count=1 -covermode=atomic -coverprofile="$WORK/go-cover.out" || return 1
+  # -v 输出有 1.2MB，不往终端刷：落盘，只在失败时挑出未通过的用例回显。
+  if ! go test ./... -count=1 -v -covermode=atomic -coverprofile="$WORK/go-cover.out" \
+      > "$WORK/go-test.log" 2>&1; then
+    # 只回显失败用例本身：`--- FAIL` 行 + 紧随其后的细节。
+    # 不能按 `_test.go:<行号>:` 挑——那只匹配到 t.Log 的普通日志（-v 下满屏都是），
+    # 真正的失败细节反而被淹没（实测一次失败刷出 40 行无关日志）。
+    printf '未通过的用例：\n'
+    # 一个失败用例块的边界：以 `--- FAIL` 起，到下一个 `=== RUN` / 包级 FAIL 摘要为止。
+    awk '/^--- FAIL/{show=1} /^(=== RUN|FAIL[[:space:]]|ok[[:space:]])/{if(show && !/^--- FAIL/) show=0} show' \
+      "$WORK/go-test.log" | grep -avE '^[[:space:]]*--- PASS' | head -30
+    printf '（完整输出：%s）\n' "$WORK/go-test.log"
+    return 1
+  fi
+  # 包级摘要：ok / no test files 各一行，去掉 tab 与耗时列的对齐。
+  grep -aE '^(ok|\?) ' "$WORK/go-test.log" | sed 's/\t/ /g' | head -40
   return 0
 }
 
@@ -95,7 +111,25 @@ gate_unit() {
   return 0
 }
 
+# 门禁 2：复用门禁 1 那次 go test 的 acceptance 输出，不重跑。
+# 拿不到（并行模式 / 门禁 1 在编译阶段就挂了）时自己跑一遍——宁可慢，不可漏。
 gate_acceptance() {
+  local log="$WORK/go-test.log"
+  if [ -s "$log" ] && grep -aq 'norvels/tests/acceptance' "$log"; then
+    # godog 的统计行混在 1.2MB 的 -v 输出里：只挑验收包自己的结果行与 scenarios/steps 统计，
+    # 别把其它包的 PASS 行刷出来。
+    sed 's/\x1b\[[0-9;]*m//g' "$log" \
+      | grep -aE '^(--- FAIL: TestFeatures|FAIL[[:space:]]+norvels/tests/acceptance|ok[[:space:]]+norvels/tests/acceptance)|^[0-9]+ (scenarios|steps) \(|^[[:space:]]*[0-9]+ (scenarios|steps) \(' \
+      | head -20
+    # 验收包自己失败时，go test 的失败行必须让门禁 2 红（不能只看「有没有统计行」）。
+    # 注意 go test 的失败摘要是 FAILD<TAB>包名<TAB>耗时，分隔符是制表符，不能用空格匹配。
+    if grep -aE '^FAIL[[:space:]]+norvels/tests/acceptance' "$log" >/dev/null; then
+      printf '❌ 验收测试未通过（见门禁 1 的输出）\n'
+      return 1
+    fi
+    printf '（复用门禁 1 的同一次 go test，未重跑）\n'
+    return 0
+  fi
   local out rc
   out=$(go test ./tests/acceptance/ -count=1 -v 2>&1)
   rc=$?

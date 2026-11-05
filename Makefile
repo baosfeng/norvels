@@ -8,7 +8,7 @@ BIN := bin/norvels
 
 .PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy \
         bench-capacity bench-capacity-1m verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance \
-        preview shot gate-fast privacy-changed
+        preview shot wait-for gate-fast privacy-changed
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -35,8 +35,13 @@ run: ## 本地启动（只用后端 :8080）
 preview: ## 一条命令起预览：后端 :8080 + vite HMR :5173（已在跑则复用，不占新端口）
 	@scripts/preview.sh
 
-shot: ## 截一张图（URL=http://127.0.0.1:5173 OUT=.shots/x.png VIEWPORT=390x844 可选）
-	@scripts/shot.sh --url "$(URL)" $(if $(OUT),--out "$(OUT)",) $(if $(VIEWPORT),--viewport "$(VIEWPORT)",) $(if $(FULL),--full,)
+shot: ## 截图取证（URL= OUT=.shots/x.png VIEWPORT=390x844,1280x800 EVAL='js' CLICK=选择器 可选）
+	@scripts/shot.sh --url "$(URL)" $(if $(OUT),--out "$(OUT)",) $(if $(VIEWPORT),--viewport "$(VIEWPORT)",) \
+		$(if $(EVAL),--eval "$(EVAL)",) $(if $(CLICK),--click "$(CLICK)",) $(if $(FULL),--full,)
+
+wait-for: ## 等条件成立（HOST=nas UNTIL='pgrep -f x' GONE=1 TIMEOUT=600 可选）
+	@scripts/wait-for.sh $(if $(HOST),--host "$(HOST)",) --until "$(UNTIL)" $(if $(GONE),--gone,) \
+		--timeout $(or $(TIMEOUT),600)
 
 import: ## 导入示例（SOURCE=路径）
 	go run ./cmd/norvels import --dir "$(SOURCE)" --db ./data/norvels.db

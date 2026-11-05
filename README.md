@@ -62,7 +62,8 @@ norvels/
 │   ├── import.sh           # 批量导入（本地 / docker 两种模式）
 │   ├── backup.sh           # SQLite 备份 + 保留策略
 │   ├── preview.sh          # 一条命令起预览：后端 :8080 + vite HMR :5173（已在跑则复用）
-│   ├── shot.sh             # 截图（agent-browser 独立会话），配 preview 用
+│   ├── shot.sh             # 一次拍完多个视口 + DOM 量测（agent-browser 独立会话），配 preview 用
+│   ├── wait-for.sh         # 等一个条件成立（本地/远端，一次调用阻塞到结果，替代 sleep+轮询）
 │   └── tidy-pending-collection.py  # 待整理合集包：去重 → 按分类抓取到导入目录
 ├── docs/
 │   ├── architecture.md     # 组件划分与数据模型
@@ -90,7 +91,10 @@ make build                                                          # 生产产�
 
 改前端看 <http://127.0.0.1:5173>（HMR 即时生效，`/api` 由 vite 代理到 :8080）；看生产行为走 <http://127.0.0.1:8080>，接口在 `/api/stats`。
 `make preview` 会**复用**已经在 :8080 / :5173 上的服务（不 kill、不占第二个端口）；要后台跑用 `scripts/preview.sh --detach`，收尾 `--stop`（只收它自己起的）。
-只改后端用 `make build-server`（复用已有 `internal/webui/dist`，跳过前端构建）；截个图：`make shot URL=http://127.0.0.1:5173 OUT=.shots/home.png VIEWPORT=390x844`。
+只改后端用 `make build-server`（复用已有 `internal/webui/dist`，跳过前端构建）；截个图：
+`make shot URL=http://127.0.0.1:5173 OUT=.shots/home.png VIEWPORT=390x844,1280x800`（多视口一次拍完，
+加 `EVAL='document.querySelectorAll(".page").length'` 顺带把量测打到终端）。等长任务别自己 sleep 轮询：
+`scripts/wait-for.sh --host nas --until 'pgrep -f run_import.py' --gone --timeout 3600` 一次调用阻塞到条件成立。
 
 ### Docker（3 条命令）
 

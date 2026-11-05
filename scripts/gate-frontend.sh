@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 门禁 11：前端单元测试 + 类型检查。
+# 门禁 11：前端类型检查 + 单元测试 + eslint。
 #
 # 为什么单独成一项：在此之前 CI 与 make gate 只跑前端的 build（tsc + vite build），
 # 从不跑前端测试。后果是——104 个前端测试全红，CI 依然全绿。实测踩过一次：
@@ -13,6 +13,14 @@
 #
 # 必须带 -p tsconfig.app.json：根 tsconfig.json 是 "files": [] + project references 的空壳，
 # 裸跑 tsc --noEmit 一个文件都不检查并返回 0（这正是那次漏检的直接原因）。
+#
+# 执行编排：tsc 与 eslint 并行跑完，vitest 再独占跑。
+#   - tsc 走独立 tsbuildinfo：4.7s → 1~2s；eslint 走 --cache：8.3s → 0.5~1.5s。
+#   - 这两项都不吃满 CPU，并行实测 1.6s（串行 6s+）。
+#   - vitest 必须独占：与这两项同跑时实测出现过 `Unhandled Errors: window is not defined`
+#     假红（用例计数全绿、退出码 1），正是 docs/quality-gates.md「门禁假红的识别」第 2 条。
+#     假红的代价是回头怀疑修复本身，比省下的十几秒贵得多。
+#   于是总耗时 = 约 2s + vitest（独占，本机 21~38s，随负载浮动）。
 set -uo pipefail
 
 ROOT_DIR=$(cd -- "$(dirname -- "$0")/.." && pwd)
@@ -32,55 +40,82 @@ if [ ! -d node_modules ]; then
   fi
 fi
 
+WORK=$(mktemp -d -t norvels-gate-frontend)
+trap 'rm -rf "$WORK"' EXIT
+
+# tsbuildinfo 与 eslint 缓存都放 node_modules/.cache（已 gitignore）：不进仓库、不进 CI 产物。
+# tsbuildinfo 与快环用不同的文件——两边同时跑会互相作废，各自留一份。
+CACHE_DIR="$ROOT_DIR/web/node_modules/.cache"
+TSC_INFO="$CACHE_DIR/norvels-tsc/gate.tsbuildinfo"
+mkdir -p "$(dirname -- "$TSC_INFO")" "$CACHE_DIR/eslint"
+
+check_typecheck() {
+  ./node_modules/.bin/tsc --noEmit -p tsconfig.app.json \
+    --incremental --tsBuildInfoFile "$TSC_INFO"
+}
+
+# eslint 的 json 输出直接解析更准：grep 数 "severity":2 会被别的字段误伤。
+# 既有告警不阻断：仓库当前有 5 条历史 error，按基线比较，只有新增才判红。
+# 所以这里不看退出码（有历史 error 时恒为 1），只看解析出的 error 条数。
+check_lint() {
+  ./node_modules/.bin/eslint . -f json \
+    --cache --cache-location "$CACHE_DIR/eslint/" > "$WORK/lint.json" 2>"$WORK/lint.err"
+}
+
+fails=0
+START=$(date +%s)
+
+# 一、静态检查并行（互不依赖、都不吃满 CPU）
+( check_typecheck > "$WORK/tsc.log" 2>&1; printf '%s\n' $? > "$WORK/tsc.rc" ) &
+( check_lint; printf '%s\n' $? > "$WORK/lint.rc" ) &
+wait
+STATIC_SECS=$(( $(date +%s) - START ))
+
+rc_of() { [ -f "$WORK/$1.rc" ] && cat "$WORK/$1.rc" || echo 1; }
 
 echo "==> 前端类型检查（tsc --noEmit -p tsconfig.app.json）"
-if command -v pnpm >/dev/null 2>&1; then
-  typeout=$(pnpm run typecheck 2>&1)
-  typerc=$?
-else
-  typeout=$(npm run typecheck 2>&1)
-  typerc=$?
-fi
-printf "%s\n" "$typeout" | grep -E "error TS" | head -20
-if [ $typerc -ne 0 ]; then
+grep -E "error TS" "$WORK/tsc.log" 2>/dev/null | head -20
+if [ "$(rc_of tsc)" -ne 0 ]; then
   echo "❌ 前端类型检查未通过（vitest 不查类型，这类错它一定会漏）"
+  sed 's/^/   /' "$WORK/tsc.log" 2>/dev/null | head -20
   echo "   本地复现：cd web && npm run typecheck"
-  exit 1
-fi
-echo "✅ 前端类型检查通过"
-
-echo "==> 前端单元测试（vitest）"
-if command -v pnpm >/dev/null 2>&1; then
-  out=$(pnpm test 2>&1)
-  rc=$?
+  fails=$((fails + 1))
 else
-  out=$(npm test 2>&1)
-  rc=$?
+  echo "✅ 前端类型检查通过"
 fi
 
-printf "%s\n" "$out" | grep -E "Test Files|Tests +[0-9]+ (passed|failed)|FAIL |AssertionError" | head -20
-if [ $rc -ne 0 ]; then
-  echo "❌ 前端单元测试未通过"
-  echo "   本地复现：cd web && pnpm test"
-  exit 1
-fi
-echo "✅ 前端单元测试全部通过"
-
-# eslint 放在这里而不是开发期反复跑：它是「风格 / 规则」判定，不影响功能，
-# 但红了就必须修。实测开发期跑了 49 次共 7 分钟，而在这里只跑一次约 7s。
-# 既有告警不阻断：仓库当前有 5 条历史 error，按基线比较，只有新增才判红。
 echo "==> 前端 eslint（只判新增）"
 LINT_BASELINE=5
-# eslint 的 json 输出直接解析更准：grep 数 "severity":2 会被别的字段误伤。
-lint_json=$(./node_modules/.bin/eslint . -f json 2>/dev/null || true)
-lint_errors=$(printf "%s" "$lint_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const r=JSON.parse(s);let n=0;for(const f of r)for(const m of f.messages)if(m.severity===2)n++;console.log(n)}catch(e){console.log("")}})')
-if [ -z "$lint_errors" ] || [ "$lint_errors" -eq 0 ] && [ -z "$lint_json" ]; then
+lint_errors=$(node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const r=JSON.parse(s);let n=0;for(const f of r)for(const m of f.messages)if(m.severity===2)n++;console.log(n)}catch(e){console.log("")}})' < "$WORK/lint.json")
+if [ -z "$lint_errors" ]; then
   echo "⚠️  eslint 未产出结果，跳过（不阻断）"
+  head -5 "$WORK/lint.err" 2>/dev/null | sed 's/^/   /'
 elif [ "$lint_errors" -gt "$LINT_BASELINE" ]; then
   echo "❌ eslint 新增错误：${lint_errors} 条（基线 ${LINT_BASELINE}）"
   echo "   本地复现：cd web && npm run lint"
-  exit 1
+  fails=$((fails + 1))
 else
   echo "✅ eslint 无新增错误（${lint_errors} 条 / 基线 ${LINT_BASELINE}）"
 fi
+
+# 二、vitest 独占跑（理由见文件头：与上面两项同跑会出假红）
+VITEST_START=$(date +%s)
+echo "==> 前端单元测试（vitest，独占）"
+./node_modules/.bin/vitest run > "$WORK/vitest.log" 2>&1
+vitest_rc=$?
+VITEST_SECS=$(( $(date +%s) - VITEST_START ))
+
+grep -aE "Test Files|Tests +[0-9]+ (passed|failed)|FAIL |Unhandled Errors" "$WORK/vitest.log" | head -20
+if [ "$vitest_rc" -ne 0 ]; then
+  echo "❌ 前端单元测试未通过（退出码 ${vitest_rc}）"
+  # 用例计数全绿而退出码非 0 = Unhandled Errors，必须改代码，不是重跑能消的。
+  sed 's/^/   /' "$WORK/vitest.log" | grep -aE "FAIL|AssertionError|Unhandled|Error:" | head -20
+  echo "   本地复现：cd web && pnpm test  （要看退出码：echo \$?）"
+  fails=$((fails + 1))
+else
+  echo "✅ 前端单元测试全部通过"
+fi
+
+printf '（静态检查 %ss 并行 + vitest 独占 %ss，合计 %ss）\n' "$STATIC_SECS" "$VITEST_SECS" "$(( $(date +%s) - START ))"
+[ "$fails" -eq 0 ] || exit 1
 exit 0

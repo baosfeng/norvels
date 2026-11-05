@@ -58,19 +58,25 @@ check_tsc() {
       --incremental --tsBuildInfoFile "$info" )
 }
 
-# 改动的前端测试文件：只跑这几个，不跑整套。开发期想知道「我刚改的功能还对不对」，
-# 跑整套 vitest 要 20s+ 且大半与本次无关；整套留给门禁 11 在收尾跑一次。
+# 改动的前端文件 → 该跑哪些测试。
+#
+# 两种改法都要有反馈，所以走 vitest 的模块图而不是文件名匹配：
+#   改了测试文件 → 至少跑它自己（vitest related 也会把它带上）；
+#   改了源码文件 → 跑所有 import 到它的测试（实测 turnGesture.ts → 15 个文件 130 用例，5.8s）。
+# 早期只按 `*.test.ts` 挑，改源码时一个测试都不跑、静默报「跳过」——那等于快环不覆盖前端行为。
+# 跑整套留给门禁 11；这里只跑模块图上真正相关的那一批。
 check_web_tests() {
   local files
   files=$({ git diff --name-only HEAD 2>/dev/null || git diff --name-only 2>/dev/null
     git ls-files --others --exclude-standard 2>/dev/null
-  } | grep -E '^web/src/.*\.(test|spec)\.(ts|tsx)$' | sort -u | tr '\n' ' ')
+  } | grep -E '^web/src/.*\.(ts|tsx)$' | sort -u | sed 's|^web/||' | tr '\n' ' ')
   if [ -z "$files" ]; then
-    printf '没有改动的测试文件，跳过\n'
+    printf '没有改动的前端文件，跳过\n'
     return 0
   fi
-  printf '改动测试：%s\n' "$files"
-  ( cd web && ./node_modules/.bin/vitest run ${files#web/} )
+  printf '相关测试（按模块图）：%s\n' "$files"
+  # shellcheck disable=SC2086
+  ( cd web && ./node_modules/.bin/vitest related $files --run )
 }
 
 # 改动包：只取工作区里被改的 .go 文件所属目录；验收测试留给 make gate-acceptance。
