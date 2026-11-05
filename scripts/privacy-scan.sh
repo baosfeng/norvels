@@ -66,24 +66,47 @@ is_text() {
   return 0
 }
 
+# build_text_list <文件列表> <输出>：过滤掉二进制与依赖/生成物，供后续 grep 批量传参。
+# 候选列表只生成一次，N 条规则共用，避免「每条规则 × 每个文件」各 fork 一次。
+build_text_list() {
+  local src=$1 dst=$2 f
+  : > "$dst"
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
+    is_text "$f" && printf '%s\n' "$f" >> "$dst"
+  done < "$src"
+}
+
 hits=0
 # scan_rule <序号> <pattern<TAB>label[<TAB>allow-regex]>
 # allow-regex 命中的行会被放行（用于把 127.0.0.1 / 0.0.0.0 / localhost 这类正常回环地址排除掉）。
 # 每条规则独立扫完全部候选文件，结果写进自己的 .hit；回放由 run_rule_set 负责。
 scan_rule() {
-  local idx=$1 line=$2 pat label allow f out
+  local idx=$1 line=$2 pat label allow out
   local found=""
   IFS=$'\t' read -r pat label allow <<<"$line"
-  while IFS= read -r f; do
-    [[ -n "$f" && -f "$f" ]] || continue
-    is_text "$f" || continue
-    out=$(grep -nIE --binary-files=without-match -- "$pat" "$f" 2>/dev/null)
-    if [[ -n "$allow" && -n "$out" ]]; then
-      out=$(printf '%s\n' "$out" | grep -vE -- "$allow")
-    fi
-    out=$(printf '%s\n' "$out" | head -8)
-    [[ -n "$out" ]] && found="${found}${f}\n${out}\n"
-  done < "$LIST_FILE"
+  # 一次 grep 扫完全部候选文件（xargs 分批避开 ARG_MAX）：进程数从「规则数 × 文件数」降到「规则数 × 批数」。
+  # 多文件输出形如「文件:行号:内容」，这里按文件还原成「文件一行 + 每行『行号:内容』」；
+  # allow 放行与每文件 head -8 都按文件应用，与原逐文件实现逐字节等价。
+  if [[ -s "$TEXT_LIST" ]]; then
+    found=$(tr '\n' '\0' < "$TEXT_LIST" \
+      | xargs -0 -n 200 grep -nIE --binary-files=without-match -- "$pat" 2>/dev/null \
+      | PRIV_ALLOW="$allow" awk '
+          function flush() { if (cur != "" && n > 0) printf "%s\\n%s\\n", cur, buf }
+          {
+            p = index($0, ":")
+            if (p == 0) next
+            f = substr($0, 1, p - 1)
+            rest = substr($0, p + 1)
+            q = index(rest, ":")
+            if (q == 0) next
+            hit = substr(rest, 1, q - 1) ":" substr(rest, q + 1)
+            if (ENVIRON["PRIV_ALLOW"] != "" && hit ~ ENVIRON["PRIV_ALLOW"]) next
+            if (f != cur) { flush(); cur = f; n = 0; buf = "" }
+            if (n < 8) { buf = buf (n == 0 ? "" : "\n") hit; n++ }
+          }
+          END { flush() }')
+  fi
   if [[ -n "$found" ]]; then
     {
       printf '\n[命中] %s\n' "$label"
@@ -96,6 +119,7 @@ scan_rule() {
 # 输出与串行版本逐字节相同（只有快慢变了），hits 的计数口径也不变：一条规则算一类。
 run_rule_set() {
   local file=$1 idx=0 line
+  build_text_list "$LIST_FILE" "$TEXT_LIST"   # 本批规则共用的候选文本文件列表
   rm -f "$WORK_DIR"/*.hit   # 两次调用（内置规则 / 黑名单）共用编号空间，先清掉上一批
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
@@ -145,11 +169,7 @@ cut -f1 "$DENY_RULES_FILE" >> "$PAT_FILE"
 : > "$CAND_FILE"
 if [[ -s "$PAT_FILE" ]]; then
   # 一次 grep 扫完所有文本文件（xargs -0 处理含空格的路径名，不逐个 fork）
-  : > "$TEXT_LIST"
-  while IFS= read -r f; do
-    [[ -n "$f" && -f "$f" ]] || continue
-    is_text "$f" && printf '%s\n' "$f" >> "$TEXT_LIST"
-  done < "$LIST_FILE"
+  build_text_list "$LIST_FILE" "$TEXT_LIST"
   if [[ -s "$TEXT_LIST" ]]; then
     tr '\n' '\0' < "$TEXT_LIST" \
       | xargs -0 grep -lIE --binary-files=without-match -f "$PAT_FILE" -- > "$CAND_FILE" 2>/dev/null
