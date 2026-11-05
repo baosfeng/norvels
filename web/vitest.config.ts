@@ -15,12 +15,15 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/api/**", "src/lib/**"],
-      exclude: ["src/**/*.test.{ts,tsx}", "src/test-setup.ts", "src/api/types.ts"],
+      // src/lib/toast.tsx 是纯 re-export 兼容入口（一行 `export { ToastHost } from "../layouts/ToastHost"`）：
+      // vitest 5 的 AST 口径不把 re-export 计为语句，文件会以 0/0 显示成 0%，误导阅读；实现本体在 layouts/ToastHost.tsx。
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test-setup.ts", "src/api/types.ts", "src/lib/toast.tsx"],
       // 防退化基线（只升不降）。数值 = vitest 5 新口径实测（88.2 / 85.14 / 80.87 / 90.26）留 0.3 余量。
       // 口径变化：@vitest/coverage-v8 5 把 v8-to-istanbul（sourcemap 逐行映射）换成 ast-v8-to-istanbul，
-      // 同一份代码从旧口径 92.11 / 89.47 / 78.99 / 92.11 变为 88.2 / 85.14 / 80.87 / 90.26；
-      // istanbul provider 实测同量级（88.2 / 84.41 / 80.87 / 90.26），确认不是单一 provider 的映射问题。
-      // 旧值不可直接沿用（沿用会恒红），本行基线待 leader 按新口径重钉。
+      // 同一份代码从旧口径 92.11 / 89.49 / 78.99 / 92.11 变为 88.2 / 85.14 / 80.87 / 90.26。
+      // 数字下降是口径更精确而不是丢统计：旧口径把 import/顶层声明按行记成已执行，新口径把
+      // 默认实现里的箭头函数体也算语句（如 lib/auth.ts 的 ANONYMOUS.enter 等 7 个默认函数未调用）。
+      // leader 已拍板接受新口径；提升真实覆盖率另立任务，不通过放宽本行数字实现。
       thresholds: { lines: 89.9, functions: 80.5, branches: 84.8, statements: 87.9 },
     },
   },

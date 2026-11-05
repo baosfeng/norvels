@@ -38,7 +38,7 @@ docker buildx build \
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `GO_VERSION` | `1.26` | Go 工具链镜像 tag。`go.mod` 声明 `go 1.26.0`：`modernc.org/sqlite` 要求 go>=1.25，解析器使用的 `golang.org/x/text v0.43` 要求 go>=1.26，因此默认 1.26 |
-| `PNPM_VERSION` | `9` | 前端包管理器主版本 |
+| `PNPM_VERSION` | `11` | 前端包管理器主版本 |
 | `VERSION` | `0.1.0` | 注入 `main.version`，显示在 `/api/version` 与 `norvels version` |
 | `COMMIT` | `dev` | 注入 `main.commit` |
 | `BUILTAT` | `unknown` | 注入 `main.builtAt`（RFC3339） |
