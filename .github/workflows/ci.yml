@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
-          # 版本从 go.mod 读（当前 go 1.26.0），不在 workflow 里重复硬编码。
+          # 版本从 go.mod 读（当前 go 1.27.0），不在 workflow 里重复硬编码。
           go-version-file: go.mod
           cache: true
       - name: gofmt 检查

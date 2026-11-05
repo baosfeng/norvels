@@ -37,7 +37,7 @@ docker buildx build \
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `GO_VERSION` | `1.26` | Go 工具链镜像 tag。`go.mod` 声明 `go 1.26.0`：`modernc.org/sqlite` 要求 go>=1.25，解析器使用的 `golang.org/x/text v0.43` 要求 go>=1.26，因此默认 1.26 |
+| `GO_VERSION` | `1.27` | Go 工具链镜像 tag。`go.mod` 声明 `go 1.27.0`：`modernc.org/sqlite` 要求 go>=1.25，解析器使用的 `golang.org/x/text v0.43` 要求 go>=1.26，因此默认 1.27 |
 | `PNPM_VERSION` | `9` | 前端包管理器主版本 |
 | `VERSION` | `0.1.0` | 注入 `main.version`，显示在 `/api/version` 与 `norvels version` |
 | `COMMIT` | `dev` | 注入 `main.commit` |
@@ -58,7 +58,7 @@ docker build -f deploy/Dockerfile \
 ### 2.2 各阶段职责
 
 1. **web（node:22-alpine）**：先只复制 `web/package.json`（及 `pnpm-lock.yaml`，若存在），通过 bind mount 探测 lock 文件后执行 `pnpm install --frozen-lockfile`（缺 lock 时退回 `pnpm install`），再复制源码执行 `pnpm build`。
-2. **build（golang:1.26-alpine）**：`CGO_ENABLED=0`、`-trimpath`、`-ldflags "-s -w"`；把 `web/dist` 同步进 `internal/webui/dist`（`//go:embed all:dist` 的目标），编译 `./cmd/norvels` 与 `./cmd/healthcheck`。
+2. **build（golang:1.27-alpine）**：`CGO_ENABLED=0`、`-trimpath`、`-ldflags "-s -w"`；把 `web/dist` 同步进 `internal/webui/dist`（`//go:embed all:dist` 的目标），编译 `./cmd/norvels` 与 `./cmd/healthcheck`。
 3. **runtime（gcr.io/distroless/static-debian13:nonroot@sha256:…）**：只拷二进制、healthcheck 与 `/data` 目录，非 root（65532）运行，无 shell。
 
 **交叉编译**：web 与 build 两个 stage 都声明 `--platform=$BUILDPLATFORM`，只在构建机自身架构上执行；

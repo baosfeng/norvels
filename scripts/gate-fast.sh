@@ -40,7 +40,7 @@ trap 'rm -rf "$WORK"' EXIT
 # 环境问题单独用退出码 2 表达，避免和「代码不过」混为一谈。
 env_problem() { printf '[环境] %s\n' "$1" >&2; exit 2; }
 
-command -v go >/dev/null 2>&1 || env_problem "找不到 go（需要 Go 1.26）"
+command -v go >/dev/null 2>&1 || env_problem "找不到 go（需要 Go 1.27）"
 [ -f web/package.json ] || env_problem "缺少 web/package.json"
 if [ ! -x web/node_modules/.bin/tsc ]; then
   env_problem "缺少 web/node_modules（先 cd web && pnpm install）"

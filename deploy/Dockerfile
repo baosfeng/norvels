@@ -7,13 +7,13 @@
 #   docker buildx build --platform linux/amd64,linux/arm64 -f deploy/Dockerfile -t norvels:0.1.0 .
 #
 # 说明：
-#   - Go 版本取 go.mod 的 go 1.26：modernc.org/sqlite 要求 1.25，
-#     解析器依赖的 golang.org/x/text v0.43 要求 1.26，因此默认 golang:1.26-alpine。
+#   - Go 版本取 go.mod 的 go 1.27：modernc.org/sqlite 要求 1.25，
+#     解析器依赖的 golang.org/x/text v0.43 要求 1.26，因此默认 golang:1.27-alpine。
 #   - 本文件使用 BuildKit 特性（RUN --mount、syntax 指令）。Docker 23+ 默认
 #     启用 BuildKit；旧构建器可删除 --mount 段，只损失缓存速度。
 
 # 全局参数：必须在第一个 FROM 之前声明，才能在 FROM 中引用。
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.27
 # pnpm 版本必须与 web/pnpm-workspace.yaml 的特性匹配：
 # 该文件用了 allowBuilds（pnpm 10+ 才有），pnpm 9 会直接报
 # "packages field missing or empty"。本地与 CI 都用 11，这里保持一致。
