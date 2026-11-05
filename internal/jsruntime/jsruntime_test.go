@@ -3,6 +3,7 @@ package jsruntime
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -137,8 +138,10 @@ func TestSyntaxAndSize(t *testing.T) {
 	if !errors.Is(err, ErrSyntax) {
 		t.Fatalf("期望 ErrSyntax，实际 %v", err)
 	}
-	if !strings.Contains(err.Error(), "Line 1") {
-		t.Fatalf("语法错误消息应带行号，实际 %v", err)
+	// goja 语法错误消息有两种真实格式：旧式 "Line 1: ..." 与新式 "at rule.js:1:9"；
+	// 契约只要求带行号，因此两种都接受，但行号必须是 1。
+	if !regexp.MustCompile(`(?:Line 1\b|rule\.js:1:\d+)`).MatchString(err.Error()) {
+		t.Fatalf("语法错误消息应带行号 1，实际 %v", err)
 	}
 	big := strings.Repeat("a", 9000)
 	if _, err := e.Eval(big, nil); !errors.Is(err, ErrTooLarge) {
