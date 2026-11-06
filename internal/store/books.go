@@ -90,8 +90,17 @@ func bookOrder(sortKey string) string {
 	}
 }
 
-func (s *Store) countBooks(ctx context.Context, where []string, args []any) (int, error) {
-	q := "SELECT COUNT(*) FROM books b LEFT JOIN authors a ON a.id = b.author_id"
+// countBooks 数列表筛选命中的总行数。
+//
+// withAuthors 只在「关键词要同时匹配书名与作者」（q.Q 非空）时为 true：那时 authors
+// 是筛选的一部分，必须 JOIN；其余情况下这个 LEFT JOIN 只是给每一行多做一次 authors
+// 主键查找——17 万本书实测 0.10 s 里绝大部分是这些白做的查找。LEFT JOIN 不改变行数
+// （authors.id 是主键，一本书最多补出一行），所以去掉后 total 完全不变。
+func (s *Store) countBooks(ctx context.Context, where []string, args []any, withAuthors bool) (int, error) {
+	q := "SELECT COUNT(*) FROM books b"
+	if withAuthors {
+		q += " LEFT JOIN authors a ON a.id = b.author_id"
+	}
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -142,7 +151,7 @@ func (s *Store) loadBooks(ctx context.Context, where []string, args []any, order
 func (s *Store) ListBooks(ctx context.Context, q BookQuery) (Page[BookSummary], error) {
 	page, size := normPage(q.Page, q.Size)
 	where, args := bookFilter(ctx, q)
-	total, err := s.countBooks(ctx, where, args)
+	total, err := s.countBooks(ctx, where, args, strings.TrimSpace(q.Q) != "")
 	if err != nil {
 		return Page[BookSummary]{}, err
 	}
