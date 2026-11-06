@@ -21,6 +21,12 @@ import (
 // CLI 语义不变：norvels reconcile-content / check-content 仍然同步跑、同步打印。
 
 const (
+	// EnvDisableBackground 置非空时**不启动任何后台任务**（对账刷新 / 指纹覆盖回填 / 健康计数回填）。
+	//
+	// 用途：单元测试（后台 goroutine 会在 t.TempDir 清理后再写一次，把 WAL/-shm 造回来，
+	// 让 Cleanup 报 "directory not empty"）与一次性的离线 CLI（migrate / import 跑完就退出，
+	// 后台任务纯属浪费）。读取侧在禁用时一律走实时 SQL，数字仍然正确。
+	EnvDisableBackground = "NORVELS_DISABLE_BACKGROUND"
 	// EnvContentRefreshInterval 覆盖正文对账的后台刷新间隔（Go duration 文本，如 15m）。
 	EnvContentRefreshInterval = "NORVELS_CONTENT_REFRESH_INTERVAL"
 	// defaultContentRefreshInterval 是默认刷新间隔：孤儿块/悬空引用不是秒级问题，
@@ -58,11 +64,16 @@ type storeBackground struct {
 	// coverageRunning 去重「同一时刻只允许一个指纹覆盖表回填在跑」。
 	// 回填可能扫 5125 万行索引，两次并发只会互相拖慢，没有任何收益。
 	coverageRunning atomic.Bool
+	// healthCountsRunning 去重「同一时刻只允许一个书级健康计数回填在跑」。
+	healthCountsRunning atomic.Bool
 }
 
 // reconcileCache 是 Store 字段的类型名（字段声明在 open.go）：保留别名，
 // 这样这次改动完全不用碰写区外的文件。
 type reconcileCache = storeBackground
+
+// backgroundDisabled 报告后台任务是否被 EnvDisableBackground 关掉（每次读环境变量，便于测试切换）。
+func backgroundDisabled() bool { return strings.TrimSpace(os.Getenv(EnvDisableBackground)) != "" }
 
 // ContentRefreshInterval 返回配置的刷新间隔（环境变量优先，非法值退回默认）。
 func ContentRefreshInterval() time.Duration {
@@ -89,6 +100,9 @@ func (s *Store) StartContentRefresh(ctx context.Context) { s.startContentRefresh
 // 而健康请求惰性启动时不刷——请求侧本来就会按 stale 触发一次，
 // 再无条件刷一次等于每次冷启动都白扫一遍全表。
 func (s *Store) startContentRefresh(ctx context.Context, immediate bool) {
+	if backgroundDisabled() {
+		return
+	}
 	c := &s.reconcile
 	c.mu.Lock()
 	if c.started {
@@ -153,6 +167,9 @@ func (s *Store) CloseContentRefresh() { s.StopContentRefresh() }
 
 // refreshContentAsync 触发一次后台对账；已有刷新在跑时直接返回。
 func (s *Store) refreshContentAsync() {
+	if backgroundDisabled() {
+		return
+	}
 	if !s.reconcile.running.CompareAndSwap(false, true) {
 		return
 	}

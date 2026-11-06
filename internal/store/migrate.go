@@ -115,6 +115,8 @@ func (s *Store) MigrateTo(ctx context.Context, target int) (migrationStatus, err
 	// 迁移只落状态行，这里**异步**启动后台分批回填。非阻塞、可重复调用，
 	// 未完成时健康报告标 stale + backfilling，完成后自动转正常。
 	s.EnsureFingerprintCoverage(ctx)
+	// 0025 的书级健康计数同理：迁移只建结构，历史值由后台任务补（books 一遍扫描）。
+	s.EnsureBookHealthCounts()
 	return st, nil
 }
 

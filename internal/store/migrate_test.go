@@ -17,6 +17,7 @@ func openBare(t *testing.T, name string) (*Store, string) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	t.Cleanup(st.StopContentRefresh) // 先停后台任务再关库（见 newTestStore 的说明）
 	t.Cleanup(func() { _ = st.Close() })
 	return st, path
 }

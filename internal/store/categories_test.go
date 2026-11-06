@@ -12,6 +12,7 @@ func newTestStoreTo(t *testing.T, version int) *Store {
 	t.Helper()
 	ctx := context.Background()
 	st, _ := openBare(t, "v"+strconv.Itoa(version)+".db")
+	t.Cleanup(st.StopContentRefresh)
 	if _, err := st.MigrateTo(ctx, version); err != nil {
 		t.Fatalf("迁移到版本 %d: %v", version, err)
 	}
