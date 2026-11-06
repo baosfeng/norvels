@@ -80,17 +80,32 @@ func TestContentReconcileReportString(t *testing.T) {
 	}
 }
 
-// TestHealthReportReconcileCached 对账结果在 TTL 内复用（对账要全表扫，不能每次请求都跑）。
-func TestHealthReportReconcileCached(t *testing.T) {
+// TestHealthReportReconcileSnapshot 对账结果来自后台快照（对账要全表扫，不能每次请求都跑）。
+//
+// 语义在 0023 改了：请求**不再**同步跑第一次对账，而是立刻返回 stale 快照，
+// 由后台 goroutine 刷新（见 health_refresh_test.go）。这里锁死请求侧的那一半：
+// 同一份快照被连续两次请求复用，且第一次不等对账返回完整 200。
+func TestHealthReportReconcileSnapshot(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
 	first := st.HealthReport(ctx).Content
 	if first == nil {
 		t.Fatal("首次健康报告缺少 content")
 	}
+	if !first.Stale || first.CheckedAt != "" {
+		t.Errorf("尚无快照时应 stale 且不带 CheckedAt：%+v", first)
+	}
+	// 跑一次对账后快照落库，后续请求复用同一份（不重跑）。
+	if _, err := st.ReconcileContent(ctx, false); err != nil {
+		t.Fatalf("ReconcileContent: %v", err)
+	}
+	seeded := st.HealthReport(ctx).Content
+	if seeded == nil || seeded.Stale || seeded.CheckedAt == "" {
+		t.Fatalf("对账后应给出新鲜快照：%+v", seeded)
+	}
 	second := st.HealthReport(ctx).Content
-	if second == nil || second.CheckedAt != first.CheckedAt {
-		t.Errorf("第二次报告没有复用缓存：%+v vs %+v", second, first)
+	if second == nil || second.CheckedAt != seeded.CheckedAt {
+		t.Errorf("第二次报告没有复用快照：%+v vs %+v", second, seeded)
 	}
 }
 

@@ -130,18 +130,14 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 		r.Stale = lengthLive
 	}
 	// 正文库对账：孤儿块 / 悬空引用是两库（没有跨库事务）唯一会漂移的地方，
-	// 必须出现在健康报告里；对账本身是全表扫描，走缓存（10 分钟）。
-	if rep, err := s.cachedReconcile(ctx); err != nil {
-		r.warn("contentReconcile", err)
-	} else {
-		r.Content = &ContentHealth{
-			OrphanBlocks: rep.OrphanBlocks, OrphanBooks: rep.OrphanBooks,
-			DanglingRefs: rep.DanglingRefs, MissingTable: rep.MissingTable,
-			CheckedAt: formatTime(rep.CheckedAt),
-		}
-	}
+	// 必须出现在健康报告里。但它是全表扫描（生产数十秒、会把整个接口拖到 60 s 超时，
+	// 而驾驶舱的 STATS_TIMEOUT_MS = 20_000，21 s 的响应本来就是超时失败），
+	// 所以这里只读后台刷新留下的快照，过期就标 stale（见 health_refresh.go）。
+	r.Content = s.contentHealth(&r)
 	// 指纹覆盖率：0019 之后历史书要靠 backfill-fingerprints 补齐，缺口必须可见。
-	r.Fingerprints = s.fingerprintHealth(ctx, &r)
+	// 0023 起读书级覆盖表（O(书数)）；覆盖表的历史回填由后台任务分批补，
+	// 补完之前这里标 stale + backfilling，并在读取时顺带确保后台任务在跑。
+	r.Fingerprints = s.fingerprintHealthWithBackfill(ctx, &r)
 	// 质量分覆盖率：0020 之后版本择优要靠 backfill-quality 补齐历史书，缺口同样必须可见。
 	r.Quality = s.qualityHealth(ctx, &r)
 	return r

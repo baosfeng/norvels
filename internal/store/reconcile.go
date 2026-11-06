@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -34,9 +33,19 @@ type ContentReconcileReport struct {
 // （缺的正文无法凭空造出来，只能重导或从备份恢复）。
 //
 // 成本：孤儿侧扫正文库的块表（生产 87k 行，毫秒级）；悬空侧要把 chapters 的
-// block_id 全部过一遍（生产 790 万行，秒级）。因此**不要放在高频接口上**：
-// HealthReport 通过 cachedReconcile 走 10 分钟缓存。
+// block_id 全部过一遍（生产 2,469 万行，数十秒级）。因此**不要放在请求路径上**：
+// HealthReport 只读快照（见 health_refresh.go），本函数仍保持同步语义给 CLI 用。
+//
+// 每次跑完都把结果记进快照：这样运维手动跑一次 reconcile-content 之后，
+// 驾驶舱立刻看到的就是这份新鲜结果，而不是等下一次后台刷新。
 func (s *Store) ReconcileContent(ctx context.Context, fix bool) (ContentReconcileReport, error) {
+	rep, err := s.reconcileContent(ctx, fix)
+	s.recordContentSnapshot(rep, err)
+	return rep, err
+}
+
+// reconcileContent 是对账本体（不带快照记账），供上面这层与本包测试直接调用。
+func (s *Store) reconcileContent(ctx context.Context, fix bool) (ContentReconcileReport, error) {
 	rep := ContentReconcileReport{CheckedAt: nowUTC()}
 	exists, err := s.contentTableExists(ctx)
 	if err != nil {
@@ -255,44 +264,20 @@ func (s *Store) scanChapterRefs(ctx context.Context, blocks map[int64]struct{}, 
 // reconcileScanBatch 是悬空引用扫描的每批章节数（内存有界，不影响总成本）。
 const reconcileScanBatch = 100000
 
-// ---------- 健康检查用的缓存 ----------
+// ---------- 健康报告用的快照 ----------
 
-// reconcileCacheTTL 是 HealthReport 复用对账结果的有效期。
+// ContentHealth 是 HealthReport 里的正文库摘要（最近一次对账快照 + 检查时间）。
 //
-// 对账要全表扫 chapters（生产 790 万行、秒级），不能每次打开驾驶舱都重跑；
-// 又不该把明显的孤儿块藏太久，10 分钟是「页面响应」与「发现问题」的折中。
-const reconcileCacheTTL = 10 * time.Minute
-
-// reconcileCache 缓存最近一次对账结果（零值表示从未跑过）。
-type reconcileCache struct {
-	mu  sync.Mutex
-	at  time.Time
-	rep ContentReconcileReport
-	err error
-}
-
-// cachedReconcile 返回缓存中的对账结果；过期或从未跑过时同步重跑一次。
-//
-// 失败也不影响主流程：错误原样返回给调用方（HealthReport 记一条 Warnings），
-// 下一次调用（TTL 过期后）会重试。
-func (s *Store) cachedReconcile(ctx context.Context) (ContentReconcileReport, error) {
-	s.reconcile.mu.Lock()
-	defer s.reconcile.mu.Unlock()
-	if !s.reconcile.at.IsZero() && nowUTC().Sub(s.reconcile.at) < reconcileCacheTTL {
-		return s.reconcile.rep, s.reconcile.err
-	}
-	rep, err := s.ReconcileContent(ctx, false)
-	s.reconcile.at, s.reconcile.rep, s.reconcile.err = nowUTC(), rep, err
-	return rep, err
-}
-
-// ContentHealth 是 HealthReport 里的正文库摘要（对账结果 + 检查时间）。
+// 对账本身是全表扫描（生产数十秒），已整体移出请求路径：这里读到的是后台刷新
+// 留下的快照。Stale 为 true 表示「快照过期 / 还没有 / 上次刷新失败」，
+// 数字可能旧或为 0，但接口照常 200（见 health_refresh.go）。
 type ContentHealth struct {
 	OrphanBlocks int    `json:"orphanBlocks"`
 	OrphanBooks  int    `json:"orphanBooks"`
 	DanglingRefs int    `json:"danglingRefs"`
 	MissingTable bool   `json:"missingTable"`
 	CheckedAt    string `json:"checkedAt"`
+	Stale        bool   `json:"stale,omitempty"`
 }
 
 // String 让对账结果在日志里可读（CLI/运维排查用）。

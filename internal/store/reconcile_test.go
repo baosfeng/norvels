@@ -108,12 +108,19 @@ func TestHealthReportIncludesContent(t *testing.T) {
 	if _, err := st.SaveBook(ctx, sampleBook("体检的书", "作者丁", "/books/h.txt", strings.Repeat("h", 64)), SaveOptions{}); err != nil {
 		t.Fatalf("SaveBook: %v", err)
 	}
+	// 同步跑一次对账把快照填上（请求路径只读快照，见 health_refresh.go）。
+	if _, err := st.ReconcileContent(ctx, false); err != nil {
+		t.Fatalf("ReconcileContent: %v", err)
+	}
 	r := st.HealthReport(ctx)
 	if len(r.Warnings) != 0 {
 		t.Fatalf("健康报告有告警: %v", r.Warnings)
 	}
 	if r.Content == nil {
 		t.Fatal("健康报告缺少正文库摘要")
+	}
+	if r.Content.Stale || r.Content.CheckedAt == "" {
+		t.Errorf("对账之后快照应新鲜且带 CheckedAt: %+v", r.Content)
 	}
 	if r.Content.OrphanBlocks != 0 || r.Content.DanglingRefs != 0 || r.Content.MissingTable {
 		t.Errorf("正文库摘要异常: %+v", r.Content)
