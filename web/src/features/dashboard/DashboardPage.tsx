@@ -4,6 +4,7 @@ import { showToast } from "../../lib/toastStore";
 import {
   useHealthReport,
   useImportJobs,
+  useMetrics,
   useImportTrend,
   useReadingProgress,
   useReadingProgressAll,
@@ -18,6 +19,7 @@ import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePane
 import { formatCount, formatDate } from "../../lib/format";
 import { buildRecommendMetrics } from "../../lib/charts";
 import { HealthCard } from "./HealthCard";
+import { ObservePanel } from "./ObservePanel";
 import { ReadingHeatmapCard } from "./ReadingHeatmap";
 import {
   CategoryClicksChart,
@@ -72,6 +74,8 @@ export function DashboardPage() {
   const reading = useReadingStats(90);
   /** 推荐与埋点：曝光 / 点击 / 阅读 / 收藏的窗口聚合（rec 库；未启用时后端 503） */
   const rec = useRecommendStats(TREND_DAYS);
+  /** 接口耗时：进程内快照（路由分位 + 慢请求），不自动轮询，只在刷新时重取 */
+  const metrics = useMetrics();
   const [refreshing, setRefreshing] = useState(false);
 
   /** 刷新概览：重取全部数据源，卡片保持旧值直到新值回来。 */
@@ -79,7 +83,7 @@ export function DashboardPage() {
     if (refreshing) return;
     setRefreshing(true);
     const started = Date.now();
-    for (const source of [stats, progress, progressAll, jobs, health, trend, topAuthors, reading, rec]) {
+    for (const source of [stats, progress, progressAll, jobs, health, trend, topAuthors, reading, rec, metrics]) {
       source.reload();
     }
     const wait = Math.max(0, 240 - (Date.now() - started));
@@ -264,6 +268,28 @@ export function DashboardPage() {
                   </div>
                 </>
               )}
+            </section>
+
+            {/* 接口耗时：唯一一块「运维视角」的数据，慢在哪要能直接在驾驶舱看到 */}
+            <section className="dash-block" data-testid="dashboard:metrics">
+              <div className="dash-block-head">
+                <h2>接口耗时</h2>
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  disabled={metrics.loading}
+                  onClick={metrics.reload}
+                  data-testid="metrics-refresh"
+                >
+                  {metrics.loading ? "读取中…" : "刷新耗时"}
+                </button>
+              </div>
+              <ObservePanel
+                snapshot={metrics.data}
+                loading={metrics.loading}
+                error={metrics.error}
+                onRetry={metrics.reload}
+              />
             </section>
 
             <div className="chart-grid" data-testid="dashboard:charts">

@@ -25,6 +25,14 @@ export function useHealthReport() {
 }
 
 /**
+ * 运行时性能快照（驾驶舱「接口耗时」）：进程内计数，只有点刷新才重取——
+ * 自动轮询会让「看当前值」和「看历史」混在一起，慢请求列表也会被自己的刷新冲掉。
+ */
+export function useMetrics() {
+  return useResource((signal: AbortSignal) => api.metrics({ signal }), []);
+}
+
+/**
  * 健康卡下钻明细：kind 为空（抽屉没开）时不发请求；换 kind 或翻页即重取。
  * 与 useHealthReport 分开取，是因为抽屉只在点开时才需要这一页数据。
  */

@@ -1160,3 +1160,71 @@ export interface VersionInfo {
   commit: string;
   builtAt: string;
 }
+
+/** 一条路由的耗时聚合（GET /api/metrics 的 http[] 项，按路由模板聚合）。 */
+export interface RouteTiming {
+  route: string;
+  count: number;
+  errors: number;
+  clientErrors: number;
+  avgMs: number;
+  maxMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  /** 直方图各桶计数，长度 = 边界数 + 1 */
+  buckets: number[];
+}
+
+/** 一条慢请求（GET /api/metrics 的 slowRequests[] 项，最新在前）。 */
+export interface SlowRequest {
+  at: string;
+  route: string;
+  method: string;
+  path: string;
+  status: number;
+  durMs: number;
+  sqlCount: number;
+  sqlMs: number;
+  requestId?: string;
+}
+
+/** 一个 SQL 模板的聚合（sql[] 项）。 */
+export interface QueryTiming {
+  query: string;
+  count: number;
+  errors: number;
+  slowCount: number;
+  avgMs: number;
+  maxMs: number;
+  p95Ms: number;
+}
+
+/** 一个连接池的 sql.DBStats 快照。 */
+export interface PoolStat {
+  name: string;
+  open: number;
+  inUse: number;
+  idle: number;
+  waitCount: number;
+  waitMs: number;
+}
+
+/** 进程运行时快照。 */
+export interface RuntimeStat {
+  goVersion: string;
+  goroutines: number;
+  heapMB: number;
+  numGC: number;
+  pools: PoolStat[];
+}
+
+/** GET /api/metrics：进程内（重启清零）的运行时性能快照。 */
+export interface MetricsSnapshot {
+  startedAt: string;
+  uptimeSec: number;
+  http: RouteTiming[];
+  slowRequests: SlowRequest[];
+  sql: QueryTiming[];
+  runtime: RuntimeStat;
+}
