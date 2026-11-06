@@ -111,6 +111,10 @@ func (s *Store) MigrateTo(ctx context.Context, target int) (migrationStatus, err
 	if err := s.ensureCompositionIndex(ctx); err != nil {
 		return st, err
 	}
+	// 0023 的指纹覆盖表回填不在迁移里做（生产 5125 万行，会把启动拖成分钟级停服）：
+	// 迁移只落状态行，这里**异步**启动后台分批回填。非阻塞、可重复调用，
+	// 未完成时健康报告标 stale + backfilling，完成后自动转正常。
+	s.EnsureFingerprintCoverage(ctx)
 	return st, nil
 }
 

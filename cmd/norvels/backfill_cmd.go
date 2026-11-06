@@ -15,16 +15,21 @@ import (
 // 为什么必须有这个命令：导入判重只认指纹，而 0019 上线前入的书一本都没有指纹——
 // 不回填的话新导入的书永远比不到老书，去重等于没开。升级到 0019 之后跑一次即可。
 //
-//	norvels backfill-fingerprints [--db ...] [--batch N]
+//	norvels backfill-fingerprints [--db ...] [--batch N] [--coverage-only]
 //
 // 幂等：已有指纹的书整本跳过（正文没变过，重写只是白烧 CPU）；中断后重跑从断点继续；
 // 单本书的指纹在一个正文库事务里写完，不会留下「半本书有指纹」。--batch 只决定
 // 进度打印粒度，不改变事务粒度。
+//
+// --coverage-only 只重建书级覆盖表 fingerprint_books（0023 引入），不动任何指纹：
+// 健康报告的「有指纹的书数」读的是这张表，它只会被绕过 Store 的裸 SQL 弄脏
+// （手工删指纹、旧实现残留），运维用这个开关重算一次即可。
 func cmdBackfillFingerprints(args []string) error {
 	cfg := mustConfig()
 	fs := flag.NewFlagSet("backfill-fingerprints", flag.ExitOnError)
 	dbPath := fs.String("db", cfg.DB, "数据库路径")
 	batch := fs.Int("batch", 0, "每批处理的书数（0 = 默认 200，只影响进度粒度）")
+	coverageOnly := fs.Bool("coverage-only", false, "只重建指纹覆盖表（不重算任何指纹）")
 	fs.Parse(args)
 
 	ctx := context.Background()
@@ -35,6 +40,9 @@ func cmdBackfillFingerprints(args []string) error {
 	defer st.Close() //nolint:errcheck // CLI 退出路径
 
 	fmt.Fprintf(os.Stdout, "库: %s\n", *dbPath)
+	if *coverageOnly {
+		return repairFingerprintCoverage(ctx, st)
+	}
 	rep, err := st.BackfillFingerprints(ctx, store.FingerprintBackfillOptions{
 		Batch:    *batch,
 		Progress: printBackfillProgress,
@@ -80,6 +88,21 @@ func cmdBackfillQuality(args []string) error {
 	printQualityBackfillReport(rep)
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "FAIL 回填中断：%v\n已写入的质量分保留，重新执行会从断点继续\n", err)
+		return err
+	}
+	return nil
+}
+
+// repairFingerprintCoverage 重算覆盖表并打印汇总（--coverage-only 的实现）。
+//
+// 失败原样返回：覆盖表在库里的语义是「健康报告的分母」，修不好要让运维看到错误，
+// 而不是打印一个看着成功的数字。
+func repairFingerprintCoverage(ctx context.Context, st *store.Store) error {
+	rep, err := st.RepairFingerprintCoverage(ctx)
+	fmt.Fprintf(os.Stdout, "覆盖表：%d 本书（回填 %d / 清理陈旧 %d，用时 %s）\n",
+		rep.Covered, rep.Added, rep.Pruned, rep.Elapsed.Round(time.Millisecond))
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "FAIL 重建指纹覆盖表失败：%v\n", err)
 		return err
 	}
 	return nil
