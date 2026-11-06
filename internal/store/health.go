@@ -2,12 +2,9 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 )
 
 // Bucket 是一个直方图分桶（label 是给前端直接显示的中文/区间文案）。
@@ -89,50 +86,7 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 		s.EnsureBookHealthCounts()
 	}
 	introWhere := s.missingIntroWhere(ctx)
-	// lengthLive 记录「长度直方图这次是实时算的」（预计算表不可用）：写在这里而不是
-	// 直接改 r.Stale，是因为它由并发 goroutine 写入，wg.Wait() 之后才允许读。
-	var lengthLive bool
-	var wg sync.WaitGroup
-	wg.Add(7)
-	go func() {
-		defer wg.Done()
-		// 只数当前版本：健康报告的书数与书架同口径，否则替换一次旧版就多出「一本书」。
-		r.TotalBooks = s.intMetric(ctx, &r, "totalBooks", "SELECT COUNT(*) FROM books WHERE superseded_by = 0")
-	}()
-	// 四项判据都来自 health_issues.go 的同一份 WHERE：报告的数字与「查看明细」
-	// 接口列出的条数由同一条 SQL 条件保证一致，不会两处各写一套而漂移。
-	go func() {
-		defer wg.Done()
-		r.ThinBooks = s.precomputedInt(ctx, &r, "thinBooks", countsReady, counts.ThinBooks,
-			"SELECT COUNT(*) FROM books WHERE "+thinBookWhere("chapter_count"))
-	}()
-	go func() {
-		defer wg.Done()
-		r.MissingAuthor = s.precomputedInt(ctx, &r, "missingAuthor", countsReady, counts.MissingAuthor,
-			"SELECT COUNT(*) FROM books WHERE "+whereMissingAuthor)
-	}()
-	go func() {
-		defer wg.Done()
-		r.MissingIntro = s.precomputedInt(ctx, &r, "missingIntro", countsReady, counts.MissingIntro,
-			"SELECT COUNT(*) FROM books WHERE "+introWhere)
-	}()
-	go func() {
-		defer wg.Done()
-		r.HugeChapters = s.intMetric(ctx, &r, "hugeChapters",
-			"SELECT COUNT(*) FROM chapters WHERE "+hugeChapterWhere("word_count"))
-	}()
-	go func() {
-		defer wg.Done()
-		r.ChapterBuckets = s.chapterBuckets(ctx, &r, counts, countsReady)
-	}()
-	go func() {
-		defer wg.Done()
-		// 0022 起走预计算直方图：chapters 有 2,469 万行时，实时跑那 5 段区间 COUNT
-		// 要扫 5 遍索引（NAS 实测 3.35 s，9 个驾驶舱请求并发时 25.5 s）。
-		// 缓存缺失时降到实时算并置 Stale，接口照常 200。
-		r.ChapterLengthBuckets, lengthLive = s.lengthBuckets(ctx, &r)
-	}()
-	wg.Wait()
+	lengthLive := s.runBookMetrics(ctx, &r, counts, countsReady, introWhere)
 
 	if snap, err := s.Metrics(ctx); err == nil {
 		r.Stale = snap.Stale || lengthLive
@@ -339,74 +293,3 @@ func bucketIndex(edges []int, v int) int {
 }
 
 // ImportTrendPoint 是导入趋势里的一天（无数据日期补 0）。
-type ImportTrendPoint struct {
-	Date     string `json:"date"` // YYYY-MM-DD（本地时区）
-	Books    int    `json:"books"`
-	Chapters int    `json:"chapters"`
-}
-
-// ImportTrend 的实现在 dashboard_read.go（0022 起优先读 import_daily）。
-
-const (
-	// dateLayout 是趋势图使用的本地日期键。
-	dateLayout = "2006-01-02"
-	// maxTrendDays 是趋势查询的天数上限（一年）。
-	maxTrendDays = 366
-)
-
-// trendStartDay 返回「今天往回 days-1 天」的本地零点。
-func trendStartDay(days int) time.Time {
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	return today.AddDate(0, 0, -(days - 1))
-}
-
-// trendCounts 按本地日期聚合书数与章节数，返回两张 date→count 表（降级路径）。
-//
-// 章节不再 JOIN 24,697,647 行的 chapters 逐行 parseTime：章节数在 books.chapter_count
-// 上本来就有，按书归日再累加即可。NAS 生产库实测从 28.85 s 降到亚秒级。
-func (s *Store) trendCounts(ctx context.Context, start time.Time) (map[string]int, map[string]int, error) {
-	return s.countByDayFromBooks(ctx,
-		"SELECT imported_at, chapter_count FROM books WHERE imported_at >= ?", start)
-}
-
-// countByDayFromBooks 执行「取 (时间文本, 章节数)」的查询并按本地日期聚合。
-//
-// 时间文本由 store 统一写成 UTC（YYYY-MM-DDTHH:MM:SS.sssZ），
-// 这里解析后转本地时区再取日期，避免 UTC 跨日把凌晨导入算到前一天。
-// 章节数直接取每行的 chapter_count（books 表 7 万行），不再为每一章查一次归属。
-func (s *Store) countByDayFromBooks(ctx context.Context, query string, args ...any) (map[string]int, map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("store: import trend: %w", err)
-	}
-	defer rows.Close()
-
-	books := make(map[string]int, 32)
-	chapters := make(map[string]int, 32)
-	for rows.Next() {
-		var (
-			raw          sql.NullString
-			chapterCount int
-		)
-		if err := rows.Scan(&raw, &chapterCount); err != nil {
-			return nil, nil, fmt.Errorf("store: scan import trend: %w", err)
-		}
-		if !raw.Valid || raw.String == "" {
-			continue
-		}
-		t, err := parseTime(raw.String)
-		if err != nil {
-			continue // 历史脏数据不影响趋势图
-		}
-		day := t.Local().Format(dateLayout)
-		books[day]++
-		chapters[day] += chapterCount
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("store: import trend rows: %w", err)
-	}
-	return books, chapters, nil
-}
-
-var _ = errors.Is

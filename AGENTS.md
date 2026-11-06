@@ -1,6 +1,6 @@
 # norvels — 本地中文小说库
 
-> Go 1.27（`CGO_ENABLED=0`）单二进制 + SQLite 双库（主库存元数据，`norvels-content.db` 存正文：8 MB 块 + 内置字码本 zstd）+ React 19 内嵌前端；当前 v0.12.0，生产跑在飞牛 NAS（部署见 [deploy/nas](deploy/nas/README.md)）。
+> Go 1.27（`CGO_ENABLED=0`）单二进制 + SQLite 双库（主库存元数据，`norvels-content.db` 存正文：8 MB 块 + 内置字码本 zstd）+ React 19 内嵌前端；当前 v0.12.1，生产跑在飞牛 NAS（部署见 [deploy/nas](deploy/nas/README.md)）。
 
 ## 先读文档，再动代码
 
