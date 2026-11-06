@@ -39,7 +39,13 @@ func (q BookQuery) hasRandomFilter() bool {
 		q.Rating > 0 || strings.TrimSpace(q.CategoryL1) != ""
 }
 
-// randomActiveBook 在「全部未替换的书」里均匀地随机取一本。
+// randomActiveBook 在「全部未替换的书」里随机取一本。
+//
+// 采样口径是「在 [最小 id, 最大 id] 上均匀取一个 id，再取 >= 它的第一本」，
+// **不是严格均匀**：删除 / 被替换的书会在 id 上留下空洞，紧随空洞之后的那一本
+// 会被它前面每一个空洞额外「覆盖」到，因而略微更容易被抽中。书架上偶尔多看到
+// 一本重复的书比每次多花 2~4 ms 更不划算（严格均匀的做法是按 id 序索引 OFFSET，
+// 17 万本实测 2~4 ms，若以后要改成严格均匀，换这条即可）。
 func (s *Store) randomActiveBook(ctx context.Context) (*BookSummary, error) {
 	minID, maxID, err := s.activeIDRange(ctx)
 	if err != nil {
