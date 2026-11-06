@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"runtime/debug"
+
+	"norvels/internal/observe"
 )
 
 // wrap 组装中间件链（由外到内）：
@@ -105,6 +107,11 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 			status = http.StatusOK
 		}
 		dur := time.Since(start)
+		if dur >= observe.SlowThreshold() {
+			// 慢请求单独一行，便于 grep：正常行的字段保持原样，不因为慢而换格式。
+			s.logf("api: SLOW %s %s %d %s rid=%s",
+				r.Method, r.URL.RequestURI(), status, dur.Round(time.Millisecond), requestIDFrom(r.Context()))
+		}
 		if rid := requestIDFrom(r.Context()); rid != "" {
 			s.logf("api: %s %s %d %s rid=%s bytes=%d",
 				r.Method, r.URL.RequestURI(), status, dur.Round(time.Microsecond), rid, rec.bytes)

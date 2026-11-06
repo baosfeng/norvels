@@ -61,6 +61,7 @@ import type {
   TagSummary,
   UploadResult,
   Volume,
+  MetricsSnapshot,
 } from "./types";
 
 /** 错误分类：调用方按 kind 决定文案与重试策略，不解析 message 字符串。 */
@@ -258,6 +259,11 @@ export const api = {
   version: (opts?: RequestOptions) => request<VersionInfo>("/version", opts),
   healthReport: (opts?: RequestOptions) =>
     request<HealthReport>("/health/report", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
+  /**
+   * 运行时性能快照（观测）：路由级分位、慢请求、SQL 模板与连接池。
+   * 进程内内存态，重启清零；与统计接口同一口径放宽超时（快照本身只读内存，正常在 10ms 内）。
+   */
+  metrics: (opts?: RequestOptions) => request<MetricsSnapshot>("/metrics", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   /** 健康卡下钻：某一类问题具体是哪些书 / 章节（kind 非法后端 400）。 */
   healthIssues: (kind: HealthIssueKind, page: number, size: number, opts?: RequestOptions) =>
     request<HealthIssues>(`/health/issues${query({ kind, page, size })}`, {

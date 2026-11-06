@@ -117,6 +117,7 @@ func New(st *store.Store, cfg Config) http.Handler {
 func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) {
 	s := &Server{st: st, cfg: cfg, fsys: fsys, log: log.Default(), start: time.Now(),
 		placeholder: webui.PlaceholderHTML(), releaseMD: releases.Builtin()}
+	applyObserveEnv()
 	mux := http.NewServeMux()
 	s.routes = registerRoutes(mux, s)
 	// 未命中任何 API 路由时统一返回 JSON 错误（否则 mux 会写纯文本）。
@@ -249,6 +250,8 @@ func (s *Server) miscRoutes() []route {
 		newRoute(http.MethodPut, "/api/settings/ai", s.handlePutAISettings),
 		// 能力清单（策略注册表 + 上限）：前端硬编码上限的唯一来源。
 		newRoute(http.MethodGet, capabilitiesPath, s.handleCapabilities),
+		// 运行时性能快照（观测）：路由级分位、慢请求、SQL 模板与连接池，见 docs/api/api-observability.md
+		newRoute(http.MethodGet, "/api/metrics", s.handleMetrics),
 		newRoute(http.MethodGet, "/api/version", s.handleVersion),
 		// 发版说明（更新日志页 /changelog）：解析内置 CHANGELOG，按版本倒序返回。
 		newRoute(http.MethodGet, "/api/releases", s.handleReleases),

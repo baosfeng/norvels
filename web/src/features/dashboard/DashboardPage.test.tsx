@@ -14,6 +14,7 @@ const reloads = {
   progress: vi.fn(),
   progressAll: vi.fn(),
   recommend: vi.fn(),
+  metrics: vi.fn(),
 };
 
 const state = {
@@ -89,6 +90,62 @@ vi.mock("../../api/hooks", () => ({
     reload: reloads.reading,
   }),
   useRecommendStats: () => ({ ...state.recommend, reload: reloads.recommend }),
+  useMetrics: () => ({
+    data: {
+      startedAt: "2026-11-07T00:00:00Z",
+      uptimeSec: 3600,
+      http: [
+        {
+          route: "GET /api/health/report",
+          count: 3,
+          errors: 0,
+          clientErrors: 0,
+          avgMs: 1840.2,
+          maxMs: 2100,
+          p50Ms: 1800,
+          p95Ms: 2050,
+          p99Ms: 2100,
+          buckets: [],
+        },
+        {
+          route: "GET /api/books",
+          count: 40,
+          errors: 1,
+          clientErrors: 2,
+          avgMs: 42.5,
+          maxMs: 610,
+          p50Ms: 30,
+          p95Ms: 180,
+          p99Ms: 420,
+          buckets: [],
+        },
+      ],
+      slowRequests: [
+        {
+          at: "2026-11-07T00:05:00Z",
+          route: "GET /api/health/report",
+          method: "GET",
+          path: "/api/health/report",
+          status: 200,
+          durMs: 2100,
+          sqlCount: 7,
+          sqlMs: 1980,
+          requestId: "abc123",
+        },
+      ],
+      sql: [],
+      runtime: {
+        goVersion: "go1.27.0",
+        goroutines: 12,
+        heapMB: 3.2,
+        numGC: 4,
+        pools: [{ name: "main", open: 8, inUse: 1, idle: 7, waitCount: 0, waitMs: 0 }],
+      },
+    },
+    loading: false,
+    error: null,
+    reload: reloads.metrics,
+  }),
   useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progress }),
   useReadingProgressAll: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progressAll }),
   useHealthIssues: () => ({
@@ -148,6 +205,7 @@ describe("驾驶舱入口", () => {
     expect(reloads.stats).toHaveBeenCalled();
     expect(reloads.health).toHaveBeenCalled();
     expect(reloads.reading).toHaveBeenCalled();
+    expect(reloads.metrics).toHaveBeenCalled();
     await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("概览已刷新"), { timeout: 1500 });
     expect((screen.getByRole("button", { name: "刷新概览" }) as HTMLButtonElement).disabled).toBe(false);
   });
