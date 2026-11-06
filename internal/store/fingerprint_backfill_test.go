@@ -170,10 +170,8 @@ func TestHealthReportFingerprintCoverage(t *testing.T) {
 	}
 
 	// 只清掉一本书的指纹：缺口 1，并指向回填命令。
-	if _, err := st.cdb.ExecContext(ctx,
-		"DELETE FROM chapter_fingerprints WHERE book_id = ?", first); err != nil {
-		t.Fatalf("清指纹: %v", err)
-	}
+	// 走 Store 的删指纹路径（指纹行与覆盖行同事务），裸 SQL 会制造覆盖表漂移。
+	st.purgeBookFingerprints(ctx, first)
 	rep = st.HealthReport(ctx)
 	if rep.Fingerprints == nil || rep.Fingerprints.Missing != 1 || rep.Fingerprints.Fingerprinted != 1 {
 		t.Fatalf("覆盖率 = %+v，期望缺口 1", rep.Fingerprints)

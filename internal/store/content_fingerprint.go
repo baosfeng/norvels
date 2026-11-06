@@ -55,6 +55,12 @@ func (s *Store) replaceFingerprints(ctx context.Context, bookID int64, fps []cha
 	if err := insertFingerprintRows(ctx, tx, bookID, fps); err != nil {
 		return err
 	}
+	// 覆盖表与指纹行**同事务**维护：这是「增量维护结果 == 全量重算结果」的唯一保证
+	// （见 fingerprint_books.go）。fps 为空（整本章节全空）时要把覆盖行撤掉——
+	// 否则健康报告会把一本「判不出重复」的书算成已覆盖。
+	if err := setFingerprintCoverage(ctx, tx, bookID, len(fps) > 0); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: fingerprints commit book=%d: %w", bookID, err)
 	}
@@ -97,10 +103,28 @@ func (s *Store) purgeBookFingerprints(ctx context.Context, bookID int64) {
 	if err != nil || !ready {
 		return
 	}
-	if _, err := s.cdb.ExecContext(ctx,
-		"DELETE FROM chapter_fingerprints WHERE book_id = ?", bookID); err != nil {
+	if err := s.deleteBookFingerprintRows(ctx, bookID); err != nil {
 		log.Printf("WARN: 删除书 %d 的正文指纹失败（留作孤儿，会让判重提示指向已删的书）: %v", bookID, err)
 	}
+}
+
+// deleteBookFingerprintRows 在一个正文库事务里删掉一本书的指纹行与覆盖行。
+//
+// 两者必须同事务：只删指纹行会留下「有覆盖行、没有指纹」的陈旧覆盖，
+// 健康报告就会把一本已经删掉指纹的书算成已覆盖（漂移只能靠 RepairFingerprintCoverage 重算）。
+func (s *Store) deleteBookFingerprintRows(ctx context.Context, bookID int64) error {
+	tx, err := s.cdb.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: purge fingerprints begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // 提交后回滚是空操作
+	if err := deleteFingerprintRows(ctx, tx, bookID); err != nil {
+		return err
+	}
+	if err := setFingerprintCoverage(ctx, tx, bookID, false); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // fingerprintTableExists 判断正文库有没有 chapter_fingerprints（0019 之前的库没有）。

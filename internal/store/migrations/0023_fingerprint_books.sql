@@ -1,0 +1,17 @@
+-- 0023 书级指纹覆盖表（正文库）。
+--
+-- 本迁移的全部结构变更与回填都在**正文库**，由 Go 步骤
+-- storeStepsByVersion[23] -> createFingerprintCoverageStep 完成：
+--   1. ensureContentSchema 建 fingerprint_books(book_id INTEGER PRIMARY KEY) WITHOUT ROWID
+--      （正文库结构口径只写在 internal/store/content.go 的 contentSchemaDDL 一处）；
+--   2. RepairFingerprintCoverage 用 chapter_fingerprints 回填并清掉陈旧覆盖行。
+--
+-- 为什么不把 DDL 写进本文件：主库事务建不了另一个数据库文件里的表——与 0018 / 0019 同一个理由。
+--
+-- 动机（NAS 生产库实测）：/api/health/report 稳定 21 s，唯一大头是正文库
+--   SELECT COUNT(DISTINCT book_id) FROM chapter_fingerprints   -- 51,254,165 行，约 22 s
+-- 覆盖表把这件事变成 O(书数) 的 COUNT(*)（生产 16.9 万本，毫秒级）。
+-- 旧库没跑本迁移时，读取侧退回旧口径并标 stale（数字正确、这一次慢），不会 500。
+--
+-- 幂等：建表 IF NOT EXISTS，回填 INSERT OR IGNORE，清理按「有覆盖行但无指纹行」精确删。
+SELECT 1;

@@ -58,6 +58,34 @@ var contentSchemaDDL = []string{
     PRIMARY KEY (hash, book_id)
 ) WITHOUT ROWID`,
 	"CREATE INDEX IF NOT EXISTS idx_chapter_fingerprints_book ON chapter_fingerprints(book_id)",
+	// 书级指纹覆盖表（0023）：一行 = 「正文库里至少有一条指纹」的书。
+	//
+	// 为什么需要它：健康报告原先数「有指纹的书」用的是
+	//   SELECT COUNT(DISTINCT book_id) FROM chapter_fingerprints
+	// 生产正文库 51,254,165 行实测约 22 s，是 /api/health/report 稳定 21 s 的唯一大头。
+	// 覆盖表把这件事变成 O(书数)（生产 16.9 万本，毫秒级）。
+	//
+	// 代价是它必须与指纹行**同事务**维护（replaceFingerprints / purgeBookFingerprints），
+	// 否则两边会漂移；漂移由 RepairFingerprintCoverage 重算，并有
+	// TestFingerprintCoverageMatchesFullRecount 守着「增量 == 全量」。
+	// WITHOUT ROWID：只有一组 (book_id) 主键，不养第二份聚簇索引。
+	`CREATE TABLE IF NOT EXISTS fingerprint_books (
+    book_id INTEGER PRIMARY KEY
+) WITHOUT ROWID`,
+	// 覆盖表的回填状态（0023）：**单行表**，记录「历史指纹是否已经回填完」。
+	//
+	// 为什么需要它：生产正文库 chapter_fingerprints 有 5,125 万行，全量回填要扫一遍索引，
+	// 不能塞进迁移事务（AGENTS.md：大库迁移 20+ 分钟且期间不监听端口）。所以迁移只建表，
+	// 回填改成启动后的后台分批任务；这张表就是它的断点续跑锚点与「是否可信任」的判据。
+	//
+	// complete=1 之前，健康报告把覆盖率标 stale（数字是本轮已覆盖的部分），
+	// 避免把「后台还在扫」误报成「这些书都没有指纹」。
+	`CREATE TABLE IF NOT EXISTS fingerprint_coverage_state (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    complete     INTEGER NOT NULL DEFAULT 0,
+    last_book_id INTEGER NOT NULL DEFAULT 0,
+    updated_at   TEXT    NOT NULL DEFAULT ''
+)`,
 }
 
 // ContentDBPath 由主库路径推导正文库路径（缺省同目录兄弟文件，NORVELS_CONTENT_DB 覆盖）。
