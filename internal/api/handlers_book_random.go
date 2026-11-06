@@ -1,7 +1,6 @@
 package api
 
 import (
-	"math/rand/v2"
 	"net/http"
 	"strings"
 
@@ -10,8 +9,8 @@ import (
 
 // 随机一本（P3 §筛选与发现）：可选按作者 / 标签 / 书单缩范围，无命中 404。
 //
-// 不新增 store 方法：先数总数、再随机取一行（两次 ListBooks，offset 落在一行上），
-// 避免把整库书目读进内存——库大了那是几十 MB 的列表。
+// 采样在 store.RandomBook 里：无筛选走 id 采样（一次索引查找，不再按 offset 扫半个表），
+// 带筛选才退回「数总数 + 随机偏移」。handler 只管参数解析与响应形状。
 
 func (s *Server) handleRandomBook(w http.ResponseWriter, r *http.Request) {
 	ids, err := parseBookIDFilters(r)
@@ -38,24 +37,13 @@ func (s *Server) handleRandomBook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, brief)
 }
 
-// randomBookBrief 先数总数再随机取一行；无书返回 (nil, nil)。
+// randomBookBrief 取一本随机的书；无书返回 (nil, nil)。
 func (s *Server) randomBookBrief(r *http.Request, q store.BookQuery) (*store.BookBrief, error) {
-	first, err := s.st.ListBooks(r.Context(), q)
-	if err != nil {
+	bs, err := s.st.RandomBook(r.Context(), q)
+	if err != nil || bs == nil {
 		return nil, err
 	}
-	if first.Total <= 0 {
-		return nil, nil
-	}
-	q.Page, q.Size = rand.IntN(first.Total)+1, 1
-	page, err := s.st.ListBooks(r.Context(), q)
-	if err != nil {
-		return nil, err
-	}
-	if len(page.Items) == 0 {
-		return nil, nil // 两次查询之间书被删掉了：按「没有」处理，由前端再点一次
-	}
-	return briefFromSummary(page.Items[0]), nil
+	return briefFromSummary(*bs), nil
 }
 
 // briefFromSummary 把列表行裁成 BookBrief（与系列详情的形状一致）。
