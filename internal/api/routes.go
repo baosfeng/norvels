@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"norvels/internal/observe"
 )
 
 // route 是一条后端路由：方法 + 路径模式 + 处理函数。
@@ -39,7 +41,10 @@ func registerRoutes(mux *http.ServeMux, s *Server) []route {
 	var all []route
 	for _, group := range groups {
 		for _, rt := range group {
-			mux.HandleFunc(rt.method+" "+rt.pattern, rt.handler)
+			// 观测标签是「方法 + 模板」（如 "GET /api/books/{id}"）：按真实路径聚合会被书籍 id
+			// 撑成上万条序列，模板才能给出「哪一类接口慢」。
+			label := rt.method + " " + rt.pattern
+			mux.HandleFunc(label, observe.Wrap(label, rt.handler))
 			all = append(all, rt)
 		}
 	}
