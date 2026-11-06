@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 var (
@@ -38,6 +40,16 @@ func titleFromFilename(name string) (title, author string, fromMark bool) {
 	if s == "" {
 		return "", "", false
 	}
+	// 来源/分类标记在前、书名在后：「【某标记】某书名…」。要在摘作者之前判断——
+	// 摘掉「作者：xxx」后主体可能只剩两三个字，长度判据会失效。
+	if t, a, ok := titleAfterLeadMark(stripLeadOrder(s)); ok {
+		return t, a, false
+	}
+	return titleFromCleanName(s)
+}
+
+// titleFromCleanName 处理「剥完装饰、且不是来源标记开场」的文件名主干。
+func titleFromCleanName(s string) (title, author string, fromMark bool) {
 	if loc := reAuthorTag.FindStringSubmatchIndex(s); loc != nil {
 		author = cleanAuthorName(s[loc[2]:loc[3]])
 		s = strings.TrimSpace(s[:loc[0]])
@@ -69,6 +81,92 @@ func titleFromFilename(name string) (title, author string, fromMark bool) {
 		return t, author, false
 	}
 	return cleanTitleText(stripTitleTailTags(s)), author, false
+}
+
+// titleAfterLeadMark 处理「来源/分类标记在前、书名在后」的文件名：「【某标记】某书名…」。
+//
+// 括号块本身不是书名包装（站点、作者名、分类），主体才是书名——语料里这种写法很多，
+// 按「第一个括号块就是书名」处理会让整簇书都叫同一个标记名。
+//
+// 判据取保守组合：标记 ≤6 汉字、主体 ≥6 汉字、且主体至少是标记的两倍长。
+// 这样「【某书名】重修加料版」（主体 5 字）仍按书名处理，不会被尾部标签顶掉。
+const (
+	leadMarkMaxHan = 6 // 标记（来源/分类/作者名）的汉字上限
+	leadBodyMinHan = 4 // 主体的汉字下限：太短就不是书名
+)
+
+// reLeadMarkTail 匹配主体末尾的「1-530」「1-1100完本」这类连载区间记号。
+var reLeadMarkTail = regexp.MustCompile("[\\s\\-_（(]*(?:\\d{1,5}\\s*[-~－至到_]\\s*\\d{1,5}|\\d{1,5})\\s*(?:完本|全本|完结)?[）)]?$")
+
+func titleAfterLeadMark(s string) (title, author string, ok bool) {
+	r, sz := utf8.DecodeRuneInString(s)
+	closer, ok := titleBrackets[r]
+	if !ok {
+		return "", "", false
+	}
+	body := s[sz:]
+	j := strings.IndexRune(body, closer)
+	if j < 0 {
+		return "", "", false
+	}
+	mark := strings.TrimSpace(body[:j])
+	if hanLen(mark) == 0 || hanLen(mark) > leadMarkMaxHan {
+		return "", "", false
+	}
+	rest := strings.TrimSpace(body[j+len(string(closer)):])
+	if loc := reAuthorTag.FindStringSubmatchIndex(rest); loc != nil {
+		author = cleanAuthorName(rest[loc[2]:loc[3]])
+		rest = strings.TrimSpace(rest[:loc[0]])
+	}
+	rest = trimLeadMarkTail(stripTitleTagBlocks(rest))
+	if !leadBodyLongEnough(rest, mark, author) {
+		return "", "", false
+	}
+	// 不走 titleFromInner：它会把「书名，书名续段，续段」里的逗号当标签堆切掉，
+	// 而这里的整段主体本来就是书名（作者已单独摘走）。
+	t := cleanTitleText(trimLeadMarkTail(stripTailTags(rest)))
+	if !leadBodyLongEnough(t, mark, author) || containsAdWord(t) {
+		return "", "", false
+	}
+	return t, author, true
+}
+
+// leadBodyLongEnough 判断主体是否够长、不像尾部标签。
+//
+// 摘到了作者是强信号（「【某标记】某书名 作者：xxx」）：此时两个字的书名也认。
+// 没有作者时保守：主体至少 4 个汉字，且不少于标记的两倍长——这样「【某书名】重修加料版」
+// 仍按书名处理，不会被尾部标签顶掉。
+func leadBodyLongEnough(body, mark, author string) bool {
+	if hanLen(body) < 2 {
+		return false
+	}
+	if author != "" {
+		return true
+	}
+	return hanLen(body) >= leadBodyMinHan && hanLen(body) >= 2*hanLen(mark)
+}
+
+// trimLeadMarkTail 剥掉主体尾部的连载区间记号（「1-530完本」这类）。
+func trimLeadMarkTail(s string) string {
+	for i := 0; i < 4; i++ {
+		m := reLeadMarkTail.FindStringIndex(s)
+		if m == nil || m[1] != len(s) || m[0] == 0 {
+			break
+		}
+		s = strings.TrimSpace(s[:m[0]])
+	}
+	return s
+}
+
+// hanLen 数汉字个数：判据只看汉字，标签里的数字与标点不参与。
+func hanLen(s string) int {
+	n := 0
+	for _, r := range s {
+		if unicode.Is(unicode.Han, r) {
+			n++
+		}
+	}
+	return n
 }
 
 // titleFromInner 从「已剥掉包装」的串里定书名与作者。

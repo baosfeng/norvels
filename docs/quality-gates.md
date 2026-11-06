@@ -74,7 +74,6 @@
 | cyclo | `TestDecodeBytesBranches` | internal/parser/edge_test.go | 14 | 编码解码分支测试：对多种 BOM/字节序组合逐项断言，是平铺的检查清单 | 改为表驱动后重审 |
 | cyclo | `promoteVolumeOnly` | internal/parser/builtin_splitter.go | 14 | 仅有卷无章时把卷提升为章，需处理嵌套空卷与无正文卷两种退化情况 | 卷结构规范化后重审 |
 | cyclo | `isCJK` | internal/parser/words.go | 13 | Unicode 区间判定，本质是多区间查表；拆成「是否基本区/是否扩展区」只会增加调用层级 | Unicode 区间表外置后重审 |
-| cyclo | `titleFromFilename` | internal/parser/meta_filename.go | 13 | 文件名推书名按 5 级优先级依次尝试（书名号/整体括号/作者标记/去装饰/兜底），优先级顺序本身就是逻辑，拆开看不出先后 | 优先级改为有序解析器链后重审 |
 | cyclo | `parseHeading` | internal/parser/heading_parse.go | 13 | 标题行解析入口按「前缀式/内联式/纯数字」三类分派，分派前的归一化必须共享 | 分派策略独立后重审 |
 | cyclo | `parsePrefixedHeading` | internal/parser/heading_inline.go | 13 | 「第一章 xxx」式标题解析需同时处理全角数字、中文数字、阿拉伯数字、罗马数字四种数字形态 | 数字形态统一解析后重审 |
 | cyclo | `cleaner.isNoiseLine` | internal/parser/cleaner.go | 13 | 噪声行判定需覆盖 URL/水印/分隔线/重复标点/纯符号多类，是一张排除清单 | 噪声规则改为正则集合后重审 |
