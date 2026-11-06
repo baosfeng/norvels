@@ -51,8 +51,9 @@
 
 ## 成本与边界
 
-- 每条 SQL 约 150 ns 固定开销（两次 `time.Now` + 一次模板查找 + 一次计数），
-  3000 ns 级的查询实测 +3.8%（`BenchmarkNativeQuery` vs `BenchmarkWrappedQuery`）；真实查询（百微秒级）影响 < 1%。
+- 每条 SQL 约 100 ns 固定开销（两次 `time.Now` + 一次模板查找 + 一次计数；同一条语句重复执行走连接级缓存）。
+  3.5 µs 级的查询实测 +2.8%（`BenchmarkNativeQuery` vs `BenchmarkWrappedQuery`）、写语句 +1.4%
+  （`-benchtime 100000x`）；真实查询（百微秒级）影响 < 1%。
 - 包装驱动**完整转发** `QueryerContext`/`ExecerContext`/`ConnBeginTx`/`SessionResetter`/`Pinger`/`Validator`/`NamedValueChecker`：
   少转发一个，`database/sql` 就退化成 Prepare + Query，加了观测反而更慢。
 - 不替代 CPU/heap profile：这里回答「慢在哪一类接口 / 哪条 SQL」，不回答「哪一行代码」。

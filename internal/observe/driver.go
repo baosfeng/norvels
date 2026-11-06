@@ -36,7 +36,14 @@ func (d *observedDriver) Open(name string) (driver.Conn, error) {
 // 于是「加了观测反而更慢」。modernc 支持 QueryerContext / ExecerContext / ConnBeginTx /
 // SessionResetter / Pinger / Validator；NamedValueChecker 它没有，这里返回 ErrSkip
 // 让 database/sql 走默认转换，语义与不实现完全一致。
-type observedConn struct{ conn driver.Conn }
+type observedConn struct {
+	conn driver.Conn
+	// lastQuery / lastAgg 是单条连接的「同一条语句」一级缓存：循环里反复执行同一句
+	// （列表的 N+1 查询就是这样）时，命中后只剩一次字符串比较，省掉 sync.Map 的哈希。
+	// 连接由 database/sql 串行独占使用，这两个字段不需要额外加锁。
+	lastQuery string
+	lastAgg   *sqlAgg
+}
 
 var (
 	_ driver.QueryerContext    = (*observedConn)(nil)
@@ -116,7 +123,12 @@ func (c *observedConn) track(ctx context.Context, query string, d time.Duration,
 	if tr := trackerFromCtx(ctx); tr != nil {
 		tr.addSQL(d)
 	}
-	ObserveSQL(query, d, err)
+	agg := c.lastAgg
+	if query != c.lastQuery {
+		agg = aggFor(query)
+		c.lastQuery, c.lastAgg = query, agg
+	}
+	agg.record(d, err != nil)
 }
 
 // queryContext 优先走驱动原生 QueryerContext。
