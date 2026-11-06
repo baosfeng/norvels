@@ -77,7 +77,10 @@ const (
 // 七项统计相互独立，这里并发发起：连接池有 8 个连接，串行会白等 IO。
 // 真实库（42 万章）实测串行 138 ms、并发约 40 ms。
 func (s *Store) HealthReport(ctx context.Context) HealthReport {
-	r := HealthReport{Warnings: []string{}}
+	// warnMu 必须在这里建好，不能在 warn() 里懒初始化：下面 7 个 goroutine 会并发写
+	// Warnings，懒初始化会让每个失败者各建一把锁（并发写 r.warnMu 字段本身也是数据竞态），
+	// 然后用不同的锁保护同一份 slice 并发 append——实测能把进程直接带走。
+	r := HealthReport{Warnings: []string{}, warnMu: &sync.Mutex{}}
 	// lengthLive 记录「长度直方图这次是实时算的」（预计算表不可用）：写在这里而不是
 	// 直接改 r.Stale，是因为它由并发 goroutine 写入，wg.Wait() 之后才允许读。
 	var lengthLive bool
@@ -154,13 +157,25 @@ func (s *Store) intMetric(ctx context.Context, r *HealthReport, name, query stri
 	return &n
 }
 
+// warnFallbackMu 是零值 HealthReport 的兜底锁（包级、只读共享、永不写回字段）。
+//
+// 为什么需要：HealthReport 由 HealthReport() 建结构体时就把 warnMu 建好了，但结构体是
+// 可导出的，包内测试会直接构造 HealthReport{} 调 warn（composition_test.go）。
+// 兜底只**读** r.warnMu、不写它，因此不存在「多个 goroutine 各建一把锁」的竞态——
+// 这正是之前懒初始化的病灶（读 + 写 r.warnMu 字段本身即数据竞态）。
+var warnFallbackMu sync.Mutex
+
 // warn 在线程安全的前提下追加一条 Warnings。
+//
+// 锁由 HealthReport 在建结构体时一次建好（warnMu 是**指针**字段：HealthReport 按值返回、
+// writeJSON 还会再复制一次，值类型的 sync.Mutex 会触发 go vet copylocks）。
 func (r *HealthReport) warn(name string, err error) {
-	if r.warnMu == nil {
-		r.warnMu = &sync.Mutex{}
+	mu := r.warnMu
+	if mu == nil {
+		mu = &warnFallbackMu //nolint:staticcheck // 零值结构体的兜底：只读字段，不写回
 	}
-	r.warnMu.Lock()
-	defer r.warnMu.Unlock()
+	mu.Lock()
+	defer mu.Unlock()
 	r.Warnings = append(r.Warnings, fmt.Sprintf("%s 统计失败：%v", name, err))
 }
 
