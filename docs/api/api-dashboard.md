@@ -88,10 +88,14 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
   `book_id` 外键 `ON DELETE CASCADE`（删书自动清进度），按 `updated_at` 倒序取最近在读；
 - `PUT /api/reading/progress` 校验顺序：JSON 形状 → `bookId`/`chapterId` 为正 → `percent ∈ [0,1]`
   → `paraIndex ≥ 0` → 章节存在且属于该书。分别返回 400 / 400 / 400 / 400 / 404，不做静默截断；
-- `GET /api/health/report` 另有 `content`（正文库对账摘要 `orphanBlocks`/`orphanBooks`/`danglingRefs`/`missingTable`/`checkedAt`，
-  10 分钟缓存）、`fingerprints`（指纹覆盖率 `books`/`fingerprinted`/`missing`）与 `quality`（质量分覆盖率 `books`/`computed`/
+- `GET /api/health/report` 另有 `content`（正文库对账摘要 `orphanBlocks`/`orphanBooks`/`danglingRefs`/`missingTable`/
+  `checkedAt`/`stale`，只读后台快照；快照缺失或超过刷新间隔时 `stale=true` 并立即返回，后台刷新不阻塞请求）、
+  `fingerprints`（指纹覆盖率 `books`/`fingerprinted`/`missing`；0023 起读书级覆盖表，回填未完成时
+  `stale=true`+`backfilling=true`，`hint` 说明无需人工操作）与 `quality`（质量分覆盖率 `books`/`computed`/
   `missing`，0020 起）；缺口 > 0 时 `hint` 分别指向 `backfill-fingerprints` / `backfill-quality`。
-  `stale` 为 `true` 表示某项聚合来自降级路径（缓存未算好或口径落后），数字仍正确、只是这次走得慢。分桶边界见 `internal/store/health.go`：
+  `stale` 为 `true` 表示某项聚合来自降级路径（缓存未算好或口径落后），数字仍正确、只是这次走得慢。
+  这个接口是驾驶舱首屏依赖：**任何一项都不允许在请求路径上跑全表扫**（5125 万章规模下曾是 21 秒），
+  慢的聚合一律改成「后台刷新 + 请求读快照 + stale 标记」。分桶边界见 `internal/store/health.go`：
   - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+
   - 章节字数：<1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+
 - `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），

@@ -203,6 +203,12 @@ func cmdServe(args []string) error {
 		log.Print("后台重算库级聚合值完成")
 	})
 	st.EnsureMetricsAsync(ctx)
+	// 正文对账与指纹覆盖回填都在后台跑，不阻塞监听：
+	//   - 对账原先绑在 /api/health/report 请求上（生产 17 万本/5125 万章时首次要 40 秒级），
+	//     现在进程一起来就刷一次，之后每 30 分钟一次，请求只读快照；
+	//   - 0023 迁移只建 fingerprint_books 表，历史指纹靠这里分批回填（可中断续跑）。
+	st.StartContentRefresh(ctx)
+	st.EnsureFingerprintCoverage(ctx)
 
 	token := *authToken
 	warnAuthMode(token == "")

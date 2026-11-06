@@ -314,6 +314,7 @@ make verify       # 完整门禁 9 项（scripts/gate-all.sh，编号与阈值�
 - [ADR-007：正文压缩（8 MB 块 + 内置字码本）](docs/adr/0007-codebook-compressed-content.md)
 - [REST API 契约](docs/api.md)
 - [部署指南（构建参数、体积、SQLite on volume、资源建议、升级回滚）](docs/deploy.md)
+- [运行时性能观测（分位 / 慢请求 / SQL 模板 / 开关）](docs/observability.md)
 - [隐私与仓库卫生](docs/privacy.md)
 
 ## 许可证
