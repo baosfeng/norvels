@@ -81,6 +81,14 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	// Warnings，懒初始化会让每个失败者各建一把锁（并发写 r.warnMu 字段本身也是数据竞态），
 	// 然后用不同的锁保护同一份 slice 并发 append——实测能把进程直接带走。
 	r := HealthReport{Warnings: []string{}, warnMu: &sync.Mutex{}}
+	// 书级健康计数（0025 预计算）：缺简介 / 缺作者 / 超薄书 / 章节数分桶。
+	// 可用时四个指标都只读一张个位数行的小表；不可用（未迁移或回填未完成）时回退实时 SQL，
+	// 数字仍然正确，只是慢——降级绝不返回错数字，也不 500。
+	counts, countsReady := s.bookHealthCounts(ctx)
+	if !countsReady {
+		s.EnsureBookHealthCounts()
+	}
+	introWhere := s.missingIntroWhere(ctx)
 	// lengthLive 记录「长度直方图这次是实时算的」（预计算表不可用）：写在这里而不是
 	// 直接改 r.Stale，是因为它由并发 goroutine 写入，wg.Wait() 之后才允许读。
 	var lengthLive bool
@@ -95,18 +103,18 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	// 接口列出的条数由同一条 SQL 条件保证一致，不会两处各写一套而漂移。
 	go func() {
 		defer wg.Done()
-		r.ThinBooks = s.intMetric(ctx, &r, "thinBooks",
+		r.ThinBooks = s.precomputedInt(ctx, &r, "thinBooks", countsReady, counts.ThinBooks,
 			"SELECT COUNT(*) FROM books WHERE "+thinBookWhere("chapter_count"))
 	}()
 	go func() {
 		defer wg.Done()
-		r.MissingAuthor = s.intMetric(ctx, &r, "missingAuthor",
+		r.MissingAuthor = s.precomputedInt(ctx, &r, "missingAuthor", countsReady, counts.MissingAuthor,
 			"SELECT COUNT(*) FROM books WHERE "+whereMissingAuthor)
 	}()
 	go func() {
 		defer wg.Done()
-		r.MissingIntro = s.intMetric(ctx, &r, "missingIntro",
-			"SELECT COUNT(*) FROM books WHERE "+whereMissingIntro)
+		r.MissingIntro = s.precomputedInt(ctx, &r, "missingIntro", countsReady, counts.MissingIntro,
+			"SELECT COUNT(*) FROM books WHERE "+introWhere)
 	}()
 	go func() {
 		defer wg.Done()
@@ -115,8 +123,7 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	}()
 	go func() {
 		defer wg.Done()
-		r.ChapterBuckets = s.bucketMetric(ctx, &r, "chapterBuckets",
-			chapterBucketLabels, chapterBucketEdges, "chapter_count", "books")
+		r.ChapterBuckets = s.chapterBuckets(ctx, &r, counts, countsReady)
 	}()
 	go func() {
 		defer wg.Done()
@@ -144,6 +151,29 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	// 质量分覆盖率：0020 之后版本择优要靠 backfill-quality 补齐历史书，缺口同样必须可见。
 	r.Quality = s.qualityHealth(ctx, &r)
 	return r
+}
+
+// precomputedInt 优先返回 0025 的预计算值；不可用时回退实时 SQL（数字同一口径）。
+func (s *Store) precomputedInt(ctx context.Context, r *HealthReport, name string,
+	ready bool, value int, query string) *int {
+	if ready {
+		v := value
+		return &v
+	}
+	return s.intMetric(ctx, r, name, query)
+}
+
+// chapterBuckets 取章节数分桶：优先 0025 的预计算表，缺失时回退实时区间 COUNT。
+//
+// 回退路径就是 0022 之前的老实现（六段区间 COUNT 走 idx_books_chapters），
+// 生产 169,230 本实测 324 ms——慢但正确，只在「迁移刚跑完、后台回填还没完成」的窗口里出现。
+func (s *Store) chapterBuckets(ctx context.Context, r *HealthReport,
+	counts bookHealthCounts, ready bool) []Bucket {
+	if ready && len(counts.Buckets) == len(chapterBucketLabels) {
+		return makeBuckets(chapterBucketLabels, counts.Buckets)
+	}
+	return s.bucketMetric(ctx, r, "chapterBuckets",
+		chapterBucketLabels, chapterBucketEdges, "chapter_count", "books")
 }
 
 // intMetric 执行单个标量统计；失败时记 Warnings 并返回 nil。

@@ -258,6 +258,9 @@ func (s *Store) EnsureFingerprintCoverage(ctx context.Context) {
 // 同一时刻只允许一个回填（atomic CAS，与 metricsRefreshing 同一口径）；
 // 中断只记一行 WARN，状态行留着断点，下次启动接着补。
 func (s *Store) StartFingerprintBackfill(ctx context.Context) {
+	if backgroundDisabled() {
+		return
+	}
 	b := &s.reconcile
 	if !b.coverageRunning.CompareAndSwap(false, true) {
 		return

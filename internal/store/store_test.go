@@ -16,6 +16,9 @@ func newTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	// 先停后台任务再关库：0023/0025 的回填 goroutine 若在 t.TempDir 清理后还在写，
+	// 会把 WAL/-shm 文件重新造出来，TempDir RemoveAll 直接报 "directory not empty"。
+	t.Cleanup(st.StopContentRefresh)
 	t.Cleanup(func() { _ = st.Close() })
 	if err := st.Migrate(context.Background()); err != nil {
 		t.Fatalf("Migrate: %v", err)

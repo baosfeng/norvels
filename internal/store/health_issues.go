@@ -100,11 +100,22 @@ func chapterIssueQuery(where string) healthIssueQuery {
 }
 
 // healthIssueQueries 是 kind → SQL 的唯一分派表；新增一类问题只在这里加一行。
+//
+// 缺简介不在这张表里：它的谓词要在运行时按「库有没有 0025 的生成列」选
+// （有列走索引，旧库退回 TRIM 表达式），见 healthIssueQuery。
 var healthIssueQueries = map[string]healthIssueQuery{
 	HealthIssueMissingAuthor: bookIssueQuery(whereMissingAuthor),
-	HealthIssueMissingIntro:  bookIssueQuery(whereMissingIntro),
 	HealthIssueThinBook:      bookIssueQuery(thinBookWhere("chapter_count")),
 	HealthIssueHugeChapter:   chapterIssueQuery(hugeChapterWhere("c.word_count")),
+}
+
+// healthIssueQuery 取某类的两条 SQL；缺简介的谓词按当前库结构动态选。
+func (s *Store) healthIssueQuery(ctx context.Context, kind string) (healthIssueQuery, bool) {
+	if kind == HealthIssueMissingIntro {
+		return bookIssueQuery(s.missingIntroWhere(ctx)), true
+	}
+	q, ok := healthIssueQueries[kind]
+	return q, ok
 }
 
 // HealthIssues 返回某一类健康问题的明细（书级或章节级）。
@@ -113,7 +124,7 @@ var healthIssueQueries = map[string]healthIssueQuery{
 // kind 非法或 page/size 非正 → ErrInvalidArgument（不静默夹紧、不回落默认值）。
 // 排序统一「字数多的在前」，让最值得先处理的书排在第一页。
 func (s *Store) HealthIssues(ctx context.Context, kind string, page, size int) (HealthIssues, error) {
-	q, ok := healthIssueQueries[kind]
+	q, ok := s.healthIssueQuery(ctx, kind)
 	if !ok {
 		return HealthIssues{}, fmt.Errorf("%w: kind 必须是 %s", ErrInvalidArgument,
 			strings.Join(HealthIssueKinds(), " / "))

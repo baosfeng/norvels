@@ -96,6 +96,7 @@ func TestContentSnapshotExpiresKeepsNumbers(t *testing.T) {
 
 // TestContentRefreshLoopStopsOnClose 后台循环只启动一次，Close 之后不再刷新。
 func TestContentRefreshLoopStopsOnClose(t *testing.T) {
+	t.Setenv(EnvDisableBackground, "") // 这个用例本身要验证后台循环，单独打开
 	ctx := context.Background()
 	st := newTestStore(t)
 	st.reconcile.mu.Lock()
