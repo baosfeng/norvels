@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"norvels/internal/observe"
+
 	_ "modernc.org/sqlite" // 纯 Go SQLite 驱动（CGO-free）
 )
 
@@ -53,11 +55,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			return nil, fmt.Errorf("store: create dir: %w", err)
 		}
 	}
-	db, err := openSQLite(ctx, path)
+	db, err := openStoreSQLite(ctx, path, "main")
 	if err != nil {
 		return nil, err
 	}
-	cdb, err := openSQLite(ctx, contentPath)
+	cdb, err := openStoreSQLite(ctx, contentPath, "content")
 	if err != nil {
 		db.Close() //nolint:errcheck // 打开失败路径，原错误优先
 		return nil, err
@@ -83,7 +85,9 @@ func openSQLite(ctx context.Context, path string) (*sql.DB, error) {
 		"&_pragma=foreign_keys(ON)" +
 		"&_pragma=temp_store(MEMORY)" +
 		"&_pragma=cache_size(-65536)"
-	db, err := sql.Open("sqlite", dsn)
+	// 走 observe 的计时包装驱动（DriverName）：DSN 与驱动行为完全不变，只是多一层耗时采集。
+	// 打开时 sql.Register 已由 observe 包 init 完成，这里不再依赖下划线导入顺序。
+	db, err := sql.Open(observe.DriverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
@@ -95,6 +99,16 @@ func openSQLite(ctx context.Context, path string) (*sql.DB, error) {
 		db.Close() //nolint:errcheck // 打开失败路径，原错误优先
 		return nil, fmt.Errorf("store: ping %s: %w", path, err)
 	}
+	return db, nil
+}
+
+// openStoreSQLite 打开并登记连接池：登记名用于快照里的 Pools（"main" / "content"）。
+func openStoreSQLite(ctx context.Context, path, poolName string) (*sql.DB, error) {
+	db, err := openSQLite(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	observe.RegisterPool(db, poolName)
 	return db, nil
 }
 

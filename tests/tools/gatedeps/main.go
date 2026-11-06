@@ -43,8 +43,12 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/webui":  {},
 	"norvels/internal/parser": {"norvels/internal/model"},
 	// store 依赖 textcode 做正文压缩前的无损重编码（textcode 本身是叶子包）。
-	"norvels/internal/store": {"norvels/internal/model", "norvels/internal/source", "norvels/internal/textcode"},
-	"norvels/internal/ebook": {"norvels/internal/model"},
+	// observe 提供 SQL 计时驱动名（DriverName）与连接池登记，是纯观测的叶子包。
+	"norvels/internal/store": {"norvels/internal/model", "norvels/internal/source", "norvels/internal/textcode", "norvels/internal/observe"},
+	// 性能观测：只依赖标准库 + modernc sqlite（外部依赖不计入白名单），刻意不 import 任何内置包，
+	// 免得观测层反过来把业务层拖进循环依赖。
+	"norvels/internal/observe": {},
+	"norvels/internal/ebook":   {"norvels/internal/model"},
 	// 正文编码层：UTF-8 ↔ 字频码本流的无损重编码，只依赖标准库（叶子包）。
 	"norvels/internal/textcode": {},
 	// 推荐库数据层（设计 §1）：只依赖标准库 + modernc sqlite（外部依赖不计入白名单），
@@ -84,6 +88,8 @@ var allowedDeps = map[string][]string{
 		// 推荐系统：api 是「主库候选 + 推荐库信号 + 纯函数打分」三者的唯一组装点；
 		// 召回读库的本体在 recommend/recall，api 只留 Port 适配与 tab 校验。
 		"norvels/internal/recstore", "norvels/internal/recommend", "norvels/internal/recommend/recall",
+		// 观测：路由包装（observe.Wrap）与快照端点（GET /api/metrics）。
+		"norvels/internal/observe",
 	},
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	// ai 只在这里出现：--ai 的上架判定器在 cmd 里接线（importer 只认函数类型、ai 不认识书库），
