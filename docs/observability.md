@@ -16,7 +16,7 @@
 
 - **按模板聚合，不按真实路径**：`/api/books/12` 与 `/api/books/13` 同属 `GET /api/books/{id}`；否则序列数会被书籍 id 撑爆。
 - **分位是分桶插值**：估算值落在样本所在的桶内线性插值，误差上限是**一个桶宽**；再用实测最大值收口（分位不会超过 max）。样本很少时以 max 为准更可靠。
-- **错误**：`errors` 是 5xx，`clientErrors` 是 4xx（含「书不存在」这类 404 与前端主动取消导致的 500）。
+- **错误**：`errors` 是 5xx，`clientErrors` 是 4xx。客户端主动断开（fetch abort / 切页）回 **499 + `client_closed`**，计入 `clientErrors`、不计 `errors`；服务端超时（context deadline）回 **504 + `timeout`**。
 - **SQL 计时**：从驱动调用开始到返回为止（`QueryContext`/`ExecContext`），**不含** Rows 的逐行 Scan——那一层看 CPU profile。
 - **SQL 归一化**：单引号字面量、数字字面量 → `?`；`IN (?, ?, ?)` → `IN (?)`；连续空白折叠；超过 400 字节截断。`books2` 这类标识符里的数字不被替换。
 - **基数上限 512**：路由或 SQL 模板超过上限后归并到 `<其他>`，内存上限 < 8 MB。

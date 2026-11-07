@@ -231,6 +231,11 @@ func (s *Server) failRec(w http.ResponseWriter, r *http.Request, err error, msg 
 		writeError(w, http.StatusBadRequest, codeInvalidParam, "请求参数非法")
 		return
 	}
+	if errors.Is(err, context.Canceled) {
+		// 与 fail 同口径：客户端断开不是推荐库故障，不计 5xx。
+		writeError(w, statusClientClosedRequest, codeClientClosed, "客户端已断开")
+		return
+	}
 	s.logf("api: %s %s 推荐库错误: %v", r.Method, r.URL.Path, err)
 	writeError(w, http.StatusInternalServerError, codeInternal, msg)
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -72,7 +73,14 @@ const (
 	// codeUnavailable 表示这项能力当前不可用（推荐库没打开、依赖缺失）：
 	// 与 internal 分开，前端据此显示「未启用」而不是「服务器出错了」。
 	codeUnavailable = "unavailable"
+	// codeClientClosed 表示客户端在响应前主动断开（fetch abort / 切换页面 / 重新取数）。
+	// 这不是服务端故障：既不该写 5xx 日志，也不该计入 /api/metrics 的 errors。
+	codeClientClosed = "client_closed"
 )
+
+// statusClientClosedRequest 是「客户端主动断开」的响应码（499，nginx 惯例值）。
+// 标准库没有常量；不写响应体也没人收，保留 JSON 只是让 access log 与探针口径一致。
+const statusClientClosedRequest = 499
 
 // writeJSON 以 JSON 写响应；序列化失败时退化为 500。
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -115,6 +123,12 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error, notFoun
 			"这份文件不是已有章节的追加（章节变少或标题不一致），已拒绝覆盖；确要整本重导请用 force")
 	case errors.Is(err, store.ErrBlockCorrupted):
 		s.failBlockCorrupted(w, r, err)
+	case errors.Is(err, context.Canceled):
+		// 客户端在响应前断开（切换页面 / 重新取数 / 关标签页）：不是服务端故障，
+		// 不打「内部错误」日志、不写 5xx——否则 /api/metrics 的错误率会被它占满。
+		writeError(w, statusClientClosedRequest, codeClientClosed, "客户端已断开")
+	case errors.Is(err, context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout, codeTimeout, "请求超时")
 	default:
 		s.logf("api: %s %s 内部错误: %v", r.Method, r.URL.Path, err)
 		writeError(w, http.StatusInternalServerError, codeInternal, "内部错误")
