@@ -42,7 +42,9 @@
   其余块失败只进 `warnings` 并把该块置 `null`（数组块置空数组）。
 - **短 TTL 缓存**：默认 5 秒（`NORVELS_DASHBOARD_TTL` 改时长，负值关闭）。TTL 内 `cached=true`、
   `ageSeconds` 是这份数据的年龄；TTL 外同一时刻只有一个请求真算、其余等它算完再复用
-  （single-flight：刷新连点不会把 7 组查询打成 7 倍）。只缓存成功结果。
+  （single-flight：刷新连点不会把 7 组查询打成 7 倍）。**只缓存七块都齐且自洽的结果**：
+  带 `warnings`（某块失败，或空块与 `stats` 矛盾，如书数 > 0 而健康卡说 0 本）的响应不进缓存，
+  下一次请求重算——这类 `warnings` 的文案是「<块> 尚未就绪（可能是启动回填/瞬时空结果）」。
 - 指标类刻意留在外面：`/api/metrics`（进程内快照，必须反映当下）与 `/api/recommend/stats`
   （依赖独立推荐库，缺库是 503）。于是驾驶舱一次刷新 = `dashboard` + `metrics` + `recommend/stats` = **3 个请求**。
 

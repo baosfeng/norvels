@@ -18,7 +18,8 @@ import (
 //   - TTL 内复用同一次结果，响应里 cached=true + ageSeconds 让调用方知道这是几秒前的数；
 //   - TTL 外的第一个请求**真正计算**，同一时刻的其它请求等它算完再复用
 //     （single-flight：慢查询不会因为并发而被放大成 N 倍）；
-//   - 只缓存成功结果：算失败（如库被删）不进缓存，下一次请求会立刻重试。
+//   - 只缓存**完整**的成功结果：算失败（如库被删）、或某块为空却与 stats 打架
+//     （见 dashboard_ready.go）都不进缓存，下一次请求会立刻重算。
 
 const (
 	// envDashboardTTL 覆盖驾驶舱聚合的缓存时长（Go duration 文本，如 3s / 500ms）。
@@ -118,7 +119,15 @@ func (c *dashboardCache) beginOrClaim(key string) (payload dashboardPayload,
 	return dashboardPayload{}, slot, false, nil
 }
 
-// finish 落结果并唤醒等待者；失败不缓存（下一次请求立刻重试）。
+// cacheable 报告一份聚合结果能不能进 TTL 缓存：只有「七块都齐、且自洽」的结果才收。
+//
+// 带 warning 的结果（某块失败、或一致性校验发现空块与 stats 打架）一律不缓存：
+// 否则一次启动期 / 瞬时空快照会被 TTL 缓存分发给之后所有并发请求，驾驶舱整页空态
+// 要挂满一个 TTL 才恢复，而且后来的人拿到的响应里连 warning 都可能是旧的。
+// 「不缓存」同时就是「下次重试」——下一个请求会重新真算，直到拿到完整结果。
+func cacheable(payload dashboardPayload) bool { return len(payload.Warnings) == 0 }
+
+// finish 落结果并唤醒等待者；失败与不完整都不缓存（走同一条「下次重试」路径）。
 //
 // 成功时必须把 loading 置 nil：它同时是「有人正在算」的标记与等待者监听的 channel，
 // 忘了清掉会让之后的每个请求都在「等一个已经关闭的 channel」里空转（实测整请求挂到超时）。
@@ -126,8 +135,8 @@ func (c *dashboardCache) beginOrClaim(key string) (payload dashboardPayload,
 func (c *dashboardCache) finish(key string, slot chan struct{}, payload dashboardPayload, err error) {
 	c.mu.Lock()
 	if e := c.entries[key]; e != nil && e.loading == slot {
-		if err != nil {
-			delete(c.entries, key)
+		if err != nil || !cacheable(payload) {
+			delete(c.entries, key) // 不完整 / 失败：丢掉槽位，下次请求重新真算
 		} else {
 			e.payload, e.at, e.loading = payload, time.Now(), nil
 		}

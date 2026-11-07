@@ -127,6 +127,10 @@ func (s *Server) loadDashboard(ctx context.Context, p dashboardParams) (dashboar
 	}
 	out := dashboardPayload{GeneratedAt: time.Now().UTC(), Stats: &stats, Warnings: []string{}}
 	s.loadDashboardBlocks(ctx, p, &out)
+	// 一致性校验：块之间自相矛盾（空结果与 stats 打架）也算「没取到」，
+	// 让调用方能分辨「真的没有」与「没取到」，同时让这样的结果不进 TTL 缓存。
+	out.Warnings = append(out.Warnings, dashboardInconsistencies(&out)...)
+	sort.Strings(out.Warnings)
 	return out, nil
 }
 

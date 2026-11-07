@@ -84,14 +84,21 @@ func (s *Store) bookTotalsReady(ctx context.Context) (bool, error) {
 	return complete != 0, nil
 }
 
-// readBookTotals 读出四个 kind（缺行按 0，等价于「库里没有」）。
+// readBookTotals 读出四个 kind；缺任意一行都按「不可用」报错（调用方降级实时 SQL）。
+//
+// 为什么缺行不能按 0 处理：0 是一个合法取值（空库），缺行却是「值还没算出来」。
+// 混为一谈的后果是读侧把 0 当成正确结果——健康卡显示 0 本、作者榜空白，
+// 而 /api/stats 因为别的路径算出了真值，两处自相矛盾，且没有任何告警。
 func (s *Store) readBookTotals(ctx context.Context) (bookTotals, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT kind, n FROM book_totals")
 	if err != nil {
 		return bookTotals{}, fmt.Errorf("store: read book_totals: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck // 只读句柄
-	var out bookTotals
+	var (
+		out  bookTotals
+		seen = make(map[string]bool, 4)
+	)
 	for rows.Next() {
 		var (
 			kind string
@@ -100,6 +107,7 @@ func (s *Store) readBookTotals(ctx context.Context) (bookTotals, error) {
 		if err := rows.Scan(&kind, &n); err != nil {
 			return bookTotals{}, fmt.Errorf("store: scan book_totals: %w", err)
 		}
+		seen[kind] = true
 		switch kind {
 		case totalsKindBooksAll:
 			out.BooksAll = int(n)
@@ -114,7 +122,21 @@ func (s *Store) readBookTotals(ctx context.Context) (bookTotals, error) {
 	if err := rows.Err(); err != nil {
 		return bookTotals{}, fmt.Errorf("store: iterate book_totals: %w", err)
 	}
+	if err := requireAllTotalsKinds(seen); err != nil {
+		return bookTotals{}, err
+	}
 	return out, nil
+}
+
+// requireAllTotalsKinds 校验四个 kind 都读到了（缺行 = 回填未完成，不是「值为 0」）。
+func requireAllTotalsKinds(seen map[string]bool) error {
+	for _, kind := range []string{totalsKindBooksAll, totalsKindCurrent, totalsKindWordSum,
+		totalsKindQualityComputed} {
+		if !seen[kind] {
+			return fmt.Errorf("store: book_totals 缺少 %s 行（回填未完成，按不可用处理）", kind)
+		}
+	}
+	return nil
 }
 
 // liveBookTotals 用实时 SQL 算同一份快照（降级路径：预计算未迁移或回填未完成）。
