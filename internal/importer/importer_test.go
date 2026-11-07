@@ -17,7 +17,7 @@ func TestRunImportsAndIsIdempotent(t *testing.T) {
 	st := newStore(t)
 	dir := t.TempDir()
 	writeTxt(t, dir, "a.txt", sampleText("示例书名", "示例作者"))
-	writeTxt(t, dir, "b.txt", sampleText("风雪归人", "月关"))
+	writeTxt(t, dir, "b.txt", sampleText("风雪归人", "青川"))
 	writeTxt(t, dir, "ignore.md", "not a novel")
 
 	rec := &progressRecorder{}

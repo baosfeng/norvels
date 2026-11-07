@@ -115,7 +115,7 @@ func (s *Store) firstActiveBookFrom(ctx context.Context, from int64) (*BookSumma
 // 命中的集合与 bookFilter 完全同一份，均匀性也与按 updated 序取样一致。
 func (s *Store) randomFilteredBook(ctx context.Context, q BookQuery) (*BookSummary, error) {
 	where, args := bookFilter(ctx, q)
-	total, err := s.countBooks(ctx, where, args, strings.TrimSpace(q.Q) != "")
+	total, err := s.countBooks(ctx, where, args)
 	if err != nil {
 		return nil, err
 	}

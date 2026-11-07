@@ -232,7 +232,7 @@ export interface AuthorDetail extends AuthorSummary {
 
 export interface SearchResult {
   q: string;
-  /** 书名与作者命中——这也是**唯一**的检索范围（章节标题检索已下线，后端不再返回 chapters 字段） */
+  /** 按书名命中——这也是**唯一**的检索范围（作者名不进匹配，章节标题检索已下线，后端不再返回 chapters 字段） */
   books: Page<BookSummary>;
   /** 后端每次都会返回；可读提示语，为空串表示本次没有要额外说明的事 */
   notice?: string;

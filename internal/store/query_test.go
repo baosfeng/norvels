@@ -12,7 +12,7 @@ func TestListBooksFilterAndPaging(t *testing.T) {
 	seedThreeBooks(t, ctx, st)
 
 	t.Run("分页不重叠", func(t *testing.T) { checkPagingNoOverlap(t, ctx, st) })
-	t.Run("按作者名模糊搜", func(t *testing.T) { checkAuthorFilter(t, ctx, st) })
+	t.Run("关键词只匹配书名", func(t *testing.T) { checkTitleFilter(t, ctx, st) })
 	t.Run("标签过滤", func(t *testing.T) { checkTagFilter(t, ctx, st) })
 }
 
@@ -32,12 +32,17 @@ func checkPagingNoOverlap(t *testing.T, ctx context.Context, st *Store) {
 	}
 }
 
-// checkAuthorFilter 书名/作者模糊匹配应只命中该作者的书。
-func checkAuthorFilter(t *testing.T, ctx context.Context, st *Store) {
+// checkTitleFilter 关键词只匹配书名：按作者名「作者甲」查不到书，
+// 按书名「书A」命中那一本，并且结果照常带出作者名（authors 只为取名字 JOIN）。
+func checkTitleFilter(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	q, err := st.ListBooks(ctx, BookQuery{Q: "作者甲", Page: 1, Size: 10})
-	if err != nil || q.Total != 1 {
-		t.Fatalf("author filter = %+v, err=%v", q, err)
+	byAuthor, err := st.ListBooks(ctx, BookQuery{Q: "作者甲", Page: 1, Size: 10})
+	if err != nil || byAuthor.Total != 0 {
+		t.Fatalf("按作者名搜索 = %+v, err=%v（期望 0 本）", byAuthor, err)
+	}
+	byTitle, err := st.ListBooks(ctx, BookQuery{Q: "书A", Page: 1, Size: 10})
+	if err != nil || byTitle.Total != 1 || byTitle.Items[0].AuthorName != "作者甲" {
+		t.Fatalf("按书名搜索 = %+v, err=%v", byTitle, err)
 	}
 }
 
@@ -68,10 +73,10 @@ func seedThreeBooks(t *testing.T, ctx context.Context, st *Store) {
 	}
 }
 
-// seedTaggedBook 给「作者甲」的书打上「武侠」标签，返回书籍 id。
+// seedTaggedBook 给「作者甲」写的那本《书A》打上「武侠」标签，返回书籍 id。
 func seedTaggedBook(t *testing.T, ctx context.Context, st *Store) int64 {
 	t.Helper()
-	q, err := st.ListBooks(ctx, BookQuery{Q: "作者甲", Page: 1, Size: 10})
+	q, err := st.ListBooks(ctx, BookQuery{Q: "书A", Page: 1, Size: 10})
 	if err != nil || q.Total != 1 {
 		t.Fatalf("find book: %+v, err=%v", q, err)
 	}

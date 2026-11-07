@@ -17,10 +17,11 @@ func bookFilter(ctx context.Context, q BookQuery) ([]string, []any) {
 		where []string
 		args  []any
 	)
+	// 关键词只匹配书名：作者名 LIKE 没有索引可走，在 18 万本的库上是全表扫描的主要成本。
+	// 找某位作者的书从结果里的作者名点进作者页，比让每次搜索都扫一遍 authors 划算。
 	if s := strings.TrimSpace(q.Q); s != "" {
-		pat := "%" + escapeLike(s) + "%"
-		where = append(where, "(b.title LIKE ? ESCAPE '!' OR a.name LIKE ? ESCAPE '!')")
-		args = append(args, pat, pat)
+		where = append(where, "b.title LIKE ? ESCAPE '!'")
+		args = append(args, "%"+escapeLike(s)+"%")
 	}
 	// 作者筛选认主作者与副作者：从作者页点进来时不该漏掉合著的书。
 	if q.AuthorID != 0 {

@@ -22,7 +22,7 @@ function focusableIn(root: HTMLElement): HTMLElement[] {
  * 四个取舍：
  *   - 写回前先「重取现有成员再合并」：PUT 是全量替换，直接拿前端缓存的成员会覆盖
  *     并发改动（另一台设备刚加过书）；重取走翻页，书单超过单页上限也不会被截断；
- *   - 搜索复用 GET /api/books?q=（书库列表接口），不新开端点：书名/作者都能命中；
+ *   - 搜索复用 GET /api/books?q=（书库列表接口），不新开端点：只按书名命中；
  *   - 候选书一页 20 本、滚到底再取下一页（见 usePickerBooks），不一次拉全库：
  *     几百本书全量拉下来既慢又白占内存，读者多半只看前几十本；
  *   - 已选中的书在列表里保持勾选状态，换关键词也不丢——选择集是 id 集合，不是列表下标。
@@ -183,13 +183,13 @@ export function AddBooksDialog({
         </div>
 
         <label className="add-books-search">
-          <span className="sr-only">搜索书名或作者</span>
+          <span className="sr-only">搜索书名</span>
           <input
             className="input"
             ref={inputRef}
             type="search"
-            placeholder="搜书名或作者，至少 1 个字就开始筛"
-            aria-label="搜索书名或作者"
+            placeholder="搜书名，至少 1 个字就开始筛"
+            aria-label="搜索书名"
             value={q}
             data-testid="add-books-search"
             disabled={busy}
@@ -203,7 +203,7 @@ export function AddBooksDialog({
           ) : items.length === 0 && !pageError ? (
             <EmptyPanel
               title={keyword ? "没有匹配的书" : "书库还是空的"}
-              description={keyword ? "换个关键词试试，书名和作者都能搜。" : "先把 txt 导进来，再来挑书。"}
+              description={keyword ? "换个关键词试试，只按书名匹配。" : "先把 txt 导进来，再来挑书。"}
               testId="add-books-empty"
             />
           ) : (

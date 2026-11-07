@@ -93,7 +93,7 @@ store_metrics(key PK, value, updated_at)         -- 全库聚合缓存（0004 �
 chapter_length_hist(bucket PK, count)            -- 章节长度直方图（0022，随章节写入增量维护）
 import_daily(day PK, book_count, chapter_count)  -- 导入趋势按本地日聚合（0022）
 author_agg(author_id PK, book_count, word_count) -- 作者聚合物化（0022），/api/authors 的读路径
-tags(id, name) / book_tags(book_id, tag_id)       -- 检索范围只有书名/作者（LIKE），无全文索引
+tags(id, name) / book_tags(book_id, tag_id)       -- 检索范围只有书名（LIKE），无全文索引
 import_jobs(...) / import_errors(...) / import_reviews(...)  -- 导入任务、失败明细与 AI 审核记录（0021）
 
 -- 以下一张表在**正文库**（data/norvels-content.db），与主库同目录、同寿命
@@ -115,7 +115,7 @@ recent_items(user_id, book_id, ts)                             -- 近期已曝�
 
 完整 DDL 见 `internal/store/migrations/0001_init.sql`（v1 快照仍保留在 `internal/store/schema.sql` 供阅读，启动不再执行它）；逐版本变更见 [deploy.md](deploy.md) §7.1 的迁移表。
 
-检索范围是**书名 / 作者**（章节标题与正文都不参与，无全文索引，理由见 [ADR-0002](adr/0002-drop-fulltext-index.md)）；几十万到百万本的容量推算见 [data-profile.md §10](data-profile.md#10-容量推算几十万到百万本)。
+检索范围是**书名**（章节标题、正文与作者名都不参与，无全文索引，理由见 [ADR-0002](adr/0002-drop-fulltext-index.md)）；几十万到百万本的容量推算见 [data-profile.md §10](data-profile.md#10-容量推算几十万到百万本)。
 
 ## 4. 导入流水线
 

@@ -10,7 +10,7 @@ import (
 
 // BookQuery 描述书籍列表的过滤与排序。
 type BookQuery struct {
-	Q        string // 书名/作者模糊匹配，空表示不过滤
+	Q        string // 书名模糊匹配，空表示不过滤
 	AuthorID int64  // 0 表示不过滤
 	Tag      string // 标签名，空表示不过滤
 	Sort     string // updated|title|chapters|words|imported，默认 updated
@@ -48,8 +48,8 @@ type ChapterQuery struct {
 	Limit  int
 }
 
-// SearchQuery 描述书名/作者检索（不检索正文，也不检索章节标题）。
-// 没有「检索维度」开关：能搜的只有书名与作者两项，全部查一次即可。
+// SearchQuery 描述书名检索（不检索正文、章节标题，也不检索作者名）。
+// 没有「检索维度」开关：能搜的只有书名一项。
 //
 // 筛选字段与 BookQuery **同名同口径**（/api/search 与 /api/books 一致）：零值 = 不过滤。
 // 它们最终原样并进 ListBooks 的 BookQuery，不另写 WHERE——搜索就是「带关键词的书籍列表」。
@@ -189,7 +189,7 @@ type Page[T any] struct {
 	Size  int `json:"size"`
 }
 
-// SearchResult 是搜索响应：只有书籍命中（书名 / 作者），不含章节与正文。
+// SearchResult 是搜索响应：只有按书名命中的书籍，不含章节与正文。
 type SearchResult struct {
 	Q     string            `json:"q"`
 	Books Page[BookSummary] `json:"books"`

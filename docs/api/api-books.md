@@ -3,7 +3,7 @@
 ## 书籍
 
 ### GET /api/books
-查询参数：`q`（书名/作者模糊）、`authorId`、`tag`、`series`、`rating`=1–5（0 = 未评，不可筛）、`collection`（书单 id）、`categoryL1`/`categoryL2`（分类，见 [api-category](api-category.md)）、`readStatus`=`want|reading|done`、`serialStatus`=`ongoing|completed|none`（`none` 筛「未知」）、`sort`=`updated|title|chapters|words|imported|rating`（默认 updated）、`page`、`size`。留空 = 不过滤，非法值 400。
+查询参数：`q`（书名模糊）、`authorId`、`tag`、`series`、`rating`=1–5（0 = 未评，不可筛）、`collection`（书单 id）、`categoryL1`/`categoryL2`（分类，见 [api-category](api-category.md)）、`readStatus`=`want|reading|done`、`serialStatus`=`ongoing|completed|none`（`none` 筛「未知」）、`sort`=`updated|title|chapters|words|imported|rating`（默认 updated）、`page`、`size`。留空 = 不过滤，非法值 400。
 
 ```json
 { "items": [{ "id": 1, "title": "山居杂记", "authorId": 12, "authorName": "示例作者",

@@ -86,12 +86,12 @@ export function AdminFilterBar({
       }}
     >
       <label className="search-wrap">
-        <span className="sr-only">搜索书名或作者</span>
+        <span className="sr-only">搜索书名</span>
         <input
           className="input"
           type="search"
           value={draftQuery}
-          placeholder="搜书名或作者"
+          placeholder="搜书名"
           data-testid="admin-search"
           onChange={(event) => onDraftQuery(event.target.value)}
         />

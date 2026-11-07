@@ -30,13 +30,13 @@ func TestSearchRejectsChapterType(t *testing.T) {
 	}
 }
 
-// TestSearch 只返回书籍命中：书名 / 作者两路 LIKE，响应里没有 chapters 字段。
+// TestSearch 只返回书籍命中：只按书名 LIKE，响应里没有 chapters 字段。
 func TestSearch(t *testing.T) {
 	env := newEnv(t)
 	env.seedBook("测试之书", "测试作者")
 
 	t.Run("按书名", func(t *testing.T) { checkSearchByTitle(t, env) })
-	t.Run("按作者", func(t *testing.T) { checkSearchByAuthor(t, env) })
+	t.Run("按作者名不再命中", func(t *testing.T) { checkSearchAuthorNameMiss(t, env) })
 	t.Run("按章节标题不再命中", func(t *testing.T) { checkSearchChapterTitleMiss(t, env) })
 	t.Run("type=book 与默认等价", func(t *testing.T) { checkSearchTypeBook(t, env) })
 	t.Run("分页回填", func(t *testing.T) { checkSearchPagination(t, env) })
@@ -70,12 +70,17 @@ func checkSearchByTitle(t *testing.T, env *testEnv) {
 	}
 }
 
-// checkSearchByAuthor 作者命中该本书。
-func checkSearchByAuthor(t *testing.T, env *testEnv) {
+// checkSearchAuthorNameMiss 作者名不再参与匹配：种子书的作者名查不到书，
+// 同一本书按书名仍查得到——找某个作者的全部作品走作者页。
+func checkSearchAuthorNameMiss(t *testing.T, env *testEnv) {
 	t.Helper()
 	res := getSearch(t, env, "/api/search?q=测试作者")
-	if res.Books.Total != 1 {
-		t.Fatalf("作者命中 = %+v", res.Books)
+	if res.Books.Total != 0 {
+		t.Fatalf("按作者名搜索命中 = %+v，期望 0 本", res.Books)
+	}
+	byTitle := getSearch(t, env, "/api/search?q=测试之书")
+	if byTitle.Books.Total != 1 {
+		t.Fatalf("按书名命中 = %+v，期望 1 本", byTitle.Books)
 	}
 }
 
@@ -95,7 +100,7 @@ func checkSearchChapterTitleMiss(t *testing.T, env *testEnv) {
 	}
 }
 
-// checkSearchTypeBook type=book / type=all 都是书名 + 作者，200 且结果一致。
+// checkSearchTypeBook type=book / type=all 都是书名检索，200 且结果一致。
 func checkSearchTypeBook(t *testing.T, env *testEnv) {
 	t.Helper()
 	for _, typ := range []string{"book", "all"} {

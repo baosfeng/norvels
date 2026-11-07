@@ -80,7 +80,7 @@ func registerReadingSteps(sc *godog.ScenarioContext, w *world) {
 	})
 }
 
-// registerSearchSteps 注册搜索的步骤（检索范围只有书名与作者）。
+// registerSearchSteps 注册搜索的步骤（检索范围只有书名）。
 func registerSearchSteps(sc *godog.ScenarioContext, w *world) {
 	sc.Step(`^我搜索关键词 "(.+)"$`, func(ctx context.Context, kw string) error {
 		return w.search(kw)
@@ -308,7 +308,7 @@ type searchResponse struct {
 	} `json:"books"`
 }
 
-// search 执行一次检索并记录书籍命中（检索范围只有书名与作者）。
+// search 执行一次检索并记录书籍命中（检索范围只有书名）。
 func (w *world) search(kw string) error {
 	return w.searchWithType(kw, "all")
 }

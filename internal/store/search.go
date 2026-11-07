@@ -29,12 +29,12 @@ func hasSearchToken(s string) bool {
 	return false
 }
 
-// Search 按「书名 / 作者」检索。
+// Search 只按书名检索。
 //
-// 检索范围只有**书籍元数据**：正文只做阅读，不做倒排索引；章节标题（目录）
-// 属于一本书的内部结构，由详情页展开，搜索只回答「哪本书」。
-// 命中走 bookFilter 的 LIKE（books.title / authors.name），没有索引可走，
-// 但匹配的是千级 books 行，典型查询在毫秒级完成。
+// 检索范围只有**书名**：正文只做阅读，不做倒排索引；章节标题（目录）属于一本书的
+// 内部结构，由详情页展开；作者名不进 LIKE——那一路走不了索引，18 万本的库上是全表
+// 扫描的主要成本，找某位作者的书从结果里的作者名进作者页。
+// 命中走 bookFilter 的标题 LIKE，口径与 GET /api/books 完全同一份。
 func (s *Store) Search(ctx context.Context, q SearchQuery) (*SearchResult, error) {
 	page, size := normPage(q.Page, q.Size)
 	query := strings.TrimSpace(q.Q)

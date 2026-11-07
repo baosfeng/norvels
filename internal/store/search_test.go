@@ -8,7 +8,7 @@ import (
 	"norvels/internal/model"
 )
 
-// searchFixture 建库并写入两本书：b1 的书名/作者可被检索（章节标题含「第一章 风起」），
+// searchFixture 建库并写入两本书：b1 的书名可被检索（章节标题含「第一章 风起」），
 // b2 的正文里带一段 script 标签。
 func searchFixture(t *testing.T) (*Store, context.Context) {
 	t.Helper()
@@ -19,7 +19,7 @@ func searchFixture(t *testing.T) (*Store, context.Context) {
 	if _, err := st.SaveBook(ctx, b1, SaveOptions{}); err != nil {
 		t.Fatalf("save b1: %v", err)
 	}
-	b2 := sampleBook("风雪归人", "月关", "/books/b.txt", strings.Repeat("e", 64))
+	b2 := sampleBook("风雪归人", "青川", "/books/b.txt", strings.Repeat("e", 64))
 	b2.Chapters = []model.ParsedChapter{
 		{Idx: 0, VolumeIdx: -1, Title: "唯一的章", Content: "梅宁城里下着雪，<script>alert(1)</script> 他笑了。秋蝉在叫。", WordCount: 20},
 	}
@@ -32,7 +32,7 @@ func searchFixture(t *testing.T) (*Store, context.Context) {
 func TestSearch(t *testing.T) {
 	st, ctx := searchFixture(t)
 	t.Run("书名命中", func(t *testing.T) { checkBookTitleHit(t, ctx, st) })
-	t.Run("作者命中", func(t *testing.T) { checkAuthorHit(t, ctx, st) })
+	t.Run("作者名不再命中", func(t *testing.T) { checkAuthorNameNotSearchable(t, ctx, st) })
 	t.Run("章节标题不再命中", func(t *testing.T) { checkChapterTitleNotSearchable(t, ctx, st) })
 	t.Run("正文不再参与检索", func(t *testing.T) { checkContentNotSearchable(t, ctx, st) })
 	t.Run("单字关键词返回提示", func(t *testing.T) { checkSingleRuneSearch(t, ctx, st) })
@@ -51,12 +51,21 @@ func checkBookTitleHit(t *testing.T, ctx context.Context, st *Store) {
 	}
 }
 
-// checkAuthorHit 作者命中：按作者名同样返回该本书（检索范围含 authors.name）。
-func checkAuthorHit(t *testing.T, ctx context.Context, st *Store) {
+// checkAuthorNameNotSearchable 作者名不再参与匹配（检索范围只有书名）：
+// 「青川」只出现在 b2 的作者字段里，按它搜不到任何书；但同一本书按书名查得到，
+// 且结果里仍带得出作者名（authors 表在 loadBooks 里只为取这一列）。
+func checkAuthorNameNotSearchable(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
-	r := mustSearch(t, ctx, st, SearchQuery{Q: "月关"})
-	if r.Books.Total != 1 || r.Books.Items[0].Title != "风雪归人" {
-		t.Fatalf("作者命中 = %+v", r.Books)
+	r := mustSearch(t, ctx, st, SearchQuery{Q: "青川"})
+	if r.Books.Total != 0 {
+		t.Errorf("按作者名搜索不应命中: %+v", r.Books)
+	}
+	if r.Notice != "" {
+		t.Errorf("正常关键词不应带提示，实际 %q", r.Notice)
+	}
+	byTitle := mustSearch(t, ctx, st, SearchQuery{Q: "风雪归人"})
+	if byTitle.Books.Total != 1 || byTitle.Books.Items[0].AuthorName != "青川" {
+		t.Errorf("按书名仍应命中并带出作者名: %+v", byTitle.Books)
 	}
 }
 
@@ -75,7 +84,7 @@ func checkChapterTitleNotSearchable(t *testing.T, ctx context.Context, st *Store
 	}
 }
 
-// checkContentNotSearchable 正文里的词也不参与检索（检索只到书名与作者）。
+// checkContentNotSearchable 正文里的词也不参与检索（检索只到书名）。
 func checkContentNotSearchable(t *testing.T, ctx context.Context, st *Store) {
 	t.Helper()
 	// 「秋蝉」只出现在 b2 的正文里，不在任何书名/作者中。

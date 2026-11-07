@@ -67,7 +67,7 @@ const mocks = {
     nextId: 0,
   })),
   authors: vi.fn(async () => page<AuthorSummary>({ id: 9, name: "佚名", bookCount: 3, wordCount: 100 })),
-  // 检索只有书名与作者：章节命中整块下线，响应里也只有 books 一栏
+  // 检索只有书名：章节命中整块下线，响应里也只有 books 一栏
   search: vi.fn(async (q: string): Promise<SearchResult> => ({
     q,
     books: page(book),

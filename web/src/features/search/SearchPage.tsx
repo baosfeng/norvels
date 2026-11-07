@@ -29,7 +29,7 @@ import { useSearchScrollRestore } from "./useSearchScrollRestore";
 const SEARCH_PAGE_SIZE = 8;
 
 /**
- * 搜索结果：**只按书名与作者搜**，两档同一口径、同一份结果。
+ * 搜索结果：**只按书名搜**，两档同一口径、同一份结果。
  *
  * 检索范围收敛过一次：曾经按「书名 / 作者 / 章节标题」找，页面上还有 all/book/chapter 三个 tab，
  * 但请求恒传 type=all、切 tab 只改渲染——结果是查目录查出一堆章节命中，用户要的书反而被挤下去。
@@ -52,7 +52,7 @@ export function SearchPage() {
   const showFilters = trimmed.length > 0;
   const filters = useMemo(() => readFilters(params), [params]);
   const activeCount = activeFilterCount(filters);
-  // type 恒为 "book"：书名 + 作者。不传 "all" 是为了让「不搜目录」在请求上也成立，而不只是嘴上说。
+  // type 恒为 "book"：只搜书名。不传 "all" 是为了让「不搜目录」在请求上也成立，而不只是嘴上说。
   // 筛选参数与 /api/books 同名同口径：一变就重新取数（key 进 useResource 的依赖）。
   const { data, loading, error, reload } = useSearch(
     q,
@@ -164,7 +164,7 @@ export function SearchPage() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onSearchKeyDown}
             aria-label="搜索关键词"
-            placeholder="输入书名或作者"
+            placeholder="输入书名"
           />
           <button className="btn btn-primary search-submit" type="submit">
             搜索
@@ -194,7 +194,7 @@ export function SearchPage() {
                 已选 {activeCount} 项
               </span>
             ) : null}
-            <span className="pill">按书名、作者搜索</span>
+            <span className="pill">按书名搜索</span>
             {activeCount > 0 ? (
               <button
                 type="button"
@@ -232,9 +232,9 @@ export function SearchPage() {
         </>
       ) : (
         <div className="search-layout" style={isH5 ? { gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
-          <aside aria-label="书名和作者结果">
+          <aside aria-label="书名结果">
             <h2>
-              书名和作者 <span className="meta">{bookCount}</span>
+              书名 <span className="meta">{bookCount}</span>
             </h2>
             <div className="search-books">
               {bookItems.map((book) => (

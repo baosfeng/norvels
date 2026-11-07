@@ -75,7 +75,7 @@ function expectNoChapterScope() {
   expect(screen.queryByTestId("search-chapters-empty")).toBeNull();
 }
 
-describe("搜索页：只按书名与作者搜", () => {
+describe("搜索页：只按书名搜", () => {
   beforeEach(() => {
     useSearch.mockReset();
     useCategories.mockReset().mockReturnValue({ data: { items: [], total: 0 }, loading: false, error: null, reload: () => {} });
@@ -93,15 +93,17 @@ describe("搜索页：只按书名与作者搜", () => {
     expect(JSON.stringify(useSearch.mock.calls.map((call) => call[1]))).not.toContain("chapter");
   });
 
-  it("有命中：书名与作者结果保留，章节 tab / 章节结果整块不存在", async () => {
+  it("有命中：书名结果保留，作者名不再是匹配范围但仍是入口", async () => {
     useSearch.mockReturnValue({ data: hitResult, loading: false, error: null, reload: () => {} });
     renderAt("旧城");
 
     await waitFor(() => expect(screen.getByText("长夜书简")).toBeTruthy());
     expect(screen.getByText("青川")).toBeTruthy();
-    expect(screen.getByText("书名和作者")).toBeTruthy();
-    // 检索范围文案是用户语言，明确写「按书名、作者搜索」
-    expect(screen.getByText("按书名、作者搜索")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: /书名/ })).toBeTruthy();
+    // 检索范围文案是用户语言，明确写「按书名搜索」
+    expect(screen.getByText("按书名搜索")).toBeTruthy();
+    // 旧口径（书名或作者都能搜）不该再出现在可见文案里
+    expect(screen.getByTestId("view:search").textContent).not.toContain("书名或作者");
     expect(document.body.textContent).not.toMatch(BANNED_COPY);
     expect(document.body.textContent).not.toMatch(BANNED_SCOPE);
     expectNoChapterScope();
@@ -114,13 +116,14 @@ describe("搜索页：只按书名与作者搜", () => {
     renderAt("青川剑砚");
 
     const empty = await screen.findByTestId("search-empty");
-    expect(empty.textContent).toContain("没有匹配的书名或作者");
+    expect(empty.textContent).toContain("没有匹配的书名");
+    expect(empty.textContent).not.toContain("书名或作者");
     expect(document.body.textContent).not.toMatch(BANNED_COPY);
     expect(document.body.textContent).not.toMatch(BANNED_SCOPE);
     expect(findForbiddenTerms(screen.getByTestId("view:search").textContent ?? "")).toEqual([]);
   });
 
-  // 回归：0 本时页头曾同时渲染「找到 0 本书」与「没有匹配的书名或作者」，同一件事说两遍，
+  // 回归：0 本时页头曾同时渲染「找到 0 本书」与空态标题，同一件事说两遍，
   // 还把空态标题挤到下一屏。计数摘要只在真的有结果时出现。
   it("0 本时不显示计数摘要（不把同一件事说两遍）", async () => {
     useSearch.mockReturnValue({ data: emptyResult, loading: false, error: null, reload: () => {} });
@@ -143,7 +146,7 @@ describe("搜索页：只按书名与作者搜", () => {
     useSearch.mockReturnValue({ data: hitResult, loading: false, error: null, reload: () => {} });
     renderAt("旧城", "h5");
     await waitFor(() => expect(screen.getByText("长夜书简")).toBeTruthy());
-    expect(screen.getByText("按书名、作者搜索")).toBeTruthy();
+    expect(screen.getByText("按书名搜索")).toBeTruthy();
     expectNoChapterScope();
   });
 
@@ -151,10 +154,10 @@ describe("搜索页：只按书名与作者搜", () => {
     useSearch.mockReturnValue({ data: null, loading: false, error: null, reload: () => {} });
     renderAt("");
     const section = screen.getByTestId("view:search");
-    expect(section.textContent).toContain("按书名、作者搜索");
+    expect(section.textContent).toContain("按书名搜索");
     expect(section.textContent).not.toMatch(BANNED_SCOPE);
     // 输入框占位也说明范围
-    expect((screen.getByLabelText("搜索关键词") as HTMLInputElement).placeholder).toBe("输入书名或作者");
+    expect((screen.getByLabelText("搜索关键词") as HTMLInputElement).placeholder).toBe("输入书名");
   });
 
   it("只有一页命中时分页条整块不出现", async () => {
@@ -164,7 +167,7 @@ describe("搜索页：只按书名与作者搜", () => {
     expect(screen.queryByTestId("search-pagination")).toBeNull();
   });
 
-  it("提交新关键词重新取数（仍走书名 + 作者）", async () => {
+  it("提交新关键词重新取数（仍只按书名）", async () => {
     useSearch.mockReturnValue({ data: hitResult, loading: false, error: null, reload: () => {} });
     renderAt("旧城");
     const input = screen.getByLabelText("搜索关键词") as HTMLInputElement;
@@ -173,5 +176,37 @@ describe("搜索页：只按书名与作者搜", () => {
     await waitFor(() =>
       expect(useSearch).toHaveBeenLastCalledWith("青川", expect.objectContaining({ type: "book" })),
     );
+  });
+
+  // 检索收窄到书名后，作者名是「从一本书走到这位作者全部作品」的唯一入口：
+  // 它必须是独立链接，不能嵌在指向书籍详情的那条 <a> 里（<a> 套 <a> 是非法结构）。
+  it("作者名指向该作者的作品页，且不与书名链接嵌套", async () => {
+    useSearch.mockReturnValue({ data: hitResult, loading: false, error: null, reload: () => {} });
+    renderAt("旧城");
+
+    const author = await screen.findByTestId("search-book-author-link");
+    expect(author.getAttribute("href")).toBe("/authors/9");
+    expect(author.closest("a")).toBe(author);
+    expect(screen.getByTestId("search-book-title").querySelector("a")?.getAttribute("href")).toBe("/book/1");
+  });
+
+  it("窄屏作者名落到按作者筛选的书架（作者页是 PC 专属）", async () => {
+    useSearch.mockReturnValue({ data: hitResult, loading: false, error: null, reload: () => {} });
+    renderAt("旧城", "h5");
+    const author = await screen.findByTestId("search-book-author-link");
+    expect(author.getAttribute("href")).toBe("/shelf?author=9");
+  });
+
+  it("没有 authorId 时作者名退回纯文本，不给一个跳不到的地址", async () => {
+    const orphan = { ...book, authorId: 0, authorName: "佚名" };
+    useSearch.mockReturnValue({
+      data: { q: "旧城", books: { items: [orphan], total: 1, page: 1, size: 8 } },
+      loading: false,
+      error: null,
+      reload: () => {},
+    });
+    renderAt("旧城");
+    expect(await screen.findByTestId("search-book-author")).toBeTruthy();
+    expect(screen.queryByTestId("search-book-author-link")).toBeNull();
   });
 });

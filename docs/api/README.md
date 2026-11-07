@@ -45,11 +45,13 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 **检索约束（实现现状，前端必须处理）**
 
-- 检索范围只有**书名与作者名**（`books.title` / `authors.name`），两者都走 `LIKE`；
-  章节标题（目录）与正文**不参与匹配**，响应里**没有 `chapters` 字段**。想看目录请走 `GET /api/books/{id}`。
+- 检索范围只有**书名**（`books.title` 走 `LIKE`）：作者名**不进匹配**——那一路走不了索引，
+  18 万本的库上是全表扫描的主要成本；找某位作者的作品请走作者页 `GET /api/authors/{id}`
+  （[api-books](api-books.md#get-apiauthorsid)，结果里的作者名就是这条入口）。
+  章节标题（目录）与正文同样**不参与匹配**，响应里**没有 `chapters` 字段**。想看目录请走 `GET /api/books/{id}`。
   - `q` trim 后 **少于 2 个字符** → `400` `{"error":{"code":"query_too_short","message":"关键词至少 2 个字"}}`；
   - 不需要分词：中文两字词（`秋蝉`）直接按子串匹配。
-- `type=chapter` → `400` `{"error":{"code":"invalid_param","message":"搜索范围仅支持书名与作者：传 chapter 无效，按章节标题（目录）搜索已下线"}}`；
+- `type=chapter` → `400` `{"error":{"code":"invalid_param","message":"搜索范围仅支持书名：传 chapter 无效，按章节标题（目录）搜索已下线"}}`；
   不再静默降级，前端应去掉按章节检索的入口。
 - 响应可能带可选字段 `notice`（string）：关键词只由标点/空白组成时返回「关键词需要包含文字或数字」并给空结果；前端有则提示、无则忽略。
 - **筛选**与 `GET /api/books`（[api-books.md](api-books.md#get-apibooks)）同一套实现：搜索就是「带关键词的书籍列表」，
@@ -86,7 +88,7 @@ Base：`/api`。全部返回 JSON（UTF-8），错误统一：
 
 - 阅读进度：**服务端为准**（见 [api-dashboard.md §9](api-dashboard.md#get-apireadingprogress) 的 `GET /api/reading/progress`），`localStorage` 降级为离线缓存。
 - 章节正文为纯文本，前端按段渲染（`\n` 分段），不做富文本。
-- 搜索结果只到书一级：不返回片段、不做关键词加粗；要说明「为什么命中」请用书名与作者名。
+- 搜索结果只到书一级：不返回片段；命中词高亮由前端按 `q` 自己做（只作用于书名）。
 
 ## 鉴权（可选）
 

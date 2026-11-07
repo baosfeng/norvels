@@ -59,7 +59,8 @@ type bookQueryIndex struct {
 //     没有它时是全表扫 books（约 130 MB），每次 ~0.10 s。
 //   - idx_books_title_sorted：ORDER BY title COLLATE NOCASE, id（sort=title）。原有
 //     idx_books_title 是 BINARY 排序，NOCASE 用不上，计划是 SCAN + TEMP B-TREE。
-//     末列 author_id 让「关键词同时匹配书名与作者」的 COUNT 走覆盖索引，不必回表。
+//     末列 author_id 原为「计数时顺带读作者名」的覆盖列；关键词收窄到只匹配书名后
+//     countBooks 已不 JOIN authors，该列留着不影响使用（索引只前进，不回头改）。
 //   - idx_books_rating：ORDER BY rating DESC, updated_at DESC, id DESC（sort=rating）。
 //   - idx_books_series_trim：GROUP BY TRIM(series)（/api/series）。表达式列 + 部分谓词，
 //     只装「有系列名且是当前版本」的书（17 万本里只占一小部分）。

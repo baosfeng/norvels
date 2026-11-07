@@ -33,7 +33,7 @@ export function SearchEmpty({
         ) : null}
         <EmptyPanel
           title="输入关键词开始查找"
-          description="按书名、作者搜索，输入 2 个字以上。"
+          description="按书名搜索，输入 2 个字以上。"
           actions={<Link className="btn" to="/shelf">回书架逛逛</Link>}
         />
       </div>
@@ -44,7 +44,7 @@ export function SearchEmpty({
     return (
       <EmptyPanel
         title="关键词太短"
-        description="按书名、作者搜索，至少输入 2 个字，才能找到有意义的匹配。"
+        description="按书名搜索，至少输入 2 个字，才能找到有意义的匹配。"
         actions={<Link className="btn" to="/shelf">回书架逛逛</Link>}
       />
     );
@@ -84,15 +84,15 @@ export function SearchEmpty({
   return (
     <div className="search-empty-wrap" data-testid="search-empty-wrap">
       <EmptyPanel
-        title="没有匹配的书名或作者"
+        title="没有匹配的书名"
         description="换一种写法通常就找到了；也可以从下面挑一条再试。"
         testId="search-empty"
         actions={<Link className="btn btn-primary" to="/shelf">回书架挑一本</Link>}
       />
       <ul className="search-tips" aria-label="搜索建议">
         <li>换个更短的关键词，比如只留书名里的两个字</li>
-        <li>只按书名或只按作者搜，两个词分开各搜一次</li>
-        <li>书名、作者里有生僻字时，改用简体或去掉标点</li>
+        <li>只知道作者名时，先搜到这位作者的任一本书，再从结果里点作者名</li>
+        <li>书名里有生僻字时，改用简体或去掉标点</li>
       </ul>
       {history.length > 0 ? (
         <SearchHistoryChips items={history} title="试试你搜过的" onPick={onPick} onClear={onClearHistory} />

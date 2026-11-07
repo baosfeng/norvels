@@ -293,7 +293,7 @@ export const api = {
     request<Page<AuthorSummary>>(`/authors${query({ ...params })}`, opts),
   author: (id: number, opts?: RequestOptions) => request<AuthorDetail>(`/authors/${id}`, opts),
   /**
-   * 检索：只有书名与作者。type 只接受 book | all（两者等价），传 chapter 后端 400——
+   * 检索：只有书名（作者名不进 LIKE，找作者的作品走 author(id)）。type 只接受 book | all（两者等价），传 chapter 后端 400——
    * 章节标题检索已整块下线，所以这里不给调用方留一个必然失败的取值。
    * 筛选参数与 /api/books 同名同口径，直接复用 SearchParams。
    */

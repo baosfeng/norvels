@@ -7,15 +7,15 @@ import (
 	"norvels/internal/store"
 )
 
-// minQueryRunes 是全文检索关键词的最短长度（避免全表扫描）。
+// minQueryRunes 是搜索关键词的最短长度：一个字在书名上的命中范围过宽，也省掉一次全表 LIKE。
 const minQueryRunes = 2
 
-// 搜索范围只到书名与作者：章节标题（目录）不再参与匹配。
+// 搜索范围只到书名：章节标题（目录）与作者名都不参与匹配。
 // 拒绝时直接说清能搜什么，避免调用方以为还能按章节搜。
 const (
 	searchTypeBook = "book"
 	searchTypeAll  = "all"
-	noticeScope    = "搜索范围仅支持书名与作者"
+	noticeScope    = "搜索范围仅支持书名"
 )
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +88,7 @@ func searchQuery(r *http.Request, q string) (store.SearchQuery, error) {
 	}, nil
 }
 
-// checkSearchType 校验 type：只接受 book / all（两者等价，都是书名 + 作者）。
+// checkSearchType 校验 type：只接受 book / all（两者等价，都是书名检索）。
 // chapter 明确报错而不是静默降级——降级会让调用方以为还能按目录搜。
 func checkSearchType(r *http.Request) error {
 	typ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
