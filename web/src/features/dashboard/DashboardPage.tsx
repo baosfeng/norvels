@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { showToast } from "../../lib/toastStore";
 import {
@@ -77,6 +77,15 @@ export function DashboardPage() {
   /** 接口耗时：进程内快照（路由分位 + 慢请求），不自动轮询，只在刷新时重取 */
   const metrics = useMetrics();
   const [refreshing, setRefreshing] = useState(false);
+  /** 刷新完成的最短可见时长定时器：卸载时必须清掉，否则 jsdom 已拆环境后回调会抛 window is not defined。 */
+  const refreshTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
 
   /** 刷新概览：重取全部数据源，卡片保持旧值直到新值回来。 */
   async function refreshOverview() {
@@ -87,7 +96,9 @@ export function DashboardPage() {
       source.reload();
     }
     const wait = Math.max(0, 240 - (Date.now() - started));
-    window.setTimeout(() => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
       setRefreshing(false);
       showToast("概览已刷新");
     }, wait);
