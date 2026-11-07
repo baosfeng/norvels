@@ -64,13 +64,31 @@ export function BarChart({
   const [ref, width] = useChartWidth();
   const names = nameWidth ?? clampNumber(Math.round(width * 0.22), 48, 110);
   const top = caption || legend?.length ? 13 : 2;
-  /** 行距封顶 28px：只有 3 行时不再把三条撑满 132px（那样行与行之间空得像三张独立的卡），
-   *  但行数多时仍然均分图体，10 行铺满。 */
-  const rowStep = rows.length > 0 ? Math.min(28, (height - top - 2) / rows.length) : 0;
-  const barH = clampNumber(rowStep * 0.52, 5, 14);
+  // 行距按行数铺满可用高度：行数少时把行距拉开、条加高，最后一行贴到图体底部
+  // （原先行距封顶 28px + 顶部对齐，3 行的卡下方会空掉 55%）；行数多时行距自然收紧。
+  const available = Math.max(0, height - top - 2);
+  const count = rows.length;
+  const roughStep = count > 0 ? available / count : 0;
+  const barH = clampNumber(roughStep * 0.55, 9, 20);
+  /**
+   * ≥3 行：首行贴顶、末行贴底，把可用高度铺满（行距拉开，不在下方堆一片空白）。
+   * ≤2 行：整组垂直线居中（上下留白均分）——单行时「标题在顶、条贴底」比居中更难看，
+   * 而且那点空白是数据量决定的，不该靠布局硬撑。
+   */
+  const pinned = count >= 3;
+  /** 贴顶贴底时 n−1 个间隔均分剩余高度；居中时用固定的舒适行距 */
+  const step = pinned && count > 1 ? (available - barH) / (count - 1) : 0;
+  const centeredGap = 14;
+  const blockH = count * barH + Math.max(0, count - 1) * centeredGap;
+  const blockTop = top + Math.max(0, (available - blockH) / 2);
   /** 字号跟着行距走：10 行时行距 11.7px，10.5px 的字会挤成一团（实测作者榜读不出行界）。 */
-  const nameFont = clampNumber(rowStep * 0.75, 8, MAX_NAME_FONT);
-  const valueFont = clampNumber(rowStep * 0.72, 8, MAX_VALUE_FONT);
+  const nameFont = clampNumber(Math.min(roughStep, 28) * 0.75, 8, MAX_NAME_FONT);
+  const valueFont = clampNumber(Math.min(roughStep, 28) * 0.72, 8, MAX_VALUE_FONT);
+  /** 第 index 行的中心：贴边时自下而上（末行贴底），居中时整块垂直居中 */
+  const centerYOf = (index: number) =>
+    pinned
+      ? height - 2 - barH / 2 - (count - 1 - index) * step
+      : blockTop + barH / 2 + index * (barH + centeredGap);
   const maxValue = rows.reduce((acc, row) => (Number.isFinite(row.value) && row.value > acc ? row.value : acc), 0);
   const domainTop = domainTopOf(maxValue);
   const displayReserve =
@@ -82,6 +100,8 @@ export function BarChart({
   const plotRight = Math.max(plotLeft + 24, width - 2 - trailingReserve);
   const barAreaW = Math.max(8, plotRight - plotLeft - displayReserve);
 
+  /** 一行的可点区域高度：贴边时是行距，居中时是条高 + 半间隙 */
+  const bandH = pinned ? Math.max(barH, step) : barH + centeredGap;
   /** 条尾的值：放不下时收进条内右对齐，任何情况下都不出图。 */
   const valueX = (end: number) => plotLeft + end + 4;
   const valueInside = (end: number) => plotLeft + end + 4 + displayReserve > plotRight;
@@ -91,9 +111,9 @@ export function BarChart({
       <svg className="c-svg" width={width} height={height} role="img" aria-label={ariaLabel}>
         <CaptionRow caption={caption} legend={legend} />
         {rows.map((row, index) => {
-          const centerY = top + index * rowStep + rowStep / 2;
+          const centerY = centerYOf(index);
           const value = Number.isFinite(row.value) && row.value > 0 ? row.value : 0;
-          const end = rowStep > 0 ? (value / domainTop) * barAreaW : 0;
+          const end = count > 0 ? (value / domainTop) * barAreaW : 0;
           const isPeak = peakIndex === index;
           const fill = isPeak ? peakColor : (row.color ?? color);
           const inside = valueInside(end) && end > displayReserve;
@@ -155,9 +175,9 @@ export function BarChart({
               <rect
                 className="c-hit"
                 x={0}
-                y={top + index * rowStep}
+                y={Math.max(0, centerY - bandH / 2)}
                 width={width}
-                height={Math.max(1, rowStep)}
+                height={Math.max(1, Math.min(height - Math.max(0, centerY - bandH / 2), bandH))}
                 {...tipBind(row.title)}
               />
             </g>

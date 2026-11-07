@@ -176,7 +176,8 @@ export function ReadingDistChart({
   return (
     <ChartFrame id="reading" title="阅读进度分布" note={note} isEmpty={model.empty} {...state}>
       <div className="donut-wrap">
-        <svg className="donut" width={RADIUS * 2 + 16} height={RADIUS * 2 + 16} viewBox="0 0 120 120" role="img" aria-label={note}>
+        {/* 外径 = 图体高度：环的外沿正好顶到图体上下边（原先 120px 的环在 132px 的图体里只占 79%） */}
+        <svg className="donut" width={CHART_BODY_H} height={CHART_BODY_H} viewBox="0 0 120 120" role="img" aria-label={note}>
           {model.data.segments.map((segment) =>
             segment.value > 0 ? (
               <circle

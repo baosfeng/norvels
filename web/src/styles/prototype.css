@@ -578,12 +578,12 @@ h3{font-size:var(--text-base);font-weight:600}
 .hbar-fill{display:block;height:100%;background:color-mix(in oklab,var(--accent),var(--surface) 45%);border-radius:var(--radius-pill)}
 /* 环形 */
 .donut-wrap{display:flex;align-items:center;gap:var(--space-4);width:100%}
-.donut{width:120px;height:120px;flex:none}
+/* 尺寸由组件的 width/height 属性给（= 图体高度），CSS 不再固定 120px（CSS 会盖过属性） */
+.donut{flex:none}
 .donut-legend{display:flex;flex-direction:column;gap:6px;min-width:0}
 .legend-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-xs);color:var(--fg-2);white-space:nowrap}
 .legend-dot{width:10px;height:10px;border-radius:2px;flex:none}
-/* 堆叠条：段宽 = 真实占比（.stack-seg 由 charts/StackBar.tsx 画在 SVG 里） */
-.stack-seg{display:block;height:100%}
+/* 堆叠条：段宽/段高都由 charts/StackBar.tsx 写在 SVG 几何属性上，这里不再给 height（CSS 会盖过属性） */
 @media (max-width: 1024px){
   .chart-grid{grid-template-columns:minmax(0,1fr)}
 }

@@ -85,14 +85,30 @@ function GroupBars({ group, tipBind }: { group: InterestGroup; tipBind: (label: 
   const [ref, width] = useChartWidth(160);
   const rows = group.rows;
   const labelH = 13;
-  /** 行距封顶 26px：某一维只有 1–2 行时不再把条拉散到 132px 高，组内顶部对齐 */
-  const rowStep = Math.min(26, (CHART_BODY_H - labelH) / Math.max(1, rows.length));
+  // 组内同样铺满：组标题固定在顶，条在剩余高度里等分、末行贴底。
+  // 某一维只剩 1–2 行时不会在组下方留一大片空白（实测生产里两组各 1 行，卡内空白 45%）。
+  const available = Math.max(0, CHART_BODY_H - labelH - 2);
+  const count = Math.max(1, rows.length);
+  const roughStep = available / count;
+  const barH = clampNumber(roughStep * 0.5, 7, 12);
+  /** ≥3 行铺满（首行贴顶末行贴底）；1–2 行整组居中，不在组下方留一大片空白 */
+  const pinned = count >= 3;
+  const step = pinned && count > 1 ? (available - barH) / (count - 1) : 0;
+  const centeredGap = 14;
+  const blockH = count * barH + Math.max(0, count - 1) * centeredGap;
+  const blockTop = labelH + Math.max(0, (available - blockH) / 2);
   const nameW = clampNumber(Math.round(width * 0.36), 26, 56);
   const valueW = 30;
   const barX = nameW + 4;
   const barAreaW = Math.max(10, width - barX - valueW - 2);
   const domainTop = domainTopOf(rows.reduce((acc, row) => Math.max(acc, row.value), 0));
-  const barH = clampNumber(rowStep * 0.5, 4, 9);
+  /** 一行的可点区域高度：贴边时是行距，居中时是条高 + 半间隙 */
+  const bandH = pinned ? Math.max(barH, step) : barH + centeredGap;
+  /** 第 index 行的中心：贴边时自下而上（末行贴底），居中时整块垂直居中 */
+  const centerYOf = (index: number) =>
+    pinned
+      ? CHART_BODY_H - 2 - barH / 2 - (count - 1 - index) * step
+      : blockTop + barH / 2 + index * (barH + centeredGap);
   return (
     <div className="chart-fit" ref={ref} data-dim={group.dim} data-testid={`ibars-${group.dim}`}>
       <svg className="c-svg" width={width} height={CHART_BODY_H} role="img" aria-label={group.label}>
@@ -100,7 +116,7 @@ function GroupBars({ group, tipBind }: { group: InterestGroup; tipBind: (label: 
           {group.label}
         </text>
         {rows.map((row, index) => {
-          const centerY = labelH + index * rowStep + rowStep / 2;
+          const centerY = centerYOf(index);
           const end = (row.value / domainTop) * barAreaW;
           return (
             <g key={`${group.dim}-${row.name}`}>
@@ -123,9 +139,9 @@ function GroupBars({ group, tipBind }: { group: InterestGroup; tipBind: (label: 
               <rect
                 className="c-hit"
                 x={0}
-                y={labelH + index * rowStep}
+                y={Math.max(0, centerY - bandH / 2)}
                 width={width}
-                height={Math.max(1, rowStep)}
+                height={Math.max(1, Math.min(CHART_BODY_H - Math.max(0, centerY - bandH / 2), bandH))}
                 {...tipBind(row.title)}
               />
             </g>

@@ -65,7 +65,7 @@ describe("驾驶舱阅读时长卡", () => {
     const labels = [...grid.querySelectorAll(".heat-wd")];
     expect(labels.map((el) => el.textContent)).toEqual(["一", "三", "五"]);
     // 行高就是格子边长：标签与被点亮的格子落在同一行上（原先两列各自 flex，会错开半个行距）
-    expect(grid.style.gridAutoRows).toBe("12px");
+    expect(grid.style.gridAutoRows).toBe("14px");
     for (const label of labels) {
       expect((label as HTMLElement).style.gridColumn).toBe("1");
     }
