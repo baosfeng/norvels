@@ -49,6 +49,33 @@
 
 访问日志里超过阈值的那一行带有同样的字段，可直接 `grep 'api: SLOW'` 对齐时间点。
 
+## 驾驶舱性能预算
+
+性能预算 = 每条接口的 p95 上限：超了就不再是「感觉有点慢」，而是**一条能重跑的红灯**。
+`scripts/perf-budget.sh` 对同一个部署把关键 GET 各打 N 次，逐项比对上限，超预算 exit 1（`make perf-budget` 是同一入口）。
+
+| 接口 | 预算 p95 | 依据 |
+|---|---|---|
+| `GET /api/health/report` | 300 ms | 驾驶舱验收线（0026 前生产 p95 5500 ms） |
+| `GET /api/stats` | 60 ms | 驾驶舱验收线（0026 前生产 p95 261 ms） |
+| `GET /api/dashboard` | 350 ms | 聚合端点：7 块并发 + 5 秒 TTL 缓存 |
+| `/api/stats/import-trend`·`/api/stats/reading`·`/api/authors`·`/api/categories`·`/api/reading/progress` | 200–500 ms | 回归护栏（抓「别处改慢了」，不是本轮优化目标） |
+
+口径与 `GET /api/metrics` 分工：**metrics 回答「慢在哪」**（分位、SQL 模板、慢请求现场），
+**perf-budget 回答「过没过」**（一条命令 + 退出码）。两者都是同一进程采样，不替代 CPU profile。
+
+```bash
+make perf-budget                                            # 本机 :8080，每接口 10 次
+make perf-budget BASE=http://192.168.1.100:8080 REPEAT=20     # 生产同口径复测
+scripts/perf-budget.sh --base <url> --only health --json out.json
+```
+
+- **p95 取 sorted[ceil(N×0.95)]**，与 `scripts/perf-probe.sh` 同一公式：先 `--repeat` 采样再排序，
+  别拿单次首查当 p95（首查含冷页缓存，通常慢 2–5 倍，属正常）；
+- **刚升级完会红一下**：0025 / 0026 只建结构、不回填，后台任务扫完前读接口降级实时 SQL
+  （数字仍正确但慢）。等日志出现「库级总量回填完成 / 书级健康计数回填完成」再量；
+- 任一 5xx / 超时也算失败（`exit 1`），不看 p95 是否被平均掉。
+
 ## 成本与边界
 
 - 每条 SQL 约 100 ns 固定开销（两次 `time.Now` + 一次模板查找 + 一次计数；同一条语句重复执行走连接级缓存）。

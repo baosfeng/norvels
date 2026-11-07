@@ -78,15 +78,12 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	// Warnings，懒初始化会让每个失败者各建一把锁（并发写 r.warnMu 字段本身也是数据竞态），
 	// 然后用不同的锁保护同一份 slice 并发 append——实测能把进程直接带走。
 	r := HealthReport{Warnings: []string{}, warnMu: &sync.Mutex{}}
-	// 书级健康计数（0025 预计算）：缺简介 / 缺作者 / 超薄书 / 章节数分桶。
-	// 可用时四个指标都只读一张个位数行的小表；不可用（未迁移或回填未完成）时回退实时 SQL，
+	// 预计算快照：0025 的书级健康计数 + 0026 的库级总量（书数 / 书目字数 / 已算质量分）。
+	// 可用时这些指标都只读个位数行的小表；不可用（未迁移或回填未完成）时回退实时 SQL，
 	// 数字仍然正确，只是慢——降级绝不返回错数字，也不 500。
-	counts, countsReady := s.bookHealthCounts(ctx)
-	if !countsReady {
-		s.EnsureBookHealthCounts()
-	}
+	pre := s.healthPrecompute(ctx)
 	introWhere := s.missingIntroWhere(ctx)
-	lengthLive := s.runBookMetrics(ctx, &r, counts, countsReady, introWhere)
+	lengthLive := s.runBookMetrics(ctx, &r, pre, introWhere)
 
 	if snap, err := s.Metrics(ctx); err == nil {
 		r.Stale = snap.Stale || lengthLive
@@ -101,9 +98,10 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	// 指纹覆盖率：0019 之后历史书要靠 backfill-fingerprints 补齐，缺口必须可见。
 	// 0023 起读书级覆盖表（O(书数)）；覆盖表的历史回填由后台任务分批补，
 	// 补完之前这里标 stale + backfilling，并在读取时顺带确保后台任务在跑。
-	r.Fingerprints = s.fingerprintHealthWithBackfill(ctx, &r)
+	r.Fingerprints = s.fingerprintHealthWithBackfill(ctx, &r, pre)
 	// 质量分覆盖率：0020 之后版本择优要靠 backfill-quality 补齐历史书，缺口同样必须可见。
-	r.Quality = s.qualityHealth(ctx, &r)
+	// 0026 起「书数 / 已算书数」读预计算表，不再每次请求扫一遍 18 万本。
+	r.Quality = s.qualityHealth(ctx, &r, pre)
 	return r
 }
 

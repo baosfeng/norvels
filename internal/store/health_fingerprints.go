@@ -28,7 +28,7 @@ type FingerprintHealth struct {
 //
 // 两个数是**跨库**数出来的：书数在主库，指纹按 book_id 去重数在正文库。
 // 章节全空的书写不出指纹，会长期留在缺口里——这类书本来就判不出重复，留缺口是对的。
-func (s *Store) fingerprintHealth(ctx context.Context, r *HealthReport) *FingerprintHealth {
+func (s *Store) fingerprintHealth(ctx context.Context, r *HealthReport, pre healthPrecompute) *FingerprintHealth {
 	ready, err := s.fingerprintTableExists(ctx)
 	if err != nil || !ready {
 		if err != nil {
@@ -36,7 +36,7 @@ func (s *Store) fingerprintHealth(ctx context.Context, r *HealthReport) *Fingerp
 		}
 		return nil
 	}
-	books, err := s.bookCount(ctx)
+	books, err := s.bookTotalCount(ctx, pre)
 	if err != nil {
 		r.warn("fingerprints", err)
 		return nil
@@ -60,8 +60,9 @@ func (s *Store) fingerprintHealth(ctx context.Context, r *HealthReport) *Fingerp
 // 覆盖表在升级后的头几分钟是空的（历史 5125 万行指纹由后台分批扫进来），
 // 这期间 Missing 会看起来很大。Hint 说清「这是后台在补、无需操作」，
 // 否则运维会以为要手工跑一遍几十小时的回填。
-func (s *Store) fingerprintHealthWithBackfill(ctx context.Context, r *HealthReport) *FingerprintHealth {
-	h := s.fingerprintHealth(ctx, r)
+func (s *Store) fingerprintHealthWithBackfill(ctx context.Context, r *HealthReport,
+	pre healthPrecompute) *FingerprintHealth {
+	h := s.fingerprintHealth(ctx, r, pre)
 	if h == nil {
 		return nil
 	}
@@ -80,6 +81,17 @@ func (s *Store) fingerprintHealthWithBackfill(ctx context.Context, r *HealthRepo
 		s.EnsureFingerprintCoverage(ctx)
 	}
 	return h
+}
+
+// bookTotalCount 是「books 表行数」（指纹覆盖率的分母）：优先 0026 预计算，降级实时 COUNT。
+//
+// 这条 COUNT(*) 也曾是 health/report 上的一次 books 全表扫（18.2 万本，NAS 上数十毫秒）。
+// 降级路径与 0025 / 0026 同一约定：数字同一口径，慢一点而已，绝不报错。
+func (s *Store) bookTotalCount(ctx context.Context, pre healthPrecompute) (int, error) {
+	if pre.totalsReady {
+		return pre.totals.BooksAll, nil
+	}
+	return s.bookCount(ctx)
 }
 
 // fingerprintedBookCount 数「有指纹的书」。

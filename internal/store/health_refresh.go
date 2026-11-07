@@ -66,6 +66,8 @@ type storeBackground struct {
 	coverageRunning atomic.Bool
 	// healthCountsRunning 去重「同一时刻只允许一个书级健康计数回填在跑」。
 	healthCountsRunning atomic.Bool
+	// totalsRunning 去重「同一时刻只允许一个库级总量回填在跑」（0026，同样是 books 一遍扫描）。
+	totalsRunning atomic.Bool
 }
 
 // reconcileCache 是 Store 字段的类型名（字段声明在 open.go）：保留别名，

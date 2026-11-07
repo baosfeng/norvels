@@ -255,6 +255,11 @@ func (s *Store) refreshMetrics(ctx context.Context) error {
 	if err := rebuildDashboardTables(ctx, tx); err != nil {
 		return err
 	}
+	// 0025 / 0026 的两张计数表同理：只重建直方图却留着书级计数漂移，
+	// 等于把运维引到一个「看起来成功」的结果上。
+	if err := rebuildBookCountsTx(ctx, tx); err != nil {
+		return err
+	}
 	for _, kv := range []struct {
 		key   string
 		value int64

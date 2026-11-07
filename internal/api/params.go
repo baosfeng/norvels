@@ -19,6 +19,9 @@ const (
 	maxChapterLimit     = 500
 	defaultJobLimit     = 20
 	maxJobLimit         = 100
+	// 驾驶舱聚合的作者榜条数（GET /api/dashboard?topAuthors=）：默认 10 条横条图。
+	defaultTopAuthors = 10
+	maxTopAuthors     = 50
 )
 
 // paramError 表示请求参数非法（映射为 400）。

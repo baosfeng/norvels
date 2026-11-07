@@ -67,6 +67,10 @@ type Config struct {
 	// /api/recommend 返回 503，其余端点完全不受影响——推荐是辅助能力，
 	// 缺库（磁盘满、旧版本残留）不该把整个服务拖成起不来。
 	Rec *recstore.Store
+	// DashboardTTL 是 GET /api/dashboard 的短 TTL 缓存时长：
+	// 0 = 用默认 5 秒（或 NORVELS_DASHBOARD_TTL 覆盖），负数 = 关闭缓存。
+	// 驾驶舱一次刷新只发一次聚合，5 秒内连点刷新复用同一份结果。
+	DashboardTTL time.Duration
 }
 
 // AIJudge 按配置构造裁决器；没有 key 时返回 nil（调用方按「功能不存在」处理）。
@@ -101,6 +105,8 @@ type Server struct {
 	// releaseMD 是发版说明的原始 Markdown（默认取 internal/releases 里 embed 的那份）。
 	// 做成字段而不是在 handler 里直接读 embed：测试要覆盖「说明文件写坏」的失败路径。
 	releaseMD []byte
+	// dashboard 是驾驶舱聚合（GET /api/dashboard）的短 TTL 缓存，见 dashboard_cache.go。
+	dashboard *dashboardCache
 }
 
 // New 构造 HTTP handler（含 API 与 SPA 静态资源）。
@@ -116,7 +122,8 @@ func New(st *store.Store, cfg Config) http.Handler {
 // 新端点加进对应的 route 构造函数，不要在别处再手写一份清单。
 func newServer(st *store.Store, cfg Config, fsys fs.FS) (*Server, http.Handler) {
 	s := &Server{st: st, cfg: cfg, fsys: fsys, log: log.Default(), start: time.Now(),
-		placeholder: webui.PlaceholderHTML(), releaseMD: releases.Builtin()}
+		placeholder: webui.PlaceholderHTML(), releaseMD: releases.Builtin(),
+		dashboard: newDashboardCache(dashboardCacheTTL(cfg))}
 	applyObserveEnv()
 	mux := http.NewServeMux()
 	s.routes = registerRoutes(mux, s)
@@ -255,7 +262,10 @@ func (s *Server) miscRoutes() []route {
 		newRoute(http.MethodGet, "/api/version", s.handleVersion),
 		// 发版说明（更新日志页 /changelog）：解析内置 CHANGELOG，按版本倒序返回。
 		newRoute(http.MethodGet, "/api/releases", s.handleReleases),
-		// 驾驶舱（docs/api.md §8）
+		// 驾驶舱（docs/api/api-dashboard.md）
+		// 聚合端点：一次返回驾驶舱需要的全部数字（stats/health/import-trend/reading-stats/
+		// authors/progress/jobs），服务端并发 + 短 TTL 缓存——把原本 10 个请求收成 1 个。
+		newRoute(http.MethodGet, "/api/dashboard", s.handleDashboard),
 		newRoute(http.MethodGet, "/api/health/report", s.handleHealthReport),
 		// 健康卡下钻：某一类问题的书 / 章节明细（判定口径与报告同源）。
 		newRoute(http.MethodGet, "/api/health/issues", s.handleHealthIssues),

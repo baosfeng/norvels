@@ -117,6 +117,8 @@ func (s *Store) MigrateTo(ctx context.Context, target int) (migrationStatus, err
 	s.EnsureFingerprintCoverage(ctx)
 	// 0025 的书级健康计数同理：迁移只建结构，历史值由后台任务补（books 一遍扫描）。
 	s.EnsureBookHealthCounts()
+	// 0026 的库级总量同理（书数 / 书目字数 / 已算质量分书数）。
+	s.EnsureBookTotals()
 	return st, nil
 }
 

@@ -9,12 +9,42 @@
 
 ### GET /api/stats
 ```json
-{ "books": 865, "chapters": 1234567, "authors": 412, "words": 2200000000, "dbBytes": 5100000000, "lastImportAt": "2026-10-24T21:30:00+08:00" }
+{ "books": 865, "chapters": 1234567, "authors": 412, "words": 2200000000, "dbBytes": 5100000000,
+  "textBytes": 131072, "textBytesRaw": 402000, "indexBytes": 16384, "otherBytes": 8192, "compositionEstimated": false,
+  "lastImportAt": "2026-10-24T21:30:00+08:00" }
 ```
+
+- `dbBytes` 是**主库 + 正文库**（0018 起两个文件，各自含 WAL）的合计，即真实占用；
+  `textBytes` 是压缩块与书目文本列之和（**压缩后**），`textBytesRaw` 是压缩前原文逻辑字节（只看压缩比），
+  `indexBytes` 是主库文件大小减书目文本的近似值，`otherBytes` = 前两者之外（三者之和恒等于 `dbBytes`）。
+- `books` / `words` 读 0026 的 `book_totals`（4 行小表），`chapters` 读 0022 的 `store_metrics`：
+  两条原先都是请求路径上的全表扫（生产 18.2 万本时书目字数聚合 p95 261 ms）。预计算不可用时回退
+  实时 SQL，**数字不变、这一次慢**，`compositionEstimated=true` 让运维看见「这次走了慢路径」。
 
 ## 驾驶舱端点（已实现）
 
-驾驶舱（仅 PC 可见）的配套端点，2026-10 起已实现（迁移 `0003_reading_progress.sql`）。
+### GET /api/dashboard
+
+**驾驶舱一次刷新只需要它**：一次返回「数字类」7 块，服务端并发取数（原先浏览器要发 10 个请求）。
+
+```json
+{ "generatedAt": "2026-11-07T05:34:15Z", "cached": false, "ageSeconds": 0.002, "ttlSeconds": 5, "warnings": [],
+  "stats": {…同 /api/stats}, "health": {…同 /api/health/report}, "readingStats": {…同 /api/stats/reading},
+  "importTrend": [...同 /api/stats/import-trend], "readingProgress": [...同 /api/reading/progress 的 items],
+  "topAuthors": { "items": [], "total": 0, "page": 1, "size": 10 }, "importJobs": [...同 /api/import/jobs 的 items] }
+```
+
+- 参数：`days`（14）/ `readingDays`（90）/ `tz`（0）/ `topAuthors`（10，≤50）/
+  `progress`（50，≤50）/ `jobs`（20，≤100）；越界一律 **400**（不静默夹紧）。
+- 每块的字段形状与它自己的端点逐字一致，块内 `stale` / `compositionEstimated` 语义不变
+  （聚合层不改写）；`warnings` 里是「哪一块没取到 + 原因」。
+- **部分失败不整体失败**：`stats` 是首屏核心，取不到 → 整体 5xx（与 `/api/stats` 同口径）；
+  其余块失败只进 `warnings` 并把该块置 `null`（数组块置空数组）。
+- **短 TTL 缓存**：默认 5 秒（`NORVELS_DASHBOARD_TTL` 改时长，负值关闭）。TTL 内 `cached=true`、
+  `ageSeconds` 是这份数据的年龄；TTL 外同一时刻只有一个请求真算、其余等它算完再复用
+  （single-flight：刷新连点不会把 7 组查询打成 7 倍）。只缓存成功结果。
+- 指标类刻意留在外面：`/api/metrics`（进程内快照，必须反映当下）与 `/api/recommend/stats`
+  （依赖独立推荐库，缺库是 503）。于是驾驶舱一次刷新 = `dashboard` + `metrics` + `recommend/stats` = **3 个请求**。
 
 ### GET /api/reading/progress
 最近在读（按更新时间倒序，默认 5 条）。
@@ -24,21 +54,20 @@
 
 ### PUT /api/reading/progress
 body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`paraIndex` 缺省 0），upsert，204。
-同事务内若该书 `readStatus = ""` 则置为 `reading`；`want` / `done` 不被覆盖（唯一自动转移）。
-进度按 `(user_id, book_id)` 归属当前账号；开放模式下所有请求都归默认账号 `reader`，用法与单用户时一致（见 [api-account](api-account.md)）。
+同事务内若该书 `readStatus = ""` 则置为 `reading`；`want` / `done` 不被覆盖。
+进度按 `(user_id, book_id)` 归属当前账号；开放模式下所有请求都归默认账号 `reader`。
 
 ### GET /api/health/report
 库健康状况（人话指标，供驾驶舱状态卡与直方图）。
 ```json
-{
-  "totalBooks": 865, "thinBooks": 3, "missingAuthor": 12, "missingIntro": 40, "hugeChapters": 0,
+{ "totalBooks": 865, "thinBooks": 3, "missingAuthor": 12, "missingIntro": 40, "hugeChapters": 0, "stale": false,
   "chapterBuckets": [{ "label": "1", "count": 0 }, { "label": "2-9", "count": 12 }],
-  "chapterLengthBuckets": [{ "label": "<1千", "count": 120 }],
-  "warnings": [], "stale": false
-}
+  "chapterLengthBuckets": [{ "label": "<1千", "count": 120 }], "warnings": [] }
 ```
-单项统计失败返回 `null` 并写入 `warnings`，不让整个接口 500。
-`stale`（增量字段）为 `true` 表示某项聚合走了降级路径（预计算表未回填/口径落后），数字仍正确。
+单项统计失败返回 `null` 并写入 `warnings`，不让整个接口 500。`stale=true` 表示某项聚合走了
+降级路径（预计算未回填 / 口径落后），数字仍正确。另有 `content`（正文对账快照，只读后台结果）、
+`fingerprints`（0023 覆盖表）、`quality`（0020 质量分覆盖率，0026 起读数不再扫全表）；
+缺口 > 0 时各自的 `hint` 指向回填命令。
 
 ### GET /api/health/issues?kind=missing_author&page=1&size=20
 「库健康状况」卡的下钻明细：某一类问题具体是哪些书 / 哪些章节。
@@ -47,16 +76,12 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
   非法或为空 → **400** `invalid_param`（不回落默认值，避免把两类问题混在一起看）。
 - `page`/`size` 与其它列表接口同口径（默认 1 / 20，`size` ≤ 200）；越界 400。
 - `total` 与 `/api/health/report` 里同名指标用**同一条 WHERE** 算出，两者恒等。
+- 书级条目只填 `bookId`/`title`/`author`/`chapterCount`/`wordCount`；章节级条目额外带
+  `chapterId`/`chapterIdx`/`chapterTitle`，此时 `wordCount` 是**本章**字数。排序统一「字数多的在前」。
 
 ```json
-{ "kind": "huge_chapter", "total": 5, "page": 1, "size": 20,
-  "items": [{ "bookId": 12, "title": "书目名", "author": "", "chapterCount": 0, "wordCount": 41234,
-              "chapterId": 88, "chapterIdx": 6, "chapterTitle": "第7章 …" }] }
+{ "kind": "huge_chapter", "total": 5, "page": 1, "size": 20, "items": [{ "bookId": 12, "title": "书目名", "chapterIdx": 6, "wordCount": 41234 }] }
 ```
-
-书级条目只填 `bookId`/`title`/`author`/`chapterCount`/`wordCount`；章节级条目额外带
-`chapterId`/`chapterIdx`/`chapterTitle`，此时 `wordCount` 是**本章**字数。
-排序统一「字数多的在前」（最值得先处理的排第一页）；越界页返回 200 + 空数组。
 
 ### GET /api/stats/import-trend?days=14
 近 N 天导入量（无数据的日期补 0，前端需要连续 x 轴）。
@@ -67,58 +92,23 @@ body `{ "bookId": 1, "chapterId": 42, "percent": 0.36, "paraIndex": 12 }`（`par
 ### GET /api/authors?sort=words&size=10
 在现有作者列表上加 `sort=words`，用于「字数 Top 10 作者」横条图。
 
-### GET /api/stats（扩展）
-增加体积构成估算（**估算值**，非精确页级拆解）：
-
-```json
-{ "books": 865, "chapters": 23675, "authors": 120, "words": 123456789, "dbBytes": 155648,
-  "textBytes": 131072, "indexBytes": 16384, "otherBytes": 8192, "lastImportAt": "…" }
-```
-
-- `dbBytes`：**主库 + 正文库**（0018 起两个文件，各自含 WAL）的合计；
-- `textBytes`：正文库里的压缩块（`chapter_blocks.packed`）与书目文本列之和，即**压缩后**的实际占用；
-- `textBytesRaw`：正文压缩前的原文逻辑字节，只用于说明压缩比，不参与占比；
-- `indexBytes`：**主库**文件大小减去书目文本后的近似值（chapters 的 btree、索引、页填充）；
-- `otherBytes` = `dbBytes` − 前两者（正文库的块索引、页头与空闲页）；**三者之和恒等于 `dbBytes`**，
-  可直接画堆叠条，不会出现负值。
-
 ### 实现要点
 
 - 阅读进度存 `reading_progress(book_id PK, chapter_id, chapter_idx, percent, updated_at)`，
-  `book_id` 外键 `ON DELETE CASCADE`（删书自动清进度），按 `updated_at` 倒序取最近在读；
-- `PUT /api/reading/progress` 校验顺序：JSON 形状 → `bookId`/`chapterId` 为正 → `percent ∈ [0,1]`
-  → `paraIndex ≥ 0` → 章节存在且属于该书。分别返回 400 / 400 / 400 / 400 / 404，不做静默截断；
-- `GET /api/health/report` 另有 `content`（正文库对账摘要 `orphanBlocks`/`orphanBooks`/`danglingRefs`/`missingTable`/
-  `checkedAt`/`stale`，只读后台快照；快照缺失或超过刷新间隔时 `stale=true` 并立即返回，后台刷新不阻塞请求）、
-  `fingerprints`（指纹覆盖率 `books`/`fingerprinted`/`missing`；0023 起读书级覆盖表，回填未完成时
-  `stale=true`+`backfilling=true`，`hint` 说明无需人工操作）与 `quality`（质量分覆盖率 `books`/`computed`/
-  `missing`，0020 起）；缺口 > 0 时 `hint` 分别指向 `backfill-fingerprints` / `backfill-quality`。
-  `stale` 为 `true` 表示某项聚合来自降级路径（缓存未算好或口径落后），数字仍正确、只是这次走得慢。
-  这个接口是驾驶舱首屏依赖：**任何一项都不允许在请求路径上跑全表扫**（5125 万章规模下曾是 21 秒），
-  慢的聚合一律改成「后台刷新 + 请求读快照 + stale 标记」。分桶边界见 `internal/store/health.go`：
-  - 章节数：1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+
-  - 章节字数：<1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+
-- `GET /api/stats/import-trend` 章节按**所属书的 `imported_at`** 归日（章节无独立导入时间），
-  时区取服务器本地时区，无数据日期补 0；`days` 默认 14、上限 366。0022 起读按日预计算的
-  `import_daily`（一天一行），不再 JOIN `chapters`；预计算不可用时降级为实时聚合，结果一致；
-- `GET /api/health/issues` 的四个 kind 与报告指标一一对应（`missing_author`/`missing_intro`/`thin_book`/
-  `huge_chapter`），判据（WHERE + 阈值）在 `internal/store/health_issues.go` 里只有一份，
-  报告计数与明细列表都引用它，改口径只需改一处；
-- `GET /api/authors?sort=words` 复用列表接口，`size=10` 即「字数 Top 10」；0022 起从物化的
-  `author_agg`（按 `word_count DESC` / `book_count DESC` 有索引）取前 N 行，不再每次全表聚合；
-- 新增端点的 `limit` / `days` 越界一律 400（不静默夹紧）。
-
-```bash
-# curl 示例（开放模式；启用鉴权时加 -H 'Authorization: Bearer <token>'）
-curl -s 'http://127.0.0.1:8080/api/reading/progress?limit=5'
-curl -s -X PUT -d '{"bookId":1,"chapterId":42,"percent":0.36}' \
-     http://127.0.0.1:8080/api/reading/progress -w '%{http_code}\n'   # → 204
-curl -s 'http://127.0.0.1:8080/api/health/report'
-curl -s 'http://127.0.0.1:8080/api/health/issues?kind=huge_chapter&page=1&size=20'
-curl -s 'http://127.0.0.1:8080/api/stats/import-trend?days=14'
-curl -s 'http://127.0.0.1:8080/api/authors?sort=words&size=10'
-curl -s 'http://127.0.0.1:8080/api/stats'
-```
+  `book_id` 外键 `ON DELETE CASCADE`，按 `updated_at` 倒序取最近在读；`PUT` 校验顺序：
+  JSON 形状 → id 为正 → `percent ∈ [0,1]` → `paraIndex ≥ 0` → 章节存在且属于该书（400×4 / 404）。
+- **驾驶舱请求路径上不允许全表扫**（5125 万章规模下曾是 21 秒）：慢聚合一律改成
+  「写入时同事务维护 / 后台回填 + 请求读小表 + stale 标记」——`0022`（长度直方图、导入趋势、作者聚合）、
+  `0023`（指纹覆盖表）、`0025`（缺简介/缺作者/超薄书/章节数分桶）、`0026`（书数 / 书目字数 /
+  已算质量分书数，指纹覆盖率的分母也取它）。四个迁移都「只建结构 + 后台回填」，回填完成前降级实时 SQL、数字仍正确。
+- 分桶边界在 `internal/store/health.go`：章节数 1 / 2-9 / 10-49 / 50-199 / 200-999 / 1000+；
+  章节字数 <1千 / 1千-3千 / 3千-5千 / 5千-1万 / 1万+。
+- 健康明细的四个 kind 与报告指标一一对应，判据（WHERE + 阈值）只在 `internal/store/health_issues.go`
+  一份，报告计数与明细列表都引用它。
+- `import-trend` 章节按**所属书的 `imported_at`** 归日，时区取服务器本地时区，`days` 默认 14、上限 366，
+  0022 起读 `import_daily`；`authors?sort=words` 0022 起读 `author_agg` 的前 N 行。
+- 新增端点的 `limit` / `days` 越界一律 400（不静默夹紧）；性能预算：
+  `make perf-budget BASE=http://<部署>:8080`（口径见 [observability](../observability.md)）。
 
 ## 其它端点
 

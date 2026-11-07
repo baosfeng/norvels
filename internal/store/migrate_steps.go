@@ -243,6 +243,8 @@ var migrationStepsByVersion = map[int][]migrationStep{
 	22: {{Name: "populate dashboard precompute tables", Run: populateDashboardPrecomputeStep}},
 	// 0025：书级健康计数（缺简介 / 缺作者 / 超薄书 / 章节数分桶）的预计算结构与维护触发器。
 	25: {{Name: "create book health counts and triggers", Run: createBookHealthCountStep}},
+	// 0026：库级总量（书数 / 书目字数 / 已算质量分书数）的预计算结构与维护触发器。
+	26: {{Name: "create book totals and triggers", Run: createBookTotalsStep}},
 }
 
 // storeStepsByVersion 登记「需要 Store」的迁移步骤（跨库写入，拿不到连接就做不了）。

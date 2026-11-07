@@ -9,31 +9,33 @@ import (
 // Stats 返回库级统计。DBBytes 是**两个库文件**（主库 + 正文库）与各自 -wal 的合计，
 // 即用户真正占用的磁盘量。
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
-	var (
-		st   Stats
-		last string
-	)
-	// 书数/作者数是千级行，实时算就是毫秒级，不进缓存（缓存反而多一次读表）。
-	// 章节数另有门道：原先这里还有一句 (SELECT COUNT(*) FROM chapters)，
-	// NAS 生产库 24,697,647 章时它每次请求都要数一遍整个 btree（实测 152 ms/次）。
-	// 0022 起改读 store_metrics 的 chapter_count（导入时同事务增量维护）；
-	// 缓存缺失时退回实时 COUNT，并把 CompositionEstimated 置 true（接口照常 200）。
+	var st Stats
+	// 章节数/书数/书目字数三个整型聚合都曾绑在请求路径上：
+	//   - COUNT(*) FROM chapters 每次数 2,469 万行（实测 152 ms），0022 起读 store_metrics；
+	//   - COUNT(*) FROM books WHERE superseded_by = 0 与 SUM(word_count) FROM books
+	//     是 books 的一次全表扫（生产 18.2 万本 p95 261 ms），0026 起读 book_totals。
+	// 两者都保留实时降级：预计算不可用时数字仍正确，只是这一次慢。
 	chapters, estimated, err := s.chapterTotal(ctx)
 	if err != nil {
 		return Stats{}, err
 	}
 	st.Chapters = chapters
+	books, words, err := s.bookTotalsForStats(ctx)
+	if err != nil {
+		return Stats{}, err
+	}
+	st.Books, st.Words = books, words
+	// 作者数是千级行、最近导入时间走 idx_books_imported 的倒序扫描：两条都毫秒级，
+	// 不进预计算（多一张表就要多一套触发器，收益为零）。
+	var last string
 	err = s.db.QueryRowContext(ctx,
-		"SELECT (SELECT COUNT(*) FROM books WHERE superseded_by = 0), "+
-			"(SELECT COUNT(*) FROM authors), "+
-			"(SELECT COALESCE(SUM(word_count), 0) FROM books), "+
-			"(SELECT COALESCE(MAX(imported_at), '') FROM books)").Scan(
-		&st.Books, &st.Authors, &st.Words, &last)
+		"SELECT (SELECT COUNT(*) FROM authors), (SELECT COALESCE(MAX(imported_at), '') FROM books)").Scan(
+		&st.Authors, &last)
 	if err != nil {
 		return Stats{}, fmt.Errorf("store: stats: %w", err)
 	}
 	if last != "" {
-		if t, err := parseTime(last); err == nil {
+		if t, perr := parseTime(last); perr == nil {
 			st.LastImportAt = &t
 		}
 	}
@@ -46,6 +48,25 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		st.CompositionEstimated = comp.Estimated || estimated
 	}
 	return st, nil
+}
+
+// bookTotalsForStats 取 /api/stats 的书数与书目字数：优先 0026 预计算，不可用时实时扫。
+//
+// 实时路径就是 0026 之前的原语句（一条 SQL 里的两个子查询，同一份 books 扫描）。
+func (s *Store) bookTotalsForStats(ctx context.Context) (int, int64, error) {
+	if totals, ok := s.bookTotals(ctx); ok {
+		return totals.BooksCurrent, totals.WordSum, nil
+	}
+	// 降级：拉一次后台回填，本次请求仍给出正确数字（慢一点而已）。
+	s.EnsureBookTotals()
+	var books int
+	var words int64
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT (SELECT COUNT(*) FROM books WHERE superseded_by = 0), "+
+			"(SELECT COALESCE(SUM(word_count), 0) FROM books)").Scan(&books, &words); err != nil {
+		return 0, 0, fmt.Errorf("store: stats books: %w", err)
+	}
+	return books, words, nil
 }
 
 // chapterTotal 取全库章节数：优先读 store_metrics 的预计算值，缺失时退回实时 COUNT。

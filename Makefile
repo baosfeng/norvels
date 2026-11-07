@@ -8,7 +8,7 @@ BIN := bin/norvels
 
 .PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy \
         bench-capacity bench-capacity-1m verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance \
-        preview shot wait-for gate-fast gate-fast-impl privacy-changed
+        preview shot wait-for gate-fast gate-fast-impl privacy-changed perf-budget
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -78,6 +78,12 @@ bench-capacity: ## 容量压测（500 本 x 500 章合成库，输出 markdown �
 
 bench-capacity-1m: ## 百万本口径压测（100 万本书目 + 前 8.6 万本建章节，约 8 分钟 / 3 GB 临时库）
 	@python3 scripts/bench-capacity.py --books 1000000 --chapters 346 --sample-books 86000
+
+# ---------- 接口性能预算 ----------
+# 对**同一个部署**逐接口断言 p95 上限，超预算 exit 1（口径与预算表见脚本头部）。
+# 生产复测：make perf-budget BASE=http://192.168.1.100:8080 REPEAT=20
+perf-budget: ## 驾驶舱性能预算（BASE=URL REPEAT=N；超预算 exit 1）
+	@scripts/perf-budget.sh $(if $(BASE),--base "$(BASE)",) $(if $(REPEAT),--repeat "$(REPEAT)",)
 
 # ---------- 质量门禁（quality-gates 9 项，逐项可单独跑）----------
 # 每个 gate-* 都如实报告：不达标即 exit 1，不调阈值、不 skip。详见 docs/quality-gates.md。

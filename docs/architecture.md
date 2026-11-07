@@ -32,7 +32,7 @@
 3. **前端只经 API**：不引入 SSR，构建产物全部 embed，运行时无需 Node。
 4. **导入可重复执行**：同一目录重复 `import` 必须幂等（文件 SHA-256 命中则跳过，除非 `--force`）。
 5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=NORMAL`。
-   驾驶舱的聚合值（体积构成、章节数、长度直方图、导入趋势、作者作品数与字数）全部在写入时同事务预计算，读接口只查表——请求路径上不做全表聚合（0022，实测见 [data-profile §10.4.1](data-profile.md#1041-驾驶舱查询全部预计算化0022)）。
+   驾驶舱的聚合值（体积构成、章节数、长度直方图、导入趋势、作者作品数与字数）全部在写入时同事务预计算，读接口只查表——请求路径上不做全表聚合（0022，实测见 [data-profile §10.4.1](data-profile.md#1041-驾驶舱查询全部预计算化0022)）。书级健康计数与库级总量（0025 / 0026）同一思路，但由 SQL 触发器在**所有写路径**上维护，因此不必在每条 Go 写路径上补一行。
 6. **正文独立成库**（0018）：块表 `chapter_blocks` 只在正文库里，`chapters.block_id` 是**跨库弱引用**（没有外键）；两库各自一个 `*sql.DB`，`Open` 由主库路径推导兄弟文件、`Close` 双关。
 
 ## 2.1 鉴权边界与账号归属
@@ -93,6 +93,8 @@ store_metrics(key PK, value, updated_at)         -- 全库聚合缓存（0004 �
 chapter_length_hist(bucket PK, count)            -- 章节长度直方图（0022，随章节写入增量维护）
 import_daily(day PK, book_count, chapter_count)  -- 导入趋势按本地日聚合（0022）
 author_agg(author_id PK, book_count, word_count) -- 作者聚合物化（0022），/api/authors 的读路径
+book_health_counts(kind PK, n) / book_chapter_buckets(bucket PK, n)  -- 书级健康计数（0025，触发器维护）
+book_totals(kind PK, n)                          -- 书数 / 书目字数 / 已算质量分书数（0026，触发器维护）
 tags(id, name) / book_tags(book_id, tag_id)       -- 检索范围只有书名（LIKE），无全文索引
 import_jobs(...) / import_errors(...) / import_reviews(...)  -- 导入任务、失败明细与 AI 审核记录（0021）
 
@@ -114,7 +116,6 @@ recent_items(user_id, book_id, ts)                             -- 近期已曝�
 推荐库的 schema 用 `PRAGMA user_version` 版本化（当前 1），由 `internal/recstore` 打开；它与主库之间没有外键、也没有跨库事务。推荐库打不开时 `/api/events` 与 `/api/recommend` 返回 503，阅读与书架功能照常（设计见 [specs/2026-11-01-recommend-design.md](specs/2026-11-01-recommend-design.md)）。
 
 完整 DDL 见 `internal/store/migrations/0001_init.sql`（v1 快照仍保留在 `internal/store/schema.sql` 供阅读，启动不再执行它）；逐版本变更见 [deploy.md](deploy.md) §7.1 的迁移表。
-
 检索范围是**书名**（章节标题、正文与作者名都不参与，无全文索引，理由见 [ADR-0002](adr/0002-drop-fulltext-index.md)）；几十万到百万本的容量推算见 [data-profile.md §10](data-profile.md#10-容量推算几十万到百万本)。
 
 ## 4. 导入流水线
