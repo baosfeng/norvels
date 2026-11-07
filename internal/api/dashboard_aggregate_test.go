@@ -77,6 +77,18 @@ func TestDashboardCacheWithinTTL(t *testing.T) {
 	}
 }
 
+// TestDashboardCacheKeyIsolatedByUser 缓存键必须含账号：readingStats / readingProgress
+// 按 user_id 隔离，只按参数缓存会让 5 秒 TTL 内第二个账号拿到第一个账号的个人阅读数据。
+func TestDashboardCacheKeyIsolatedByUser(t *testing.T) {
+	p := dashboardParams{Days: 14, ReadingDays: 90, TZ: 0, TopAuthors: 10, Progress: 50, Jobs: 20}
+	if p.key(1) == p.key(2) {
+		t.Fatalf("不同账号的缓存键相同：%s", p.key(1))
+	}
+	if p.key(1) != p.key(1) {
+		t.Fatal("同一账号同一参数的缓存键不稳定")
+	}
+}
+
 // TestDashboardRejectsBadParams 参数越界一律 400（不静默夹紧）。
 func TestDashboardRejectsBadParams(t *testing.T) {
 	e := newEnv(t)

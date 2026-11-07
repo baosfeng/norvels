@@ -65,10 +65,14 @@ func parseDashboardParams(r *http.Request) (dashboardParams, error) {
 	return p, nil
 }
 
-// key 是缓存键：同一组参数命中同一份聚合结果。
-func (p dashboardParams) key() string {
-	return fmt.Sprintf("days=%d;rdays=%d;tz=%d;authors=%d;progress=%d;jobs=%d",
-		p.Days, p.ReadingDays, p.TZ, p.TopAuthors, p.Progress, p.Jobs)
+// key 是缓存键：同一组参数 + 同一个账号命中同一份聚合结果。
+//
+// 账号必须进键：readingStats / readingProgress 两块按 user_id 隔离（store 层
+// ScopeUserID），只按参数缓存会让 5 秒 TTL 内第二个账号拿到第一个账号的
+// 「今日/本周阅读时长、连续天数、最近在读」——属于个人数据串号，不是显示误差。
+func (p dashboardParams) key(userID int64) string {
+	return fmt.Sprintf("days=%d;rdays=%d;tz=%d;authors=%d;progress=%d;jobs=%d;user=%d",
+		p.Days, p.ReadingDays, p.TZ, p.TopAuthors, p.Progress, p.Jobs, userID)
 }
 
 // dashboardPayload 是 GET /api/dashboard 的响应体。
@@ -105,7 +109,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err, codeInvalidParam)
 		return
 	}
-	payload, cached, err := s.dashboard.do(r.Context(), p.key(),
+	payload, cached, err := s.dashboard.do(r.Context(), p.key(store.ScopeUserID(r.Context())),
 		func(ctx context.Context) (dashboardPayload, error) { return s.loadDashboard(ctx, p) })
 	if err != nil {
 		s.fail(w, r, err, "驾驶舱聚合不可用")

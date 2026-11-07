@@ -26,7 +26,7 @@ const (
 	envDashboardTTL = "NORVELS_DASHBOARD_TTL"
 	// defaultDashboardTTL 是默认缓存时长：5 秒足够吸收刷新连点，又短到用户看不出延迟。
 	defaultDashboardTTL = 5 * time.Second
-	// dashboardCacheKeys 是缓存条目上限（键 = 参数组合，正常只有个位数；
+	// dashboardCacheKeys 是缓存条目上限（键 = 参数 × 账号，单账号正常只有个位数；
 	// 超限时丢掉最旧的一条，避免被构造出来的参数把内存撑开）。
 	dashboardCacheKeys = 16
 )

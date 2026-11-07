@@ -40,7 +40,8 @@
   （聚合层不改写）；`warnings` 里是「哪一块没取到 + 原因」。
 - **部分失败不整体失败**：`stats` 是首屏核心，取不到 → 整体 5xx（与 `/api/stats` 同口径）；
   其余块失败只进 `warnings` 并把该块置 `null`（数组块置空数组）。
-- **短 TTL 缓存**：默认 5 秒（`NORVELS_DASHBOARD_TTL` 改时长，负值关闭）。TTL 内 `cached=true`、
+- **短 TTL 缓存**：默认 5 秒（`NORVELS_DASHBOARD_TTL` 改时长，负值关闭）。缓存键 = 参数 + 账号
+  （`readingStats` / `readingProgress` 按 `user_id` 隔离，不同账号不共享条目）。TTL 内 `cached=true`、
   `ageSeconds` 是这份数据的年龄；TTL 外同一时刻只有一个请求真算、其余等它算完再复用
   （single-flight：刷新连点不会把 7 组查询打成 7 倍）。**只缓存七块都齐且自洽的结果**：
   带 `warnings`（某块失败，或空块与 `stats` 矛盾，如书数 > 0 而健康卡说 0 本）的响应不进缓存，
