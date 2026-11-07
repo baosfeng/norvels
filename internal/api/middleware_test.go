@@ -185,3 +185,17 @@ func TestAPI404IsJSON(t *testing.T) {
 	}
 	requireError(t, rr, http.StatusNotFound, codeNotFound)
 }
+
+// 安全响应头对 API 与页面都生效：点击劫持 / Referer 外泄 / 相机麦克风
+// 在「NAS 端口被路由器转发到公网」时是真实暴露面，这一组头不影响任何功能。
+func TestSecurityHeaders(t *testing.T) {
+	env := newEnv(t)
+	for _, target := range []string{"/api/health", "/"} {
+		rr := env.get(target)
+		for _, h := range []string{"X-Frame-Options", "Referrer-Policy", "Permissions-Policy"} {
+			if rr.Header().Get(h) == "" {
+				t.Errorf("%s 缺少安全头 %s", target, h)
+			}
+		}
+	}
+}

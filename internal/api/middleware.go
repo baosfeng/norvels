@@ -30,7 +30,24 @@ func (s *Server) wrap(apiHandler http.Handler) http.Handler {
 	h = s.accessLogMiddleware(h)
 	h = s.corsMiddleware(h)
 	h = requestIDMiddleware(h, s.cfg.RequestID)
+	h = securityHeadersMiddleware(h)
 	return h
+}
+
+// securityHeadersMiddleware 加一组「零成本、不影响功能」的安全响应头。
+//
+// 这是个人内网应用，但一键部署（NAS compose）默认端口绑 0.0.0.0：
+// 被路由器转发到公网时，至少挡住点击劫持与 Referer 外泄。
+// CSP 暂不加：前端有内联 style 与构建期注入的模块脚本，要单独做一轮自查与回归；
+// 三个头没有这个风险，且对同源 SPA 没有任何行为影响。
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // isBackendPath 判断请求是否由后端路由（而非前端静态资源）处理。
