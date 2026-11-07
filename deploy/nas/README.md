@@ -113,13 +113,22 @@ Docker Hub API 或 registry 直连——国内这两条常常超时。镜像 17 
 sudo ./update.sh --backup --latest    # 升级前成对备份主库 + 正文库
 ```
 
-手动归档（必须先停服，避免拷到半写状态）：
+手动归档（两个库成对；不要直接 `cp` 裸文件）：
 
 ```bash
-sudo docker compose stop && sudo cp /vol1/norvels/data/norvels.db /vol1/norvels/backup/manual-$(date +%F).db && sudo docker compose start
+# 推荐：升级脚本的备份分支（停服 → 成对备份 + sha256 → quick_check/schema 校验 → .meta）
+sudo ./update.sh --backup --latest
+
+# 或不停服的在线备份（SQLite .backup 拿到一致快照，WAL 一并读取）：
+sudo docker run --rm -v /vol1/norvels/data:/data -v /vol1/norvels/backup:/backup keinos/sqlite3 \
+  /data/norvels.db ".backup /backup/norvels-$(date +%F).db"
+sudo docker run --rm -v /vol1/norvels/data:/data -v /vol1/norvels/backup:/backup keinos/sqlite3 \
+  /data/norvels-content.db ".backup /backup/norvels-content-$(date +%F).db"
 ```
 
-> 不要只拷 `.db` 而漏掉 `-wal`：WAL 里可能有未合并的事务。
+> 0018 起正文独立成文件，只拷主库 = 恢复后所有章节悬空。
+> 若坚持文件级 `cp`：先停服并确认 `-wal` 为空；非空就把它一起拷走——
+> 只拷主库时 WAL 里的建表/迁移事务不在备份里，单独打开会报 `no such table`。
 
 ## 故障排查
 

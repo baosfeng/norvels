@@ -253,7 +253,7 @@ curl -fsS http://127.0.0.1:8080/api/health
      算法与取舍见 [ADR-0003](adr/0003-block-compressed-content.md)。
    - 按 4.4 GB 原文规划：跑完迁移 + VACUUM 后 `/data` 约 1.6–2 GB，预留 **≥ 5 GB** 即可；
      **迁移当次**峰值要 35 GB 以上（见 §4 的说明）。以 `/api/stats` 的 `dbBytes` 为准（它已是两个文件的合计）。
-   - **拆库之后（0018）**：正文只占 `norvels-content.db`（生产约 21–22 GB），主库只剩 books/chapters/索引/用户数据，
+   - **拆库之后（0018）**：正文只占 `norvels-content.db`（生产 18.2 万本时文件约 **121 GB**、`/api/stats` 的正文数据约 129 GB），主库只剩 books/chapters/索引/用户数据，
      降到元数据量级；两者之和就是 `/api/stats` 的 `dbBytes`。备份、迁移、换盘都以「这一对文件」为单位。
    - 几十万到百万本的体积与延迟推算见 [data-profile.md §10](data-profile.md#10-容量推算几十万到百万本)。
 
@@ -261,7 +261,7 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 | 场景 | CPU | 内存 | 磁盘 | 依据 |
 |---|---|---|---|---|
-| 浏览/阅读（serve） | 1 vCPU | 1 GB | 数据卷大小 | Go 服务 RSS 约 50–100 MB；`cache_size=-65536` 让 SQLite 页缓存上限约 64 MB（见 `internal/store/open.go`） |
+| 浏览/阅读（serve） | 1 vCPU | 1 GB | 数据卷大小 | Go 服务 RSS 约 50–100 MB；`cache_size=-65536` 是**每连接** 64 MiB 页缓存上限（主库/正文库/推荐库三池 × `SetMaxOpenConns(8)`，实际按访问模式增长，1C512M 机器建议调到 `-16384`） |
 | 导入 4.4 GB / 865 文件 | 2 vCPU | 2 GB | 源 4.4 GB + 库约 1.6 GB + 备份 | 解析是 CPU 密集（并发 `min(NumCPU, 8)`），SQLite 写入是 IO 密集；WAL 峰值数十 MB。1C1G 也能跑完，但耗时约翻倍 |
 
 - 磁盘 IO：SSD 明显优于机械盘（估算 2–3 倍差异），4.4 GB 文本顺序读 + 随机写库。
@@ -514,11 +514,15 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 | 17 | `0017_codebook_blocks.sql` | 存量正文块重组：1 MB / 0x02 → **8 MB / 0x03（字码本 + zstd）**；块字节 27.5 GB → 约 21 GB，见 [ADR-0007](adr/0007-codebook-compressed-content.md) |
 | 18 | `0018_content_db.sql` | 正文块搬进独立文件 `norvels-content.db`，逐书流式搬运后 `DROP TABLE chapter_blocks`；`chapters.block_id` 变成跨库弱引用 |
 | 19 | `0019_chapter_fingerprints.sql` | 正文库建章级指纹 `chapter_fingerprints(hash, book_id, bytes)`（WITHOUT ROWID，主键 `(hash, book_id)`）+ 主库预置 `settings` 的 `dedupe.threshold` = 0.95；秒级，**升级后必须跑一次 `norvels backfill-fingerprints` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
-| 21 | `0021_import_reviews.sql` | AI 审核表 `import_reviews`（状态机 pending/ready/needs_manual/confirmed_keep/confirmed_replace/rolled_back）+ books 加 `superseded_by`（0 = 当前版本）+ 预置 `settings` 的 `ai.enabled` = false；秒级，升级后书架行为不变（没有 superseded 的书），AI 用法见 [§7.6](#76-ai-审核可选默认关闭) |
 | 20 | `0020_book_quality.sql` | books 加七列质量分 `garbage_ratio`/`noise_ratio`/`structure_score`/`duplicate_ratio`/`quality_chapters`/`quality_chars`/`quality_at`（NOT NULL DEFAULT 0/''，存量 = 未计算）+ `metrics_version` 4→5（旧缓存自动重算）；只加列、秒级，**跑一次 `norvels backfill-quality` 补历史书**，见 [architecture](architecture.md) §2.3 与 [§7.2](#72-升级后自查check-content) |
+| 21 | `0021_import_reviews.sql` | AI 审核表 `import_reviews`（状态机 pending/ready/needs_manual/confirmed_keep/confirmed_replace/rolled_back）+ books 加 `superseded_by`（0 = 当前版本）+ 预置 `settings` 的 `ai.enabled` = false；秒级，升级后书架行为不变（没有 superseded 的书），AI 用法见 [§7.6](#76-ai-审核可选默认关闭) |
 | 22 | `0022_dashboard_precompute.sql` | 驾驶舱预计算：建 `chapter_length_hist` / `import_daily` / `author_agg` 三张表并**在同一事务里回填** + `metrics_version` 5→6（多一个 `chapter_count` 键）。7 万本 / 2,469 万章的生产库实测回填约十几秒；期间读接口返回 `stale` 而不是报错。口径与实测见 [data-profile](data-profile.md#1041-驾驶舱查询全部预计算化0022) |
+| 23 | `0023_fingerprint_books.sql` | 正文库建 `fingerprint_books(book_id)` 覆盖表（WITHOUT ROWID），标记书级指纹已回填；结构变更在正文库，缺列按探测跳过 |
+| 24 | `0024_book_query_indexes.sql` | 列表 / 搜索 / 随机 / 系列接口的 5 条查询索引（按列探测建：老库缺 `author_id`/`series`/`category_l1` 等列时跳过对应索引，只退化慢路径不报错） |
+| 25 | `0025_book_health_counts.sql` | 书级健康计数表 + 写路径触发器维护（health/report 最后三条全表/全索引扫描改成查表）；**先建结构、后台回填**，回填完成前读接口降级实时 SQL（数字正确、这一次慢） |
+| 26 | `0026_book_totals.sql` | 库级总量表 + 触发器（`/api/stats` 的 books/words 与质量分覆盖率）；同样先建结构、后台回填，回填前读接口降级实时 SQL |
 
-> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **22**。
+> 版本 2 预留未用（历史上规划过又合并掉了），迁移版本号不要求连续；当前最新版本 = **26**。
 >
 > **0017 的运维前提**：单事务内新旧两份块并存（约 27.5 GB + 21 GB，另加 WAL），迁移期间**不监听端口**，
 > 大库按 [§7.3](#73-迁移后回收空间vacuum) 用一次性容器预跑；迁移后必须 `VACUUM` 才真正回落。

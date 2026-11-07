@@ -231,26 +231,77 @@ if [ "$DO_BACKUP" != "1" ]; then
 elif [ -f "$DATA_DIR/norvels.db" ]; then
   mkdir -p "$BACKUP_DIR"
   echo "== 备份数据库（主库 + 正文库成对备份，保留最近 $KEEP 份）=="
+  # 空间预检：一份 = 主库 + 正文库，留 2 倍余量。备份把盘写满会让运行中的库直接报错，
+  # 比没有备份更糟；不足就明确拒绝并打印实测数字。
+  MAIN_KB=$(( $(stat -c %s "$DATA_DIR/norvels.db") / 1024 ))
+  CONTENT_KB=0
+  [ -f "$DATA_DIR/norvels-content.db" ] && CONTENT_KB=$(( $(stat -c %s "$DATA_DIR/norvels-content.db") / 1024 ))
+  NEED_KB=$(( (MAIN_KB + CONTENT_KB) * 2 ))
+  AVAIL_KB=$(df -Pk "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+  if [ -n "$AVAIL_KB" ] && [ "$NEED_KB" -gt "$AVAIL_KB" ]; then
+    die "备份空间不足：需要约 $((NEED_KB / 1024)) MB，$BACKUP_DIR 只剩 $((AVAIL_KB / 1024)) MB（可调 NORVELS_BACKUP_DIR 或先删旧备份）"
+  fi
   docker compose stop
+  # 停服后 SQLite 正常退出会 checkpoint 并删除 -wal；导入中被 SIGKILL 时 -wal 会留下。
+  # -wal 非空仍照拷主库 = 「已备份」是假话：WAL 里的建表/迁移事务没进主文件，
+  # 单独打开备份主库会直接报 no such table（本地已复现）。等它收敛，仍非空就成对备份并提示。
+  wait_wal_settle() {
+    local f=$1 i
+    for i in $(seq 1 30); do
+      [ -s "$f-wal" ] || return 0
+      sleep 1
+    done
+    [ -s "$f-wal" ] && return 1 || return 0
+  }
+  backup_one() {
+    local src=$1 dst=$2 label=$3
+    cp -a "$src" "$dst"
+    if [ "$(sha256sum "$src" | awk '{print $1}')" != "$(sha256sum "$dst" | awk '{print $1}')" ]; then
+      die "$label 备份校验失败（sha256 不一致）"
+    fi
+    if [ -s "$src-wal" ]; then
+      cp -a "$src-wal" "$dst-wal"
+      [ -f "$src-shm" ] && cp -a "$src-shm" "$dst-shm" || true
+      echo "  ⚠️ $label 的 -wal 仍有数据（$(stat -c %s "$src-wal") 字节），已一并备份；恢复时 $dst 与 $dst-wal 必须放在同一目录"
+    fi
+  }
+  wait_wal_settle "$DATA_DIR/norvels.db" || true
   STAMP=$(date +%Y%m%d-%H%M)
   BK="$BACKUP_DIR/norvels-$OLD_VERSION-$STAMP.db"
-  BK_C="$BACKUP_DIR/norvels-$OLD_VERSION-$STAMP-content.db"
-  cp -a "$DATA_DIR/norvels.db" "$BK"
-  SRC=$(stat -c %s "$DATA_DIR/norvels.db")
-  DST=$(stat -c %s "$BK")
-  [ "$SRC" = "$DST" ] || die "备份大小不一致（$SRC vs $DST），已中止"
-  echo "备份完成：$BK（$DST 字节）"
+  BK_C=""
+  backup_one "$DATA_DIR/norvels.db" "$BK" "主库"
   # 0018 起正文在独立文件：少备份它，恢复时就只有半套数据（章节在、正文没了）。
   if [ -f "$DATA_DIR/norvels-content.db" ]; then
-    cp -a "$DATA_DIR/norvels-content.db" "$BK_C"
-    SRC_C=$(stat -c %s "$DATA_DIR/norvels-content.db")
-    DST_C=$(stat -c %s "$BK_C")
-    [ "$SRC_C" = "$DST_C" ] || die "正文库备份大小不一致（$SRC_C vs $DST_C），已中止"
-    echo "正文库备份完成：$BK_C（$DST_C 字节）"
+    BK_C="$BACKUP_DIR/norvels-$OLD_VERSION-$STAMP-content.db"
+    wait_wal_settle "$DATA_DIR/norvels-content.db" || true
+    backup_one "$DATA_DIR/norvels-content.db" "$BK_C" "正文库"
   fi
-  # 保留策略按主库计份数；清理时连同同批次的正文库一起删（只删主库会留孤儿文件）。
+  # 完整性：quick_check 之外还要能打开 schema（schema_migrations 与 books）——
+  # 只差 -wal 的「半套库」quick_check 可能是 ok，但查表会失败。
+  docker pull -q keinos/sqlite3 >/dev/null 2>&1 || true
+  for f in "$BK" "$BK_C"; do
+    [ -f "$f" ] || continue
+    CHECK=$(docker run --rm --entrypoint sqlite3 -v "$BACKUP_DIR:/b" keinos/sqlite3 "/b/$(basename "$f")" \
+      "PRAGMA quick_check; SELECT 'schema=' || COALESCE((SELECT max(version) FROM schema_migrations), -1); SELECT 'rows=' || (SELECT count(*) FROM books);" 2>&1) || true
+    case "$CHECK" in
+      *ok*rows=*) echo "  校验通过：$(basename "$f") → $(printf '%s' "$CHECK" | tr '\n' ' ')" ;;
+      *) die "$(basename "$f") 备份完整性校验失败：$CHECK" ;;
+    esac
+  done
+  {
+    echo "version=$OLD_VERSION"
+    echo "created=$(date +%Y-%m-%dT%H:%M:%S%z)"
+    echo "main_bytes=$(stat -c %s "$BK")"
+    echo "main_sha256=$(sha256sum "$BK" | awk '{print $1}')"
+    if [ -f "$BK_C" ]; then
+      echo "content_bytes=$(stat -c %s "$BK_C")"
+      echo "content_sha256=$(sha256sum "$BK_C" | awk '{print $1}')"
+    fi
+  } > "$BK.meta"
+  echo "备份完成：$BK（$(stat -c %s "$BK") 字节）"
+  # 保留策略按主库计份数；清理时连同同批次的正文库、meta 与 -wal/-shm 一起删（只删主库会留孤儿文件）。
   ls -1t "$BACKUP_DIR"/norvels-*.db 2>/dev/null | grep -v -- '-content\.db$' | tail -n +$((KEEP + 1)) | while read -r old; do
-    rm -f "$old" "${old%.db}-content.db" && echo "  清理旧备份：$old"
+    rm -f "$old" "$old.meta" "$old-wal" "$old-shm" "${old%.db}-content.db" "${old%.db}-content.db-wal" "${old%.db}-content.db-shm" && echo "  清理旧备份：$old"
   done
 fi
 
@@ -281,9 +332,15 @@ docker compose stop >/dev/null 2>&1 || true
 # --entrypoint /norvels 不能少：镜像 ENTRYPOINT 是 "norvels serve"，不覆盖就会
 # 变成 "serve migrate --dry-run"，静默起一个服务、永远看不到迁移计划。
 echo "== 检查待应用迁移 =="
-DRY_OUT=$(docker run --rm --user 65532:65532 --entrypoint /norvels \
+# 命令替换在 set -e 下失败会直接退出：库版本比镜像新时，守卫打印的诊断
+# （当前版本 / 当前二进制支持到）会被吞掉，用户只看到一句「回滚镜像版本」。
+# 先捕获退出码，失败时原样打印它自己的文案再中止。
+if ! DRY_OUT=$(docker run --rm --user 65532:65532 --entrypoint /norvels \
   -e NORVELS_LEGACY_CATEGORY="${NORVELS_LEGACY_CATEGORY:-}" \
-  -v "$DATA_DIR:/data" "$IMAGE" migrate --db /data/norvels.db --dry-run 2>&1)
+  -v "$DATA_DIR:/data" "$IMAGE" migrate --db /data/norvels.db --dry-run 2>&1); then
+  printf '%s\n' "$DRY_OUT"
+  die "migrate --dry-run 失败（库版本可能比镜像新，或镜像/参数有问题）"
+fi
 echo "$DRY_OUT"
 
 # 输出里必须出现"待应用"。没有就说明 migrate 根本没执行（例如 ENTRYPOINT 覆盖失效），
@@ -293,7 +350,10 @@ case "$DRY_OUT" in
   *) die "migrate --dry-run 输出异常，未识别到迁移计划（检查 --entrypoint 是否生效）" ;;
 esac
 
-PENDING=$(printf '%s\n' "$DRY_OUT" | grep -c '^  0' || true)
+# 从「待应用: N 个」取数，不从 label 行的缩进猜：label 格式（%04d + 两空格）一变，
+# 旧写法会把 PENDING 静默算成 0，跳过预跑迁移直接 up -d。
+PENDING=$(printf '%s\n' "$DRY_OUT" | sed -n 's/^待应用: \([0-9][0-9]*\) 个$/\1/p' | head -1)
+PENDING=${PENDING:-0}
 
 if [ "${PENDING:-0}" -gt 0 ]; then
   echo "== 检测到 $PENDING 个待应用迁移，先单独执行（大库可能需要几十分钟）=="
