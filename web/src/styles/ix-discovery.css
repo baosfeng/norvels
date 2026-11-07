@@ -299,6 +299,22 @@
 .search-book .book-link:active {
   background: var(--surface-warm);
 }
+/* 封面是固定宽（66 / 44 / 40），链接必须同宽：a 是 flex 项，自动宽按 min-content
+   算成 20px（一个字宽），封面就会溢出到右侧、把书名/作者的前两个字压住。
+   实测（PC 1440）：art x=276、cover x=289 w=66、body x=321——重叠 34px。 */
+.search-book .book-link {
+  flex: 0 0 66px;
+}
+@media (max-width: 768px) {
+  .search-book .book-link {
+    flex-basis: 44px;
+  }
+}
+@media (max-width: 390px) {
+  .search-book .book-link {
+    flex-basis: 40px;
+  }
+}
 .search-sk-cover {
   width: 66px;
   aspect-ratio: 3 / 4;
