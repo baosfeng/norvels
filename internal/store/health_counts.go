@@ -133,11 +133,15 @@ func (s *Store) missingIntroWhere(ctx context.Context) string {
 	return whereMissingIntro
 }
 
-// columnExists 判断主库某表是否有某列（走 pragma_table_info，微秒级）。
+// columnExists 判断主库某表是否有某列（走 pragma_table_xinfo，微秒级）。
+//
+// 用 xinfo 而不是 table_info：0025 的 intro_blank 是 **VIRTUAL 生成列**，SQLite 的
+// pragma_table_info 不列出它（实测 pragma_table_info=0、pragma_table_xinfo=1），
+// 用它探测会让「缺简介」永远退回 TRIM(intro)=” 全表扫——正是 0025 要消灭的那条慢查询。
 func (s *Store) columnExists(ctx context.Context, table, column string) (bool, error) {
 	var n int
 	if err := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column).Scan(&n); err != nil {
+		"SELECT COUNT(*) FROM pragma_table_xinfo(?) WHERE name = ?", table, column).Scan(&n); err != nil {
 		return false, fmt.Errorf("store: check column %s.%s: %w", table, column, err)
 	}
 	return n > 0, nil
