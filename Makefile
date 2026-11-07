@@ -1,6 +1,6 @@
 # norvels 构建入口
 SHELL := /bin/bash
-VERSION ?= 0.13.0
+VERSION ?= 0.13.1
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 BUILTAT ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.builtAt=$(BUILTAT)
