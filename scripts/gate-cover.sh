@@ -29,7 +29,7 @@ BASELINE_TOTAL=85.0             # 总行覆盖率基线（实测上调：83.2 �
 # internal/store 的 83.2 在可复现口径下不成立，按实测重钉（leader 同意，非下调救火）：
 # 同一基线 commit（feb867c）的干净检出也是 82.7；放开 2 个 testing.CoverMode() skip 的
 # 性能用例后仍是 82.7；go1.26.0 与 go1.27.3 双工具链跑出同一个值。补测后实测 83.5。
-BASELINE_STORE=83.5             # internal/store（82.3 → 82.5 → 82.9 → 83.2(不成立) → 83.5 补测后实测）
+BASELINE_STORE=83.7             # internal/store（82.3 → 82.5 → 82.9 → 83.2(不成立) → 83.5 → 83.7 补测后实测）
 BASELINE_PARSER=89.1            # internal/parser（88.4 → 88.6 → 89.0 → 89.1，补齐 cleaner 版权/水印丢弃分支）
 # internal/importer 的覆盖路径随合集拆分与压缩包分支有 0.1~0.2 个百分点抖动（补测后实测 91.6~91.7）。
 # 91.4 是「升级候选落审核记录」那次的实测值：不随最新实测继续上调，把这段差留给抖动。

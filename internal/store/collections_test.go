@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -125,4 +126,18 @@ func requireCollection(t *testing.T, ctx context.Context, st *Store, id int64, w
 		}
 	}
 	t.Fatalf("书单 %d 不在列表里: %+v", id, items)
+}
+
+// TestWrapCollectionNameError 写库撞唯一索引（查重与插入之间没有锁，靠索引兜底）
+// 要翻成 ErrConflict（409，用户该换个名字），其余错误原样保留底层链。
+func TestWrapCollectionNameError(t *testing.T) {
+	dupe := errors.New("UNIQUE constraint failed: collections.user_id, collections.name")
+	conflict := wrapCollectionNameError(dupe, "示例书单")
+	requireErr(t, "唯一索引冲突", conflict, ErrConflict)
+	requireEqual(t, "冲突错误带上书单名", strings.Contains(conflict.Error(), "示例书单"), true)
+
+	cause := errors.New("disk I/O error")
+	wrapped := wrapCollectionNameError(cause, "示例书单")
+	requireErr(t, "非冲突错误保留底层链", wrapped, cause)
+	requireEqual(t, "非冲突错误不映射成 ErrConflict", errors.Is(wrapped, ErrConflict), false)
 }
