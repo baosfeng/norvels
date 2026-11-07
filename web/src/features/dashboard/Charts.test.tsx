@@ -7,9 +7,11 @@ import {
   EventTrendChart,
   FunnelChart,
   HotBooksChart,
+  ImportCumulativeChart,
   ImportTrendChart,
   InterestBarsChart,
   ReadingDistChart,
+  ReadingTrendChart,
   StorageChart,
   TopAuthorsChart,
   type ChartState,
@@ -74,13 +76,23 @@ const progress: ReadingProgress[] = [
   },
 ];
 
-describe("六张图都有四态", () => {
-  it("读取中：图体换成读取占位，结论位也说明正在读", () => {
+/** 图体的宽度：jsdom 里量不到布局，useChartWidth 退回兜底 520，段宽之和必须正好等于它。 */
+function svgWidth(container: HTMLElement): number {
+  return Number(container.querySelector("svg")?.getAttribute("width") ?? 0);
+}
+
+/** 柱子的像素高度（SVG rect 的 height 属性）。 */
+function rectHeight(element: Element | null): number {
+  return Number(element?.getAttribute("height") ?? 0);
+}
+
+describe("库概览七张图：四态一致", () => {
+  it("读取中：图体换成读取占位，不画半张图", () => {
     const { container } = render(<ImportTrendChart points={points} loading failed={false} onRetry={() => {}} />);
     expect(screen.getByTestId("chart:trend:loading")).toBeTruthy();
-    // 图体与结论位各一处，说明「正在读」在两张位置都传达给用户
+    // 图体与结论位各一处，说明「正在读」在两个位置都传达给用户
     expect(screen.getAllByText("正在读取…")).toHaveLength(2);
-    expect(container.querySelectorAll(".bar-col")).toHaveLength(0);
+    expect(container.querySelectorAll("svg")).toHaveLength(0);
   });
 
   it("失败：给出可点重试，点了会调 onRetry", () => {
@@ -94,12 +106,13 @@ describe("六张图都有四态", () => {
   it("空数据：图体换成暂无数据，不画半张图", () => {
     const { container } = render(<TopAuthorsChart authors={[]} totalWords={0} {...idle} />);
     expect(screen.getByTestId("chart:authors:empty")).toBeTruthy();
-    expect(container.querySelectorAll(".hbar-row")).toHaveLength(0);
+    expect(container.querySelectorAll("svg")).toHaveLength(0);
   });
 
-  it("有数据：六张图都能渲染出图体", () => {
+  it("有数据：七张图都能渲染出图体（图体宽度铺满容器）", () => {
     const { container, unmount } = render(<ImportTrendChart points={points} {...idle} />);
-    expect(container.querySelectorAll(".bar-col")).toHaveLength(14);
+    expect(container.querySelectorAll(".col-bar")).toHaveLength(14);
+    expect(svgWidth(container)).toBeGreaterThan(0);
     unmount();
 
     const buckets = render(
@@ -111,7 +124,7 @@ describe("六张图都有四态", () => {
         {...idle}
       />,
     );
-    expect(buckets.container.querySelectorAll(".bar-col")).toHaveLength(2);
+    expect(buckets.container.querySelectorAll(".col-bar")).toHaveLength(2);
     buckets.unmount();
 
     const authors = render(
@@ -124,7 +137,7 @@ describe("六张图都有四态", () => {
         {...idle}
       />,
     );
-    expect(authors.container.querySelectorAll(".hbar-row")).toHaveLength(2);
+    expect(authors.container.querySelectorAll(".c-bar")).toHaveLength(2);
     authors.unmount();
 
     const reading = render(
@@ -147,8 +160,11 @@ describe("六张图都有四态", () => {
         {...idle}
       />,
     );
-    expect(len.container.querySelectorAll(".col-item")).toHaveLength(2);
-    expect(len.container.querySelectorAll(".col-fill.is-peak")).toHaveLength(1);
+    expect(len.container.querySelectorAll(".col-bar")).toHaveLength(2);
+    len.unmount();
+
+    render(<ImportCumulativeChart points={points} {...idle} />);
+    expect(screen.getByTestId("chart:cumulative:figure")).toBeTruthy();
   });
 
   it("后端统计刷新中（stale）：照常出图，只提示「数据更新中」", () => {
@@ -162,22 +178,13 @@ describe("六张图都有四态", () => {
     expect(screen.queryByText("数据更新中")).toBeNull();
   });
 
-  it("占比不足 0.1% 的段不出图例（避免一行「其他 0.0 MB」的噪音）", () => {
-    const { container } = render(
-      <StorageChart stats={{ ...stats, otherBytes: 8272 }} {...idle} />,
-    );
-    const legend = container.querySelector(".stack-legend") as HTMLElement;
-    expect(legend.textContent).toContain("正文");
-    expect(legend.textContent).toContain("书目信息");
-    expect(legend.textContent).not.toContain("其他");
-  });
-
   it("每张图的结论都由数据实算（不是固定文案）", () => {
     const { unmount, container } = render(<ImportTrendChart points={points} {...idle} />);
     // 只有最后一天有数据：说「只有 1 天有导入」，而不是把 12 本摊成「日均 1 本」
     expect(screen.getByText("近 14 天导入 12 本，只有 1 天有导入")).toBeTruthy();
-    // 0 值的 13 天不画柱，只留最后一天
-    expect(container.querySelectorAll(".bar-fill")).toHaveLength(1);
+    // 0 值那天画 1px 基线（不是不画）：13 天没有导入也要能看出「这天是 0」
+    expect(container.querySelectorAll("[data-zero-baseline]")).toHaveLength(13);
+    expect(rectHeight(container.querySelector(".col-bar:not(.is-zero)"))).toBeGreaterThan(20);
     unmount();
 
     render(<StorageChart stats={stats} {...idle} />);
@@ -185,41 +192,58 @@ describe("六张图都有四态", () => {
   });
 });
 
-describe("库体积构成：正文改成压缩后口径", () => {
-  it("三段宽度之和 = 100%（堆叠条铺满，不溢出不留缝）", () => {
-    const { container } = render(<StorageChart stats={compressedStats} {...idle} />);
-    const segs = [...container.querySelectorAll<HTMLElement>(".stack-seg")];
+describe("库体积构成：真实占比 + 铺满图体", () => {
+  it("三段段宽之和 = 图体宽度（铺满，不溢出不留缝）", () => {
+    const { container } = render(<StorageChart stats={stats} {...idle} />);
+    const segs = [...container.querySelectorAll(".stack-seg")];
     expect(segs).toHaveLength(3);
-    const sum = segs.reduce((acc, seg) => acc + Number.parseFloat(seg.style.width), 0);
-    // 写进 DOM 的百分比相加必须正好是 100（残差补在最后一段上），不是「大约 100」
-    expect(Math.round(sum * 100) / 100).toBe(100);
-    // 每段都不为负、也不超过 100
+    const total = svgWidth(container);
+    expect(total).toBeGreaterThan(0);
+    const sum = segs.reduce((acc, seg) => acc + Number(seg.getAttribute("width")), 0);
+    expect(Math.abs(sum - total)).toBeLessThan(0.5);
     for (const seg of segs) {
-      const width = Number.parseFloat(seg.style.width);
-      expect(width).toBeGreaterThanOrEqual(0);
-      expect(width).toBeLessThanOrEqual(100);
+      expect(Number(seg.getAttribute("width"))).toBeGreaterThanOrEqual(0);
     }
   });
 
-  it("正文压缩率用一句人话写出来，且不含实现词", () => {
-    render(<StorageChart stats={compressedStats} {...idle} />);
-    const detail = screen.getByTestId("chart:storage:detail");
-    // 实测 34.6763% → 一位小数 34.7%；取整会显示 35%，与真实压缩率对不上
-    expect(detail.textContent).toBe("正文约为原始文字的 34.7%，比不压缩省下 3.0 GB");
-    expect(findForbiddenTerms(detail.textContent ?? "")).toEqual([]);
-    // 同一张卡片里不重复正文体积：图例已经有一份
-    const legend = document.querySelector(".stack-legend") as HTMLElement;
-    expect(legend.textContent).toContain("正文 1.6 GB");
-    expect(detail.textContent).not.toContain("1.6 GB");
-    // 卡片全部可见文案都不出现实现词
-    const card = document.querySelector('[data-testid="chart:storage"]') as HTMLElement;
-    expect(findForbiddenTerms(card.textContent ?? "")).toEqual([]);
+  it("段宽 = 真实占比：正文段占九成以上，不因为其他段太小而压缩它", () => {
+    const { container } = render(<StorageChart stats={compressedStats} {...idle} />);
+    // otherBytes 为 0 的段不画（0 宽度的矩形是纯噪音），图例也不列
+    const segs = [...container.querySelectorAll(".stack-seg")];
+    expect(segs).toHaveLength(2);
+    const total = svgWidth(container);
+    const textShare = Number(segs[0].getAttribute("width")) / total;
+    // 1,690,357,569 / 1,743,683,584 = 96.9%
+    expect(textShare).toBeGreaterThan(0.96);
+    expect(textShare).toBeLessThan(0.98);
   });
 
-  it("后端没给原始字节时不编造压缩率（只少一行说明，图照常出）", () => {
+  it("占比不足 1% 的段在图例写「<1%」，段宽不被放大", () => {
+    const { container } = render(<StorageChart stats={{ ...stats, otherBytes: 8272 }} {...idle} />);
+    const segs = [...container.querySelectorAll(".stack-seg")];
+    const total = svgWidth(container);
+    const other = Number(segs[2].getAttribute("width"));
+    // 8 KB / 326 MB = 0.0025%：按真实比例画就是不到半个像素（原实现会抬到 1.2% ≈ 4px）
+    expect(other / total).toBeLessThan(0.0001);
+    const card = container.querySelector('[data-testid="chart:storage"]') as HTMLElement;
+    expect(card.textContent).toContain("其他 <1%");
+  });
+
+  it("压缩率写进同一行结论（同一张卡不重复正文体积）", () => {
+    render(<StorageChart stats={compressedStats} {...idle} />);
+    const note = screen.getByTestId("chart:storage").querySelector(".chart-note") as HTMLElement;
+    // 实测 34.6763% → 一位小数 34.7%；取整会显示 35%，与真实压缩率对不上
+    expect(note.textContent).toContain("正文约为原始文字的 34.7%，比不压缩省下 3.0 GB");
+    expect(findForbiddenTerms(note.textContent ?? "")).toEqual([]);
+    expect(findForbiddenTerms(screen.getByTestId("chart:storage").textContent ?? "")).toEqual([]);
+  });
+
+  it("后端没给原始字节时不编造压缩率（图照常出）", () => {
     const { container } = render(<StorageChart stats={{ ...compressedStats, textBytesRaw: undefined }} {...idle} />);
-    expect(screen.queryByTestId("chart:storage:detail")).toBeNull();
-    expect(container.querySelectorAll(".stack-seg")).toHaveLength(3);
+    const note = screen.getByTestId("chart:storage").querySelector(".chart-note") as HTMLElement;
+    expect(note.textContent).not.toContain("压缩");
+    // 「其他」在这里是 0 字节：不画 0 宽度的段
+    expect(container.querySelectorAll(".stack-seg")).toHaveLength(2);
   });
 
   it("正文还在统计（textBytes=0）时也说不出压缩率，且三段仍然铺满", () => {
@@ -229,14 +253,15 @@ describe("库体积构成：正文改成压缩后口径", () => {
         {...idle}
       />,
     );
-    expect(screen.queryByTestId("chart:storage:detail")).toBeNull();
-    const segs = [...container.querySelectorAll<HTMLElement>(".stack-seg")];
-    const sum = segs.reduce((acc, seg) => acc + Number.parseFloat(seg.style.width), 0);
-    expect(Math.round(sum * 100) / 100).toBe(100);
+    const note = screen.getByTestId("chart:storage").querySelector(".chart-note") as HTMLElement;
+    expect(note.textContent).not.toContain("压缩");
+    const segs = [...container.querySelectorAll(".stack-seg")];
+    const sum = segs.reduce((acc, seg) => acc + Number(seg.getAttribute("width")), 0);
+    expect(Math.abs(sum - svgWidth(container))).toBeLessThan(0.5);
   });
 });
 
-/* ── 推荐与埋点：四张新图（同一套 ChartFrame 四态） ── */
+/* ── 推荐与埋点：六张图（同一套 ChartFrame 四态） ── */
 
 const recDays: RecommendStatsDay[] = [
   { date: "2026-10-18", impressions: 120, clicks: 6, reads: 2, seconds: 240 },
@@ -263,7 +288,7 @@ const recBooks: RecommendHotBook[] = [
   { bookId: 2, title: "星海拾遗", authorName: "示例作者丙", reads: 1, clicks: 2, seconds: 120 },
 ];
 
-describe("推荐与埋点四张图：四态一致", () => {
+describe("推荐与埋点六张图：四态一致", () => {
   it("读取中：图体换成读取占位，不画半张图", () => {
     const cases = [
       <EventTrendChart key="events" daily={recDays} loading failed={false} onRetry={() => {}} />,
@@ -292,69 +317,72 @@ describe("推荐与埋点四张图：四态一致", () => {
   });
 
   it("空：没有事件时四张图都说「暂无数据」，不画空轴", () => {
-    const cases: [string, ReactElement, number][] = [
-      [
-        "events",
-        <EventTrendChart daily={[]} {...idle} />,
-        0,
-      ],
-      [
-        "interest",
-        <InterestBarsChart interests={[]} {...idle} />,
-        0,
-      ],
-      [
-        "hot",
-        <HotBooksChart books={[]} {...idle} />,
-        0,
-      ],
+    const cases: [string, ReactElement][] = [
+      ["events", <EventTrendChart daily={[]} {...idle} />],
+      ["interest", <InterestBarsChart interests={[]} {...idle} />],
+      ["hot", <HotBooksChart books={[]} {...idle} />],
       [
         "funnel",
         <FunnelChart summary={{ ...recSummary, impressions: 0, clicks: 0, reads: 0, shelfAdds: 0 }} {...idle} />,
-        0,
       ],
     ];
-    for (const [id, element, count] of cases) {
+    for (const [id, element] of cases) {
       const { container, unmount } = render(element);
       expect(screen.getByTestId(`chart:${id}:empty`)).toBeTruthy();
-      expect(container.querySelectorAll(".etrend-col, .hbar-row, .funnel-row")).toHaveLength(count);
+      expect(container.querySelectorAll("svg")).toHaveLength(0);
       unmount();
     }
   });
 
-  it("有数据：四张图都画出图体，且读数可聚焦（键盘也能看浮层）", () => {
-    const { container, unmount } = render(<EventTrendChart daily={recDays} {...idle} />);
-    // 两天 × 三根柱，但 0 值不画：这里两天都有三种事件
-    expect(container.querySelectorAll(".etrend-col")).toHaveLength(2);
-    expect(container.querySelectorAll(".etrend-bar")).toHaveLength(6);
+  it("事件趋势：上下两个 mini 面（曝光/点击 与 阅读分钟），各自独立刻度", () => {
+    const { container } = render(<EventTrendChart daily={recDays} {...idle} />);
+    // 两天 × 三根柱，0 值不画；两面共用一条 x 轴
+    expect(container.querySelectorAll("[data-facet]")).toHaveLength(2);
+    expect(container.querySelectorAll(".col-bar")).toHaveLength(6);
+    // 整列可聚焦：两天两条读数
     expect(container.querySelectorAll('[data-tip="1"]')).toHaveLength(2);
-    unmount();
+    // 两面各自有 0 基线与刻度（不是三色归一后共用一把尺子）
+    expect(container.querySelectorAll(".c-axis").length).toBeGreaterThanOrEqual(2);
+    expect(container.textContent).toContain("曝光");
+    expect(container.textContent).toContain("点击");
+    expect(container.textContent).toContain("分钟");
+    // 两面的绘图区左边界一致：柱子落在同一列上
+    const axes = [...container.querySelectorAll(".c-axis")];
+    expect(axes[0].getAttribute("x1")).toBe(axes[1].getAttribute("x1"));
+  });
 
+  it("兴趣画像：按 dim 分组渲染，作者组显示名字而不是编号", () => {
     const interest = render(<InterestBarsChart interests={recInterests} {...idle} />);
-    // 按 dim 分组渲染：这里三组有数据就画三组（大分类 / 小分类 / 作者），各一行
-    expect(interest.container.querySelectorAll(".ibars-group")).toHaveLength(3);
-    expect(interest.container.querySelectorAll(".hbar-row")).toHaveLength(3);
+    const groups = interest.container.querySelectorAll('[data-testid^="ibars-"]');
+    expect(groups).toHaveLength(3);
+    expect(interest.container.querySelectorAll(".c-bar")).toHaveLength(3);
     for (const label of ["分类·大", "分类·小", "作者"]) {
       expect(interest.container.textContent).toContain(label);
     }
-    // 作者组显示后端给的作者名，不是编号
     expect(interest.container.textContent).toContain("演示作者甲");
-    // 组上带着 dim，窄屏/宽度规则按组取（作者名比分类名长）
     expect(interest.container.querySelector('[data-testid="ibars-author"]')?.getAttribute("data-dim")).toBe("author");
     interest.unmount();
+  });
 
+  it("热门书：条尾给「读过 · 点开」，第一本用主色高亮", () => {
     const hot = render(<HotBooksChart books={recBooks} {...idle} />);
-    expect(hot.container.querySelectorAll(".hbar-row")).toHaveLength(2);
+    expect(hot.container.querySelectorAll(".c-bar")).toHaveLength(2);
+    expect(hot.container.textContent).toContain("3 读 · 5 点");
+    expect(hot.container.querySelector(".c-bar")?.getAttribute("fill")).toBe("var(--accent)");
     hot.unmount();
+  });
 
+  it("漏斗：四级各一条，右侧给级间转化率；0 值那级留 1px 基线", () => {
     const funnel = render(<FunnelChart summary={recSummary} {...idle} />);
-    expect(funnel.container.querySelectorAll(".funnel-row")).toHaveLength(4);
-    // 转化率写在每级右侧：曝光→点击、点击→阅读、阅读→收藏
+    expect(funnel.container.querySelectorAll(".c-bar")).toHaveLength(4);
+    // 转化率写在每级右侧：曝光→点击 9%、阅读→收藏 50%
     expect(funnel.container.textContent).toContain("9%");
     expect(funnel.container.textContent).toContain("50%");
-  });
-});
+    funnel.unmount();
 
+    const zero = render(<FunnelChart summary={{ ...recSummary, shelfAdds: 0 }} {...idle} />);
+    expect(zero.container.querySelectorAll("[data-zero-baseline]")).toHaveLength(1);
+  });
 
   it("五维都有数据时五组都画出来：标签 / 系列不套「作者」文案", () => {
     const { container } = render(
@@ -367,7 +395,7 @@ describe("推荐与埋点四张图：四态一致", () => {
         {...idle}
       />,
     );
-    expect(container.querySelectorAll(".ibars-group")).toHaveLength(5);
+    expect(container.querySelectorAll('[data-testid^="ibars-"]')).toHaveLength(5);
     for (const dim of ["category_l1", "category_l2", "author", "tag", "series"]) {
       expect(container.querySelector(`[data-testid="ibars-${dim}"]`)?.getAttribute("data-dim")).toBe(dim);
     }
@@ -382,10 +410,47 @@ describe("推荐与埋点四张图：四态一致", () => {
     const { container } = render(
       <InterestBarsChart interests={[{ dim: "author", key: "12", name: "演示作者甲", weight: 3 }]} {...idle} />,
     );
-    expect(container.querySelectorAll(".ibars-group")).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid^="ibars-"]')).toHaveLength(1);
     expect(container.querySelector('[data-testid="ibars-author"]')).toBeTruthy();
     expect(container.querySelector('[data-testid="ibars-category_l1"]')).toBeNull();
   });
+});
+
+describe("新增两张时间序列图", () => {
+  it("近 14 天阅读时长：14 个点、0 值也画（贴基线），纵轴是分钟", () => {
+    const days = Array.from({ length: 16 }, (_, i) => ({
+      date: `2026-11-${String(i + 1).padStart(2, "0")}`,
+      seconds: i % 3 === 0 ? 3600 : 0,
+    }));
+    const { container } = render(<ReadingTrendChart days={days} {...idle} />);
+    // 只取最近 14 天
+    expect(container.querySelectorAll(".c-dot")).toHaveLength(14);
+    expect(container.querySelectorAll('[data-tip="1"]')).toHaveLength(14);
+    expect(container.textContent).toContain("阅读时长 · 分钟");
+    expect(screen.getByTestId("chart:reading-trend").querySelector(".chart-note")?.textContent).toContain(
+      "近 14 天读了",
+    );
+  });
+
+  it("导入累计：曲线只增不减，最后一个点等于窗口总量", () => {
+    const { container } = render(<ImportCumulativeChart points={points} {...idle} />);
+    const dots = [...container.querySelectorAll(".c-dot")];
+    expect(dots).toHaveLength(14);
+    const ys = dots.map((dot) => Number(dot.getAttribute("cy")));
+    // 累计曲线：y 只会往上（值只增不减），最后一个点是最高的一根
+    for (let i = 1; i < ys.length; i += 1) {
+      expect(ys[i]).toBeLessThanOrEqual(ys[i - 1] + 0.001);
+    }
+    expect(screen.getByTestId("chart:cumulative").querySelector(".chart-note")?.textContent).toContain(
+      "累计导入 12 本",
+    );
+  });
+
+  it("阅读时长为空时说「还没有阅读记录」，不画空轴", () => {
+    render(<ReadingTrendChart days={[]} {...idle} />);
+    expect(screen.getByTestId("chart:reading-trend:empty")).toBeTruthy();
+  });
+});
 
 describe("推荐与埋点：可见文案不含实现词", () => {
   it("四张卡的正文与结论都过一遍禁用词表", () => {

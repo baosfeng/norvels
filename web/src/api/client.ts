@@ -14,6 +14,7 @@ import type {
   ChapterRule,
   ChapterRules,
   Collection,
+  DashboardPayload,
   DryRunReport,
   HealthIssueKind,
   HealthIssues,
@@ -203,6 +204,25 @@ function query(params: Record<string, string | number | undefined>): string {
   return qs ? `?${qs}` : "";
 }
 
+/**
+ * /api/dashboard 的查询参数（默认值即后端的默认：14 / 90 / 0 / 10 / 50 / 20）。
+ * 越界（如 topAuthors > 50）后端返回 400，不静默夹紧——所以这里不写前端夹紧逻辑。
+ */
+export interface DashboardQuery {
+  /** 导入趋势窗口（天） */
+  days?: number;
+  /** 阅读时长窗口（天） */
+  readingDays?: number;
+  /** 时区偏移（小时） */
+  tz?: number;
+  /** Top 作者条数（≤50） */
+  topAuthors?: number;
+  /** 最近在读条数（≤50） */
+  progress?: number;
+  /** 导入任务条数（≤100） */
+  jobs?: number;
+}
+
 export interface BookQuery {
   q?: string;
   authorId?: number;
@@ -259,6 +279,12 @@ export const api = {
   version: (opts?: RequestOptions) => request<VersionInfo>("/version", opts),
   healthReport: (opts?: RequestOptions) =>
     request<HealthReport>("/health/report", { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
+  /**
+   * 驾驶舱聚合：7 块数字类数据一次返回（5 秒 TTL + single-flight）。
+   * 参数越界后端一律 400（不静默夹紧），所以调用点只传自己要用的那几个。
+   */
+  dashboard: (params: DashboardQuery = {}, opts?: RequestOptions) =>
+    request<DashboardPayload>(`/dashboard${query({ ...params })}`, { timeoutMs: STATS_TIMEOUT_MS, ...opts }),
   /**
    * 运行时性能快照（观测）：路由级分位、慢请求、SQL 模板与连接池。
    * 进程内内存态，重启清零；与统计接口同一口径放宽超时（快照本身只读内存，正常在 10ms 内）。

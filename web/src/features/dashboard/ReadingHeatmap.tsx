@@ -14,8 +14,8 @@ const LEVEL_BG = [
   "var(--accent)",
 ];
 
-// 格子边长固定 11px：七行 × 十三周的日历必须等宽，格子随数据量变大就会破坏「一周一列」的读法
-const CELL = 11;
+// 格子边长固定 12px：七行 × 十三周的日历必须等宽，格子随数据量变大就会破坏「一周一列」的读法
+const CELL = 12;
 const GAP = 3;
 const WEEKDAY_LABELS = ["一", "三", "五"];
 /** 点开后的浮层固定显示 5 秒（原行为）。hover / 聚焦立即显示，不再等 120ms。 */
@@ -24,10 +24,11 @@ const PIN_MS = 5000;
 /**
  * 阅读时长卡（驾驶舱）：今日 / 本周 / 累计 / 连续天数 + 近 90 天日历热力图。
  *
- * 读数浮层与六张图共用 ChartTip：hover 与键盘聚焦都立即出读数，
- * 浮层贴在格子上方并带小三角指回格子；点一下固定 5 秒，换格或 Esc 收起。
- * 原先要 hover 停 120ms 才浮出——11px 的小格子快速划过时几乎看不到，这是
- * 「移上去没反应」的根因之一，因此改成即时。
+ * 三条口径（对应实测缺陷）：
+ *   - 四项数值 2×2 排（原先四格并排每格 81px，「2 小时 4 分」在格子里折成两行把整卡撑到 294px）；
+ *   - 日历用 CSS 网格排：行高就是格子边长，周几标签与格子落在同一行上（原先两列各自 flex，
+ *     标签列与被点亮的格子会错开半个行距）；
+ *   - 读数浮层与六张图共用 ChartTip：hover 与键盘聚焦都立即出读数，点一下固定 5 秒。
  */
 export function ReadingHeatmapCard({
   stats,
@@ -70,7 +71,7 @@ export function ReadingHeatmapCard({
     <article className="chart-card" data-chart="reading-time" data-testid="chart:reading-time">
       <div className="chart-head">
         <h3>阅读时长</h3>
-        <p className="chart-note" data-testid="chart:reading-time:note">
+        <p className="chart-note" title={note} data-testid="chart:reading-time:note">
           {note}
         </p>
       </div>
@@ -87,8 +88,8 @@ export function ReadingHeatmapCard({
           </button>
         </div>
       ) : (
-        <>
-          <div className="dash-recent" data-testid="chart:reading-time:figures">
+        <div className="chart-body rt-body" data-testid="chart:reading-time:body">
+          <div className="rt-figures" data-testid="chart:reading-time:figures">
             <Figure label="今日" testId="reading-time-today" value={stats?.todaySeconds ?? 0} />
             <Figure label="本周" testId="reading-time-week" value={stats?.weekSeconds ?? 0} />
             <Figure label="累计" testId="reading-time-total" value={stats?.totalSeconds ?? 0} />
@@ -100,47 +101,59 @@ export function ReadingHeatmapCard({
               读几分钟就会在这里留下第一格
             </div>
           ) : (
-            <div className="dash-list" style={{ gap: GAP, overflowX: "auto" }} data-testid="chart:reading-time:grid">
-              <div style={{ display: "flex", gap: GAP, alignItems: "flex-start" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: GAP }} aria-hidden="true">
-                  {Array.from({ length: 7 }, (_, row) => (
-                    <span key={row} className="meta" style={{ height: CELL, fontSize: 9, lineHeight: `${CELL}px` }}>
-                      {row % 2 === 0 ? WEEKDAY_LABELS[row / 2] ?? "" : ""}
-                    </span>
-                  ))}
-                </div>
-                {model.columns.map((column, index) => (
-                  <div key={index} style={{ display: "flex", flexDirection: "column", gap: GAP }}>
-                    {column.map((day, row) =>
-                      day ? (
-                        <HeatCell
-                          key={day.date}
-                          day={day}
-                          active={tip.tip?.label === day.label}
-                          onEnter={(cell) => tip.show(cell, day.label)}
-                          onLeave={dismiss}
-                          onFocus={(cell) => tip.show(cell, day.label)}
-                          onBlur={dismiss}
-                          onPin={(cell) => tip.show(cell, day.label, true)}
-                          onEscape={tip.hide}
-                        />
-                      ) : (
-                        <span key={`blank-${index}-${row}`} aria-hidden="true" style={{ width: CELL, height: CELL }} />
-                      ),
-                    )}
-                  </div>
+            <div className="rt-calendar">
+              <div
+                className="heat-grid"
+                data-testid="chart:reading-time:grid"
+                style={{
+                  gridTemplateColumns: `auto repeat(${model.columns.length}, ${CELL}px)`,
+                  gridAutoRows: `${CELL}px`,
+                  gap: GAP,
+                }}
+              >
+                {WEEKDAY_LABELS.map((label, index) => (
+                  <span
+                    key={`wd-${label}`}
+                    className="heat-wd"
+                    aria-hidden="true"
+                    style={{ gridColumn: 1, gridRow: index * 2 + 1 }}
+                  >
+                    {label}
+                  </span>
                 ))}
+                {model.columns.map((column, columnIndex) =>
+                  column.map((day, rowIndex) =>
+                    day ? (
+                      <HeatCell
+                        key={day.date}
+                        day={day}
+                        active={tip.tip?.label === day.label}
+                        style={{ gridColumn: columnIndex + 2, gridRow: rowIndex + 1 }}
+                        onEnter={(cell) => tip.show(cell, day.label)}
+                        onLeave={dismiss}
+                        onFocus={(cell) => tip.show(cell, day.label)}
+                        onBlur={dismiss}
+                        onPin={(cell) => tip.show(cell, day.label, true)}
+                        onEscape={tip.hide}
+                      />
+                    ) : null,
+                  ),
+                )}
               </div>
-              <div className="meta" style={{ display: "flex", gap: 6, alignItems: "center" }} data-testid="chart:reading-time:legend">
+              <div className="heat-legend meta" data-testid="chart:reading-time:legend">
                 <span>少</span>
                 {LEVEL_BG.map((bg, level) => (
-                  <span key={level} aria-hidden="true" style={{ width: CELL, height: CELL, background: bg, borderRadius: 2 }} />
+                  <span
+                    key={level}
+                    aria-hidden="true"
+                    style={{ width: CELL, height: CELL, background: bg, borderRadius: 2 }}
+                  />
                 ))}
                 <span>多</span>
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       <ChartTipLayer tip={tip.tip} testId="heat-tip" />
@@ -150,7 +163,7 @@ export function ReadingHeatmapCard({
 
 function Figure({ label, testId, value, suffix }: { label: string; testId: string; value: number; suffix?: string }) {
   return (
-    <div>
+    <div className="rt-figure">
       <span className="meta">{label}</span>
       <b className="num" data-testid={testId}>
         {suffix ? `${value} ${suffix}` : formatDurationShort(value)}
@@ -163,6 +176,7 @@ function Figure({ label, testId, value, suffix }: { label: string; testId: strin
 function HeatCell({
   day,
   active,
+  style,
   onEnter,
   onLeave,
   onFocus,
@@ -172,6 +186,7 @@ function HeatCell({
 }: {
   day: HeatmapDay;
   active: boolean;
+  style: { gridColumn: number; gridRow: number };
   onEnter: (cell: HTMLElement) => void;
   onLeave: () => void;
   onFocus: (cell: HTMLElement) => void;
@@ -197,7 +212,7 @@ function HeatCell({
           onEscape();
         }
       }}
-      style={{ width: CELL, height: CELL, borderRadius: 2, background: LEVEL_BG[day.level] }}
+      style={{ ...style, background: LEVEL_BG[day.level] }}
     />
   );
 }

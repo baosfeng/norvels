@@ -53,14 +53,17 @@ body {
   font-weight: 600;
   border: 1px solid var(--border);
 }
+/* 「数据更新中」徽标：绝对定位在说明行右端，不参与行盒计算（见 ix-dashboard.css 的 .chart-note） */
 .chart-stale {
-  display: inline-block;
-  margin-left: var(--space-2);
-  padding: 1px 6px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0 6px;
   border: 1px solid var(--warn);
   border-radius: var(--radius-pill);
   color: var(--warn-text);
   font-size: 11px;
+  line-height: 14px;
   white-space: nowrap;
 }
 /* 面包屑里的「书架」是按钮（走 history 回退），视觉与链接一致 */

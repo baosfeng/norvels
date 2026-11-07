@@ -25,6 +25,23 @@ export function useHealthReport() {
 }
 
 /**
+ * 驾驶舱聚合取数：一次刷新只发这一个数字类请求（后端 5 秒 TTL + single-flight）。
+ *
+ * 它替代了原先的 8 个 hook（stats / health / import-trend / reading / progress×2 / authors /
+ * import-jobs）。两处订阅一并搬过来，行为不退化：
+ *   - 写操作成功后（statsRevision 广播）重取概览数字；
+ *   - 阅读器写完进度后（readingRevision 广播）重取「最近在读」与阅读三态。
+ * 重取仍然只有 1 个请求（旧实现是其中 3 个 hook 各取一次）。
+ */
+export function useDashboard() {
+  const dashboard = useResource((signal: AbortSignal) => api.dashboard({}, { signal }), []);
+  const { reload } = dashboard;
+  useEffect(() => subscribeStatsRevision(reload), [reload]);
+  useEffect(() => subscribeReadingRevision(reload), [reload]);
+  return dashboard;
+}
+
+/**
  * 运行时性能快照（驾驶舱「接口耗时」）：进程内计数，只有点刷新才重取——
  * 自动轮询会让「看当前值」和「看历史」混在一起，慢请求列表也会被自己的刷新冲掉。
  */

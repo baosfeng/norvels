@@ -127,7 +127,12 @@ export function HealthCard({
             </Link>
           </div>
         </>
-      ) : null}
+      ) : (
+        // 聚合端点里这一块可能单独缺失（其余块照常出）：给一句说明，不留一个只有标题的空卡
+        <p className="inline-note" data-testid="health-unavailable">
+          健康状况这次没取到，刷新概览后会补上。
+        </p>
+      )}
 
       {openKind ? <HealthDrawer kind={openKind} onClose={() => setOpenKind(null)} /> : null}
     </section>

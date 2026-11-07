@@ -1,5 +1,7 @@
+import { formatDurationShort } from "./format";
 import type {
   Bucket,
+  DaySeconds,
   ImportTrendPoint,
   ReadingProgress,
   RecommendCategoryClicks,
@@ -23,18 +25,13 @@ import type {
 
 export interface VerticalBar {
   label: string;
-  /** 是否绘制轴标签：日期多时稀疏显示，避免标签互相压住 */
-  labelVisible: boolean;
   value: number;
-  /** 相对最大值的高度百分比，最小 2，保证 0 值也有可见基线 */
-  heightPct: number;
   title: string;
 }
 
 export interface HorizontalBar {
   name: string;
   value: number;
-  widthPct: number;
   display: string;
   /** 悬停/聚焦读数：作者 + 字数 + 占全库比例 */
   title: string;
@@ -71,13 +68,6 @@ function shareText(value: number, total: number): string {
   return rounded === 0 ? "<1" : String(rounded);
 }
 
-function pct(value: number, max: number, floor = 2): number {
-  // 真正的 0 不画柱：给 0 值留 2px 基线，在「多数天没有导入」的场景会变成一片噪音横线。
-  if (value <= 0) return 0;
-  if (!max || max <= 0) return floor;
-  return Math.max(floor, Math.round((value / max) * 100));
-}
-
 export interface ChartModel<T> {
   empty: boolean;
   note: string;
@@ -86,14 +76,9 @@ export interface ChartModel<T> {
 
 /* ── 1 近 14 天导入量 ── */
 export function buildImportTrend(points: ImportTrendPoint[]): ChartModel<{ bars: VerticalBar[]; total: number }> {
-  const bars = points.map((p, index) => ({
+  const bars = points.map((p) => ({
     label: shortDate(p.date),
-    // 稀疏口径：每 3 根标一次 + 最后一根；若倒数第二根也是「每 3 根」的位置会与最后一根贴住，则让位给最后一根
-    labelVisible:
-      index === points.length - 1 ||
-      (index % 3 === 0 && points.length - 1 - index > 1),
     value: p.books,
-    heightPct: 0,
     // 悬停/聚焦读数：没有导入的那天也说清楚「没有」，不留给用户猜；
     // 章数动辄几十万，按「万」量级写，与卡片里其它数字同一口径
     title:
@@ -102,10 +87,6 @@ export function buildImportTrend(points: ImportTrendPoint[]): ChartModel<{ bars:
         : `${fullDate(p.date)}：没有导入`,
   }));
   const total = points.reduce((sum, p) => sum + p.books, 0);
-  const max = Math.max(0, ...bars.map((b) => b.value));
-  bars.forEach((b) => {
-    b.heightPct = pct(b.value, max);
-  });
   const days = points.length || 1;
   // 日均只在「每天都有导入」时才说：否则 838 本挤在一天也会被算成「日均 60 本」，
   // 读起来像持续导入，实际是一次性灌库。
@@ -135,16 +116,10 @@ function fullDate(date: string): string {
 export function buildChapterBuckets(buckets: Bucket[]): ChartModel<{ bars: VerticalBar[]; total: number; peak: string }> {
   const bars = buckets.map((b) => ({
     label: b.label,
-    labelVisible: true,
     value: b.count,
-    heightPct: 0,
     title: b.count > 0 ? `${b.label} 章：${b.count} 本` : `${b.label} 章：没有这样的书`,
   }));
   const total = buckets.reduce((sum, b) => sum + b.count, 0);
-  const max = Math.max(0, ...bars.map((b) => b.value));
-  bars.forEach((b) => {
-    b.heightPct = pct(b.value, max);
-  });
   const peak = bars.reduce<VerticalBar | null>((best, b) => (!best || b.value > best.value ? b : best), null);
   const note =
     total > 0 && peak
@@ -159,11 +134,9 @@ export function buildTopAuthors(
   totalWords: number,
 ): ChartModel<{ rows: HorizontalBar[]; sharePct: number }> {
   const top = [...authors].sort((a, b) => b.wordCount - a.wordCount).slice(0, 10);
-  const max = top[0]?.wordCount ?? 0;
   const rows = top.map((a) => ({
     name: a.name || "佚名",
     value: a.wordCount,
-    widthPct: pct(a.wordCount, max),
     display: compact(a.wordCount),
     title:
       totalWords > 0
@@ -277,12 +250,14 @@ export interface StoragePart {
   key: string;
   label: string;
   bytes: number;
-  /** 真实占比（未做最小宽度处理），用于说明口径与自检 */
+  /** 真实占比：段宽就是它的长度，不做最小宽度归一 */
   sharePct: number;
-  /** 渲染宽度：三段之和恒为 100，堆叠条既不溢出也不留缝 */
-  widthPct: number;
+  /** 占比文案：非零但不足 1% 写「<1%」 */
+  pctText: string;
   display: string;
   color: string;
+  /** 段内文字颜色（正文段是深底，配浅字） */
+  labelColor: string;
   /** 悬停/聚焦读数：档位 + 体积 + 占比 */
   title: string;
 }
@@ -293,8 +268,6 @@ export interface StorageData {
   compositionPending: boolean;
   /** 三段真实占比之和（有数据时应为 100） */
   shareSum: number;
-  /** 三段渲染宽度之和（恒为 100，无数据时为 0） */
-  widthSum: number;
   /** 正文压缩率（压缩后 / 原始，整数百分比）；没有原始字节时为 null */
   compressionPct: number | null;
   /** 压缩省下的字节 */
@@ -303,13 +276,22 @@ export interface StorageData {
 
 // 三档颜色都由语义变量派生：夜间主题下 --surface-warm 会变成近底色，所以第三档改用 muted 派生，两套主题都可辨
 const STORAGE_STYLE = [
-  { key: "text", label: "正文", color: "var(--accent)" },
-  { key: "index", label: "书目信息", color: "color-mix(in oklab, var(--accent), var(--surface) 55%)" },
-  { key: "other", label: "其他", color: "color-mix(in oklab, var(--muted), var(--surface) 45%)" },
+  { key: "text", label: "正文", color: "var(--accent)", labelColor: "var(--accent-on)" },
+  { key: "index", label: "书目信息", color: "color-mix(in oklab, var(--accent), var(--surface) 55%)", labelColor: "var(--fg)" },
+  { key: "other", label: "其他", color: "color-mix(in oklab, var(--muted), var(--surface) 45%)", labelColor: "var(--fg)" },
 ];
 
-/** 占比极小的段（如书目信息 0.1 MB）按真实比例画出来是一根看不见的线，给它一个最小可见宽度。 */
-const MIN_SEGMENT_PCT = 1.2;
+/**
+ * 占比文案：非零但不足 1% 写「<1%」。
+ *
+ * 段宽按真实占比画（0.1% 的「其他」就是一条 0.7px 的细线），所以「这一段多小」只能由文案说清：
+ * 四舍五入成 0% 等于说没有这一段，写成 1% 又虚报十倍，两种都不如「<1%」诚实。
+ */
+export function sharePctText(pct: number): string {
+  if (!Number.isFinite(pct) || pct <= 0) return "0%";
+  if (pct < 1) return "<1%";
+  return `${pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10}%`;
+}
 
 /**
  * 库体积构成（堆叠条）。
@@ -327,18 +309,16 @@ export function buildStorage(stats: Stats | null): ChartModel<StorageData> {
   };
   const totalBytes = raw.text + raw.index + raw.other;
   const sharePct = STORAGE_STYLE.map((style) => (totalBytes > 0 ? (raw[style.key] / totalBytes) * 100 : 0));
-  const widthPct = normalizeWidths(
-    sharePct.map((pct, i) => (raw[STORAGE_STYLE[i].key] > 0 ? Math.max(MIN_SEGMENT_PCT, pct) : 0)),
-  );
   const parts = STORAGE_STYLE.map((style, index) => ({
     key: style.key,
     label: style.label,
     bytes: raw[style.key],
     sharePct: sharePct[index],
-    widthPct: widthPct[index],
+    pctText: sharePctText(sharePct[index]),
     display: formatStorage(raw[style.key]),
     color: style.color,
-    title: `${style.label} ${formatStorage(raw[style.key])}，占 ${sharePct[index].toFixed(1)}%`,
+    labelColor: style.labelColor,
+    title: `${style.label} ${formatStorage(raw[style.key])}，占 ${sharePctText(sharePct[index])}`,
   }));
 
   // 后端把统计改成查预计算表后，可能出现「总量有了、正文/索引还没拆出来」的中间状态
@@ -365,29 +345,10 @@ export function buildStorage(stats: Stats | null): ChartModel<StorageData> {
       totalBytes,
       compositionPending,
       shareSum: sharePct.reduce((sum, pct) => sum + pct, 0),
-      widthSum: widthPct.reduce((sum, pct) => sum + pct, 0),
       compressionPct,
       savedBytes,
     },
   };
-}
-
-/**
- * 把一组宽度等比缩放到总和精确等于 100：堆叠条永远铺满，不溢出也不留缝。
- *
- * 两步：① 等比归一；② 保留 4 位小数，并把舍入残差补到最后一段非零段上。
- * 不补残差的话，写进 DOM 的三个百分比相加会是 99.9999 或 100.0001，
- * 「三段之和 = 100%」这句话就不再是照着 DOM 能验证的事实。
- */
-function normalizeWidths(widths: number[]): number[] {
-  const total = widths.reduce((sum, w) => sum + w, 0);
-  if (total <= 0) return widths;
-  const rounded = widths.map((w) => Math.round((w / total) * 10_000) / 100);
-  const lastPositive = rounded.reduce((last, w, i) => (w > 0 ? i : last), -1);
-  if (lastPositive < 0) return rounded;
-  const others = rounded.reduce((sum, w, i) => (i === lastPositive ? sum : sum + w), 0);
-  rounded[lastPositive] = Math.round((100 - others) * 100) / 100;
-  return rounded;
 }
 
 /**
@@ -414,16 +375,12 @@ function formatStorage(bytes: number): string {
 export function buildChapterLength(buckets: Bucket[]): ChartModel<{ cols: VerticalBar[]; total: number; peak: string }> {
   const cols = buckets.map((b) => ({
     label: b.label,
-    labelVisible: true,
     value: b.count,
-    heightPct: 0,
     title: "",
   }));
   const total = buckets.reduce((sum, b) => sum + b.count, 0);
-  const max = Math.max(0, ...cols.map((c) => c.value));
   // 占比要等 total 算完才填：读数是「本桶章数 + 占全部章节的比例」
   cols.forEach((c) => {
-    c.heightPct = pct(c.value, max, 3);
     c.title = c.value > 0
       ? `${c.label}：${compact(c.value)} 章，占 ${shareText(c.value, total)}%`
       : `${c.label}：没有这样的章节`;
@@ -448,6 +405,24 @@ function rateText(part: number, total: number): string {
   return rounded === 0 ? "<1%" : `${rounded}%`;
 }
 
+/**
+ * 级间进度文案：下一级不超过上一级时给转化率（百分比），超过时改给人均次数。
+ *
+ * 阅读次数可以高于点击次数（同一本书点进去读几次都算多次进入阅读），
+ * 这时拿点击做分母会算出 12800% 这种读不懂的数。改写成「每点击 128 次」，
+ * 意思与「1 次点击对应 128 次阅读」完全一样，且不会把 100% 当上限骗人。
+ * 上一级是 0 而这一级有值时不编比例（除零），给「—」，说明写在浮层里。
+ */
+export function stepText(current: number, previous: number, previousLabel: string): string {
+  if (!(previous > 0) && current > 0) return "—";
+  if (previous > 0 && current > previous) {
+    const times = current / previous;
+    const shown = times >= 10 ? String(Math.round(times)) : (Math.round(times * 10) / 10).toFixed(1);
+    return `每${previousLabel} ${shown} 次`;
+  }
+  return rateText(current, previous);
+}
+
 /** 秒数 → 「6 分钟」；不足 1 分钟但有读数时写「<1 分钟」。 */
 function minutesText(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0 分钟";
@@ -458,14 +433,11 @@ function minutesText(seconds: number): string {
 export interface TrendDay {
   date: string;
   label: string;
-  labelVisible: boolean;
   impressions: number;
   clicks: number;
   reads: number;
-  /** 三色柱各自按自身峰值归一：曝光动辄上千、阅读个位，同一把尺子会把点击与阅读压成一条线 */
-  impressionPct: number;
-  clickPct: number;
-  readPct: number;
+  /** 当天阅读时长（分钟，四舍五入）：与曝光 / 点击不同量纲，画在下半面 */
+  minutes: number;
   /** 浮层读数：当天三个绝对次数 + 当天点击率 */
   title: string;
 }
@@ -488,22 +460,13 @@ export interface EventTrendData {
  */
 export function buildEventTrend(daily: RecommendStatsDay[]): ChartModel<EventTrendData> {
   const points = [...daily].sort((a, b) => a.date.localeCompare(b.date));
-  const peak = {
-    impressions: Math.max(0, ...points.map((p) => p.impressions)),
-    clicks: Math.max(0, ...points.map((p) => p.clicks)),
-    reads: Math.max(0, ...points.map((p) => p.reads)),
-  };
-  const days: TrendDay[] = points.map((p, index) => ({
+  const days: TrendDay[] = points.map((p) => ({
     date: p.date,
     label: shortDate(p.date),
-    // 与导入趋势同一口径：每 3 根标一次 + 最后一根，倒数第二根让位给最后一根
-    labelVisible: index === points.length - 1 || (index % 3 === 0 && points.length - 1 - index > 1),
     impressions: p.impressions,
     clicks: p.clicks,
     reads: p.reads,
-    impressionPct: pct(p.impressions, peak.impressions),
-    clickPct: pct(p.clicks, peak.clicks),
-    readPct: pct(p.reads, peak.reads),
+    minutes: Math.round((p.seconds ?? 0) / 60),
     title: `${fullDate(p.date)}：曝光 ${compact(p.impressions)}、点击 ${compact(p.clicks)}、阅读 ${compact(p.reads)}${p.seconds > 0 ? `，读了 ${minutesText(p.seconds)}` : ""}${p.impressions > 0 ? `（点击率 ${rateText(p.clicks, p.impressions)}）` : ""}`,
   }));
 
@@ -592,7 +555,6 @@ export function buildInterestBars(
       .filter((item) => item.weight > 0 && item.key.trim() !== "")
       .sort((a, b) => b.weight - a.weight)
       .slice(0, limit);
-    const max = rows[0]?.weight ?? 0;
     return {
       dim: spec.dim,
       label: spec.label,
@@ -602,7 +564,6 @@ export function buildInterestBars(
         return {
           name,
           value: row.weight,
-          widthPct: pct(row.weight, max, 4),
           display,
           title: interestTitle(spec, name, display),
         };
@@ -646,12 +607,10 @@ export function buildHotBooks(
     .filter((book) => book.score > 0)
     .sort((a, b) => b.score - a.score || b.reads - a.reads || a.bookId - b.bookId)
     .slice(0, limit);
-  const max = scored[0]?.score ?? 0;
   const total = scored.reduce((sum, book) => sum + book.score, 0);
   const rows = scored.map<HorizontalBar>((book) => ({
     name: book.title || "未命名",
     value: book.score,
-    widthPct: pct(book.score, max, 4),
     display: `${compact(book.reads)} 读 · ${compact(book.clicks)} 点`,
     title: `《${book.title}》：${book.reads} 次阅读、${book.clicks} 次点击、读了 ${minutesText(book.seconds)}（热度占 ${shareText(book.score, total)}%）`,
   }));
@@ -668,9 +627,7 @@ export interface FunnelStep {
   key: "impression" | "click" | "read" | "shelf";
   label: string;
   value: number;
-  /** 相对第一级（曝光）的宽度百分比：漏斗要能一眼看出「越往下越窄」 */
-  widthPct: number;
-  /** 相对上一级的转化率；第一级写「起始」 */
+  /** 相对上一级的转化率；第一级写「起始」；下一级超过上一级时改成人均次数（每点击 1.3 次） */
   stepRate: string;
   title: string;
 }
@@ -681,8 +638,20 @@ export interface FunnelData {
   overall: string;
 }
 
-/** 漏斗最小可见宽度：0.4% 的收藏按真实比例画是一条看不见的线。 */
-const FUNNEL_MIN_PCT = 2;
+/**
+ * 漏斗浮层文案：百分比时写「相对点击 33%」，超过 100% 时直接复用格子里那句
+ *「每点击 128 次」——同一件事在两处用同一句话，读起来才不会自相矛盾。
+ */
+function funnelTitle(
+  level: { label: string; value: number },
+  previous: { label: string; value: number } | null,
+  stepRate: string,
+): string {
+  const value = `${level.label} ${compact(level.value)} 次`;
+  if (previous === null) return `${value}（漏斗起点）`;
+  if (previous.value > 0 && level.value > previous.value) return `${value}，${stepRate}`;
+  return `${value}，相对${previous.label} ${stepRate}`;
+}
 
 export function buildFunnel(summary: RecommendStatsSummary): ChartModel<FunnelData> {
   const levels: { key: FunnelStep["key"]; label: string; value: number }[] = [
@@ -693,19 +662,15 @@ export function buildFunnel(summary: RecommendStatsSummary): ChartModel<FunnelDa
   ];
   const base = levels[0].value;
   const steps = levels.map<FunnelStep>((level, index) => {
-    const previous = index === 0 ? null : levels[index - 1].value;
-    const stepRate = previous === null ? "起始" : rateText(level.value, previous);
+    const previous = index === 0 ? null : levels[index - 1];
+    const stepRate = previous === null ? "起始" : stepText(level.value, previous.value, previous.label);
     return {
       ...level,
-      widthPct: level.value > 0 ? Math.max(FUNNEL_MIN_PCT, pct(level.value, base)) : 0,
       stepRate,
-      title:
-        previous === null
-          ? `${level.label} ${compact(level.value)} 次（漏斗起点）`
-          : `${level.label} ${compact(level.value)} 次，相对${levels[index - 1].label} ${stepRate}`,
+      title: funnelTitle(level, previous, stepRate),
     };
   });
-  const overall = rateText(summary.shelfAdds, summary.impressions);
+  const overall = stepText(summary.shelfAdds, summary.impressions, "曝光");
   const note =
     base > 0
       ? `曝光 ${compact(base)} → 收藏 ${compact(summary.shelfAdds)}，整体转化 ${overall}`
@@ -773,7 +738,6 @@ export function buildReasonMix(
     .filter((row) => row.clicks > 0 && row.reason.trim() !== "")
     .sort((a, b) => b.clicks - a.clicks)
     .slice(0, limit);
-  const max = sorted[0]?.clicks ?? 0;
   const totalClicks = sorted.reduce((sum, row) => sum + row.clicks, 0);
   const bars = sorted.map<HorizontalBar>((row) => {
     const impressions = row.impressions ?? 0;
@@ -782,7 +746,6 @@ export function buildReasonMix(
     return {
       name,
       value: row.clicks,
-      widthPct: pct(row.clicks, max, 4),
       display: `${compact(row.clicks)} 点`,
       title:
         impressions > 0
@@ -810,12 +773,10 @@ export function buildCategoryClicks(
     .map((row) => ({ ...row, label: row.categoryL1.trim() || "未分类" }))
     .sort((a, b) => b.clicks - a.clicks)
     .slice(0, limit);
-  const max = sorted[0]?.clicks ?? 0;
   const totalClicks = sorted.reduce((sum, row) => sum + row.clicks, 0);
   const bars = sorted.map<HorizontalBar>((row) => ({
     name: row.label,
     value: row.clicks,
-    widthPct: pct(row.clicks, max, 4),
     display: `${compact(row.clicks)} 点`,
     title: `${row.label}：${row.clicks} 次点击，占 ${shareText(row.clicks, totalClicks)}%`,
   }));
@@ -826,3 +787,87 @@ export function buildCategoryClicks(
   return { empty: bars.length === 0, note, data: { rows: bars, top: bars[0]?.name ?? "", totalClicks } };
 }
 
+/* ── 13 近 14 天阅读时长（折线）：与热力图同一份 /api/stats/reading 的 days ── */
+
+export interface ReadingTrendPoint {
+  label: string;
+  /** 当天阅读分钟数（四舍五入）：折线的纵轴单位就是分钟 */
+  value: number;
+  /** 悬停读数：日期 + 时长 */
+  title: string;
+  date: string;
+}
+
+/**
+ * 近 N 天阅读时长：按天出点，缺数据的日子补 0（不跳过，否则 14 天会被画成 8 个点）。
+ *
+ * 纵轴用分钟而不是秒：一天读 2 小时是 120，读 3 分钟是 3，刻度读得出来；
+ * 秒数会让刻度变成 3600 / 7200 这种只能靠 hover 才看懂的数。
+ */
+export function buildReadingTrend(
+  days: DaySeconds[],
+  limit = 14,
+): ChartModel<{ points: ReadingTrendPoint[]; totalSeconds: number; activeDays: number; peak: ReadingTrendPoint | null }> {
+  const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date)).slice(-Math.max(1, limit));
+  const points = sorted.map<ReadingTrendPoint>((day) => ({
+    date: day.date,
+    label: shortDate(day.date),
+    value: Math.max(0, Math.round((day.seconds ?? 0) / 60)),
+    title: `${fullDate(day.date)}：读了 ${formatDurationShort(day.seconds ?? 0)}`,
+  }));
+  const totalSeconds = sorted.reduce((sum, day) => sum + Math.max(0, day.seconds ?? 0), 0);
+  const activeDays = sorted.filter((day) => (day.seconds ?? 0) > 0).length;
+  const peak = points.reduce<ReadingTrendPoint | null>(
+    (best, point) => (!best || point.value > best.value ? point : best),
+    null,
+  );
+  const note =
+    totalSeconds > 0
+      ? `近 ${points.length} 天读了 ${formatDurationShort(totalSeconds)}，${activeDays} 天有记录，单日最长 ${formatDurationShort(peak?.value ? peak.value * 60 : 0)}`
+      : `近 ${points.length} 天还没有阅读记录`;
+  return {
+    empty: totalSeconds === 0,
+    note,
+    data: { points, totalSeconds, activeDays, peak },
+  };
+}
+
+/* ── 14 导入累计曲线（折线）：import_daily 逐日累加 ── */
+
+export interface CumulativePoint {
+  date: string;
+  label: string;
+  /** 截至当天的累计导入本数 */
+  value: number;
+  title: string;
+}
+
+/**
+ * 累计导入曲线：单日柱状图看「哪天进了多少」，累计曲线看「这 14 天整体进得多快」。
+ *
+ * 两点口径：
+ *   - 逐日累加而不是平均：曲线只增不减，斜率就是当天导入量；
+ *   - 纵轴从 0 起：从窗口起点开始累加，0 是「这 14 天还没开始导入」的真实含义。
+ */
+export function buildImportCumulative(
+  points: ImportTrendPoint[],
+): ChartModel<{ points: CumulativePoint[]; total: number; last: number }> {
+  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  let running = 0;
+  const rows = sorted.map<CumulativePoint>((point) => {
+    running += Math.max(0, point.books);
+    return {
+      date: point.date,
+      label: shortDate(point.date),
+      value: running,
+      title: `${fullDate(point.date)}：累计 ${running} 本（当天 +${Math.max(0, point.books)} 本）`,
+    };
+  });
+  const total = running;
+  const last = Math.max(0, sorted[sorted.length - 1]?.books ?? 0);
+  const note =
+    total > 0
+      ? `近 ${rows.length} 天累计导入 ${total} 本，最后一天 +${last} 本`
+      : `近 ${rows.length} 天还没有导入记录`;
+  return { empty: total === 0, note, data: { points: rows, total, last } };
+}

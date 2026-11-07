@@ -1,18 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { showToast } from "../../lib/toastStore";
-import {
-  useHealthReport,
-  useImportJobs,
-  useMetrics,
-  useImportTrend,
-  useReadingProgress,
-  useReadingProgressAll,
-  useReadingStats,
-  useRecommendStats,
-  useStats,
-  useTopAuthors,
-} from "../../api/hooks";
+import { useDashboard, useMetrics, useRecommendStats } from "../../api/hooks";
 import type { RecommendStatsSummary } from "../../api/types";
 import { Cover } from "../../components/Cover";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "../../components/StatePanel";
@@ -28,9 +17,11 @@ import {
   EventTrendChart,
   FunnelChart,
   HotBooksChart,
+  ImportCumulativeChart,
   ImportTrendChart,
   InterestBarsChart,
   ReadingDistChart,
+  ReadingTrendChart,
   ReasonMixChart,
   StorageChart,
   TopAuthorsChart,
@@ -38,6 +29,8 @@ import {
 } from "./Charts";
 
 const TREND_DAYS = 14;
+/** 最近在读列表只显示 5 行；聚合端点一次给 50 条（三态估算要用全部）。 */
+const RECENT_LIMIT = 5;
 const PROGRESS_LIMIT = 50;
 
 /** 埋点接口读不到 / 还没数据时的空汇总：图拿到全 0 就走各自的空态，不用一堆 ?? 兜底。 */
@@ -59,19 +52,20 @@ function hasNoEvents(summary: RecommendStatsSummary, dailyCount: number): boolea
 }
 
 /**
- * 驾驶舱（PC 专属）。六张图全部来自真实接口，每张图自带一句实算结论。
- * 图与结论都由 lib/charts.ts 的同一份转换结果生成，不会各说各话。
+ * 驾驶舱（PC 专属）。图与结论都由 lib/charts.ts 的同一份转换结果生成，不会各说各话。
+ *
+ * 取数分三类，一次刷新共 3 个请求：
+ *   1. `useDashboard` —— 数字类 7 块（stats / health / 导入趋势 / 阅读时长 / 最近在读 /
+ *      Top 作者 / 导入任务）由后端聚合端点返回，替代原先的 8 个独立请求；
+ *   2. `useRecommendStats` —— 依赖独立推荐库，缺库是 503，刻意留在聚合端点外面；
+ *   3. `useMetrics` —— 进程内快照，必须反映「当下」，也不进 5 秒缓存。
+ *
+ * 各块的缺失互不牵连：聚合端点在 warnings 里说明哪块没取到，前端让那一张图走空态
+ * （stats 除外——它是首屏核心，缺了整体 5xx，这里就走整页错误态）。
  */
 export function DashboardPage() {
-  const stats = useStats();
-  const progress = useReadingProgress();
-  const progressAll = useReadingProgressAll();
-  const jobs = useImportJobs();
-  const health = useHealthReport();
-  const trend = useImportTrend(TREND_DAYS);
-  const topAuthors = useTopAuthors(10);
-  /** 近 90 天阅读时长：今日 / 本周 / 累计 / 连续天数 + 日历热力图 */
-  const reading = useReadingStats(90);
+  /** 数字类 7 块：一次请求、一次刷新 */
+  const dashboard = useDashboard();
   /** 推荐与埋点：曝光 / 点击 / 阅读 / 收藏的窗口聚合（rec 库；未启用时后端 503） */
   const rec = useRecommendStats(TREND_DAYS);
   /** 接口耗时：进程内快照（路由分位 + 慢请求），不自动轮询，只在刷新时重取 */
@@ -87,12 +81,12 @@ export function DashboardPage() {
     [],
   );
 
-  /** 刷新概览：重取全部数据源，卡片保持旧值直到新值回来。 */
+  /** 刷新概览：3 个数据源各重取一次（原先是 10 个），卡片保持旧值直到新值回来。 */
   async function refreshOverview() {
     if (refreshing) return;
     setRefreshing(true);
     const started = Date.now();
-    for (const source of [stats, progress, progressAll, jobs, health, trend, topAuthors, reading, rec, metrics]) {
+    for (const source of [dashboard, rec, metrics]) {
       source.reload();
     }
     const wait = Math.max(0, 240 - (Date.now() - started));
@@ -104,12 +98,25 @@ export function DashboardPage() {
     }, wait);
   }
 
-  const loading = stats.loading && !stats.data;
-  const error = stats.error;
-  const empty = !loading && !error && (stats.data?.books ?? 0) === 0;
+  const payload = dashboard.data;
+  /** 每块各自兜底：某块缺失时只有用到它的那张图走空态，整页照常出。 */
+  const statsData = payload?.stats ?? null;
+  const healthData = payload?.health ?? null;
+  const trendPoints = payload?.importTrend ?? [];
+  const readingDays = payload?.readingStats?.days ?? [];
+  const authors = payload?.topAuthors?.items ?? [];
+  const jobItems = payload?.importJobs ?? [];
+  /** 最近在读最多 50 条：列表取前 5 行，阅读三态估算吃全部 */
+  const progressAll = payload?.readingProgress ?? [];
+  const recentItems = progressAll.slice(0, RECENT_LIMIT);
 
+  const loading = dashboard.loading && !payload;
+  const error = dashboard.error;
+  const empty = !loading && !error && (statsData?.books ?? 0) === 0;
+
+  /** 图卡四态：默认跟随聚合端点，推荐与埋点那张区块用自己的数据源。 */
   const chartState = (
-    source: { loading: boolean; error: unknown; reload: () => void },
+    source: { loading: boolean; error: unknown; reload: () => void } = dashboard,
     stale = false,
   ): ChartState => ({
     loading: source.loading,
@@ -119,8 +126,8 @@ export function DashboardPage() {
   });
 
   // 后端把统计改成查预计算表后，刷新窗口内会带 stale 标记：此时照常出图，只提示「数据更新中」
-  const statsStale = Boolean(stats.data?.stale);
-  const healthStale = Boolean(health.data?.stale);
+  const statsStale = Boolean(statsData?.stale);
+  const healthStale = Boolean(healthData?.stale);
 
   const recSummary = rec.data?.summary ?? EMPTY_RECOMMEND_SUMMARY;
   const recDaily = rec.data?.daily ?? [];
@@ -150,7 +157,7 @@ export function DashboardPage() {
       {loading ? (
         <LoadingPanel title="正在读取书库概览" description="正在汇总书籍、章节与最近动态。" />
       ) : error ? (
-        <ErrorPanel error={error} title="概览没能加载" onRetry={stats.reload} />
+        <ErrorPanel error={error} title="概览没能加载" onRetry={dashboard.reload} />
       ) : empty ? (
         <EmptyPanel
           title="书库还没有内容"
@@ -165,10 +172,10 @@ export function DashboardPage() {
         <div className="dash-layout">
           <div className="dash-main">
             <div className="dash-stats">
-              <StatCard label="书籍总数" value={formatCount(stats.data?.books ?? 0)} hint="本" />
-              <StatCard label="章节总数" value={formatCount(stats.data?.chapters ?? 0)} hint="章" />
-              <StatCard label="作者" value={formatCount(stats.data?.authors ?? 0)} hint="位" />
-              <StatCard label="总字数" value={formatCount(stats.data?.words ?? 0)} hint="字" />
+              <StatCard label="书籍总数" value={formatCount(statsData?.books ?? 0)} hint="本" />
+              <StatCard label="章节总数" value={formatCount(statsData?.chapters ?? 0)} hint="章" />
+              <StatCard label="作者" value={formatCount(statsData?.authors ?? 0)} hint="位" />
+              <StatCard label="总字数" value={formatCount(statsData?.words ?? 0)} hint="字" />
             </div>
 
             <section className="dash-block">
@@ -178,15 +185,15 @@ export function DashboardPage() {
                   全部书架 →
                 </Link>
               </div>
-              {progress.loading ? (
+              {dashboard.loading ? (
                 <LoadingPanel title="正在读取阅读进度" description="稍等一下。" />
-              ) : progress.error ? (
-                <ErrorPanel error={progress.error} title="阅读进度没能加载" onRetry={progress.reload} />
-              ) : (progress.data?.items.length ?? 0) === 0 ? (
+              ) : dashboard.error ? (
+                <ErrorPanel error={dashboard.error} title="阅读进度没能加载" onRetry={dashboard.reload} />
+              ) : recentItems.length === 0 ? (
                 <EmptyPanel title="还没有阅读记录" description="从书架挑一本开始读，进度会自动记在这里。" />
               ) : (
                 <div className="dash-list">
-                  {progress.data?.items.map((item) => (
+                  {recentItems.map((item) => (
                     <Link
                       className="dash-row"
                       key={item.bookId}
@@ -217,14 +224,14 @@ export function DashboardPage() {
                   前往导入管理 →
                 </Link>
               </div>
-              {jobs.loading ? (
+              {dashboard.loading ? (
                 <LoadingPanel title="正在读取导入记录" description="稍等一下。" />
-              ) : jobs.error ? (
-                <ErrorPanel error={jobs.error} title="导入记录没能加载" onRetry={jobs.reload} />
-              ) : (jobs.data?.items.length ?? 0) === 0 ? (
+              ) : dashboard.error ? (
+                <ErrorPanel error={dashboard.error} title="导入记录没能加载" onRetry={dashboard.reload} />
+              ) : jobItems.length === 0 ? (
                 <EmptyPanel title="还没有导入任务" description="去导入页选一个目录，开始第一次导入。" />
               ) : (
-                <ImportSummary jobs={jobs.data?.items ?? []} />
+                <ImportSummary jobs={jobItems} />
               )}
             </section>
 
@@ -303,35 +310,47 @@ export function DashboardPage() {
               />
             </section>
 
+            {/* 九张图两列排：阅读时长占整行（四项数值 2×2 + 90 天日历要横向空间），
+                其余两两配对——同为 14 天时间轴的放一行、同为分布的放一行，读起来成组。 */}
             <div className="chart-grid" data-testid="dashboard:charts">
-              <ReadingHeatmapCard stats={reading.data} {...chartState(reading)} />
-              <ImportTrendChart points={trend.data ?? []} {...chartState(trend)} />
+              <ReadingHeatmapCard
+                stats={payload?.readingStats ?? null}
+                loading={dashboard.loading}
+                failed={Boolean(dashboard.error)}
+                onRetry={dashboard.reload}
+              />
+              <ReadingTrendChart days={readingDays} {...chartState()} />
+              <ImportTrendChart points={trendPoints} {...chartState()} />
+              <ImportCumulativeChart points={trendPoints} {...chartState()} />
               <TopAuthorsChart
-                authors={(topAuthors.data?.items ?? []).map((a) => ({ name: a.name, wordCount: a.wordCount }))}
-                totalWords={stats.data?.words ?? 0}
-                {...chartState(topAuthors)}
+                authors={authors.map((a) => ({ name: a.name, wordCount: a.wordCount }))}
+                totalWords={statsData?.words ?? 0}
+                {...chartState()}
               />
-              <ChapterBucketsChart buckets={health.data?.chapterBuckets ?? []} {...chartState(health, healthStale)} />
+              <ChapterBucketsChart buckets={healthData?.chapterBuckets ?? []} {...chartState(dashboard, healthStale)} />
               <ReadingDistChart
-                progress={progressAll.data?.items ?? []}
-                totalBooks={stats.data?.books ?? 0}
-                limitReached={(progressAll.data?.items.length ?? 0) >= PROGRESS_LIMIT}
+                progress={progressAll}
+                totalBooks={statsData?.books ?? 0}
+                limitReached={progressAll.length >= PROGRESS_LIMIT}
                 // 后端已给聚合值时以它为准（不依赖 50 条上限），否则回退到估算
-                buckets={health.data?.readingBuckets ?? null}
-                {...chartState(progressAll || health)}
+                buckets={healthData?.readingBuckets ?? null}
+                {...chartState()}
               />
-              <StorageChart stats={stats.data} {...chartState(stats, statsStale)} />
-              <ChapterLengthChart buckets={health.data?.chapterLengthBuckets ?? []} {...chartState(health, healthStale)} />
+              <StorageChart stats={statsData} {...chartState(dashboard, statsStale)} />
+              <ChapterLengthChart
+                buckets={healthData?.chapterLengthBuckets ?? []}
+                {...chartState(dashboard, healthStale)}
+              />
             </div>
           </div>
 
           <aside className="dash-side">
             <HealthCard
-              report={health.data}
-              loading={health.loading}
-              error={health.error}
-              onRetry={health.reload}
-              lastImportAt={stats.data?.lastImportAt ?? null}
+              report={healthData}
+              loading={dashboard.loading}
+              error={dashboard.error}
+              onRetry={dashboard.reload}
+              lastImportAt={statsData?.lastImportAt ?? null}
             />
           </aside>
         </div>

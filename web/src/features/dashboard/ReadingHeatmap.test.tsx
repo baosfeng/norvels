@@ -49,6 +49,38 @@ describe("驾驶舱阅读时长卡", () => {
     expect(screen.getByTestId("heat-cell-2026-10-20").getAttribute("aria-label")).toBe("10 月 20 日 · 10 分钟");
   });
 
+  it("四项数值 2×2 排，数值本身不换行（原 81px 一格会把「2 小时 4 分」折成两行）", () => {
+    renderCard({ totalSeconds: 7440 });
+    const figures = screen.getByTestId("chart:reading-time:figures");
+    expect(figures.querySelectorAll(".rt-figure")).toHaveLength(4);
+    expect(screen.getByTestId("reading-time-total").textContent).toBe("2 小时 4 分");
+    for (const testId of ["reading-time-today", "reading-time-week", "reading-time-total", "reading-time-streak"]) {
+      expect(screen.getByTestId(testId).textContent).not.toContain("\n");
+    }
+  });
+
+  it("周几标签与格子共用同一张网格：标签占 1 / 3 / 5 行，格子覆盖 1–7 行（严格对齐）", () => {
+    renderCard();
+    const grid = screen.getByTestId("chart:reading-time:grid");
+    const labels = [...grid.querySelectorAll(".heat-wd")];
+    expect(labels.map((el) => el.textContent)).toEqual(["一", "三", "五"]);
+    // 行高就是格子边长：标签与被点亮的格子落在同一行上（原先两列各自 flex，会错开半个行距）
+    expect(grid.style.gridAutoRows).toBe("12px");
+    for (const label of labels) {
+      expect((label as HTMLElement).style.gridColumn).toBe("1");
+    }
+    expect(labels.map((label) => (label as HTMLElement).style.gridRow)).toEqual(["1", "3", "5"]);
+    const cells = [...grid.querySelectorAll(".heat-cell")];
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      const gridRow = Number((cell as HTMLElement).style.gridRow);
+      const gridColumn = Number((cell as HTMLElement).style.gridColumn);
+      expect(gridRow).toBeGreaterThanOrEqual(1);
+      expect(gridRow).toBeLessThanOrEqual(7);
+      expect(gridColumn).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it("一天都没读时给空态，不画 90 个空格子", () => {
     renderCard({ days: [{ date: "2026-10-19", seconds: 0 }] });
     expect(screen.getByTestId("chart:reading-time:empty")).toBeTruthy();

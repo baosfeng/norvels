@@ -570,36 +570,20 @@ h3{font-size:var(--text-base);font-weight:600}
 .chart-note{font-size:var(--text-xs);color:var(--muted);line-height:1.5}
 .chart-body{position:relative;min-height:132px;display:flex;align-items:flex-end}
 .chart-empty{display:grid;place-items:center;width:100%;min-height:132px;border:1px dashed var(--border-soft);border-radius:var(--radius-sm);color:var(--muted);font-size:var(--text-xs)}
-/* 竖条 */
-.bars{display:flex;align-items:flex-end;gap:3px;width:100%;height:132px}
-.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:100%;min-width:0}
+/* 条 / 进度条：接口耗时表（ObservePanel）与图表内核共用这组条样式。
+   驾驶舱的柱 / 条 / 折线已迁到 SVG（几何在 lib/chartScale.ts，样式在 ix-dashboard.css），
+   原先 .bars / .hbar-row / .col-* 那套 DOM 条已随本轮改动删除。 */
 .bar-fill{display:block;width:100%;background:color-mix(in oklab,var(--accent),var(--surface) 62%);border-radius:2px 2px 0 0;min-height:2px}
-.bar-col:last-child .bar-fill{background:var(--accent)}
-.bar-lbl{font-size:9px;color:var(--muted);font-family:var(--font-mono);white-space:nowrap;flex:0 0 auto}
-.bar-val{font-size:9px;color:var(--fg-2);font-family:var(--font-mono);white-space:nowrap;flex:0 0 auto}
-/* 横条 */
-.hbars{display:flex;flex-direction:column;gap:6px;width:100%}
-.hbar-row{display:flex;align-items:center;gap:var(--space-2);min-width:0}
-.hbar-name{flex:0 0 68px;font-size:var(--text-xs);color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hbar-track{flex:1;height:12px;background:var(--surface-warm);border-radius:var(--radius-pill);overflow:hidden;min-width:0}
 .hbar-fill{display:block;height:100%;background:color-mix(in oklab,var(--accent),var(--surface) 45%);border-radius:var(--radius-pill)}
-.hbar-val{flex:0 0 auto;font-size:var(--text-xs);color:var(--muted);font-family:var(--font-mono)}
 /* 环形 */
 .donut-wrap{display:flex;align-items:center;gap:var(--space-4);width:100%}
 .donut{width:120px;height:120px;flex:none}
 .donut-legend{display:flex;flex-direction:column;gap:6px;min-width:0}
 .legend-row{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-xs);color:var(--fg-2);white-space:nowrap}
 .legend-dot{width:10px;height:10px;border-radius:2px;flex:none}
-/* 堆叠条 */
-.stack{display:flex;width:100%;height:26px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)}
+/* 堆叠条：段宽 = 真实占比（.stack-seg 由 charts/StackBar.tsx 画在 SVG 里） */
 .stack-seg{display:block;height:100%}
-.stack-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;margin-top:var(--space-3)}
-.stack-legend .legend-row{flex:0 0 auto;white-space:nowrap}
-/* 柱状（章节长度） */
-.cols{display:flex;align-items:flex-end;gap:var(--space-3);width:100%;height:132px}
-.col-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;min-width:0}
-.col-fill{display:block;width:100%;max-width:56px;background:color-mix(in oklab,var(--accent),var(--surface) 55%);border:1px solid var(--border);border-radius:var(--radius-sm) var(--radius-sm) 0 0;min-height:3px}
-.col-fill.is-peak{background:var(--accent);border-color:var(--accent)}
 @media (max-width: 1024px){
   .chart-grid{grid-template-columns:minmax(0,1fr)}
 }

@@ -61,13 +61,7 @@
   outline-offset: 2px;
   border-radius: 4px;
 }
-/* 悬停时整列/整行淡淡提亮：不只靠浮层告诉用户「你指的是这一根」 */
-.bar-col[data-tip="1"]:hover,
-.col-item[data-tip="1"]:hover,
-.hbar-row[data-tip="1"]:hover {
-  background: color-mix(in oklab, var(--accent) 8%, transparent);
-  border-radius: 6px;
-}
+/* 悬停时整列/整行淡淡提亮（SVG 里是 .c-hit 的 fill）：不只靠浮层告诉用户「你指的是这一根」 */
 /* 环形图：悬停/聚焦时这一段加粗，读数与高亮指向同一段 */
 .donut-seg {
   transition:
@@ -269,71 +263,6 @@
   grid-column: 1 / -1;
 }
 
-/* ── 事件趋势：每天三根细柱（曝光 / 点击 / 阅读），各自按自身峰值归一 ── */
-.etrend-wrap {
-  width: 100%;
-  align-self: flex-end;
-}
-.etrend {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  width: 100%;
-  height: 132px;
-}
-.etrend-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-  height: 100%;
-  min-width: 0;
-}
-.etrend-bars {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 1px;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-}
-.etrend-bar {
-  display: block;
-  flex: 1 1 0;
-  max-width: 6px;
-  min-width: 0;
-  border-radius: 1px 1px 0 0;
-}
-/* 三色：曝光走 accent 的淡色（量最大、压低存在感），点击是主色，阅读用成功色区分 */
-.etrend-bar.is-impression,
-.etrend-legend .legend-dot.is-impression {
-  background: color-mix(in oklab, var(--accent), var(--surface) 58%);
-}
-.etrend-bar.is-click,
-.etrend-legend .legend-dot.is-click {
-  background: var(--accent);
-}
-.etrend-bar.is-read,
-.etrend-legend .legend-dot.is-read {
-  background: var(--success-text);
-}
-.etrend-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.etrend-legend .legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-}
-
 /* ── 兴趣画像：五个维度并排（组内归一，各组不共用刻度） ──
    维度数由后端下发决定（category_l1/l2、author、tag、series），某维无数据时整组不渲染，
    所以列宽用 auto-fit 而不是写死 5 列：只剩 3 组时不会被拉成三根几像素宽的条。
@@ -348,115 +277,6 @@
      否则只有几行数据时整块内容会沉在卡片底部，上面留一大片空白 */
   align-self: flex-start;
 }
-.ibars-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.ibars-label {
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-/* 轴标签让出宽度给条：分类名（2–3 字）窄、作者名（5 字）宽。
-   作者名必须完整显示——「演示作者己 / 演示作者丁」前四个字完全一样，
-   截成「演示作…」就分不出是谁了（实测 54px 会把四行截成一模一样）。 */
-.ibars .hbar-name {
-  flex: 0 0 54px;
-}
-.ibars-group[data-dim="author"] .hbar-name,
-.ibars-group[data-dim="series"] .hbar-name {
-  flex: 0 0 76px;
-}
-.ibars .hbar-track {
-  height: 9px;
-}
-.ibars .hbar-val {
-  font-size: 11px;
-}
-
-/* ── 热门书 Top 10：书名占宽度多一点，行高收紧（10 行不许超过两张卡的高度） ── */
-.hot-books {
-  gap: 3px;
-  align-self: flex-start;
-}
-.hot-books .hbar-row {
-  gap: 6px;
-}
-.hot-books .hbar-name {
-  flex: 0 0 96px;
-  font-size: 11.5px;
-}
-.hot-books .hbar-track {
-  height: 9px;
-}
-.hot-books .hbar-val {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-/* ── 漏斗：曝光 → 点击 → 阅读 → 收藏，条长按曝光归一，右侧写级间转化率 ── */
-.funnel-wrap {
-  width: 100%;
-  align-self: center;
-}
-.funnel {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  width: 100%;
-}
-.funnel-row {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 46px 42px;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.funnel-label {
-  color: var(--fg-2);
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-.funnel-track {
-  height: 12px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--surface-warm);
-}
-.funnel-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--accent), var(--surface) 45%);
-}
-.funnel-fill.is-impression {
-  background: color-mix(in oklab, var(--accent), var(--surface) 58%);
-}
-.funnel-fill.is-click {
-  background: var(--accent);
-}
-.funnel-fill.is-read {
-  background: var(--success-text);
-}
-.funnel-fill.is-shelf {
-  background: color-mix(in oklab, var(--success-text), var(--surface) 35%);
-}
-.funnel-value {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--fg-2);
-  text-align: right;
-  white-space: nowrap;
-}
-.funnel-rate {
-  color: var(--muted);
-  font-size: 10.5px;
-  text-align: right;
-  white-space: nowrap;
-}
-
 /* 窄屏（驾驶舱本身是 PC 专属，这里只服务「窄视口截图 / 嵌入」这类形态）：
    指标卡两列、兴趣画像单列，避免 4 列挤成一条线 */
 @media (max-width: 768px) {
@@ -466,8 +286,197 @@
   .ibars {
     grid-template-columns: minmax(0, 1fr);
   }
-  .hot-books .hbar-name {
-    flex: 0 0 84px;
+}
+
+/* ══ 图表内核（SVG）════
+ * 几何全在 web/src/lib/chartScale.ts 与 features/dashboard/charts/：这里只管字号、颜色与图体尺寸。
+ * 三条与实测缺陷直接相关的规则：
+ *   - 图体固定 132px：所有卡片的图体等高 → 同一行卡片不等高的问题从根上消失；
+ *   - 结论一行 + 省略号：说明文字不再把卡片撑高（全文在 title 上）；
+ *   - 0 值基线有独立配色：0 值那根 1px 横线既不能看不见，也不能看着像有量。 */
+
+.chart-body {
+  height: 132px;
+  min-height: 132px;
+}
+.chart-note {
+  /* 固定一行：徽标（「数据更新中」）绝对定位，不许把行盒撑高——否则带徽标的卡片会比
+     同行的卡片高 3px，一行行看过去又是参差的高度。 */
+  position: relative;
+  height: 18px;
+  line-height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chart-note:has(.chart-stale) {
+  padding-right: 78px;
+}
+.chart-fit {
+  width: 100%;
+  min-width: 0;
+}
+.c-svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+/* 轴与刻度 */
+.c-grid {
+  stroke: var(--border-soft);
+  stroke-width: 1;
+}
+.c-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.c-tick {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+}
+.c-xlabel {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.c-caption {
+  fill: var(--muted);
+  font-size: 9px;
+}
+
+/* 柱 / 条 / 折线 */
+.col-bar {
+  transition: fill var(--motion-fast) var(--ease-standard);
+}
+.col-bar.is-zero {
+  fill: var(--muted);
+  opacity: 0.45;
+}
+.c-value {
+  fill: var(--fg-2);
+  font-family: var(--font-mono);
+}
+.c-value.is-inside {
+  fill: var(--surface);
+}
+.c-barname {
+  fill: var(--fg-2);
+}
+.c-line {
+  stroke-linecap: round;
+}
+.c-dot {
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+
+/* 读数目标：整列 / 整行可聚焦（0 值那天也要能读出「这天没有」） */
+.c-hit {
+  fill: transparent;
+  cursor: help;
+}
+.c-hit:hover {
+  fill: color-mix(in oklab, var(--accent) 8%, transparent);
+}
+.c-hit:focus-visible {
+  fill: color-mix(in oklab, var(--accent) 12%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  outline: none;
+}
+
+/* 堆叠条段内文字 */
+.c-slice-name {
+  font-weight: 600;
+}
+.c-slice-pct {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.c-slice-size {
+  opacity: 0.85;
+}
+
+/* ── 阅读时长卡：四项数值 2×2 + 日历并排 ── */
+.rt-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-12);
+}
+.rt-figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1) var(--space-6);
+  min-width: 0;
+}
+.rt-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.rt-figure b {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.rt-calendar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  /* 撑满图体：填充率按「图体子元素最高者 / 图体高」量，不铺满就是 72% */
+  height: 100%;
+}
+.heat-grid {
+  display: grid;
+  flex: none;
+}
+.heat-wd {
+  font-size: 9px;
+  line-height: 12px;
+  color: var(--muted);
+  text-align: right;
+  padding-right: 2px;
+}
+.heat-cell {
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  cursor: help;
+}
+.heat-legend {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+}
+
+/* 阅读时长占整行：四项数值 + 90 天日历要横向空间，塞进半张卡会挤成两行数字 */
+.chart-grid [data-chart="reading-time"] {
+  grid-column: 1 / -1;
+}
+
+/* ── 大屏放宽内容列（只作用于驾驶舱） ──
+   1920 下 1320 的容器会让右侧空出整块 300px，而这页每行都是双列图表卡——
+   宽度直接就是信息密度。用 :has 按页面根节点选中，其它页面仍是 --max。
+   1440 及以下回到全站列宽：那个宽度下 1320 已能并排放下两张卡，
+   再放宽只会把卡片间距一起拉大，密度反而下降。 */
+.container:has([data-testid="view:dashboard"]) {
+  max-width: 1680px;
+}
+@media (max-width: 1440px) {
+  .container:has([data-testid="view:dashboard"]) {
+    max-width: var(--max);
   }
 }
 
+@media (max-width: 1024px) {
+  .rt-body {
+    justify-content: flex-start;
+  }
+}

@@ -42,7 +42,8 @@ function tipText(container: HTMLElement): string | null {
 describe("图表读数：悬停与键盘焦点都能读出数值", () => {
   it("导入趋势：整列可聚焦，零值那天也说明「没有导入」", () => {
     const { container } = render(<ImportTrendChart points={points} {...idle} />);
-    const cols = [...container.querySelectorAll<HTMLElement>(".bar-col")];
+    // 整列都是读数目标：SVG 里的透明命中矩形（.c-hit）承接焦点与浮层
+    const cols = [...container.querySelectorAll<HTMLElement>(".c-hit")];
     expect(cols).toHaveLength(3);
     expect(cols[0].getAttribute("tabindex")).toBe("0");
     expect(cols[0].getAttribute("aria-label")).toBe("10 月 1 日：没有导入");
@@ -51,7 +52,7 @@ describe("图表读数：悬停与键盘焦点都能读出数值", () => {
 
   it("聚焦 = 悬停：键盘 Tab 到数据点就浮出同一句读数", () => {
     const { container } = render(<ImportTrendChart points={points} {...idle} />);
-    const last = [...container.querySelectorAll<HTMLElement>(".bar-col")][2];
+    const last = [...container.querySelectorAll<HTMLElement>(".c-hit")][2];
     fireEvent.focus(last);
     expect(tipText(container)).toBe("10 月 3 日：导入 5 本、50 章");
     fireEvent.blur(last);
@@ -60,7 +61,7 @@ describe("图表读数：悬停与键盘焦点都能读出数值", () => {
 
   it("滚动不收起读数：跟着锚点走（否则 Tab 到屏幕外的数据点时浮层会被那次滚动关掉）", () => {
     const { container } = render(<ImportTrendChart points={points} {...idle} />);
-    const last = [...container.querySelectorAll<HTMLElement>(".bar-col")][2];
+    const last = [...container.querySelectorAll<HTMLElement>(".c-hit")][2];
     fireEvent.focus(last);
     expect(tipText(container)).toBe("10 月 3 日：导入 5 本、50 章");
     fireEvent.scroll(window);
@@ -77,7 +78,7 @@ describe("图表读数：悬停与键盘焦点都能读出数值", () => {
         {...idle}
       />,
     );
-    const cols = [...container.querySelectorAll<HTMLElement>(".bar-col")];
+    const cols = [...container.querySelectorAll<HTMLElement>(".c-hit")];
     expect(cols[0].getAttribute("aria-label")).toBe("1 章：没有这样的书");
     expect(cols[1].getAttribute("aria-label")).toBe("2-9 章：3 本");
     fireEvent.mouseEnter(cols[1]);
@@ -95,7 +96,7 @@ describe("图表读数：悬停与键盘焦点都能读出数值", () => {
         {...idle}
       />,
     );
-    const rows = [...container.querySelectorAll<HTMLElement>(".hbar-row")];
+    const rows = [...container.querySelectorAll<HTMLElement>(".c-hit")];
     expect(rows[0].getAttribute("aria-label")).toBe("甲：100 字，占全库 50%");
     fireEvent.focus(rows[1]);
     expect(tipText(container)).toBe("乙：60 字，占全库 30%");
@@ -135,9 +136,10 @@ describe("图表读数：悬停与键盘焦点都能读出数值", () => {
   it("库体积构成：三段各自可读", () => {
     const { container } = render(<StorageChart stats={stats} {...idle} />);
     const segs = [...container.querySelectorAll<HTMLElement>(".stack-seg")];
-    expect(segs[0].getAttribute("aria-label")).toBe("正文 600 MB，占 60.0%");
+    // 10% 以上取整（60%），10% 以下留一位小数：堆叠条上读得到的那句要短
+    expect(segs[0].getAttribute("aria-label")).toBe("正文 600 MB，占 60%");
     fireEvent.mouseEnter(segs[1]);
-    expect(tipText(container)).toBe("书目信息 300 MB，占 30.0%");
+    expect(tipText(container)).toBe("书目信息 300 MB，占 30%");
   });
 
   it("章节长度分布：每档可读，带章数与占比", () => {
@@ -150,7 +152,7 @@ describe("图表读数：悬停与键盘焦点都能读出数值", () => {
         {...idle}
       />,
     );
-    const cols = [...container.querySelectorAll<HTMLElement>(".col-item")];
+    const cols = [...container.querySelectorAll<HTMLElement>(".c-hit")];
     expect(cols[0].getAttribute("aria-label")).toBe("<1千：10 章，占 25%");
     fireEvent.mouseEnter(cols[1]);
     expect(tipText(container)).toBe("1千-3千：30 章，占 75%");

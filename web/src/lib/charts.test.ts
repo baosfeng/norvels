@@ -6,21 +6,25 @@ import {
   buildEventTrend,
   buildFunnel,
   buildHotBooks,
+  buildImportCumulative,
   buildImportTrend,
   buildInterestBars,
   buildReasonMix,
   buildReadingDist,
+  buildReadingTrend,
   buildRecommendMetrics,
   buildStorage,
   buildTopAuthors,
   CIRCUMFERENCE,
   compact,
   HOT_READ_WEIGHT,
+  sharePctText,
   storageRatioNote,
 } from "./charts";
 import { findForbiddenTerms } from "./audit";
 import type {
   Bucket,
+  DaySeconds,
   ImportTrendPoint,
   ReadingProgress,
   RecommendHotBook,
@@ -94,15 +98,14 @@ describe("数字压缩显示", () => {
 });
 
 describe("1 近 14 天导入量", () => {
-  it("总量与日均按实际条数算，柱高归一到最大值", () => {
+  it("总量与日均按实际条数算，柱子留真实本数（高度由渲染层的线性刻度算）", () => {
     const model = buildImportTrend(trend([0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0]));
     expect(model.data.total).toBe(9);
     // 只有 2 天有导入时不说「日均」，否则 838 本挤一天也会读成「日均 60 本」
     expect(model.note).toBe("近 14 天导入 9 本，只有 2 天有导入");
-    const max = Math.max(...model.data.bars.map((b) => b.heightPct));
-    expect(max).toBe(100);
-    // 0 值高度为 0（渲染层据此不画柱），不再给 2% 的噪音基线
-    expect(Math.min(...model.data.bars.map((b) => b.heightPct))).toBe(0);
+    // 0 值留在数据里（渲染层画 1px 基线），不再归一成百分比：归一化正是「0 值日完全不画」的根因
+    expect(model.data.bars.map((b) => b.value)).toEqual([0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0]);
+    expect(model.data.bars[6].title).toContain("导入 6 本");
   });
 
   it("全 0 时判为空，结论说「还没有导入」", () => {
@@ -116,12 +119,12 @@ describe("1 近 14 天导入量", () => {
     expect(model.note).toBe("近 14 天导入 28 本，日均 2 本");
   });
 
-  it("日期标签稀疏化，且末尾两根不会贴在一起", () => {
+  it("每天一条日期标签数据，抽稀交给渲染层（chartScale 的 labelStride / labelVisible）", () => {
     const model = buildImportTrend(trend(new Array(14).fill(1)));
-    const visible = model.data.bars.filter((b) => b.labelVisible).map((b) => b.label);
-    expect(visible[visible.length - 1]).toBe("10/14");
-    // 14 条时原型口径是 5 个标签（0/3/6/9/13）
-    expect(visible).toEqual(["10/1", "10/4", "10/7", "10/10", "10/14"]);
+    expect(model.data.bars.map((b) => b.label)).toEqual([
+      "10/1", "10/2", "10/3", "10/4", "10/5", "10/6", "10/7",
+      "10/8", "10/9", "10/10", "10/11", "10/12", "10/13", "10/14",
+    ]);
   });
 });
 
@@ -148,7 +151,7 @@ describe("3 字数 Top 10 作者", () => {
     const model = buildTopAuthors(authors, 78_000_000);
     expect(model.data.rows).toHaveLength(10);
     expect(model.data.rows[0].name).toBe("作者0");
-    expect(model.data.rows[0].widthPct).toBe(100);
+    expect(model.data.rows[0].value).toBe(12_000_000);
     // Top10 之和是 12+11+…+3 = 75 万，占全库 78 万的 96%
     expect(model.data.sharePct).toBe(96);
     expect(model.note).toContain("作者0");
@@ -221,17 +224,18 @@ describe("4 阅读进度分布", () => {
 });
 
 describe("5 库体积构成", () => {
-  it("占比极小的一段也有可见宽度，图例仍给真实数值", () => {
+  it("占比极小的一段按真实比例画，图例写「<1%」而不是放大到 1.2%", () => {
     const model = buildStorage({ ...baseStats, textBytes: 96_819_177, indexBytes: 134_477, otherBytes: 229_620_426 });
     const index = model.data.parts.find((p) => p.key === "index");
-    // 归一化后最小宽度会按比例略微收缩（1.2 → ~1.19），仍远高于「看不见」的比例
-    expect(index?.widthPct).toBeGreaterThanOrEqual(1);
+    // 0.04% 就是 0.04%：段宽不再抬到 1.2%（那是虚报 30 倍），要说的那句由文案承担
+    expect(index?.sharePct).toBeLessThan(0.1);
+    expect(index?.pctText).toBe("<1%");
     expect(index?.display).toBe("0.1 MB");
   });
 
   it("正常比例下三段按真实占比画，结论给出总量与正文占比", () => {
     const model = buildStorage(baseStats);
-    const sum = model.data.parts.reduce((acc, p) => acc + p.widthPct, 0);
+    const sum = model.data.parts.reduce((acc, p) => acc + p.sharePct, 0);
     expect(sum).toBeCloseTo(100, 6);
     expect(model.note).toContain("正文占");
     expect(model.data.parts.map((p) => p.label)).toEqual(["正文", "书目信息", "其他"]);
@@ -239,17 +243,15 @@ describe("5 库体积构成", () => {
 
   // 正文口径改成「压缩后字节」后，正文段会明显变大（占满全库），三段宽度仍然要落在 100% 上：
   // 既不能因为最小宽度放大而溢出，也不能因为取整而留下缝。
-  it("压缩后的正文口径下，三段渲染宽度之和仍是 100", () => {
+  it("压缩后的正文口径下，三段真实占比之和仍是 100（段宽就用真实占比）", () => {
     const model = buildStorage(realStats);
-    const sum = model.data.parts.reduce((acc, p) => acc + p.widthPct, 0);
-    expect(Math.round(sum * 100) / 100).toBe(100);
-    expect(Math.round(model.data.widthSum * 100) / 100).toBe(100);
-    // 真实占比之和也是 100（渲染宽度做过最小宽度归一，真实占比不受影响）
     expect(model.data.shareSum).toBeCloseTo(100, 6);
     for (const part of model.data.parts) {
-      expect(part.widthPct).toBeGreaterThanOrEqual(0);
-      expect(Number.isFinite(part.widthPct)).toBe(true);
+      expect(part.sharePct).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(part.sharePct)).toBe(true);
     }
+    // 正文段占绝大多数：图例文案按一位小数给，不是 100%
+    expect(model.data.parts[0].pctText).toMatch(/^9\d(\.\d)?%$/);
   });
 
   it("压缩率按压缩后 / 原始算，给出「省了多少」的人话", () => {
@@ -285,9 +287,10 @@ describe("5 库体积构成", () => {
   it("脏数据（负数 otherBytes）也不画出负宽度", () => {
     const model = buildStorage({ ...baseStats, textBytes: 100, indexBytes: 50, otherBytes: -80 });
     for (const part of model.data.parts) {
-      expect(part.widthPct).toBeGreaterThanOrEqual(0);
+      expect(part.sharePct).toBeGreaterThanOrEqual(0);
     }
-    expect(model.data.widthSum).toBeCloseTo(100, 6);
+    expect(model.data.parts[2].sharePct).toBe(0);
+    expect(model.data.shareSum).toBeCloseTo(100, 6);
   });
 
   it("总量有值但正文/索引还没拆出来时，不谎报「正文占 0%」", () => {
@@ -352,16 +355,17 @@ const hot = (title: string, reads: number, clicks: number, seconds = 0): Recomme
 });
 
 describe("7 事件趋势", () => {
-  it("三色柱各自按自身峰值归一，浮层给真实次数与当天点击率", () => {
+  it("三色给真实次数（不再各自归一），阅读面另给分钟", () => {
     const model = buildEventTrend(days([
       [100, 1, 0, 0],
       [40, 8, 2, 120],
     ]));
-    // 曝光峰值 100、点击峰值 8、阅读峰值 2：三列各自归一，谁也不会被压成一条线
-    expect(model.data.days.map((d) => d.impressionPct)).toEqual([100, 40]);
-    expect(model.data.days.map((d) => d.clickPct)).toEqual([13, 100]);
-    expect(model.data.days.map((d) => d.readPct)).toEqual([0, 100]);
-    // 浮层是绝对次数 + 当天点击率，不是归一化后的百分比
+    // 归一化是实测缺陷的根因（116/30/130px 的三根柱不可比），现在只给真实值，量纲不同的分面画
+    expect(model.data.days.map((d) => d.impressions)).toEqual([100, 40]);
+    expect(model.data.days.map((d) => d.clicks)).toEqual([1, 8]);
+    expect(model.data.days.map((d) => d.reads)).toEqual([0, 2]);
+    expect(model.data.days.map((d) => d.minutes)).toEqual([0, 2]);
+    // 浮层是绝对次数 + 当天点击率
     expect(model.data.days[1].title).toContain("曝光 40、点击 8、阅读 2");
     expect(model.data.days[1].title).toContain("读了 2 分钟");
     expect(model.data.days[1].title).toContain("点击率 20%");
@@ -399,8 +403,7 @@ describe("7 事件趋势", () => {
       { date: "2026-10-18", impressions: 1, clicks: 0, reads: 0, seconds: 0 },
     ]);
     expect(model.data.days.map((d) => d.date)).toEqual(["2026-10-18", "2026-10-20"]);
-    // 最后一根一定带标签（与导入趋势同一稀疏口径）
-    expect(model.data.days[model.data.days.length - 1].labelVisible).toBe(true);
+    expect(model.data.days[model.data.days.length - 1].label).toBe("10/20");
   });
 });
 
@@ -433,13 +436,13 @@ describe("8 兴趣画像（大分类 / 小分类 / 作者 / 标签 / 系列五�
     ]);
     expect(model.data.groups.map((g) => g.label)).toEqual(["分类·大", "分类·小", "作者", "标签", "系列"]);
     expect(model.data.groups[0].rows.map((r) => r.name)).toEqual(["武侠", "科幻"]);
-    expect(model.data.groups[0].rows.map((r) => r.widthPct)).toEqual([100, 87]);
+    expect(model.data.groups[0].rows.map((r) => r.value)).toEqual([69.4, 60.1]);
     // 小分类自己归一：同名不同组的「武侠 / 江湖」不会再被当成同一行
     expect(model.data.groups[1].rows.map((r) => r.name)).toEqual(["江湖", "太空"]);
-    expect(model.data.groups[1].rows[0].widthPct).toBe(100);
+    expect(model.data.groups[1].rows[0].value).toBe(69.4);
     // 作者组也自己归一
     expect(model.data.groups[2].rows.map((r) => r.name)).toEqual(["演示作者己", "演示作者丁"]);
-    expect(model.data.groups[2].rows[0].widthPct).toBe(100);
+    expect(model.data.groups[2].rows[0].value).toBe(38.6);
   });
 
   it("同名出现在两组时不合并、浮层按组说清是大分类还是小分类", () => {
@@ -570,8 +573,8 @@ describe("9 热门书", () => {
     const model = buildHotBooks(books);
     expect(model.data.rows).toHaveLength(10);
     expect(model.data.rows[0].name).toBe("书11");
-    expect(model.data.rows[0].widthPct).toBe(100);
-    // 分母是这一榜的总热度：最大那本占 11 / (12+...+2) ≈ 14%
+    expect(model.data.rows[0].value).toBe(12);
+    // 分母是这一榜的总热度：最大那本占 12 / (12+...+3) ≈ 15%
     expect(model.data.rows[0].title).toContain("热度占");
   });
 
@@ -590,21 +593,47 @@ describe("9 热门书", () => {
 });
 
 describe("10 曝光到收藏的漏斗", () => {
-  it("四级齐全，宽度按曝光归一，右侧给级间转化率", () => {
+  it("四级齐全，条长按曝光归一（渲染层算长度），右侧给级间转化率", () => {
     const model = buildFunnel(summary({ impressions: 200, clicks: 20, reads: 10, shelfAdds: 4 }));
     expect(model.data.steps.map((s) => s.label)).toEqual(["曝光", "点击", "阅读", "收藏"]);
-    expect(model.data.steps.map((s) => s.widthPct)).toEqual([100, 10, 5, 2]);
+    expect(model.data.steps.map((s) => s.value)).toEqual([200, 20, 10, 4]);
     expect(model.data.steps.map((s) => s.stepRate)).toEqual(["起始", "10%", "50%", "40%"]);
     expect(model.data.overall).toBe("2%");
     expect(model.note).toContain("整体转化 2%");
   });
 
-  it("极小的一级也留一条看得见的宽度（0.2% 的收藏不画成 0）", () => {
-    const model = buildFunnel(summary({ impressions: 10_000, clicks: 50, reads: 5, shelfAdds: 20 }));
+  it("极小的一级按真实比例画（0.2% 就是 0.2%）；0 值那级留 1px 基线", () => {
+    const model = buildFunnel(summary({ impressions: 10_000, clicks: 50, reads: 5, shelfAdds: 0 }));
     const shelf = model.data.steps[3];
-    expect(shelf.value).toBe(20);
-    // 真实比例 0.2% 低于最小可见宽度，所以给到 2%（宽度是视觉下限，数字仍是真实值）
-    expect(shelf.widthPct).toBe(2);
+    expect(shelf.value).toBe(0);
+    expect(shelf.stepRate).toBe("0%");
+    // 曝光 10000 只画 0.2% 的宽度：视觉下限由渲染层的 1px 基线表达，不靠放大条长
+    expect(model.data.steps[3].value / model.data.steps[0].value).toBeCloseTo(0, 6);
+  });
+
+  it("下一级超过上一级时不出百分比，改成人均次数（阅读可以比点击多）", () => {
+    // 本地实测：曝光 110 / 点击 1 / 阅读 128 / 收藏 0 —— 阅读这一级按点击算会是 12800%
+    const model = buildFunnel(summary({ impressions: 110, clicks: 1, reads: 128, shelfAdds: 0 }));
+    const [impression, click, read, shelf] = model.data.steps;
+    expect(impression.stepRate).toBe("起始");
+    // 1 / 110 = 0.9%：四舍五入到 1%（还不到 <1% 那一档）
+    expect(click.stepRate).toBe("1%");
+    expect(read.stepRate).toBe("每点击 128 次");
+    // 浮层与格子共用同一句：两处都不该再出现百分比
+    expect(read.stepRate).not.toContain("%");
+    expect(read.title).not.toContain("%");
+    expect(read.title).toContain("每点击 128 次");
+    // 不超的那一级仍是转化率，0 收藏也仍是 0%
+    expect(shelf.stepRate).toBe("0%");
+    // 1.3 倍这种小数保留一位
+    const mild = buildFunnel(summary({ impressions: 10, clicks: 2, reads: 3, shelfAdds: 0 }));
+    expect(mild.data.steps[2].stepRate).toBe("每点击 1.5 次");
+  });
+
+  it("上一级是 0 而这一级有值时不编比例（除零），给「—」并在浮层里说明", () => {
+    const model = buildFunnel(summary({ impressions: 0, clicks: 0, reads: 5, shelfAdds: 0 }));
+    expect(model.data.steps[2].stepRate).toBe("—");
+    expect(model.data.steps[2].title).toContain("阅读 5 次");
   });
 
   it("全 0 判空；只有曝光的漏斗不算空", () => {
@@ -657,8 +686,7 @@ describe("11 点击理由分布", () => {
       { reason: "随机发现", impressions: 10, clicks: 3 },
     ]);
     expect(model.data.rows.map((r) => r.name)).toEqual(["最近很多人读", "因为你常看武侠", "随机发现"]);
-    expect(model.data.rows[0].widthPct).toBe(100);
-    expect(model.data.rows[1].widthPct).toBe(40);
+    expect(model.data.rows.map((r) => r.value)).toEqual([30, 12, 3]);
     expect(model.data.totalClicks).toBe(45);
   });
 
@@ -694,7 +722,7 @@ describe("12 分类点击分布", () => {
       { categoryL1: "科幻", clicks: 4 },
     ]);
     expect(model.data.rows.map((r) => r.name)).toEqual(["未分类", "武侠", "科幻"]);
-    expect(model.data.rows[0].widthPct).toBe(100);
+    expect(model.data.rows[0].value).toBe(20);
     expect(model.data.rows[0].title).toContain("占 63%");
     expect(model.note).toBe("点得最多的分类是「未分类」：20 次，占 63%");
   });
@@ -705,3 +733,78 @@ describe("12 分类点击分布", () => {
   });
 });
 
+/* ── 13 近 14 天阅读时长 / 14 导入累计（task-12 新增两张图） ── */
+
+const daySeconds = (rows: [string, number][]): DaySeconds[] => rows.map(([date, seconds]) => ({ date, seconds }));
+
+describe("13 近 14 天阅读时长", () => {
+  it("按天出点，纵轴是分钟；0 值留在序列里，不跳过", () => {
+    const model = buildReadingTrend(daySeconds([
+      ["2026-11-01", 0],
+      ["2026-11-02", 7200],
+      ["2026-11-03", 180],
+    ]));
+    expect(model.data.points.map((p) => p.value)).toEqual([0, 120, 3]);
+    expect(model.data.points.map((p) => p.label)).toEqual(["11/1", "11/2", "11/3"]);
+    expect(model.data.activeDays).toBe(2);
+    expect(model.data.totalSeconds).toBe(7380);
+    expect(model.data.peak?.value).toBe(120);
+  });
+
+  it("只保留最近 N 天，且按日期升序（后端顺序变了也不倒着画）", () => {
+    const rows: [string, number][] = Array.from({ length: 20 }, (_, i) => [
+      `2026-11-${String(i + 1).padStart(2, "0")}`,
+      (i + 1) * 60,
+    ]);
+    const model = buildReadingTrend(daySeconds([...rows].reverse()), 14);
+    expect(model.data.points).toHaveLength(14);
+    expect(model.data.points[0].label).toBe("11/7");
+    expect(model.data.points[13].label).toBe("11/20");
+  });
+
+  it("一天都没读时判空，结论说「还没有阅读记录」", () => {
+    const model = buildReadingTrend(daySeconds([["2026-11-01", 0]]));
+    expect(model.empty).toBe(true);
+    expect(model.note).toContain("还没有阅读记录");
+  });
+
+  it("结论给总时长、有记录天数与单日最长，且不含实现词", () => {
+    const model = buildReadingTrend(daySeconds([["2026-11-02", 7200], ["2026-11-03", 3600]]));
+    expect(model.note).toBe("近 2 天读了 3 小时，2 天有记录，单日最长 2 小时");
+    expect(findForbiddenTerms(model.note)).toEqual([]);
+    expect(model.data.points[0].title).toContain("读了 2 小时");
+  });
+
+  it("没有 days 时不崩，判空", () => {
+    expect(buildReadingTrend([]).empty).toBe(true);
+  });
+});
+
+describe("14 导入累计曲线", () => {
+  it("逐日累加：曲线只增不减，斜率就是当天导入量", () => {
+    const model = buildImportCumulative(trend([2, 0, 3, 0]));
+    expect(model.data.points.map((p) => p.value)).toEqual([2, 2, 5, 5]);
+    expect(model.data.total).toBe(5);
+    expect(model.data.points[2].title).toContain("累计 5 本（当天 +3 本）");
+    expect(model.data.points.map((p) => p.label)).toEqual(["10/1", "10/2", "10/3", "10/4"]);
+  });
+
+  it("结论给累计与最后一天新增", () => {
+    expect(buildImportCumulative(trend([2, 0, 3, 1])).note).toBe("近 4 天累计导入 6 本，最后一天 +1 本");
+  });
+
+  it("全 0 与空数组都判空", () => {
+    expect(buildImportCumulative(trend([0, 0])).empty).toBe(true);
+    expect(buildImportCumulative([]).empty).toBe(true);
+  });
+});
+
+describe("占比文案（堆叠条图例）", () => {
+  it("非零但不足 1% 写「<1%」；10% 以上取整，以下留一位小数", () => {
+    expect(sharePctText(0)).toBe("0%");
+    expect(sharePctText(0.04)).toBe("<1%");
+    expect(sharePctText(0.99)).toBe("<1%");
+    expect(sharePctText(3.06)).toBe("3.1%");
+    expect(sharePctText(96.9)).toBe("97%");
+  });
+});

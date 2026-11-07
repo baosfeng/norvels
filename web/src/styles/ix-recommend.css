@@ -548,30 +548,6 @@
   }
 }
 
-/* ══ 驾驶舱：点击理由 / 分类点击两张分布图 ══
-   理由文本比书名长（「读过《长夜灯行》的人也在看」），名字列给到 46% 并单行省略，
-   全文与点击率都在读数浮层里；行高收紧，10 行也不比一张图表卡高。 */
-.reason-bars {
-  gap: 4px;
-}
-.reason-bars .hbar-row {
-  gap: 6px;
-}
-.reason-bars .hbar-name {
-  flex: 0 0 46%;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.reason-bars .hbar-track {
-  height: 9px;
-}
-.reason-bars .hbar-val {
-  font-size: 11px;
-  white-space: nowrap;
-}
-
 @media (max-width: 768px) {
   /* 窄屏：固定卡宽 + 横向滚动（等分会把每张压到 40px 宽，书名全断；
      反过来 minmax(112px,1fr) 在数据少时又会把卡拉宽，所以只给固定值） */
@@ -581,8 +557,5 @@
   }
   .similar-block {
     margin-top: var(--gap-card);
-  }
-  .reason-bars .hbar-name {
-    flex: 0 0 40%;
   }
 }

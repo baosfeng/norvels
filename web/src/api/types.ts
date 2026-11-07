@@ -634,6 +634,39 @@ export interface ReadingBuckets {
 }
 
 /**
+ * GET /api/dashboard 的响应（docs/api/api-dashboard.md）：驾驶舱一次刷新只发这一个数字类请求。
+ *
+ * 原先首屏要发 8 个数字类请求（stats / health/report / import-trend / reading / progress×2 /
+ * authors / import-jobs），聚合端点把它们并发取好后一次返回，**每块字段与它自己的端点逐字一致**
+ * （块内 stale / compositionEstimated 语义不被改写）。
+ *
+ * 部分失败：stats 缺失 → 整个端点 5xx（首屏核心，与 /api/stats 同口径）；其余块缺失置 null
+ * （数组块置空数组）并把原因写进 warnings —— 前端让那一张图走空态，而不是整页失败。
+ * 5 秒 TTL + single-flight：连点刷新不会把 7 组查询打成 7 倍。
+ */
+export interface DashboardPayload {
+  generatedAt: string;
+  /** 命中 TTL 缓存（同一时刻只有一个请求真算，其余复用它的结果） */
+  cached: boolean;
+  /** 这份数据的年龄（秒） */
+  ageSeconds: number;
+  ttlSeconds: number;
+  /** 哪一块没取到 + 原因；空数组表示 7 块都齐 */
+  warnings: string[];
+  stats: Stats;
+  health: HealthReport;
+  importTrend: ImportTrendPoint[];
+  readingStats: ReadingStats;
+  topAuthors: Page<AuthorSummary>;
+  /**
+   * 最近在读（按更新时间倒序，最多 50 条）。
+   * 一张响应服务两处：列表只取前 5 行，阅读三态的估算吃全部 50 条。
+   */
+  readingProgress: ReadingProgress[];
+  importJobs: ImportJob[];
+}
+
+/**
  * 库健康问题的可下钻类型：与 /api/health/issues 的 kind 一一对应。
  * 前三个是书级问题，huge_chapter 是章节级问题。
  */

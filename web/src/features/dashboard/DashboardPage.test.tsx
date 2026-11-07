@@ -2,24 +2,25 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
+import type { DashboardPayload } from "../../api/types";
 import { ToastHost } from "../../lib/toast";
 
+/** 三个数据源各自一个 reload：驾驶舱一次刷新只重取这三个（原先是 10 个）。 */
 const reloads = {
-  stats: vi.fn(),
-  health: vi.fn(),
-  jobs: vi.fn(),
-  trend: vi.fn(),
-  topAuthors: vi.fn(),
-  reading: vi.fn(),
-  progress: vi.fn(),
-  progressAll: vi.fn(),
+  dashboard: vi.fn(),
   recommend: vi.fn(),
   metrics: vi.fn(),
 };
 
-const state = {
-  stats: {
-    data: {
+/** 聚合端点的一块：字段形状与它自己的端点逐字一致，这里只给驾驶舱用到的那些。 */
+function dashboardPayload(): DashboardPayload {
+  return {
+    generatedAt: "2026-11-07T00:00:00Z",
+    cached: false,
+    ageSeconds: 0,
+    ttlSeconds: 5,
+    warnings: [],
+    stats: {
       books: 19,
       chapters: 11668,
       authors: 17,
@@ -32,6 +33,29 @@ const state = {
       otherBytes: 151_456_530,
       stale: false,
     },
+    health: {
+      totalBooks: 19,
+      thinBooks: 2,
+      missingAuthor: 3,
+      missingIntro: 4,
+      hugeChapters: 1,
+      chapterBuckets: [],
+      chapterLengthBuckets: [],
+      readingBuckets: { unread: 10, reading: 4, finished: 5 },
+      warnings: [],
+      stale: false,
+    },
+    importTrend: [],
+    readingStats: { totalSeconds: 0, todaySeconds: 0, weekSeconds: 0, streak: 0, days: [] },
+    topAuthors: { items: [], total: 0, page: 1, size: 10 },
+    readingProgress: [],
+    importJobs: [],
+  };
+}
+
+const state = {
+  dashboard: {
+    data: dashboardPayload() as DashboardPayload | null,
     loading: false,
     error: null as unknown,
   },
@@ -60,35 +84,11 @@ const state = {
     loading: false,
     error: null as unknown,
   },
-  health: {
-    data: {
-      totalBooks: 19,
-      thinBooks: 2,
-      missingAuthor: 3,
-      missingIntro: 4,
-      hugeChapters: 1,
-      chapterBuckets: [],
-      chapterLengthBuckets: [],
-      readingBuckets: { unread: 10, reading: 4, finished: 5 },
-      stale: false,
-    },
-    loading: false,
-    error: null as unknown,
-  },
 };
 
 vi.mock("../../api/hooks", () => ({
-  useStats: () => ({ ...state.stats, reload: reloads.stats }),
-  useHealthReport: () => ({ ...state.health, reload: reloads.health }),
-  useImportJobs: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.jobs }),
-  useImportTrend: () => ({ data: [], loading: false, error: null, reload: reloads.trend }),
-  useTopAuthors: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.topAuthors }),
-  useReadingStats: () => ({
-    data: { totalSeconds: 0, todaySeconds: 0, weekSeconds: 0, streak: 0, days: [] },
-    loading: false,
-    error: null,
-    reload: reloads.reading,
-  }),
+  // 8 个数字类 hook 已被聚合端点取代：驾驶舱只认 useDashboard 一个
+  useDashboard: () => ({ ...state.dashboard, reload: reloads.dashboard }),
   useRecommendStats: () => ({ ...state.recommend, reload: reloads.recommend }),
   useMetrics: () => ({
     data: {
@@ -146,8 +146,6 @@ vi.mock("../../api/hooks", () => ({
     error: null,
     reload: reloads.metrics,
   }),
-  useReadingProgress: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progress }),
-  useReadingProgressAll: () => ({ data: { items: [] }, loading: false, error: null, reload: reloads.progressAll }),
   useHealthIssues: () => ({
     data: {
       kind: "missing_author",
@@ -158,7 +156,7 @@ vi.mock("../../api/hooks", () => ({
     },
     loading: false,
     error: null,
-    reload: reloads.health,
+    reload: reloads.dashboard,
   }),
 }));
 
@@ -202,24 +200,89 @@ describe("驾驶舱入口", () => {
     expect(button.textContent).toBe("刷新概览");
     fireEvent.click(button);
     expect((screen.getByRole("button", { name: "正在刷新…" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(reloads.stats).toHaveBeenCalled();
-    expect(reloads.health).toHaveBeenCalled();
-    expect(reloads.reading).toHaveBeenCalled();
+    // 一次刷新只重取三个源：dashboard（聚合 7 块）+ 埋点 + 接口耗时
+    expect(reloads.dashboard).toHaveBeenCalled();
+    expect(reloads.recommend).toHaveBeenCalled();
     expect(reloads.metrics).toHaveBeenCalled();
+    expect(Object.values(reloads).filter((fn) => fn.mock.calls.length > 0)).toHaveLength(3);
     await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("概览已刷新"), { timeout: 1500 });
     expect((screen.getByRole("button", { name: "刷新概览" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("概览读不到时给错误态与重试（不渲染数据区）", () => {
-    const saved = state.stats.data;
-    state.stats.loading = false;
-    state.stats.error = new Error("离线");
-    state.stats.data = null as unknown as typeof state.stats.data;
+    const saved = state.dashboard.data;
+    state.dashboard.loading = false;
+    state.dashboard.error = new Error("离线");
+    state.dashboard.data = null;
     renderPage();
     expect(screen.getByText("概览没能加载")).toBeTruthy();
     // 还原全局桩，避免后续用例拿到错误态
-    state.stats.error = null;
-    state.stats.data = saved;
+    state.dashboard.error = null;
+    state.dashboard.data = saved;
+  });
+});
+
+describe("聚合端点：块缺失与块内 stale 互不牵连", () => {
+  it("某一块缺失时只有用到它的图走空态，其它照常出、整页不失败", () => {
+    const saved = state.dashboard.data;
+    const payload = saved as DashboardPayload;
+    state.dashboard.data = {
+      ...payload,
+      health: null as unknown as DashboardPayload["health"],
+      topAuthors: null as unknown as DashboardPayload["topAuthors"],
+      warnings: ["health: 统计表正在回填"],
+    };
+    renderPage();
+    // 健康相关的两张图与作者榜：空态（不是整页错误）
+    expect(screen.getByTestId("chart:buckets:empty")).toBeTruthy();
+    expect(screen.getByTestId("chart:chapterlen:empty")).toBeTruthy();
+    expect(screen.getByTestId("chart:authors:empty")).toBeTruthy();
+    // 健康卡给一句说明，不留一张只有标题的空卡
+    expect(screen.getByTestId("health-unavailable").textContent).toContain("刷新概览后会补上");
+    // 其它块照常有数据：顶部四个统计卡与导入趋势都在
+    const stats = document.querySelector(".dash-stats") as HTMLElement;
+    expect(within(stats).getByText("19")).toBeTruthy();
+    expect(screen.getByTestId("chart:trend")).toBeTruthy();
+    expect(screen.queryByText("概览没能加载")).toBeNull();
+    state.dashboard.data = saved;
+  });
+
+  it("块内 stale 照常出图，只提示「数据更新中」", () => {
+    const saved = state.dashboard.data;
+    const payload = saved as DashboardPayload;
+    state.dashboard.data = {
+      ...payload,
+      stats: { ...payload.stats, stale: true },
+      health: { ...payload.health, stale: true },
+    };
+    renderPage();
+    expect(screen.getAllByText("数据更新中").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("chart:storage")).toBeTruthy();
+    expect(screen.queryByTestId("chart:storage:empty")).toBeNull();
+    state.dashboard.data = saved;
+  });
+
+  it("最近在读只显示前 5 行（聚合端点一次给 50 条）", () => {
+    const saved = state.dashboard.data;
+    const payload = saved as DashboardPayload;
+    state.dashboard.data = {
+      ...payload,
+      readingProgress: Array.from({ length: 50 }, (_, i) => ({
+        bookId: i + 1,
+        bookTitle: `书${i + 1}`,
+        chapterId: (i + 1) * 10,
+        chapterIdx: 0,
+        chapterTitle: "第一章",
+        percent: 0.5,
+        updatedAt: "2026-10-24T12:00:00.000Z",
+      })),
+    };
+    renderPage();
+    const rows = document.querySelectorAll(".dash-row");
+    expect(rows).toHaveLength(5);
+    expect(rows[0].textContent).toContain("书1");
+    expect(rows[4].textContent).toContain("书5");
+    state.dashboard.data = saved;
   });
 });
 
@@ -260,15 +323,29 @@ describe("推荐与埋点区块", () => {
     expect(screen.getByTestId("metric-shelf").textContent).toContain("3");
   });
 
-  it("六张图进同一个 chart-grid（与既有七张同一套卡片体系）", () => {
+  it("六张图进同一个 chart-grid（与库概览九张同一套卡片体系）", () => {
     renderPage();
     const charts = screen.getByTestId("recommend-charts");
     expect(charts.className).toContain("chart-grid");
     for (const id of ["events", "interest", "hot", "funnel", "reasonmix", "categoryclicks"]) {
       expect(screen.getByTestId(`chart:${id}`)).toBeTruthy();
     }
-    // 既有区块没被挤掉：原来的七张图还在
-    expect(screen.getByTestId("dashboard:charts").querySelectorAll(".chart-card")).toHaveLength(7);
+    // 既有区块没被挤掉：七张库概览图 + 本轮新增的两张时间序列图
+    const grid = screen.getByTestId("dashboard:charts");
+    expect(grid.querySelectorAll(".chart-card")).toHaveLength(9);
+    for (const id of ["reading-time", "reading-trend", "trend", "cumulative", "authors", "buckets", "reading", "storage", "chapterlen"]) {
+      expect(screen.getByTestId(`chart:${id}`)).toBeTruthy();
+    }
+  });
+
+  it("新增两张图复用既有数据源，不额外发请求（空数据夹具里直接走空态）", () => {
+    renderPage();
+    // 导入累计吃 import_daily、阅读时长吃 /api/stats/reading 的 days：
+    // 都不新增请求，所以这份「导入趋势为空、阅读记录为空」的夹具里两张图直接是空态
+    expect(screen.getByTestId("chart:cumulative").textContent).toContain("导入累计");
+    expect(screen.getByTestId("chart:reading-trend").textContent).toContain("近 14 天阅读时长");
+    expect(screen.getByTestId("chart:cumulative:empty")).toBeTruthy();
+    expect(screen.getByTestId("chart:reading-trend:empty")).toBeTruthy();
   });
 
   it("两张分布图读出真数字：理由按点击排序、空分类归「未分类」", () => {
@@ -362,14 +439,15 @@ describe("健康卡下钻", () => {
   });
 
   it("没有这类问题时入口禁用，并给出这一类专属的一句说明", () => {
-    const saved = state.health.data;
-    state.health.data = { ...saved, missingAuthor: 0 };
+    const saved = state.dashboard.data?.health;
+    const payload = state.dashboard.data as DashboardPayload;
+    state.dashboard.data = { ...payload, health: { ...payload.health, missingAuthor: 0 } };
     renderPage();
     const entry = screen.getByTestId("health-entry-missing_author") as HTMLButtonElement;
     expect(entry.disabled).toBe(true);
     expect(entry.textContent).toBe("没有缺作者的书");
     // 另一类不受影响：各自一句，不共用文案
     expect(screen.getByTestId("health-entry-missing_intro").textContent).toContain("查看 4 本");
-    state.health.data = saved;
+    state.dashboard.data = { ...payload, health: saved as DashboardPayload["health"] };
   });
 });
