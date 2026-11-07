@@ -103,5 +103,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      # 真实书名/作者词表（.privacy-denylist.txt）本机维护、已 gitignore，CI 的
+      # 干净检出里拿不到——这里把「哪一层规则没生效」明说，避免绿灯被读成
+      # 「真实书目也检查过了」。本机提交前仍要跑 scripts/privacy-scan.sh --all。
+      - name: 说明（项目黑名单不在本工作区）
+        run: |
+          if [ -f .privacy-denylist.txt ]; then
+            echo "::notice::已加载项目黑名单（$(wc -l < .privacy-denylist.txt) 条）"
+          else
+            echo "::notice::未加载 .privacy-denylist.txt（本机维护、已 gitignore）；CI 只有内置通用规则（本机路径 / 内网地址 / 令牌），真实书目层需在本机跑 scripts/privacy-scan.sh --all"
+          fi
       - name: 隐私扫描（本机路径 / 内网地址 / 真实书目 / 密钥）
         run: scripts/privacy-scan.sh --all

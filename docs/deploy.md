@@ -314,6 +314,11 @@ NORVELS_VERSION=0.1.0 docker compose -f deploy/compose.yml up -d
 - **只回滚代码、不改 schema 的场景**（同一个 schema 版本内的补丁版本）可以直接换 tag，
   但前提是确认新版本没有应用任何迁移——启动日志会打印「库版本 N → 应用 M 个迁移」，
   日志里 `应用 0 个迁移` 才是可安全回滚 tag 的情形。
+- **NAS 部署（无源码）**：机器上只有 `compose.yml` / `.env` / `update.sh`，没有 `scripts/backup.sh`。
+  备份走 `sudo ./update.sh --backup`（产物：`norvels-<版本>-<时间>.db` + `-content.db` + `.meta`；
+  同目录若还有 `-wal` 副本，恢复时必须一起放回）。恢复：停容器 → 删四个 `-wal`/`-shm` →
+  把两个 `.db` 覆盖回 `/data` → `chown 65532:65532` → `sudo ./update.sh --up`。
+  细节见 `deploy/nas/README.md`。
 
 ### 7.2 升级后自查：`check-content`
 

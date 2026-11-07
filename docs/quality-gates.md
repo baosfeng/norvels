@@ -19,7 +19,7 @@
   工作区**新增了测试文件**就判红（`NORVELS_ALLOW_TESTS=1` 放行）；只判新文件、不进 `make gate`——修 bug 必须补复现测试。
 - **`.only` 残留与「静默少测」判红**：vitest 默认只在 `CI` 非空时禁 `.only`，本机全量会把其余用例**静默跳过**而退出码仍是 0（实测 6 个用例变
   skipped、整套照样绿）。门禁 11 与 `pnpm test` 都带 `--allowOnly=false`；门禁 11 另跑 `--coverage` 并钉阈值（`web/vitest.config.ts`
-  的 `thresholds`，实测 92.11/89.47/78.99 三次一致）——Go 侧删测试会被门禁 7 抓住，前端此前毫无防线：实测删掉 `pageGeometry.test.ts` 后
+  的 `thresholds`，vitest 5 新口径实测 88.2/85.14/80.87/90.26，当前阈值 lines 89.9 / functions 80.5 / branches 84.8 / statements 87.9）——Go 侧删测试会被门禁 7 抓住，前端此前毫无防线：实测删掉 `pageGeometry.test.ts` 后
   vitest 照报 166/1521 全绿、门禁 11 全绿，加阈值才红。
 
 ## 9 项与阈值
