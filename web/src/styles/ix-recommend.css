@@ -304,7 +304,11 @@
   .discover-dislike {
     top: 8px;
     right: 0;
-    min-height: 28px;
+    /* 注释写着 44px、实际是 28px：发现页唯一的负反馈操作压在封面右上角，
+       28px 高在走动时容易点空、误进详情。外壳不变，只把可点区域抬到 44。 */
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
     padding: 0 10px;
   }
   .dislike-menu button {

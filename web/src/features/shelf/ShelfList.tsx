@@ -74,7 +74,7 @@ export function ShelfList({
     return (
       <div data-testid="shelf-loading">
         <p className="meta shelf-loading-note" role="status">
-          正在读取书目，{formatCount(total || 0) ? `${formatCount(total || 0)} 本` : "全部"}大约需要 1–2 秒。
+          正在读取书目，{total > 0 ? `${formatCount(total)} 本，` : ""}大约需要 1–2 秒。
         </p>
         <ShelfCardSkeleton count={isH5 ? 6 : 4} />
       </div>

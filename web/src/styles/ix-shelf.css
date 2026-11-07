@@ -297,7 +297,13 @@
   text-align: left;
 }
 .view-shelf .shelf-filter-group-title {
-  flex: none;
+  /* 允许收缩：H5 面板宽度 358 时「标题 + 当前值 + 箭头」会多出 3px，
+     面板内部被裁成 361>358。标题本身很短，正常显示不变，极端窄屏才截断。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13.5px;
   font-weight: 600;
 }

@@ -27,7 +27,7 @@ describe("发现页：不感兴趣按钮的显隐口径", () => {
   it("触屏可点区域 ≥44px：tab 与不感兴趣按钮都在 ≤768 档抬高", () => {
     const narrow = recommendCss.slice(recommendCss.indexOf("@media (max-width: 768px)"));
     expect(narrow).toMatch(/\.discover-tabs button \{[^}]*min-height: 44px/);
-    expect(narrow).toMatch(/\.discover-dislike \{[^}]*min-height: 28px/);
+    expect(narrow).toMatch(/\.discover-dislike \{[^}]*min-height: 44px/);
   });
 });
 
