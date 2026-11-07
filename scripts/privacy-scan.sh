@@ -26,13 +26,18 @@ case "${1:-}" in
   *) printf '[错误] 未知参数: %s\n' "$1" >&2; exit 2 ;;
 esac
 
-LIST_FILE=$(mktemp -t privacy-files)
-RULES_FILE=$(mktemp -t privacy-rules)
-DENY_RULES_FILE=$(mktemp -t privacy-deny-rules)
-PAT_FILE=$(mktemp -t privacy-patterns)
-CAND_FILE=$(mktemp -t privacy-candidates)
-TEXT_LIST=$(mktemp -t privacy-text-files)
-WORK_DIR=$(mktemp -d -t privacy-hits)
+# mktemp 模板显式带 XXXX：GNU coreutils（CI 的 ubuntu-latest）要求模板里至少 3 个 X，
+# 「mktemp -t prefix」在 macOS(BSD) 能用、在 Linux 上直接失败。失败后清单为空——
+# 旧逻辑把「没扫到文件」当通过（假绿），实际一个文件都没扫。显式模板两种系统都认。
+TMP_BASE="${TMPDIR:-/tmp}"
+mktemp_at() { mktemp "$TMP_BASE/privacy-$1.XXXXXX"; }
+LIST_FILE=$(mktemp_at files)
+RULES_FILE=$(mktemp_at rules)
+DENY_RULES_FILE=$(mktemp_at deny-rules)
+PAT_FILE=$(mktemp_at patterns)
+CAND_FILE=$(mktemp_at candidates)
+TEXT_LIST=$(mktemp_at text-files)
+WORK_DIR=$(mktemp -d "$TMP_BASE/privacy-hits.XXXXXX")
 trap 'rm -f "$LIST_FILE" "$RULES_FILE" "$DENY_RULES_FILE" "$PAT_FILE" "$CAND_FILE" "$TEXT_LIST"; rm -rf "$WORK_DIR"' EXIT
 
 if [[ "$MODE" == "staged" ]]; then
