@@ -77,6 +77,11 @@ export function AppShell() {
     <ShelfModeContext.Provider value={{ mode, setMode }}>
       <NavDrawerContext.Provider value={drawer}>
         <div className="layout-a">
+          {/* 键盘用户的「跳到正文」：侧栏 10 个导航项在 DOM 最前，没有这一跳每次换页都要 Tab 穿过去。
+              .sr-only-focusable 聚焦前隐藏、聚焦后可见（globals.css）。 */}
+          <a className="skip-link sr-only-focusable" href="#main">
+            跳到正文
+          </a>
           <button
             className="nav-scrim"
             type="button"
@@ -93,7 +98,7 @@ export function AppShell() {
                 showViewToggle={showViewToggle}
               />
             )}
-            <main className="container">
+            <main className="container" id="main" tabIndex={-1}>
               <Outlet />
             </main>
           </div>

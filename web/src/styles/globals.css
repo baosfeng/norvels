@@ -82,6 +82,19 @@ body {
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 300;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 14px;
+  text-decoration: none;
+}
 .sr-only-focusable:not(:focus) {
   position: absolute;
   width: 1px;
