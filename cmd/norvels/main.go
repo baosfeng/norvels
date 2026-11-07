@@ -187,26 +187,20 @@ func cmdServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	token := *authToken
+	// 默认拒绝「开放模式 + 非回环监听」（config.CheckOpenListen）：不安全时不先打开库。
+	if err := config.CheckOpenListen(*addr, token, cfg.AllowPublic); err != nil {
+		return err
+	}
+	warnAuthMode(token == "")
+
 	st, err := openStore(context.Background(), *dbPath)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 
-	// 库级聚合值（store_metrics）缺失或口径落后时后台补算一次：不阻塞启动，
-	// 算完前 /api/stats 与 /api/health/report 返回 stale 标记。
-	st.OnMetricsRefreshed(func(err error) {
-		if err != nil {
-			log.Printf("后台重算库级聚合值失败: %v", err)
-			return
-		}
-		log.Print("后台重算库级聚合值完成")
-	})
-	st.EnsureMetricsAsync(ctx)
-	st.StartBackgroundMaintenance(ctx)
-
-	token := *authToken
-	warnAuthMode(token == "")
+	startBackgroundWork(ctx, st)
 
 	// 推荐库（norvels-rec.db）与主库同目录：整库可重建，打不开就降级成 503。
 	rec := setupRecommendation(ctx, *dbPath)

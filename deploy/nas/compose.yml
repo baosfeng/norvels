@@ -19,8 +19,10 @@ services:
       NORVELS_DB: "/data/norvels.db"
       NORVELS_HEALTH_URL: "http://127.0.0.1:8080/api/health"
       TZ: "${TZ:-Asia/Shanghai}"
-      # 只在小局域网里用可以留空；要从公网访问就设一串随机值。
+      # 鉴权：不设口令时绑 0.0.0.0 会被拒绝启动（默认拒绝开放 + 非回环）。
+      # 公网/共享网络设一串随机值；只在可信内网用则设 NORVELS_ALLOW_PUBLIC=1。
       NORVELS_AUTH_TOKEN: "${NORVELS_AUTH_TOKEN:-}"
+      NORVELS_ALLOW_PUBLIC: "${NORVELS_ALLOW_PUBLIC:-}"
       # 存量书回填分类（0015 迁移用）：不设时落「未分类」。
       NORVELS_LEGACY_CATEGORY: "${NORVELS_LEGACY_CATEGORY:-}"
     volumes:

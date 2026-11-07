@@ -538,16 +538,23 @@ docker compose -f deploy/compose.yml logs --tail 20 norvels
 
 ### 7.5 鉴权
 
-设置环境变量 `NORVELS_AUTH_TOKEN` 后启用鉴权（**公网部署必须设置**）：
+**默认拒绝「开放模式 + 非回环监听」**：不设口令又绑 `0.0.0.0`，同网段任何设备都能读写本库，
+路由器一次端口转发就变成公网可写。`serve` 启动时校验，不满足直接退出并打印两条出路：
 
 ```bash
+# 推荐：设置口令（公网 / 共享网络 / 不想让访客设备看到书库时）
 NORVELS_AUTH_TOKEN="$(openssl rand -hex 24)" docker compose -f deploy/compose.yml up -d
+
+# 或：确认只在可信内网使用，显式接受风险
+NORVELS_ALLOW_PUBLIC=1 docker compose -f deploy/compose.yml up -d
 ```
 
 - `/api/*` 与全部页面要求 `Authorization: Bearer <token>` 或登录后下发的 Cookie；
 - `/api/health` 免鉴权（容器健康检查依赖它），`/login` 是登录表单页；
 - Cookie 为 HttpOnly + SameSite=Lax + Path=/（30 天），比较令牌用恒定时间比较；
-- 未设置 token = **开放模式**，启动日志会打印 `WARN: 未启用鉴权，请勿暴露到公网`。
+- 开放模式仍可绑 `127.0.0.1`（只本机访问），不需要额外变量；本地开发 `make run` / `make preview` 已代设 `NORVELS_ALLOW_PUBLIC=1`。
+- **升级提示**：0.13.2 起这条校验生效。既有「0.0.0.0 + 无口令」的部署升级前先在 `.env` 加
+  `NORVELS_ALLOW_PUBLIC=1`（或改设口令），否则容器会启动失败（日志里有两条出路的原文）。
 
 **账号与口令是两层**（0016）：口令管「能不能进门」，账号会话（`norvels_session`，30 天）管「个人记录属于谁」。
 配置口令后 Bearer / 旧 `norvels_auth` Cookie 语义完全不变；没配口令时请求归默认账号 `reader`。

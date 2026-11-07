@@ -103,7 +103,8 @@ else
     make build-server || { printf '[错误] 编译失败\n' >&2; exit 1; }
   fi
   printf '==> 启动后端 ./bin/norvels serve --addr :%s（日志 .preview/api.log）\n' "$API_PORT"
-  ./bin/norvels serve --addr ":$API_PORT" --db ./data/norvels.db > "$STATE_DIR/api.log" 2>&1 &
+  # 本地预览绑 0.0.0.0 且不带口令：显式声明接受（默认拒绝见 config.CheckOpenListen）。
+  NORVELS_ALLOW_PUBLIC=1 ./bin/norvels serve --addr ":$API_PORT" --db ./data/norvels.db > "$STATE_DIR/api.log" 2>&1 &
   OWN_PIDS="$OWN_PIDS $!"
   API_OWNED=1
   if ! wait_http "http://127.0.0.1:$API_PORT/api/health" 120; then

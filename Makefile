@@ -30,7 +30,7 @@ build-server: ## 编译服务端二进制（内嵌 internal/webui/dist）
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/norvels
 
 run: ## 本地启动（只用后端 :8080）
-	go run ./cmd/norvels serve --addr :8080 --db ./data/norvels.db
+	NORVELS_ALLOW_PUBLIC=1 go run ./cmd/norvels serve --addr :8080 --db ./data/norvels.db
 
 preview: ## 一条命令起预览：后端 :8080 + vite HMR :5173（已在跑则复用，不占新端口）
 	@scripts/preview.sh

@@ -27,8 +27,10 @@ services:
       NORVELS_DB: "/data/norvels.db"
       NORVELS_HEALTH_URL: "http://127.0.0.1:8080/api/health"
       TZ: "${TZ:-Asia/Shanghai}"
-      # 公网部署必须设置鉴权令牌（空 = 开放模式，启动日志会告警）：
-      # NORVELS_AUTH_TOKEN: "${NORVELS_AUTH_TOKEN:?公网部署必须设置 NORVELS_AUTH_TOKEN}"
+      # 鉴权：未设置口令时，绑 0.0.0.0 会被 serve 拒绝启动（默认拒绝开放 + 非回环）。
+      # 公网/共享网络请设置口令；只在可信内网用则显式接受风险（两条出路见 docs/deploy.md §7.5）。
+      NORVELS_AUTH_TOKEN: "${NORVELS_AUTH_TOKEN:-}"
+      NORVELS_ALLOW_PUBLIC: "${NORVELS_ALLOW_PUBLIC:-}"
     volumes:
       # 数据卷：SQLite 主库、WAL、SHM 都在同一目录（/data）。
       # NORVELS_DATA_DIR 可指向任意宿主目录（NAS 上常放独立数据盘，例如

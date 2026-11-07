@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -37,6 +38,9 @@ const (
 	EnvRecWeightInterestL1 = "NORVELS_REC_W_INTEREST_L1"
 	EnvRecWeightHotReads   = "NORVELS_REC_W_HOT_READS"
 	EnvRecWeightFreshness  = "NORVELS_REC_W_FRESHNESS"
+	// EnvAllowPublic 显式接受「开放模式（无口令）+ 非回环监听」。
+	// 家庭内网是合理用法，但必须是配置里的显式选择，不能靠默认值踩中。
+	EnvAllowPublic = "NORVELS_ALLOW_PUBLIC"
 )
 
 // 默认值。
@@ -68,6 +72,8 @@ type Config struct {
 	RecWeightInterestL1 *float64
 	RecWeightHotReads   *float64
 	RecWeightFreshness  *float64
+	// AllowPublic 为 true 时允许「开放模式 + 非回环监听」（见 CheckOpenListen）。
+	AllowPublic bool
 }
 
 // FromEnv 读取环境变量并填默认值。非法值（例如未知日志级别）直接报错，
@@ -99,10 +105,46 @@ func FromEnv() (Config, error) {
 	if c.RecWeightFreshness, err = envWeight(EnvRecWeightFreshness); err != nil {
 		return Config{}, err
 	}
+	if c.AllowPublic, err = envBool(EnvAllowPublic); err != nil {
+		return Config{}, err
+	}
 	if err := c.Validate(); err != nil {
 		return Config{}, err
 	}
 	return c, nil
+}
+
+// CheckOpenListen 校验「开放模式（无口令）是否允许监听 addr」。
+//
+// 默认拒绝非回环监听：没有口令又绑 0.0.0.0，等于把书架、阅读进度、导入/删书
+// 等全部写接口开放给同网段所有设备；路由器一次端口转发就变成公网可写。
+// 家庭内网确实可以接受，但必须是显式选择：
+//   - 设置 NORVELS_AUTH_TOKEN（推荐，任何暴露到公网/共享网络的部署）；
+//   - 或设 NORVELS_ALLOW_PUBLIC=1 明确接受风险。
+func CheckOpenListen(addr, authToken string, allowPublic bool) error {
+	if strings.TrimSpace(authToken) != "" || allowPublic || isLoopbackAddr(addr) {
+		return nil
+	}
+	return fmt.Errorf("拒绝在开放模式（未设置 %s）下监听 %q：同网段任何设备都可读写本库，路由器转发后等于公网可写。设置 %s（推荐），或确认只在可信内网使用并显式设置 %s=1",
+		EnvAuthToken, addr, EnvAuthToken, EnvAllowPublic)
+}
+
+// isLoopbackAddr 判断监听地址是否只绑本机回环（127.0.0.1 / ::1 / localhost）。
+// ":8080" 的 host 为空 = 所有网卡，按非回环处理。
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr // 没有端口的形式（如 "127.0.0.1"）：整体当 host
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Validate 校验配置。只检查「取值非法」，路径是否存在留给具体子命令。
