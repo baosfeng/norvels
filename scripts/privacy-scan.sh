@@ -50,8 +50,15 @@ fi
 
 TOTAL=$(wc -l < "$LIST_FILE" | tr -d ' ')
 if [[ "$TOTAL" -eq 0 ]]; then
-  printf '[提示] 没有待扫描文件（暂存区为空？先 git add，或改用 --all）\n'
-  exit 0
+  if [[ "$MODE" == "staged" ]]; then
+    # 暂存区为空是正常状态（还没 git add）：提示即可，不算失败。
+    printf '[提示] 暂存区没有待扫描文件（先 git add，或改用 --all）\n'
+    exit 0
+  fi
+  # --all / --changed 拿不到任何文件 = git 命令失败 / 不在工作区 / 浅克隆异常。
+  # 这时 exit 0 是假绿：一个文件都没扫却报「通过」，比红更糟。按用法错误处理。
+  printf '[错误] 扫描清单为空（--all/--changed 至少应包含已跟踪文件）：检查是否在 git 工作区、git 是否可用\n' >&2
+  exit 2
 fi
 printf '==> 隐私扫描（%s），候选文件 %d 个\n' "$MODE" "$TOTAL"
 

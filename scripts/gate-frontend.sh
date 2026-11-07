@@ -88,8 +88,12 @@ echo "==> 前端 eslint（只判新增）"
 LINT_BASELINE=5
 lint_errors=$(node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const r=JSON.parse(s);let n=0;for(const f of r)for(const m of f.messages)if(m.severity===2)n++;console.log(n)}catch(e){console.log("")}})' < "$WORK/lint.json")
 if [ -z "$lint_errors" ]; then
-  echo "⚠️  eslint 未产出结果，跳过（不阻断）"
+  # eslint 配置报错 / 崩溃 / OOM 时 JSON 不产出。以前这里「跳过（不阻断）」，
+  # 门禁 11 照样绿——假绿比红更糟：它让「lint 从未真正跑过」这件事完全不可见。
+  echo "❌ eslint 没有产出可解析的结果（配置错误 / 崩溃 / OOM），按未通过处理"
   head -5 "$WORK/lint.err" 2>/dev/null | sed 's/^/   /'
+  echo "   本地复现：cd web && npm run lint"
+  fails=$((fails + 1))
 elif [ "$lint_errors" -gt "$LINT_BASELINE" ]; then
   echo "❌ eslint 新增错误：${lint_errors} 条（基线 ${LINT_BASELINE}）"
   echo "   本地复现：cd web && npm run lint"
