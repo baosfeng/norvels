@@ -42,19 +42,19 @@
 norvels enrich [--db ...] [--apply] [--plan] [--fields author,intro,category]
                [--workers 4] [--qps 1] [--max-sources 3] [--timeout 10s]
                [--budget 30m] [--max-requests 20000] [--limit N]
-               [--min-title-sim 0.86] [--resume --resume-batch <id>]
+               [--min-title-sim 0.86] [--resume --resume-batch <id>] [--flush-every 200]
 norvels enrich --split-long-chapters [--apply] [--min-words 30000] [--target-words 8000]
 norvels enrich --rollback <batchID> [--apply]
 ```
 
 - **默认 dry-run**：只打印「会改什么」，不写库；`--apply` 才落库。`--fields` 同时约束候选、决策与写库——未选中的字段不判定、不写、不产生跳过原因。
 - `--plan`：只出待补清单与规模，不联网（秒级，给运维先看量）。
-- 每次 `--apply` 生成 batch id，写 `enrich_changes`（旧值/新值/来源/置信度/批次）。
+- **流式落库**：`--apply` 先生成一个 batch id，之后每处理满 `--flush-every` 本（默认 200，0 = 只在结束时）就「记 intent → 改数据」一次并打一行进度（已处理/总数、命中、变更、已写库、请求、用时）；整批共用一个 batch id，故 `--rollback` 一次回滚整批，中途被杀只丢最后未满的一批。落库失败计入报告失败数并打到 stderr。
 
 ## 4. 分层与依赖方向
 
 ```text
-cmd/norvels/enrich_cmd.go   编排：取待补清单 → 调 crawl → 调 enrich.Decide → 写库
+cmd/norvels/enrich_cmd.go   编排：取待补清单 → 调 crawl → 调 enrich.Decide → 写库（enrich_stream.go 是其流式循环）
    ├─ internal/crawl        在线检索执行器（叶子：fetch + ruleexec + source + enrich）
    ├─ internal/enrich       纯决策（叶子：占位作者 / 投票 / 分类词表 / 切点）
    └─ internal/store        enrich_changes 落库、待补候选查询、SplitChapter 复用
@@ -72,7 +72,7 @@ cmd/norvels/enrich_cmd.go   编排：取待补清单 → 调 crawl → 调 enric
 | 源轮转 | 一本书按优先级问至多 `--max-sources` 个源，凑够 2 条相似命中即停 |
 | 熔断 | 单源连续 5 次网络失败/超时 → 本次会话禁用该源，报告里点名 |
 | 预算 | `--budget` / `--max-requests` 任一打满即优雅停：已得的写、未得的跳过（不算错误） |
-| 断点 | `--resume --resume-batch <id>` 跳过该批次已处理过的 book_id |
+| 断点 | `--resume --resume-batch <id>` 跳过该批次已处理过的 book_id（依赖流式落库：变更在跑的过程中就已进 `enrich_changes`） |
 | 单次 | `--timeout`（默认 10s）；搜索页只取第 1 页 |
 
 ## 6. 决策与投票（`internal/enrich` 纯函数）
@@ -93,17 +93,14 @@ cmd/norvels/enrich_cmd.go   编排：取待补清单 → 调 crawl → 调 enric
 调 `store.SplitChapter`。切点计算是 `enrich.SplitCuts` 纯函数（可单测，不碰库）：
 切点严格递增、两侧必须有字、最多 99 段、尾段不足目标一半时撤销最后一刀。
 
-**整篇没有换行的不硬切**：生产样本里这种脏数据很常见（一本 40 万字只有 5 个换行），
-报告里单列「无段落边界」计数交给人处理——硬切字符只会产出无意义的碎章。
+**整篇没有换行的不硬切**（一本 40 万字只有 5 个换行的脏数据很常见）：报告里单列「无段落边界」计数交给人处理，硬切字符只会产出碎章。
 
 ## 8. 落库与回滚
 
 迁移 `0027_enrich_changes`：`enrich_changes(id, batch_id, book_id, field, old_value,
 new_value, source_id, confidence, created_at)` + `(batch_id)`、`(book_id, created_at)` 索引。
 
-回滚按 batch 把 `old_value` 写回，统一走 `store.UpdateBookMeta`（作者变更要同步
-`books_authors` 与作者聚合列，裸 SQL 会让 `/api/authors` 的作品数漂掉）。
-单条失败不中断整批：中断会留下「回滚一半」这种最难收拾的状态。
+回滚按 batch 把 `old_value` 写回，统一走 `store.UpdateBookMeta`（作者变更要同步 `books_authors` 与作者聚合列，裸 SQL 会让 `/api/authors` 的作品数漂掉）。单条失败不中断整批：中断会留下「回滚一半」这种最难收拾的状态。
 
 ## 9. 验收判据
 

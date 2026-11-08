@@ -43,6 +43,21 @@ func TestNewBatchID(t *testing.T) {
 	}
 }
 
+// TestValidateEnrichFlags 覆盖参数校验：冲突组合与负数 --flush-every 报错，正常组合放行。
+func TestValidateEnrichFlags(t *testing.T) {
+	if err := validateEnrichFlags(true, true, 200); err == nil {
+		t.Fatal("--apply 与 --read-only 同时用应报错")
+	}
+	if err := validateEnrichFlags(false, false, -1); err == nil {
+		t.Fatal("--flush-every 为负应报错")
+	}
+	for _, flush := range []int{0, 1, 200} {
+		if err := validateEnrichFlags(true, false, flush); err != nil {
+			t.Fatalf("--flush-every %d 应合法，实际 %v", flush, err)
+		}
+	}
+}
+
 // TestSortedSkipKeys 覆盖跳过原因排序：输出必须稳定（报告可对照）。
 func TestSortedSkipKeys(t *testing.T) {
 	got := sortedSkipKeys(map[string]int{"b": 1, "a": 2, "c": 3})

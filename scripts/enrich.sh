@@ -48,6 +48,7 @@ norvels 元数据补全脚本（默认 dry-run）
   --split-long-chapters  只做超长章节切分
   --rollback <batchID>   回滚某批次
   --fields author,intro,category
+  --flush-every 200      每满 N 本落库并打进度（0 = 只在结束时落库）
   --min-title-sim 0.86
   --resume --resume-batch <batchID>
 

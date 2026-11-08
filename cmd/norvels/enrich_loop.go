@@ -20,10 +20,24 @@ type enrichReport struct {
 	Scanned  int
 	HitBooks int
 	Written  int
-	Changes  []store.EnrichChange
-	Skipped  map[string]int
-	Engine   crawl.Stats
-	Elapsed  time.Duration
+	// TotalChanges 是本次产生的变更总条数：流式落库时明细已随 flush 释放，只留计数。
+	TotalChanges int
+	// Failed 是落库失败条数（记 intent 失败 + 写库失败），报告尾部按它提示。
+	Failed int
+	// Changes 是变更明细：只在「不落库」的调用里累积（dry-run 汇总与决策口径测试用）。
+	Changes []store.EnrichChange
+	Skipped map[string]int
+	Engine  crawl.Stats
+	Elapsed time.Duration
+}
+
+// changeCount 返回变更总条数：流式落库后明细已随 flush 释放，只剩计数；
+// dry-run（不落库）时明细还在 Changes 里，以它为准。
+func (r enrichReport) changeCount() int {
+	if r.TotalChanges > 0 {
+		return r.TotalChanges
+	}
+	return len(r.Changes)
 }
 
 // newEnrichEngine 读库里的在线书源并构造检索执行器。
@@ -62,26 +76,40 @@ func enrichDecisionOptions(o enrichOpts) enrich.Options {
 	return opt
 }
 
-// runEnrichLoop 用 worker 池并发检索并逐本决策（写库在调用方，按批记录）。
+// runEnrichLoop 用 worker 池并发检索并逐本决策。
+//
+// 这是「不落库」的兼容入口（dry-run 汇总与决策口径测试用）：变更明细留在
+// rep.Changes 里，不写库。要流式落库的调用方走 runEnrichStreamTo。
 func runEnrichLoop(ctx context.Context, st *store.Store, engine searchEngine,
 	cands []store.EnrichCandidate, o enrichOpts) enrichReport {
-	rep := enrichReport{Scanned: len(cands), Skipped: map[string]int{}}
-	opt := enrichDecisionOptions(o)
-	skip := loadResumeSet(ctx, st, o)
-	done := make(chan enrichOutcome, o.workers)
-	sem := make(chan struct{}, maxInt(o.workers, 1))
+	return runEnrichStreamTo(ctx, st, engine, cands, o, sinkOf(nil))
+}
+
+// runEnrichStreamTo 是流式主循环：worker 只投结果，主协程独占汇总与落库。
+//
+// 为什么由主协程 flush 而不是 worker：SQLite 是单写者，写库塞进 worker 会变成
+// N 个协程抢同一把写锁；主协程独占「收集 → 落库」的节奏，flush 与并发检索天然错开。
+// sink.Flush 为 nil 表示不落库（dry-run）。
+func runEnrichStreamTo(ctx context.Context, st *store.Store, engine searchEngine,
+	cands []store.EnrichCandidate, o enrichOpts, sink streamSink) enrichReport {
+	active := activeCandidates(ctx, st, cands, o)
+	s := newEnrichStream(o, engine, sink, len(cands), len(active))
+	done := make(chan enrichOutcome, maxInt(o.workers, 1))
+	go runEnrichWorkers(ctx, st, engine, active, enrichDecisionOptions(o), o.workers, done)
+	// 主协程独占消费：既不与 worker 争内存里的汇总，也不与它们争写库。
+	for out := range done {
+		s.accept(ctx, out)
+	}
+	s.finish(ctx)
+	return s.rep
+}
+
+// runEnrichWorkers 并发处理候选并把结果投进 done；worker 不碰任何汇总状态。
+func runEnrichWorkers(ctx context.Context, st *store.Store, engine searchEngine,
+	active []store.EnrichCandidate, opt enrich.Options, workers int, done chan<- enrichOutcome) {
+	sem := make(chan struct{}, maxInt(workers, 1))
 	var wg sync.WaitGroup
-	// collectDone 保证「汇总真的跑完」才返回：只 close(done) 就返回的话，
-	// 主协程可能读到还没被消费的报告（并发写同一个 rep 更是数据竞争）。
-	collectDone := make(chan struct{})
-	go func() {
-		collectOutcomes(done, &rep)
-		close(collectDone)
-	}()
-	for _, c := range cands {
-		if skip[c.BookID] {
-			continue
-		}
+	for _, c := range active {
 		wg.Add(1)
 		go func(c store.EnrichCandidate) {
 			defer wg.Done()
@@ -92,8 +120,6 @@ func runEnrichLoop(ctx context.Context, st *store.Store, engine searchEngine,
 	}
 	wg.Wait()
 	close(done)
-	<-collectDone
-	return rep
 }
 
 // enrichOutcome 是一本书的处理结果（并发安全的回收单位）。
@@ -101,19 +127,6 @@ type enrichOutcome struct {
 	hit     bool
 	changes []store.EnrichChange
 	skipped []string
-}
-
-// collectOutcomes 把并发结果汇总进报告（唯一写 rep 的 goroutine）。
-func collectOutcomes(done <-chan enrichOutcome, rep *enrichReport) {
-	for out := range done {
-		if out.hit {
-			rep.HitBooks++
-		}
-		rep.Changes = append(rep.Changes, out.changes...)
-		for _, s := range out.skipped {
-			rep.Skipped[s]++
-		}
-	}
 }
 
 // loadResumeSet 读上次批次处理过的 book_id（--resume 时跳过它们）。
