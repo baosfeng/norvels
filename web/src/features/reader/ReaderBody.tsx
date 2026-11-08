@@ -31,6 +31,7 @@ export function ReaderBody({
   bookId,
   reducedMotion,
   pagedContent,
+  ttsActivePara,
 }: {
   isH5: boolean;
   swipeRef: (node: HTMLElement | null) => void;
@@ -82,6 +83,7 @@ export function ReaderBody({
           onJumpChapter={onJumpChapter}
           onShelf={onShelf}
           reducedMotion={reducedMotion}
+          ttsActivePara={ttsActivePara}
         />
       ) : (
         <ReaderStateArea

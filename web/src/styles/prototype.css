@@ -186,8 +186,8 @@ h3{font-size:var(--text-base);font-weight:600}
 .drawer-list a:hover{background:color-mix(in oklab,var(--r-fg),transparent 92%)}
 .drawer-list a.is-current{background:color-mix(in oklab,var(--r-fg),transparent 88%);font-weight:600}
 .drawer-list .num{font-size:11px;color:var(--r-muted);min-width:28px;text-align:right}
-.settings-panel{position:fixed;top:64px;right:20px;z-index:60;width:326px;max-height:min(78dvh,640px);overflow:auto;overscroll-behavior:contain;padding:16px;border:1px solid var(--r-border);border-radius:var(--radius);background:var(--r-raised);color:var(--r-fg);display:none;box-shadow:0 16px 40px rgba(0,0,0,.14)}
-.settings-panel.is-open{display:block}
+.reader-tts-bar,.settings-panel{position:fixed;top:64px;right:20px;z-index:60;width:326px;max-height:min(78dvh,640px);overflow:auto;overscroll-behavior:contain;padding:16px;border:1px solid var(--r-border);border-radius:var(--radius);background:var(--r-raised);color:var(--r-fg);display:none;box-shadow:0 16px 40px rgba(0,0,0,.14)}
+.reader-tts-bar.is-open,.settings-panel.is-open{display:block}
 .settings-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 8px;border-bottom:1px solid var(--r-border);font-size:13px}
 .settings-head .btn{min-height:32px;padding:4px 8px;color:var(--r-fg)}
 .settings-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:9px 0;border-bottom:1px solid var(--r-border);font-size:13px}

@@ -28,6 +28,8 @@ export function ReaderTopBar({
   onOpenDirectory,
   onToggleHelp,
   onToggleSettings,
+  ttsSpeaking,
+  onToggleTTS,
 }: {
   isH5: boolean;
   hidden: boolean;
@@ -52,6 +54,8 @@ export function ReaderTopBar({
   onOpenDirectory: () => void;
   onToggleHelp: () => void;
   onToggleSettings: () => void;
+  ttsSpeaking?: boolean;
+  onToggleTTS?: () => void;
 }) {
   // H5 收起态：aria-hidden 只对读屏生效，键盘仍能 Tab 进屏幕外的按钮。
   // 容器加 inert（把整棵子树移出焦点顺序），老浏览器不认时靠各按钮的 tabIndex=-1 兜底。
@@ -136,6 +140,16 @@ export function ReaderTopBar({
               搜索
             </button>
             {!searchEnabled ? <span className="inline-note">正文还没载入，稍后可以搜索</span> : null}
+            <button
+              className="btn"
+              type="button"
+              aria-pressed={ttsSpeaking}
+              aria-label="朗读本章"
+              disabled={!searchEnabled}
+              onClick={onToggleTTS}
+            >
+              {ttsSpeaking ? "停止朗读" : "朗读"}
+            </button>
             <button className="btn" type="button" onClick={onOpenDirectory} aria-expanded={drawerOpen}>
               目录
             </button>
