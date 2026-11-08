@@ -127,6 +127,10 @@ func (r *runState) saveBooks(ctx context.Context, oc parseOutcome, opt Options) 
 		if title == "" {
 			title = book.Title
 		}
+		// 内容过滤排在章节门槛之前：被过滤的书不必再问判定器，也不会进 SaveBook。
+		if r.skipContentFiltered(ctx, oc, book) {
+			continue
+		}
 		if len(book.Chapters) < minCh {
 			r.res.Skipped++
 			r.recordJobFile(ctx, oc.cand.source, oc.path, store.ImportFileStatusSkipped,
