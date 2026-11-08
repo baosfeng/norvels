@@ -47,7 +47,7 @@ norvels enrich --split-long-chapters [--apply] [--min-words 30000] [--target-wor
 norvels enrich --rollback <batchID> [--apply]
 ```
 
-- **默认 dry-run**：只打印「会改什么」，不写库；`--apply` 才落库。
+- **默认 dry-run**：只打印「会改什么」，不写库；`--apply` 才落库。`--fields` 同时约束候选、决策与写库——未选中的字段不判定、不写、不产生跳过原因。
 - `--plan`：只出待补清单与规模，不联网（秒级，给运维先看量）。
 - 每次 `--apply` 生成 batch id，写 `enrich_changes`（旧值/新值/来源/置信度/批次）。
 

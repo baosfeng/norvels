@@ -46,12 +46,27 @@ func newEnrichEngine(ctx context.Context, st *store.Store, o enrichOpts) (*crawl
 	return engine, nil
 }
 
-// runEnrichLoop 用 worker 池并发检索并逐本决策（写库在调用方，按批记录）。
-func runEnrichLoop(ctx context.Context, st *store.Store, engine *crawl.Engine,
-	cands []store.EnrichCandidate, o enrichOpts) enrichReport {
-	rep := enrichReport{Scanned: len(cands), Skipped: map[string]int{}}
+// searchEngine 是 enrich 循环需要的检索能力：*crawl.Engine 实现它，
+// 测试可以注入固定命中的假引擎（不联网也能验证决策与变更口径）。
+type searchEngine interface {
+	SearchBook(ctx context.Context, title string) (crawl.Result, error)
+	Stats() crawl.Stats
+}
+
+// enrichDecisionOptions 把运行参数映射成决策参数：--fields 在这里进入决策层，
+// 只有选中的字段会被判断，未选中的字段既不产生变更、也不产生跳过原因。
+func enrichDecisionOptions(o enrichOpts) enrich.Options {
 	opt := enrich.DefaultOptions()
 	opt.MinTitleSim = o.minTitleSim
+	opt.Fields = o.fields
+	return opt
+}
+
+// runEnrichLoop 用 worker 池并发检索并逐本决策（写库在调用方，按批记录）。
+func runEnrichLoop(ctx context.Context, st *store.Store, engine searchEngine,
+	cands []store.EnrichCandidate, o enrichOpts) enrichReport {
+	rep := enrichReport{Scanned: len(cands), Skipped: map[string]int{}}
+	opt := enrichDecisionOptions(o)
 	skip := loadResumeSet(ctx, st, o)
 	done := make(chan enrichOutcome, o.workers)
 	sem := make(chan struct{}, maxInt(o.workers, 1))
@@ -119,7 +134,7 @@ func loadResumeSet(ctx context.Context, st *store.Store, o enrichOpts) map[int64
 }
 
 // enrichOne 处理一本书：检索 → 决策 →（apply 时）写库。
-func enrichOne(ctx context.Context, st *store.Store, engine *crawl.Engine,
+func enrichOne(ctx context.Context, st *store.Store, engine searchEngine,
 	c store.EnrichCandidate, opt enrich.Options) enrichOutcome {
 	res, err := engine.SearchBook(ctx, c.Title)
 	if err != nil && !errors.Is(err, crawl.ErrNoSource) {

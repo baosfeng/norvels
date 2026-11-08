@@ -99,7 +99,7 @@ func TestRunEnrichPlanOnly(t *testing.T) {
 	defer st.Close()
 	seedCandidateBooks(t, st)
 	err := runEnrich(t.Context(), st, enrichOpts{
-		planOnly: true, fields: "author,intro,category", workers: 2, qps: 1,
+		planOnly: true, fieldsFlag: "author,intro,category", workers: 2, qps: 1,
 		maxSources: 1, timeout: time.Second, limit: 0, minTitleSim: 0.86,
 	})
 	if err != nil {
@@ -113,7 +113,7 @@ func TestRunEnrichOfflineCategory(t *testing.T) {
 	defer st.Close()
 	bookID := seedCandidateBooks(t, st)
 	err := runEnrich(t.Context(), st, enrichOpts{
-		apply: true, fields: "category", workers: 1, qps: 1, maxSources: 1,
+		apply: true, fieldsFlag: "category", workers: 1, qps: 1, maxSources: 1,
 		timeout: time.Second, minTitleSim: 0.86,
 	})
 	if err != nil {
