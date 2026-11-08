@@ -476,5 +476,3 @@ body.h5-sheet-open {
    **必须留在最后一条 @import**：它要盖住上面各表的悬停底色（navActive.ix.test.ts 守着这个位置）。 */
 
 @import "./ix-nav.css";
-
-/* PWA 浮动状态与安装提示 */

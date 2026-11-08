@@ -33,7 +33,6 @@ import { ReaderErrorBoundary, ReaderErrorPanel } from "./ReaderErrorBoundary";
 import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
 import { useReaderSwipe } from "./useReaderSwipe";
-import { useTTS } from "./useTTS";
 import { useReaderPaging } from "./useReaderPaging";
 import { pageModeFor } from "./readerPageMode";
 import { SURFACE_SELECTOR } from "./readerStreamLayout";
@@ -102,7 +101,6 @@ function ReaderScreen() {
   );
   const activeSegment = segments.find((segment) => segment.id === chapterId);
   const viewParagraphs = activeSegment?.paragraphs ?? [];
-  const tts = useTTS(viewParagraphs);
 
   const {
     query: searchQuery,
@@ -401,7 +399,7 @@ function ReaderScreen() {
         onOpenDirectory={toggleDirectory}
         onToggleHelp={toggleHelp}
         onToggleSettings={toggleSettings}
-        ttsSpeaking={tts.speaking}
+        ttsSpeaking={tts.playing}
         onToggleTTS={tts.toggle}
         onCloseHelp={() => setHelpOpen(false)}
         onCloseSearch={closeSearch}
