@@ -50,3 +50,36 @@ func TestHeadRunes(t *testing.T) {
 		t.Errorf("不足长度应原样返回，实际 %q", got)
 	}
 }
+
+// TestClassifySynonyms 覆盖新增通用题材同义词/别名（仅题材词，无真实书名作者）。
+func TestClassifySynonyms(t *testing.T) {
+	cases := []struct {
+		title string
+		l1    string
+	}{
+		{"cultivation handbook", "仙侠"},
+		{"xianxia archives", "仙侠"},
+		{"city patrol", "都市"},
+		{"urban legend", "都市"},
+		{"cyberpunk skyline", "科幻"},
+		{"science fiction tales", "科幻"},
+		{"wuxia chronicle", "武侠"},
+		{"mystery files", "悬疑灵异"},
+		{"military briefing", "军事"},
+		{"sports annual", "体育"},
+		{"fantasy kingdom", "奇幻"},
+		{"light novel club", "轻小说"},
+		{"game arena", "游戏"},
+		{"history primer", "历史"},
+		{"martial manual", "武侠"},
+		{"thriller night", "悬疑灵异"},
+	}
+	for _, c := range cases {
+		t.Run(c.title, func(t *testing.T) {
+			l1, l2, ok := Classify(c.title, "")
+			if !ok || l1 != c.l1 || l2 == "" {
+				t.Fatalf("标题 %q 应归 %s，实际 %q/%q ok=%v", c.title, c.l1, l1, l2, ok)
+			}
+		})
+	}
+}
