@@ -33,6 +33,17 @@ func toHalfWidth(r rune) rune {
 	return r
 }
 
+// TooShortForOnlineAuthor 判断书名是否短到不该用在线命中来补作者：
+// 按 NormalizeTitle 归一（已去空白与标点）后不超过 maxRunes 个 rune 即算过短。
+//
+// 为什么按长度判：两字泛化书名与站上任意同名书归一后完全相同，相似度恒为 1.00，
+// 多源投票也会一致，于是「高置信」地写成别人的作者。这类书名的区分度本身
+// 不足以证明是同一本书，只能在 author 这条路上放弃在线补全、留给人工。
+// 判据刻意只有长度这一个可解释维度，不做「像不像书名」的词表排除。
+func TooShortForOnlineAuthor(title string, maxRunes int) bool {
+	return len([]rune(NormalizeTitle(title))) <= maxRunes
+}
+
 // TitleSim 返回两个书名的相似度 0~1：归一后按「1 - 编辑距离/较长长度」计算。
 //
 // 归一后为空的一侧视为不相似（0）：空标题参与投票会把任意命中都算成匹配。
