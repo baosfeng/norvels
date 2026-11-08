@@ -54,6 +54,9 @@ type Options struct {
 	MinTitleSim   float64 // 命中书名与库内书名的相似度下限
 	MinIntroRunes int     // 简介最少字符数
 	MinConfidence float64 // 单字段置信度下限
+	// ShortTitleMaxRunes 是「书名过短、不补在线作者」的上限：书名归一后 rune 数不超过它时
+	// author 直接跳过（不影响简介与分类——它们不依赖书名唯一性）。默认 2，由 Options 调。
+	ShortTitleMaxRunes int
 	// Fields 限定只决策哪些字段（取值见 Field*）；nil/空表示三个字段全判。
 	// CLI 的 --fields 通过它进入决策层：未选中的字段既不产生变更，也不产生跳过原因。
 	Fields map[string]bool
@@ -61,7 +64,7 @@ type Options struct {
 
 // DefaultOptions 返回推荐阈值（与 docs/specs/2026-11-08-metadata-enrich-design.md §6 一致）。
 func DefaultOptions() Options {
-	return Options{MinTitleSim: 0.86, MinIntroRunes: 30, MinConfidence: 0.6}
+	return Options{MinTitleSim: 0.86, MinIntroRunes: 30, MinConfidence: 0.6, ShortTitleMaxRunes: 2}
 }
 
 func (o Options) withDefaults() Options {
@@ -74,6 +77,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.MinConfidence <= 0 {
 		o.MinConfidence = d.MinConfidence
+	}
+	if o.ShortTitleMaxRunes <= 0 {
+		o.ShortTitleMaxRunes = d.ShortTitleMaxRunes
 	}
 	return o
 }
@@ -137,9 +143,17 @@ func filterHits(title string, hits []Hit, o Options) []Hit {
 }
 
 // decideAuthor 只在「现值是占位名」时改：真实作者一旦有值就不覆盖。
+//
+// 书名过短时整条放弃：同名不代表同一本（见 TooShortForOnlineAuthor），
+// 高相似度 + 一致投票在这类书名上恰恰是最危险的组合。只跳过 author，
+// 不动库里的任何字段，也照常判简介与分类。
 func decideAuthor(s Subject, hits []Hit, o Options, d *Decision) *FieldValue {
 	if !IsPlaceholderAuthor(s.Author) {
 		d.Skipped = append(d.Skipped, "author:already_present")
+		return nil
+	}
+	if TooShortForOnlineAuthor(s.Title, o.ShortTitleMaxRunes) {
+		d.Skipped = append(d.Skipped, "author:title_too_short")
 		return nil
 	}
 	v, ok := vote(hits, func(h Hit) string {

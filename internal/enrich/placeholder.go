@@ -43,13 +43,35 @@ func PlaceholderAuthors() []string {
 // IsPlaceholderAuthor 判定一个作者名是否属于占位值。
 //
 // 判据是「归一后再查表」：语料里同一个占位名常有全角空格、首尾空白、大小写差异
-// （Unknown / unknown），这些不该被当成不同作者。
+// （Unknown / unknown），这些不该被当成不同作者。白名单之外再加一条形态判定：
+// 纯 ASCII 数字不是人名，见 isAllASCIIDigits。
 func IsPlaceholderAuthor(name string) bool {
 	n := NormalizeAuthor(name)
 	if n == "" {
 		return true
 	}
+	if isAllASCIIDigits(n) {
+		return true
+	}
 	return placeholderSet[strings.ToLower(n)]
+}
+
+// isAllASCIIDigits 判定一个已归一的作者名是否「全部由 ASCII 数字组成」。
+//
+// 为什么按形态判而不进白名单：纯数字不是一个具体名字，而是书源书籍 id 被当作者
+// 抽出来的产物，形态判定才能覆盖任意长度。为什么只认 ASCII 数字：含数字的
+// 真实笔名（字母+数字、汉字+数字）必须保留，所以只能判「全是数字」；全角数字
+// 不在判据内——语料里没有这种形态，宽口径会把「哪些 Unicode 算数字」也变成一条规则。
+func isAllASCIIDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // authorLabelPrefixes 是可机械剥离的作者标签前缀：标签词 + 冒号（全角 / 半角）。
