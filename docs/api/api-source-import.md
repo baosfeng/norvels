@@ -27,7 +27,7 @@ body：
     "name": "示例书源",
     "status": "ok",
     "degradedFields": [],
-    "unsupportedFields": ["header"],
+    "unsupportedFields": [],
     "reason": ""
   }]
 }
@@ -72,7 +72,7 @@ body：
 导入时把 Legado 简写（`tag.`/`class.`/`id.` 前缀、`@` 链、`.N`/`!N` 索引）翻译成标准 CSS 再落库；`@css:`/`@xpath:`/`@json:` 前缀、`@text`/`@ownText`/`@html`/属性后缀与 `##正则##替换` 原样保留。转换不了的规则保持原文、字段进 `degradedFields`，状态降为 `partial`（整源仍可入库）。
 
 `degradedFields` 是「降级」的字段（形如 `ruleSearch.bookList`、`searchUrl`）：因 `@js` 不可执行，或 Legado 简写无法安全转换（此时规则保留原文）；
-`unsupportedFields` 是「保存但不会生效」的字段（`header`/`loginUrl`/`cookie`/`webJs`）。
+`unsupportedFields` 是「保存但不会生效」的字段（`loginUrl`/`cookie`/`webJs`）；`header` 已生效（随请求发送，CR/LF 值与 Host/Content-Length 等键在校验时拒绝）。
 
 ## 错误与合并语义
 
@@ -102,7 +102,7 @@ body：
 }
 ```
 
-→ `results[0] = { "id": "src-…", "status": "ok", "unsupportedFields": ["header"] }`。
+→ `results[0] = { "id": "src-…", "status": "ok", "unsupportedFields": [] }`（`header` 会随请求发送）。
 ## 支持的导入入口形态
 
 `internal/ruleimport` 把用户给的「任何分享站入口」统一取回成一段 JSON（上限 1 MiB），

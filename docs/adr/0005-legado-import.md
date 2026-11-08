@@ -13,7 +13,7 @@ Legado 书源是「一份 JSON 描述一个站点」：唯一键 `bookSourceUrl`
 |---|---|
 | 音频/图片/文件源 | 规则块语义完全不同，抓取必失败，用户看不出为什么 |
 | `@js:` 规则 | 没有 JS 引擎，运行期静默返回空串 |
-| `header` / `loginUrl` / `cookie` / `webJs` | 被存下来但运行期忽略，用户以为登录态已生效 |
+| `loginUrl` / `cookie` / `webJs` | 被存下来但运行期忽略，用户以为登录态已生效（`header` 已支持静态键值） |
 
 直接存等于把「不支持」变成「看起来支持」——这是导入功能最大的坑。
 
@@ -29,8 +29,9 @@ Legado 书源是「一份 JSON 描述一个站点」：唯一键 `bookSourceUrl`
 5. **@js 降级**：用 `ruleexec.CompileFields` 编译五个规则块，按 hard/soft 字段给出
    `unusable` / `partial`，`degradedFields` 逐字段回显；硬字段是
    `bookList` / `chapterList` / `content` / `searchUrl` / `exploreUrl`。
-6. **不支持字段可见**：`header` / `loginUrl` / `cookie` / `webJs` 非空时写入
-   `online.unsupportedFields`，前端提示「这些不会生效」；其中 `header` 仍然保存（将来抓取要用）。
+6. **header 生效、其余不支持字段可见**：`header` 经 `SanitizeHeaders` 清洗后随请求发送
+   （CR/LF 值与 Host/Content-Length 等键拒绝，丢弃项进 `reason`）；`loginUrl` / `cookie` / `webJs`
+   非空时写入 `online.unsupportedFields`，前端提示「这些不会生效」。
 
 ## 2.1 通用导入识别（范围微调）
 
@@ -57,7 +58,8 @@ raw 字节、不发网络请求；净化与 TXT 规则的落库是下一个切�
 | `searchUrl` / `exploreUrl` | `online.searchUrl` / `online.exploreUrl` | 原样保留，含 `@js` 记 unusable |
 | `bookUrlPattern` | `online.bookUrlPattern` | 原样保留，本期不校验不执行 |
 | `ruleSearch/Explore/BookInfo/Toc/Content` | `online.rule*` | Legado 原生简写先翻译成标准 CSS 再落库；`@css:`/`@xpath:`/`@json:` 前缀与 `##` 正则段原样保留，转换不了的保留原文并记降级 |
-| `header` / `loginUrl` / `cookie` / `webJs` | `online.header` / `unsupportedFields` | 保存但不执行 |
+| `header` | `online.header` | 静态请求头，清洗后随请求发送 |
+| `loginUrl` / `cookie` / `webJs` | `unsupportedFields` | 保存但不执行 |
 
 ## 4. 应用语义
 

@@ -117,8 +117,11 @@ func requireMergedStored(t *testing.T, e *testEnv) {
 	if stored[1].ID != booksource.SourceID("https://example.invalid/a") || stored[1].Online == nil {
 		t.Errorf("导入结果不对: %+v", stored[1])
 	}
-	if len(stored[1].Online.UnsupportedFields) == 0 || stored[1].Online.UnsupportedFields[0] != "header" {
-		t.Errorf("unsupportedFields 未写入: %+v", stored[1].Online.UnsupportedFields)
+	if got := stored[1].Online.Header["User-Agent"]; got != "示例" {
+		t.Errorf("header 应落库并在请求时生效: %+v", stored[1].Online.Header)
+	}
+	if len(stored[1].Online.UnsupportedFields) != 0 {
+		t.Errorf("header 已生效，不应再进 unsupportedFields: %+v", stored[1].Online.UnsupportedFields)
 	}
 }
 

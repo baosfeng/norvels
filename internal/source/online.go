@@ -75,10 +75,15 @@ func validateOnlineExtras(o *Online) *Error {
 	return nil
 }
 
-// validateOnlineHeader 校验 header（只保存不使用）与 unsupportedFields 列表。
+// validateOnlineHeader 校验 header（随请求发送，必须安全）与 unsupportedFields 列表。
 func validateOnlineHeader(o *Online) *Error {
 	if err := validateRuleBlock("online.header", o.Header); err != nil {
 		return err
+	}
+	for _, name := range sortedHeaderKeys(o.Header) {
+		if reason := UnsafeHeaderReason(name, o.Header[name]); reason != "" {
+			return paramErr("online.header 的 %q 不可用：%s", name, reason)
+		}
 	}
 	if len(o.UnsupportedFields) > MaxOnlineRuleKeys {
 		return paramErr("online.unsupportedFields 最多 %d 项（收到 %d 项）",
@@ -93,6 +98,16 @@ func validateOnlineHeader(o *Online) *Error {
 		}
 	}
 	return nil
+}
+
+// sortedHeaderKeys 按 key 排序，保证校验错误消息稳定。
+func sortedHeaderKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // validateOnlineURL 校验书源地址的写法（只保证能区分 http/https，不做 DNS 解析）。
