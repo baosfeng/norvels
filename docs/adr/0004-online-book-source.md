@@ -15,8 +15,7 @@ norvels 的产品前提是「单二进制 + distroless + 不联网」，但用�
 | NAS 常驻、865 文件级真实库 | 抓取必须限速、限并发，不能把导入任务挤死 |
 | 已入库的书不可被在线抓取污染 | 在线结果只允许「新建 / 追更（只追加）」，不覆盖已有章节 |
 
-**与「不联网」的关系**：默认 `off`；开启后只允许用户显式配置的书源域名出网，
-不存在后台常驻抓取，也不做书源市场自动更新。
+**与「不联网」的关系**：默认 `off`；开启后只允许用户显式配置的书源域名出网，不存在后台常驻抓取，也不做书源市场自动更新。
 
 ## 2. 书源模型：与本地规则包共用 settings 里的 `source_profiles`
 
@@ -33,7 +32,7 @@ norvels 的产品前提是「单二进制 + distroless + 不联网」，但用�
 | `ruleBookInfo` | `online.rules.bookInfo` | 详情字段 + `tocUrl` |
 | `ruleToc` | `online.rules.toc` | chapterList/chapterName/chapterUrl |
 | `ruleContent` | `online.rules.content` | 正文 + `nextContentUrl`（分页正文） |
-| `header` / `loginUrl` / `cookie` | **本期不支持** | 需要登录态的站点不支持，写入时 `unsupported_fields` 提示 |
+| `header` / `loginUrl` / `cookie` / `webJs` | `online.header` / `unsupportedFields` | `header` 静态键值随请求发送（CR/LF 与 Host/Content-Length 等键拒绝）；其余保存但不执行 |
 
 ## 3. 抓取执行器安全边界
 
@@ -47,7 +46,8 @@ norvels 的产品前提是「单二进制 + distroless + 不联网」，但用�
 | 重定向 | `CheckRedirect` 对每一跳重跑上述校验；最多 5 跳；禁 https→http 降级 |
 | 代理 | `Transport.Proxy = nil`，禁止走环境代理，否则校验被绕过 |
 | 限额 | 单响应 8 MB（`io.LimitReader` 截断）、连接 5s / 首字节 10s / 总 30s、单源 QPS ≤ 1、全局并发 ≤ 4 |
-| 编码 | 本包只透传 `Headers`/`Body`；调用方按「响应头 charset → 正文嗅探」用 `parser.DecodeBytes` 解码（见 §5） |
+| 请求头 | 只接受静态 `header`；值里的 CR/LF 与控制字符、Host/Content-Length/Transfer-Encoding 等键拒绝；header 不参与目标地址判定，SSRF 三道边界照旧 |
+| 编码 | 本包只透传 `Headers`/`Body`；crawl 按「URL 选项 charset → `decode.forceEncoding` → `<meta charset>` → UTF-8」解码（见 §5） |
 | 失败语义 | 单章最多重试 2 次；整本失败只记 `import_errors`，**不回滚已入库章节**；分页正文超上限记 warning 并保留已抓部分 |
 | 隐私 | 书源 JSON 与抓到的正文都不进仓库；日志只记 host+path，不落 URL query（可能含 token） |
 
@@ -102,7 +102,7 @@ norvels 的产品前提是「单二进制 + distroless + 不联网」，但用�
 ## 7. 本期不做
 
 - **JS 规则**（`@js:`）——降级 + 可见 warning，不静默失败；
-- 登录态/`loginUrl`/Cookie、请求头模板（`header` 里的动态签名）；
+- 登录态/`loginUrl`/Cookie、请求头动态签名（`header` 只支持静态键值，不做模板求值）；
 - 图片站/漫画源（`bookSourceType: 1`）、视频源；
 - 书源市场与自动更新订阅（导入仍由用户显式上传 JSON）；
 - 代理池与自定义 DNS。

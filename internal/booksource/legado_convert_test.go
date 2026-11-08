@@ -60,6 +60,38 @@ func TestParseLegadoConvertsShorthand(t *testing.T) {
 	requireRule(t, "ruleContent.content", online.RuleContent["content"], "#content p@html")
 }
 
+// TestParseLegadoSanitizesHeader 请求头里的 CR/LF 值与 Host 等键在导入时被丢弃，
+// 安全请求头原样保留，丢弃项在结果里可见。
+func TestParseLegadoSanitizesHeader(t *testing.T) {
+	raw := legadoSourceJSON(t, map[string]any{
+		"ruleSearch": map[string]string{"bookList": ".item"},
+		"header": map[string]string{
+			"Referer":        "http://ref.example/",
+			"User-Agent":     "示例UA",
+			"Host":           "evil.example",
+			"Content-Length": "999",
+			"X-Bad":          "a\r\nInjected: 1",
+		},
+	})
+	profiles, issues, err := ParseLegado(raw)
+	if err != nil {
+		t.Fatalf("ParseLegado: %v", err)
+	}
+	if len(profiles) != 1 || len(issues) != 1 {
+		t.Fatalf("profiles/issues = %d/%d，期望 1/1", len(profiles), len(issues))
+	}
+	header := profiles[0].Online.Header
+	if len(header) != 2 || header["Referer"] != "http://ref.example/" || header["User-Agent"] != "示例UA" {
+		t.Errorf("安全请求头应保留、不安全项应丢弃，实际 %v", header)
+	}
+	if issues[0].Status != StatusPartial || !strings.Contains(issues[0].Reason, "已丢弃") {
+		t.Errorf("status/reason = %q/%q，期望 partial 且说明丢弃", issues[0].Status, issues[0].Reason)
+	}
+	if len(issues[0].UnsupportedFields) != 0 {
+		t.Errorf("header 已生效，不应再进 unsupportedFields：%v", issues[0].UnsupportedFields)
+	}
+}
+
 // requireRules 逐个字段断言转换结果。
 func requireRules(t *testing.T, block string, got map[string]string, want map[string]string) {
 	t.Helper()

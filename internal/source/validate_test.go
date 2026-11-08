@@ -126,6 +126,18 @@ var rejectCases = []struct {
 			Header:        map[string]string{strings.Repeat("a", MaxOnlineKeyRunes+1): "v"},
 		}
 	}, CodeParam, "online.header"},
+	{"header 值含 CR/LF", func(p *Profile) {
+		p.Kind, p.Online = KindOnline, &Online{
+			BookSourceURL: "https://example.invalid/x",
+			Header:        map[string]string{"Referer": "a\r\nInjected: 1"},
+		}
+	}, CodeParam, "控制字符"},
+	{"header 禁用 Host 键", func(p *Profile) {
+		p.Kind, p.Online = KindOnline, &Online{
+			BookSourceURL: "https://example.invalid/x",
+			Header:        map[string]string{"Host": "evil.example"},
+		}
+	}, CodeParam, "Host"},
 	{"online 规则块超限", func(p *Profile) {
 		rules := make(map[string]string, MaxOnlineRuleKeys+1)
 		for i := 0; i <= MaxOnlineRuleKeys; i++ {

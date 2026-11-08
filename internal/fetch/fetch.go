@@ -58,6 +58,9 @@ type Options struct {
 	MaxConcurrent int
 	// UserAgent 是请求头 UA（默认 norvels-fetch）。
 	UserAgent string
+	// Headers 是每个请求附带的静态请求头（来自书源配置）。
+	// 不安全键值在 New 时丢弃，见 headers.go；Host/Content-Length 等键不接受。
+	Headers map[string]string
 	// AllowedPorts 是允许访问的端口（默认 80、443）；为空时回落默认值。
 	AllowedPorts []int
 	// Resolver 是 DNS 解析器（默认 net.DefaultResolver）。
@@ -99,6 +102,7 @@ type Client struct {
 	limiter  *limiter
 	sem      chan struct{}
 	hc       *http.Client
+	headers  http.Header // 只含安全项的静态请求头（New 时清洗一次）
 }
 
 // New 按 opts 构造抓取器；opts 的零值字段用默认值补齐。
@@ -109,6 +113,7 @@ func New(opts Options) *Client {
 		resolver: opt.Resolver,
 		limiter:  newLimiter(opt.QPS),
 		sem:      make(chan struct{}, opt.MaxConcurrent),
+		headers:  safeHeaders(opt.Headers),
 	}
 	if c.resolver == nil {
 		c.resolver = net.DefaultResolver
@@ -143,7 +148,7 @@ func (c *Client) Get(ctx context.Context, rawURL string) (*Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: 构造请求失败: %v", ErrBlocked, err)
 	}
-	req.Header.Set("User-Agent", c.opt.UserAgent)
+	c.applyHeaders(req)
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -166,6 +171,14 @@ func (c *Client) Get(ctx context.Context, rawURL string) (*Response, error) {
 		return out, fmt.Errorf("%w: 状态码 %d", ErrStatus, resp.StatusCode)
 	}
 	return out, nil
+}
+
+// applyHeaders 给请求套上 UA 与书源配置的静态请求头（已清洗，见 headers.go）。
+func (c *Client) applyHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", c.opt.UserAgent)
+	for name, values := range c.headers {
+		req.Header[name] = append([]string(nil), values...)
+	}
 }
 
 // readLimited 读取至多 max 字节；多读 1 字节用于判断是否截断。

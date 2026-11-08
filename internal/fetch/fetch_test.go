@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -212,5 +213,63 @@ func TestRedirectTooManyHops(t *testing.T) {
 	_, err := c.Get(context.Background(), publicURL(port))
 	if !errors.Is(err, ErrBlocked) {
 		t.Fatalf("超过最大跳数应被拒，实际 %v", err)
+	}
+}
+
+// TestCustomHeaders 书源请求头生效：安全项发送，CR/LF 与 Host/Content-Length 被丢弃。
+func TestCustomHeaders(t *testing.T) {
+	var got http.Header
+	var host string
+	srv := newLocalServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		host = r.Host
+		_, _ = w.Write([]byte("ok"))
+	}))
+	port, p := portOf(t, srv)
+	c := New(Options{QPS: -1, AllowedPorts: []int{p},
+		DialContext: dialerFor(t, map[string]string{port: srv.Listener.Addr().String()}),
+		Headers: map[string]string{
+			"Referer":        "http://ref.example/",
+			"Cookie":         "session=abc",
+			"Host":           "evil.example",
+			"Content-Length": "999",
+			"X-Bad":          "v\r\nInjected: 1",
+		},
+	})
+	if _, err := c.Get(context.Background(), publicURL(port)); err != nil {
+		t.Fatalf("请求失败: %v", err)
+	}
+	if got.Get("Referer") != "http://ref.example/" || got.Get("Cookie") != "session=abc" {
+		t.Errorf("安全请求头未生效：Referer=%q Cookie=%q", got.Get("Referer"), got.Get("Cookie"))
+	}
+	if got.Get("Injected") != "" {
+		t.Error("CR/LF 注入应被丢弃")
+	}
+	if !strings.HasPrefix(host, "198.51.100.7:") {
+		t.Errorf("Host 不应被自定义头改写，实际 %q", host)
+	}
+}
+
+// TestCustomHeadersDoNotBypassSSRF 带自定义 header 也不能访问内网目标：
+// Host 类键被丢弃，SSRF 的三道边界照常生效。
+func TestCustomHeadersDoNotBypassSSRF(t *testing.T) {
+	srv := newLocalServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("内网目标不应被访问")
+	}))
+	port, p := portOf(t, srv)
+	headers := map[string]string{
+		"Host":             "169.254.169.254",
+		"X-Forwarded-Host": "169.254.169.254",
+		"Referer":          "http://evil.invalid/",
+	}
+	direct := New(Options{QPS: -1, AllowedPorts: []int{p}, Headers: headers})
+	if _, err := direct.Get(context.Background(), "http://127.0.0.1:"+port+"/"); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("带 header 访问回环地址应被拒，实际 %v", err)
+	}
+	dns := New(Options{QPS: -1, Headers: headers, Resolver: fakeResolver{addrs: map[string][]net.IP{
+		"private.invalid": {net.ParseIP("10.0.0.1")},
+	}}})
+	if _, err := dns.Get(context.Background(), "http://private.invalid/"); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("带 header 访问解析到私网的域名应被拒，实际 %v", err)
 	}
 }

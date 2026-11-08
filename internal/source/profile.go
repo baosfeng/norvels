@@ -145,9 +145,10 @@ type Online struct {
 	RuleBookInfo   map[string]string `json:"ruleBookInfo,omitempty"`
 	RuleToc        map[string]string `json:"ruleToc,omitempty"`
 	RuleContent    map[string]string `json:"ruleContent,omitempty"`
-	// Header 是请求头模板：只保存不使用（运行期忽略），导入时记进 UnsupportedFields。
+	// Header 是随搜索请求发送的静态请求头（UA / Referer 等）。
+	// 写入前经 SanitizeHeaders：CR/LF 值、Host/Content-Length 等键会被拒绝。
 	Header map[string]string `json:"header,omitempty"`
-	// UnsupportedFields 是「保存但不会生效」的字段名（header/loginUrl/cookie/webJs），
+	// UnsupportedFields 是「保存但不会生效」的字段名（loginUrl/cookie/webJs），
 	// 由导入适配器写入，前端据此提示用户。
 	UnsupportedFields []string `json:"unsupportedFields,omitempty"`
 }

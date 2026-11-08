@@ -221,6 +221,10 @@ func convertBookSource(raw json.RawMessage, index int) (*source.Profile, ImportI
 			ls.BookSourceType)
 		return nil, issue
 	}
+	// 请求头来自外部配置：先清洗（CR/LF 值、Host/Content-Length 等键会被丢弃），
+	// 再进入编译与落库；被丢弃的键在结果里可见。
+	cleanHeader, rejectedHeaders := source.SanitizeHeaders(ls.Header)
+	ls.Header = cleanHeader
 	issue.UnsupportedFields = unsupportedFields(ls)
 	// 先把 Legado 简写翻译成标准 CSS，再编译：status 反映的是真正会落库、会执行的规则。
 	convFields, convReasons := convertLegadoRules(&ls)
@@ -235,6 +239,13 @@ func convertBookSource(raw json.RawMessage, index int) (*source.Profile, ImportI
 		}
 		issue.Reason = joinReason(reason, "部分规则含无法转换的 Legado 简写，已保留原文："+
 			strings.Join(convReasons, "、"))
+	}
+	if len(rejectedHeaders) > 0 {
+		if issue.Status == StatusOK {
+			issue.Status = StatusPartial
+		}
+		issue.Reason = joinReason(issue.Reason, "部分请求头不安全已丢弃："+
+			strings.Join(rejectedHeaders, "、"))
 	}
 	if !Applicable(issue.Status) {
 		// unusable（@js 硬字段）不产出可落库的规则包：抓取必失败，apply 时跳过。
@@ -355,12 +366,9 @@ func statusReason(status string) string {
 	return ""
 }
 
-// unsupportedFields 收集「保存但不会生效」的字段名。
+// unsupportedFields 收集「保存但不会生效」的字段名（header 已生效，不再列入）。
 func unsupportedFields(ls legadoSource) []string {
-	out := make([]string, 0, 4)
-	if len(ls.Header) > 0 {
-		out = append(out, "header")
-	}
+	out := make([]string, 0, 3)
 	if strings.TrimSpace(ls.LoginURL) != "" {
 		out = append(out, "loginUrl")
 	}

@@ -129,6 +129,7 @@ func newSourceState(p source.Profile, o Options) (*sourceState, error) {
 	opt.TotalTimeout = o.Timeout
 	opt.UserAgent = o.UserAgent
 	opt.DialContext = o.DialContext
+	opt.Headers = p.Online.Header
 	if len(o.AllowedPorts) > 0 {
 		opt.AllowedPorts = o.AllowedPorts
 	}

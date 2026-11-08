@@ -54,7 +54,7 @@ func requireLegadoIssue(t *testing.T, issue ImportIssue) {
 	if issue.Status != StatusOK || issue.Reason != "" {
 		t.Errorf("status/reason = %q/%q，期望 ok/空", issue.Status, issue.Reason)
 	}
-	if want := []string{"header", "loginUrl", "cookie", "webJs"}; !equalStrings(issue.UnsupportedFields, want) {
+	if want := []string{"loginUrl", "cookie", "webJs"}; !equalStrings(issue.UnsupportedFields, want) {
 		t.Errorf("unsupportedFields = %v，期望 %v", issue.UnsupportedFields, want)
 	}
 }
@@ -77,8 +77,8 @@ func requireLegadoOnline(t *testing.T, p source.Profile) {
 	if p.Online.BookURLPattern != "/book/\\d+" {
 		t.Errorf("bookUrlPattern = %q", p.Online.BookURLPattern)
 	}
-	if len(p.Online.UnsupportedFields) != 4 {
-		t.Errorf("online.unsupportedFields = %v，期望 4 项", p.Online.UnsupportedFields)
+	if len(p.Online.UnsupportedFields) != 3 {
+		t.Errorf("online.unsupportedFields = %v，期望 3 项（header 已生效）", p.Online.UnsupportedFields)
 	}
 }
 
@@ -257,7 +257,7 @@ func TestParseLegadoBadRaw(t *testing.T) {
 func TestImportIssueJSON(t *testing.T) {
 	raw, err := json.Marshal(ImportIssue{
 		Index: 0, ID: "src-00000000", Name: "示例", Status: StatusPartial,
-		DegradedFields: []string{"ruleToc.chapterList"}, UnsupportedFields: []string{"header"}, Reason: "示例",
+		DegradedFields: []string{"ruleToc.chapterList"}, UnsupportedFields: []string{"cookie"}, Reason: "示例",
 	})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
