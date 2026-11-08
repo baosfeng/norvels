@@ -39,6 +39,10 @@ const usage = `norvels — 本地中文小说库
   norvels backfill-fingerprints [--db ...] [--batch N]
   norvels backfill-quality [--db ...] [--batch N]
   norvels refresh-metrics [--db ...]
+  norvels enrich [--db ...] [--apply] [--plan] [--fields author,intro,category]
+                 [--workers 4] [--qps 1] [--max-sources 3] [--budget 30m] [--limit N]
+  norvels enrich --split-long-chapters [--apply] [--min-words 30000] [--target-words 8000]
+  norvels enrich --rollback <batchID> [--apply]
   norvels migrate [--db ...] [--dry-run] [--to N]
   norvels version
 
@@ -63,6 +67,13 @@ backfill-quality 给存量书补算质量分（升级到 0020 后跑一次）：
   0020 只加列、不回填历史数据，而版本择优要拿旧版本的质量分跟新版本比；
   已有质量分的书整本跳过，中断后重跑从断点继续。正文全空的书跳过并计数。
   噪声率按残留计（库里正文已清洗过，噪声行在入库时就丢了），口径见 docs/architecture.md。
+
+enrich 按在线书源补元数据（作者 / 简介 / 分类），并把超长章节切分：
+  --plan       只列待补清单与规模，不联网、不写库
+  默认 dry-run：不加 --apply 只打印「会改什么」，绝不写库
+  --apply      真写库，并生成一个可 --rollback 的批次号
+  --split-long-chapters  对 3 万字以上的章按段落边界切开（只改章节偏移，不重压正文）
+  没有在线书源时仍可用本地词表离线补分类；限流每源 QPS 1、并发 4，预算打满即收尾。
 
 优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:
   NORVELS_ADDR         serve 监听地址（默认 :8080）
@@ -106,6 +117,7 @@ var commands = map[string]func([]string) error{
 	"backfill-fingerprints": cmdBackfillFingerprints,
 	"backfill-quality":      cmdBackfillQuality,
 	"refresh-metrics":       cmdRefreshMetrics,
+	"enrich":                cmdEnrich,
 	"migrate":               cmdMigrate,
 	"version":               cmdVersion,
 	"-v":                    cmdVersion,

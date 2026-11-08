@@ -11,6 +11,7 @@
 - **智能切章**：识别「第X章/节/回/卷/部」「数字行」「Chapter N」「序章/楔子/番外」，支持卷/部嵌套、无标记短篇兜底；单文件多书合集按章号重置自动拆成多本。
 - **幂等导入**：按文件 SHA-256 去重，重复导入自动跳过；支持 `--force`、`--update`（追更只追加新章）、`--dry-run`、`--workers`、`--min-chapters`。
 - **AI 选书（可选）**：`--ai` 让外部模型逐本判「值不值得入库」（规则先筛：章节门槛、判重、质量分；判不准的按不入库处理）。判定口径与降级见 [AI 选书设计](docs/specs/2026-11-01-ai-curation-design.md)。
+- **元数据补全（可选）**：`norvels enrich` 按 Legado 书源在线查书名→作者/简介/分类，多源投票 + 相似度阈值 + 默认 dry-run，写库走变更日志可整批回滚；没有书源时也能靠本地词表离线补分类。见 [设计](docs/specs/2026-11-08-metadata-enrich-design.md)。
 - **书名/作者检索**：`LIKE` 子串匹配，毫秒级返回；章节标题与正文都不参与找书，不建全文索引（见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)）。
 - **封面与元数据可编辑**：有封面的书在书架与详情页显示真实封面；书名/作者/简介/标签/系列可在详情页直接改。
 - **零运行时依赖**：前端构建产物 `go:embed` 进二进制，容器里只有两个静态可执行文件。
@@ -177,6 +178,9 @@ docker run --rm --entrypoint /norvels \
 | `make fmt` | gofmt |
 | `make docker` | 构建容器镜像 |
 | `scripts/import.sh --dir <目录>` | 批量导入（本地二进制模式） |
+| `scripts/enrich.sh -- --plan` | 元数据补全：列待补清单（占位作者 / 缺简介 / 未分类），不联网不写库 |
+| `scripts/enrich.sh -- --limit 50 --apply` | 按在线书源补元数据（默认 dry-run；每次 apply 生成可回滚 batch） |
+| `scripts/enrich.sh -- --split-long-chapters` | 超长章节按段落边界切分（复用 `store.SplitChapter`，不重压正文） |
 | `scripts/backup.sh --keep 7` | 备份数据库并保留最近 7 份 |
 | `make bench-capacity` | 容量压测（500 本 x 500 章合成库，不碰生产库） |
 | `./bin/norvels version` | 版本、commit、构建时间 |
