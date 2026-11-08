@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -192,4 +193,140 @@ func TestRedirectChecks(t *testing.T) {
 			t.Fatalf("期望 ErrBlocked，实际 %v", err)
 		}
 	})
+}
+
+// validateHostOf 让「解析结果 → 主机级判定」这条路径可单独断言，不建连、不出网。
+func validateHostOf(t *testing.T, host string, ips []net.IP) error {
+	t.Helper()
+	c := New(Options{QPS: -1, Resolver: fakeResolver{addrs: map[string][]net.IP{host: ips}}})
+	return c.validateHost(context.Background(), mustURL(t, "http://"+host+"/"))
+}
+
+// mustIPs 把字符串列表转成 net.IP 列表，顺带校验测试数据本身合法。
+func mustIPs(t *testing.T, raws ...string) []net.IP {
+	t.Helper()
+	out := make([]net.IP, 0, len(raws))
+	for _, raw := range raws {
+		ip := net.ParseIP(raw)
+		if ip == nil {
+			t.Fatalf("测试数据 %q 不是合法 IP", raw)
+		}
+		out = append(out, ip)
+	}
+	return out
+}
+
+// TestUnspecifiedAddressSkipped 是本次修复的主场景：DNS 返回「未指定地址 + 公网地址」
+// 时，未指定地址只是噪声，跳过它之后其余地址全在公网 → 放行。
+func TestUnspecifiedAddressSkipped(t *testing.T) {
+	cases := []struct {
+		name string
+		ips  []string
+	}{
+		{"IPv6 未指定 + 公网 IPv4", []string{"::", "198.51.100.7"}},
+		{"IPv6 未指定 + 非黑名单 IPv6", []string{"::", "2001:db8::7"}}, // 2001:db8::/32 为文档段，合成用例
+		{"IPv4 未指定 + 公网 IPv4", []string{"0.0.0.0", "198.51.100.7"}},
+		{"IPv4 映射未指定 + 公网 IPv4", []string{"::ffff:0.0.0.0", "198.51.100.7"}},
+		{"未指定在前或在后都不影响", []string{"198.51.100.7", "::"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateHostOf(t, "public.invalid", mustIPs(t, tc.ips...)); err != nil {
+				t.Fatalf("未指定地址应被跳过，期望放行，实际 %v", err)
+			}
+		})
+	}
+}
+
+// TestUnspecifiedSkippedButPrivateStillBlocked 锁定「没有放松」：未指定地址跳过后，
+// 其余地址里的真内网仍是「任一命中即整机拒绝」，顺序不影响结论。
+func TestUnspecifiedSkippedButPrivateStillBlocked(t *testing.T) {
+	cases := []struct {
+		name string
+		ips  []string
+	}{
+		{"未指定 + 回环", []string{"::", "127.0.0.1"}},
+		{"回环 + 未指定（顺序无关）", []string{"127.0.0.1", "::"}},
+		{"未指定 + 私网 10/8", []string{"::", "10.0.0.9"}},
+		{"未指定 + 云元数据", []string{"0.0.0.0", "169.254.169.254"}},
+		{"未指定 + IPv6 唯一本地", []string{"::", "fc00::9"}},
+		{"公网 + 内网多地址（DNS rebinding 核心语义）", []string{"198.51.100.7", "10.0.0.9"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateHostOf(t, "mixed.invalid", mustIPs(t, tc.ips...))
+			if !errors.Is(err, ErrBlocked) {
+				t.Fatalf("期望 ErrBlocked，实际 %v", err)
+			}
+			if !strings.Contains(err.Error(), "内网/保留段") {
+				t.Fatalf("应报命中内网，实际 %v", err)
+			}
+		})
+	}
+}
+
+// TestOnlyUnspecifiedRejected 跳过后一个可用地址都不剩：仍然拒绝，但文案是
+// 「没有可用地址」而不是「内网」——探活要能分辨这两种失败。
+func TestOnlyUnspecifiedRejected(t *testing.T) {
+	for _, raw := range []string{"::", "0.0.0.0", "::ffff:0.0.0.0"} {
+		t.Run(raw, func(t *testing.T) {
+			err := validateHostOf(t, "noise.invalid", mustIPs(t, raw))
+			if !errors.Is(err, ErrBlocked) {
+				t.Fatalf("期望 ErrBlocked，实际 %v", err)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "没有可用地址") {
+				t.Fatalf("应报「没有可用地址」，实际 %v", err)
+			}
+			if strings.Contains(msg, "内网/保留段") {
+				t.Fatalf("未指定地址不应被描述为内网，实际 %v", err)
+			}
+		})
+	}
+}
+
+// TestControlStillBlocksUnspecified 锁定放宽的边界：跳过只发生在主机名解析层，
+// 真正建连的 socket 地址仍由 control 拒绝未指定地址（Linux 上 connect 0.0.0.0
+// 等价于连本机，放过去就是 SSRF）。
+func TestControlStillBlocksUnspecified(t *testing.T) {
+	c := New(Options{QPS: -1})
+	for _, addr := range []string{"0.0.0.0:80", "[::]:80", "[::ffff:0.0.0.0]:80"} {
+		if err := c.control("tcp", addr, nil); !errors.Is(err, ErrBlocked) {
+			t.Fatalf("control 应拒绝未指定地址 %s，实际 %v", addr, err)
+		}
+	}
+}
+
+// TestGetSucceedsWithUnspecifiedNoise 是线上探活场景的端到端复现：
+// 域名同时解析出 :: 与公网 IPv4 时，Get 必须真正发得出去（修复前第一步就判死）。
+// 连接走注入的 dialer 指向本地测试服务，不出网。
+func TestGetSucceedsWithUnspecifiedNoise(t *testing.T) {
+	srv := newLocalServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	port, p := portOf(t, srv)
+	c := New(Options{QPS: -1, AllowedPorts: []int{p},
+		Resolver:    fakeResolver{addrs: map[string][]net.IP{"mixed.invalid": mustIPs(t, "::", "198.51.100.7")}},
+		DialContext: dialerFor(t, map[string]string{port: srv.Listener.Addr().String()}),
+	})
+	resp, err := c.Get(context.Background(), "http://mixed.invalid:"+port+"/")
+	if err != nil {
+		t.Fatalf(":: 只是解析噪声，不应阻断请求，实际 %v", err)
+	}
+	if string(resp.Body) != "ok" {
+		t.Fatalf("响应体 = %q", resp.Body)
+	}
+}
+
+// TestOnlyUnspecifiedRejectedFromLiteralHost 同一条判定对 URL 里的 IP 字面量也成立
+// （http://[::]/ 不经 DNS，走的是 validateHost 的字面量分支）。
+func TestOnlyUnspecifiedRejectedFromLiteralHost(t *testing.T) {
+	c := New(Options{QPS: -1})
+	_, err := c.Get(context.Background(), "http://[::]/")
+	if !errors.Is(err, ErrBlocked) {
+		t.Fatalf("期望 ErrBlocked，实际 %v", err)
+	}
+	if !strings.Contains(err.Error(), "没有可用地址") {
+		t.Fatalf("应报「没有可用地址」，实际 %v", err)
+	}
 }

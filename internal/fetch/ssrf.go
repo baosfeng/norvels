@@ -13,6 +13,10 @@ import (
 // blockedRanges 是标准库 Is* 方法没有覆盖、但同样属于「不该被书源访问」的网段。
 // 169.254.0.0/16 / 0.0.0.0/8 已被 IsLinkLocalUnicast / IsUnspecified 覆盖，
 // 这里显式列出，便于审阅时一眼看全。
+//
+// ::/128 与 0.0.0.0/8 在主机名解析层会先被 checkHostAddrs 按「未指定地址」跳过：
+// 它们只是 DNS 返回里的噪声（无记录占位），并不表示「指向内网」。建连时的
+// socket 地址仍走本表，未指定地址照旧拒绝。
 var blockedRanges = mustNets(
 	"0.0.0.0/8",
 	"100.64.0.0/10",  // CGNAT
@@ -69,12 +73,12 @@ func (c *Client) portAllowed(port string) bool {
 	return false
 }
 
-// validateHost 解析 host 并校验**全部**解析结果：只放行「所有地址都在公网」的主机，
-// 任一命中内网即整体拒绝——不给「取第一个地址」留后门。
+// validateHost 解析 host 并校验**每一个可用地址**：只放行「所有可用地址都在公网」
+// 的主机，任一命中内网即整体拒绝——不给「取第一个地址」留后门。
 func (c *Client) validateHost(ctx context.Context, u *url.URL) error {
 	host := u.Hostname()
 	if ip := net.ParseIP(host); ip != nil {
-		return checkIP(ip)
+		return checkHostAddrs(host, []net.IP{ip})
 	}
 	addrs, err := c.resolver.LookupIPAddr(ctx, host)
 	if err != nil {
@@ -83,12 +87,60 @@ func (c *Client) validateHost(ctx context.Context, u *url.URL) error {
 	if len(addrs) == 0 {
 		return fmt.Errorf("%w: %q 没有可用地址", ErrNetwork, host)
 	}
+	ips := make([]net.IP, 0, len(addrs))
 	for _, a := range addrs {
-		if err := checkIP(a.IP); err != nil {
-			return fmt.Errorf("%w（%q 解析到 %s）", err, host, a.IP)
+		ips = append(ips, a.IP)
+	}
+	return checkHostAddrs(host, ips)
+}
+
+// checkHostAddrs 是主机级判定：未指定地址（:: / 0.0.0.0）跳过，其余**任一**命中
+// 内网或保留段即拒绝整台主机。
+//
+// 为什么跳过：未指定地址是 DNS 返回里的噪声（无记录占位），不表示「指向内网」，
+// 把它当内网会让「公网 IPv4 旁边多挂一个 ::」的域名整台被判死；
+// 为什么仍逐个判：防 DNS rebinding 靠的就是「全部地址都在公网」，一旦改成
+// 「取第一个合法地址就放行」，攻击者只要让解析结果掺一个公网地址即可绕过。
+// 跳过后一个都不剩，说明这台主机没有可判定的目标，仍拒绝但文案与「命中内网」分开，
+// 便于探活时分辨两种失败。
+//
+// 跳过只发生在主机名解析层：实际建连的 socket 地址仍走 control→checkIP，
+// 0.0.0.0 / :: 在那里照旧被拒（Linux 上 connect 0.0.0.0 等价于连本机），
+// 所以这里的放宽不会让未指定地址成为可达目标。
+func checkHostAddrs(host string, ips []net.IP) error {
+	usable := 0
+	for _, ip := range ips {
+		if isUnspecifiedIP(ip) {
+			continue
+		}
+		usable++
+		if err := checkIP(ip); err != nil {
+			return fmt.Errorf("%w（%q 解析到 %s）", err, host, ip)
 		}
 	}
+	if usable == 0 {
+		return fmt.Errorf("%w: %q 没有可用地址（解析结果只有未指定地址 %s）",
+			ErrBlocked, host, formatIPs(ips))
+	}
 	return nil
+}
+
+// isUnspecifiedIP 判断是否为未指定地址（全零）。::ffff:0.0.0.0 先解包成 IPv4
+// 再判，与 checkIP 的解包口径保持一致。
+func isUnspecifiedIP(ip net.IP) bool {
+	if v4 := ip.To4(); v4 != nil {
+		return v4.IsUnspecified()
+	}
+	return ip.IsUnspecified()
+}
+
+// formatIPs 把地址列表拼成诊断用文案（探活日志里要能看出到底解析到了什么）。
+func formatIPs(ips []net.IP) string {
+	parts := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		parts = append(parts, ip.String())
+	}
+	return strings.Join(parts, ", ")
 }
 
 // checkIP 判断单个地址是否可访问；::ffff:a.b.c.d 先解包成 IPv4 再判。
