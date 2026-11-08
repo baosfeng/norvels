@@ -363,7 +363,7 @@ function ReaderScreen() {
 
   return (
     <div
-      className={`reader-shell${isH5 ? " is-h5" : ""}${controls.visible ? " is-controls" : ""}`}
+      className={`reader-shell${isH5 ? " is-h5" : ""}${controls.visible ? " is-controls" : ""}${fullscreen ? " is-fullscreen" : ""}`}
       data-testid="view:reader"
       style={readerStyleVars(settings) as CSSProperties}
     >

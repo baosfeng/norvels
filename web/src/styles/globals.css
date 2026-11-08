@@ -36,6 +36,16 @@
   overflow: hidden;
 }
 
+/* 全屏降级（浏览器 Fullscreen API 被拦截/不支持时）：整页铺满视口 */
+.reader-shell.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  padding: 0;
+  overflow: hidden;
+  background: var(--r-bg);
+}
+
 /* 控制栏未显示时整条底栏不出现在布局里，避免手机端出现额外滚动空白 */
 .reader-shell:not(.is-controls) .h5-reader-bar {
   display: none;
