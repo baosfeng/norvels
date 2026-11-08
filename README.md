@@ -12,6 +12,7 @@
 - **幂等导入**：按文件 SHA-256 去重，重复导入自动跳过；支持 `--force`、`--update`（追更只追加新章）、`--dry-run`、`--workers`、`--min-chapters`。
 - **AI 选书（可选）**：`--ai` 让外部模型逐本判「值不值得入库」（规则先筛：章节门槛、判重、质量分；判不准的按不入库处理）。判定口径与降级见 [AI 选书设计](docs/specs/2026-11-01-ai-curation-design.md)。
 - **元数据补全（可选）**：`norvels enrich` 按 Legado 书源在线查书名→作者/简介/分类，多源投票 + 相似度阈值 + 默认 dry-run，写库走变更日志可整批回滚；没有书源时也能靠本地词表离线补分类。见 [设计](docs/specs/2026-11-08-metadata-enrich-design.md)。
+- **书源自检**：`norvels source test` 单源实测一次——列书源、发一次搜索、打印请求 URL / HTTP 状态 / 耗时 / 候选（书名·作者·链接·相似度）与降级信息；只读打开库，失败以非零码退出，便于脚本判活。
 - **书名/作者检索**：`LIKE` 子串匹配，毫秒级返回；章节标题与正文都不参与找书，不建全文索引（见 [ADR-0002](docs/adr/0002-drop-fulltext-index.md)）。
 - **封面与元数据可编辑**：有封面的书在书架与详情页显示真实封面；书名/作者/简介/标签/系列可在详情页直接改。
 - **零运行时依赖**：前端构建产物 `go:embed` 进二进制，容器里只有两个静态可执行文件。
@@ -128,6 +129,10 @@ time ./bin/norvels import \
 
 # 3) 校验
 ./bin/norvels stats --db ./data/norvels.db
+
+# 4) 在线书源自检（只读）：不带 --id 列书源；带 --id/--title 单源实测
+./bin/norvels source test --db ./data/norvels.db
+./bin/norvels source test --db ./data/norvels.db --id src-1a2b3c4d --title "示例书名"
 ```
 
 ### Docker（脚本一键）
