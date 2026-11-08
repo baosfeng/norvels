@@ -42,11 +42,21 @@ type Decision struct {
 	Skipped []string
 }
 
+// 决策字段名（与 store.EnrichField* 同值；enrich 是叶子包，不反向依赖 store）。
+const (
+	FieldAuthor   = "author"
+	FieldIntro    = "intro"
+	FieldCategory = "category"
+)
+
 // Options 是决策阈值；零值由 withDefaults 补齐。
 type Options struct {
 	MinTitleSim   float64 // 命中书名与库内书名的相似度下限
 	MinIntroRunes int     // 简介最少字符数
 	MinConfidence float64 // 单字段置信度下限
+	// Fields 限定只决策哪些字段（取值见 Field*）；nil/空表示三个字段全判。
+	// CLI 的 --fields 通过它进入决策层：未选中的字段既不产生变更，也不产生跳过原因。
+	Fields map[string]bool
 }
 
 // DefaultOptions 返回推荐阈值（与 docs/specs/2026-11-08-metadata-enrich-design.md §6 一致）。
@@ -68,6 +78,11 @@ func (o Options) withDefaults() Options {
 	return o
 }
 
+// wants 报告字段是否在本次决策范围内（空集合 = 全部）。
+func (o Options) wants(field string) bool {
+	return len(o.Fields) == 0 || o.Fields[field]
+}
+
 // Decide 把多源命中汇总成一本书的建议改动。
 //
 // 三条取舍：
@@ -83,12 +98,20 @@ func Decide(s Subject, hits []Hit, opt Options) Decision {
 		// （生产 10 万本未分类里，绝大多数书的名字里就带着题材词）。
 		// 作者与简介仍然只能靠书源，这里只放分类这一路。
 		d.Skipped = append(d.Skipped, "no_hit")
-		d.Category = decideCategory(s, nil, o, &d)
+		if o.wants(FieldCategory) {
+			d.Category = decideCategory(s, nil, o, &d)
+		}
 		return d
 	}
-	d.Author = decideAuthor(s, useful, o, &d)
-	d.Intro = decideIntro(s, useful, o, &d)
-	d.Category = decideCategory(s, useful, o, &d)
+	if o.wants(FieldAuthor) {
+		d.Author = decideAuthor(s, useful, o, &d)
+	}
+	if o.wants(FieldIntro) {
+		d.Intro = decideIntro(s, useful, o, &d)
+	}
+	if o.wants(FieldCategory) {
+		d.Category = decideCategory(s, useful, o, &d)
+	}
 	return d
 }
 

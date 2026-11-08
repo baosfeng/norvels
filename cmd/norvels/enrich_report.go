@@ -71,10 +71,10 @@ func runSplitLongChapters(ctx context.Context, st *store.Store, o splitOpts) err
 }
 
 // printEnrichHeader 打印本次运行的参数与候选规模（先让人看见「要动多少」）。
-func printEnrichHeader(o enrichOpts, want map[string]bool, cands []store.EnrichCandidate) {
+func printEnrichHeader(o enrichOpts, cands []store.EnrichCandidate) {
 	fields := make([]string, 0, 3)
 	for _, f := range []string{store.EnrichFieldAuthor, store.EnrichFieldIntro, store.EnrichFieldCategory} {
-		if want[f] {
+		if o.fields[f] {
 			fields = append(fields, f)
 		}
 	}

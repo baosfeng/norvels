@@ -71,7 +71,7 @@ func cmdEnrich(args []string) error {
 		})
 	}
 	return runEnrich(ctx, st, enrichOpts{
-		apply: *apply, planOnly: *planOnly, fields: *fields,
+		apply: *apply, planOnly: *planOnly, fieldsFlag: *fields,
 		workers: *workers, qps: *qps, maxSources: *maxSources, timeout: *timeout,
 		budget: *budget, maxRequests: *maxRequests, limit: *limit,
 		resume: *resume, resumeBatch: *resumeBatch, minTitleSim: *minTitleSim,
@@ -88,9 +88,11 @@ func openEnrichStore(ctx context.Context, path string, readOnly bool) (*store.St
 
 // enrichOpts 是主流程的参数集合（拆一个结构体是为了让 runEnrich 少于 70 行）。
 type enrichOpts struct {
-	apply       bool
-	planOnly    bool
-	fields      string
+	apply    bool
+	planOnly bool
+	// fieldsFlag 是 --fields 的原始串；fields 是解析后的集合（决策层用它过滤字段）。
+	fieldsFlag  string
+	fields      map[string]bool
 	workers     int
 	qps         float64
 	maxSources  int
@@ -114,15 +116,11 @@ type splitOpts struct {
 // runEnrich 主流程：取候选 → 检索 → 决策 → （可选）写库 → 打印汇总。
 func runEnrich(ctx context.Context, st *store.Store, o enrichOpts) error {
 	started := time.Now()
-	want, err := parseFields(o.fields)
+	o, cands, err := prepareEnrich(ctx, st, o)
 	if err != nil {
 		return err
 	}
-	cands, err := collectCandidates(ctx, st, want, o.limit)
-	if err != nil {
-		return err
-	}
-	printEnrichHeader(o, want, cands)
+	printEnrichHeader(o, cands)
 	if o.planOnly {
 		printPlan(cands)
 		return nil
@@ -153,6 +151,21 @@ func runEnrich(ctx context.Context, st *store.Store, o enrichOpts) error {
 	}
 	fmt.Fprintf(os.Stdout, "批次号：%s（回滚用 --rollback %s --apply）\n", batchID, batchID)
 	return nil
+}
+
+// prepareEnrich 解析 --fields 并挑候选：--plan 与 --apply 都走这里，
+// 保证「候选口径」与「决策/写入字段」是同一份 want。
+func prepareEnrich(ctx context.Context, st *store.Store, o enrichOpts) (enrichOpts, []store.EnrichCandidate, error) {
+	want, err := parseFields(o.fieldsFlag)
+	if err != nil {
+		return o, nil, err
+	}
+	o.fields = want
+	cands, err := collectCandidates(ctx, st, want, o.limit)
+	if err != nil {
+		return o, nil, err
+	}
+	return o, cands, nil
 }
 
 // parseFields 把 --fields 解析成字段集合，未知字段直接报错（不静默忽略）。
