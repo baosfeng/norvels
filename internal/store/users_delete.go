@@ -68,6 +68,7 @@ var userDataTables = []string{
 	"reading_progress",
 	"reading_sessions",
 	"user_shelf",
+	"user_reader_settings",
 	// 会话放最后：它是「这个账号还活着」的凭据，最后再撤。
 	"user_sessions",
 }
