@@ -27,7 +27,7 @@ func parseHits(st *sourceState, body []byte, title string, minSim float64) ([]en
 		return nil, degraded, err
 	}
 	ctx := &ruleexec.Context{HTML: doc, Vars: map[string]string{
-		"baseUrl": st.profile.Online.BookSourceURL,
+		"baseUrl": baseURLOf(st.profile),
 		"key":     title,
 	}}
 	items, err := rules.list.SelectAll(ctx)

@@ -27,7 +27,7 @@ norvels 的产品前提是「单二进制 + distroless + 不联网」，但用�
 | `bookSourceUrl` | `online.baseUrl`（同 `id` 唯一键） | 重复导入覆盖同源，与 Legado 一致 |
 | `bookSourceName/Group` | `name` / `group` | 分组只影响列表展示与筛选 |
 | `enabled/weight` | `enabled` / `priority` | 优先级参与同书多源选源 |
-| `searchUrl` / `exploreUrl` | `online.searchUrl` / `online.exploreUrl` | 支持 `{{key}}` `{{page}}` 两个变量 |
+| `searchUrl` / `exploreUrl` | `online.searchUrl` / `online.exploreUrl` | 支持 `{{key}}` `{{page}}`；相对路径按 `bookSourceUrl` 解析（先剥 `#` 尾巴） |
 | `ruleSearch` / `ruleExplore` | `online.rules.search` / `explore` | 列表字段：name/author/bookUrl/coverUrl/intro/kind |
 | `ruleBookInfo` | `online.rules.bookInfo` | 详情字段 + `tocUrl` |
 | `ruleToc` | `online.rules.toc` | chapterList/chapterName/chapterUrl |
