@@ -2,7 +2,8 @@
 // 对内网地址（回环 / 私网 / 链路本地 / 云元数据 / IPv6 唯一本地）一律阻断。
 //
 // 安全模型分三道（见 docs/adr/0004-online-book-source.md §3）：
-//  1. 请求前校验 URL（协议 / 端口 / userinfo），并对 host 做 DNS 全量解析、逐个 IP 校验；
+//  1. 请求前校验 URL（协议 / 端口 / userinfo），并对 host 做 DNS 全量解析、逐个可用 IP 校验
+//     （未指定地址 :: / 0.0.0.0 属 DNS 噪声，跳过不算命中；跳过见 ssrf.go）；
 //  2. 建连时用 net.Dialer.Control 对真实 socket 地址再校验一次（防 DNS rebinding）；
 //  3. 重定向的每一跳重新走 1，限制跳数，禁止 https→http 降级。
 //
