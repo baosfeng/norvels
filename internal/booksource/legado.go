@@ -222,9 +222,21 @@ func convertBookSource(raw json.RawMessage, index int) (*source.Profile, ImportI
 		return nil, issue
 	}
 	issue.UnsupportedFields = unsupportedFields(ls)
+	// 先把 Legado 简写翻译成标准 CSS，再编译：status 反映的是真正会落库、会执行的规则。
+	convFields, convReasons := convertLegadoRules(&ls)
 	status, degraded, reason := compileRules(ls)
-	issue.Status, issue.DegradedFields, issue.Reason = status, degraded, reason
-	if !Applicable(status) {
+	issue.Status = status
+	issue.DegradedFields = mergeNames(degraded, convFields)
+	issue.Reason = reason
+	if len(convFields) > 0 {
+		// 转换不了的字段保留原文：该字段大概率抽不出数据，按 partial 如实告知，但不拦入库。
+		if issue.Status == StatusOK {
+			issue.Status = StatusPartial
+		}
+		issue.Reason = joinReason(reason, "部分规则含无法转换的 Legado 简写，已保留原文："+
+			strings.Join(convReasons, "、"))
+	}
+	if !Applicable(issue.Status) {
 		// unusable（@js 硬字段）不产出可落库的规则包：抓取必失败，apply 时跳过。
 		return nil, issue
 	}

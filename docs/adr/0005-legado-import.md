@@ -56,7 +56,7 @@ raw 字节、不发网络请求；净化与 TXT 规则的落库是下一个切�
 | `enabled` / `customOrder` | `enabled` / `priority` | 缺省 enabled=true |
 | `searchUrl` / `exploreUrl` | `online.searchUrl` / `online.exploreUrl` | 原样保留，含 `@js` 记 unusable |
 | `bookUrlPattern` | `online.bookUrlPattern` | 原样保留，本期不校验不执行 |
-| `ruleSearch/Explore/BookInfo/Toc/Content` | `online.rule*` | 原样搬进对应 map（保留原始规则串） |
+| `ruleSearch/Explore/BookInfo/Toc/Content` | `online.rule*` | Legado 原生简写先翻译成标准 CSS 再落库；`@css:`/`@xpath:`/`@json:` 前缀与 `##` 正则段原样保留，转换不了的保留原文并记降级 |
 | `header` / `loginUrl` / `cookie` / `webJs` | `online.header` / `unsupportedFields` | 保存但不执行 |
 
 ## 4. 应用语义
