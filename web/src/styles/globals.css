@@ -20,6 +20,7 @@
 .reader-shell {
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   /* 移动端地址栏会吃掉视口高度的一截：用 dvh，老浏览器回退到 vh */
   min-height: 100vh;
   min-height: 100dvh;
@@ -30,9 +31,48 @@
   padding-right: env(safe-area-inset-right);
   background: var(--r-bg);
   color: var(--r-fg);
+  /* 让滑出屏幕的绝对定位控制栏被本层裁掉，避免产生额外滚动空白 */
+  position: relative;
+  overflow: hidden;
+}
+
+/* 控制栏未显示时整条底栏不出现在布局里，避免手机端出现额外滚动空白 */
+.reader-shell:not(.is-controls) .h5-reader-bar {
+  display: none;
 }
 body:has(.reader-shell) {
   background: var(--r-bg);
+  overflow: hidden;
+}
+
+/* PWA 浮动状态与安装提示：固定在视口，不参与文档流，避免撑高页面 */
+.pwa-floating {
+  position: fixed;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 60;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+.pwa-floating > * {
+  pointer-events: auto;
+}
+.pwa-offline-badge,
+.pwa-install-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--r-raised, #fff);
+  color: var(--r-fg, #111);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+}
+#root:has(.reader-shell) {
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 html,
 body {
@@ -253,6 +293,7 @@ body.h5-sheet-open {
     background: var(--r-raised);
     border-top: 1px solid var(--r-border);
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.1);
+    display: none;
     transform: translateY(calc(100% + env(safe-area-inset-bottom)));
     opacity: 0;
     pointer-events: none;
@@ -261,6 +302,7 @@ body.h5-sheet-open {
       opacity 180ms var(--ease-standard);
   }
   .reader-shell.is-controls .h5-reader-bar {
+    display: grid;
     transform: none;
     opacity: 1;
     pointer-events: auto;
