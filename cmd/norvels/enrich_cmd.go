@@ -31,6 +31,8 @@ func cmdEnrich(args []string) error {
 	fs := flag.NewFlagSet("enrich", flag.ExitOnError)
 	dbPath := fs.String("db", cfg.DB, "数据库路径")
 	apply := fs.Bool("apply", false, "真正写库（默认只 dry-run 打印将改什么）")
+	readOnly := fs.Bool("read-only", false, "只读打开库（不迁移、不建表；在生产库上先看规模时用）")
+	retry := fs.Int("retry", 6, "写库遇到 database is locked 的重试次数（服务同时在跑时用）")
 	planOnly := fs.Bool("plan", false, "只列待补清单与规模，不联网")
 	fields := fs.String("fields", "author,intro,category", "要补的字段（author,intro,category）")
 	workers := fs.Int("workers", 4, "并发检索数")
@@ -49,8 +51,12 @@ func cmdEnrich(args []string) error {
 	rollback := fs.String("rollback", "", "回滚指定 batch 的改动（配合 --apply 才真写）")
 	fs.Parse(args)
 
+	if *apply && *readOnly {
+		return fmt.Errorf("--apply 与 --read-only 不能同时使用")
+	}
+	lockRetry = *retry
 	ctx := context.Background()
-	st, err := openStore(ctx, *dbPath)
+	st, err := openEnrichStore(ctx, *dbPath, *readOnly)
 	if err != nil {
 		return err
 	}
@@ -70,6 +76,14 @@ func cmdEnrich(args []string) error {
 		budget: *budget, maxRequests: *maxRequests, limit: *limit,
 		resume: *resume, resumeBatch: *resumeBatch, minTitleSim: *minTitleSim,
 	})
+}
+
+// openEnrichStore 按需只读打开：只读模式不迁移，生产库被服务占着时也能先看规模。
+func openEnrichStore(ctx context.Context, path string, readOnly bool) (*store.Store, error) {
+	if readOnly {
+		return store.OpenReadOnly(ctx, path)
+	}
+	return openStore(ctx, path)
 }
 
 // enrichOpts 是主流程的参数集合（拆一个结构体是为了让 runEnrich 少于 70 行）。

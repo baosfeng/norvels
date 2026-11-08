@@ -112,6 +112,44 @@ func openStoreSQLite(ctx context.Context, path, poolName string) (*sql.DB, error
 	return db, nil
 }
 
+// OpenReadOnly 只读打开一个已有的库（不迁移、不建表、不写任何字节）。
+//
+// 用途：在生产库上「先看清规模再决定动不动」。DSN 用 mode=ro + query_only(1) 双重挡写，
+// 且不设 journal_mode(WAL) 这类会写库头的 PRAGMA——只读连接设它们会直接报
+// 「attempt to write a readonly database」。
+func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
+	if path == "" {
+		return nil, fmt.Errorf("store: empty database path")
+	}
+	contentPath := contentDBPath(path)
+	db, err := openReadOnlySQLite(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	cdb, err := openReadOnlySQLite(ctx, contentPath)
+	if err != nil {
+		db.Close() //nolint:errcheck // 打开失败路径，原错误优先
+		return nil, err
+	}
+	return &Store{db: db, cdb: cdb, path: path, contentPath: contentPath}, nil
+}
+
+// openReadOnlySQLite 只读打开一个 SQLite 文件。
+func openReadOnlySQLite(ctx context.Context, path string) (*sql.DB, error) {
+	dsn := "file:" + path + "?mode=ro&_pragma=busy_timeout(10000)&_pragma=query_only(1)"
+	db, err := sql.Open(observe.DriverName, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store: open readonly %s: %w", path, err)
+	}
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
+	if err := db.PingContext(ctx); err != nil {
+		db.Close() //nolint:errcheck // 打开失败路径，原错误优先
+		return nil, fmt.Errorf("store: ping readonly %s: %w", path, err)
+	}
+	return db, nil
+}
+
 // DB 返回主库连接，供同包实现文件与测试使用。
 func (s *Store) DB() *sql.DB { return s.db }
 

@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // RollbackEnrichBatch 按批次把旧值写回，返回回滚的变更条数。
@@ -64,4 +66,42 @@ func splitCategoryValue(v string) (l1, l2 string) {
 		return v[:i], v[i+1:]
 	}
 	return v, ""
+}
+
+// RetryOnLocked 把一个写操作在遇到 SQLITE_BUSY / database is locked 时重试若干次。
+//
+// 为什么需要：enrich 这类运维命令是在**服务照常运行时**执行的，两边都要写主库；
+// busy_timeout(10s) 挡得住短时争用，但一次批量写里偶尔会有超过 10s 的窗口
+// （服务侧的导入/回填任务）。重试让「碰到争用」不再等于「这批有一半没写进去」。
+func RetryOnLocked(ctx context.Context, attempts int, fn func() error) error {
+	if attempts <= 0 {
+		attempts = 1
+	}
+	var err error
+	for i := 0; i < attempts; i++ {
+		err = fn()
+		if err == nil || !isLockedErr(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(i+1) * 500 * time.Millisecond):
+		}
+	}
+	return err
+}
+
+// isLockedErr 判定是否属于「被别的写者占着」这类可重试错误。
+func isLockedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if err == sql.ErrConnDone {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "sqlite_busy")
 }

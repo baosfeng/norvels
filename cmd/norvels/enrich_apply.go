@@ -59,7 +59,7 @@ func applyEnrichChanges(ctx context.Context, st *store.Store, changes []store.En
 	return written
 }
 
-// writeBookChanges 把一本书的改动写成一次 UpdateBookMeta。
+// writeBookChanges 把一本书的改动写成一次 UpdateBookMeta（遇到写者争用自动重试）。
 func writeBookChanges(ctx context.Context, st *store.Store, bookID int64, changes []store.EnrichChange) error {
 	patch := store.BookMetaPatch{}
 	for _, ch := range changes {
@@ -75,8 +75,14 @@ func writeBookChanges(ctx context.Context, st *store.Store, bookID int64, change
 			patch.CategoryL2 = &l2
 		}
 	}
-	return st.UpdateBookMeta(ctx, bookID, patch)
+	return store.RetryOnLocked(ctx, lockRetry, func() error {
+		return st.UpdateBookMeta(ctx, bookID, patch)
+	})
 }
+
+// lockRetry 是写库的重试次数（--retry）。enrich 在生产服务照常运行时执行，
+// 两边都要写主库，偶发 database is locked 不该变成「这批有几本没写进去」。
+var lockRetry = 6
 
 // firstSource 取首个参与投票的源 id（报告里只展示一个，完整清单留在 Value.Sources）。
 func firstSource(sources []string) string {
