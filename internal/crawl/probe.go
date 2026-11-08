@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"norvels/internal/enrich"
-	"norvels/internal/source"
 )
 
 // ErrSourceNotFound 表示指定的书源 id 不在执行器里。
@@ -45,8 +44,8 @@ func (e *Engine) Probe(ctx context.Context, sourceID, title string) (*Probe, err
 		return nil, ErrSourceNotFound
 	}
 	p := &Probe{SourceID: st.profile.ID, SourceName: st.profile.Name, Degraded: []string{}}
-	rawURL, opts := source.ParseURLOptions(expandSearchURL(st.profile.Online.SearchURL, title))
-	p.Degraded = append(p.Degraded, urlOptionWarnings(sourceID, opts)...)
+	rawURL, opts, degraded := prepareSearchURL(st.profile, title)
+	p.Degraded = append(p.Degraded, degraded...)
 	if err := e.acquire(); err != nil {
 		return p, err
 	}

@@ -104,8 +104,7 @@ func (e *Engine) searchOne(ctx context.Context, st *sourceState, title string) (
 // fetchList 请求搜索页：模板替换后先拆 Legado 选项块（,{"charset":"gbk"}），
 // 纯 URL 才发请求；不认识的选项按降级回显，不影响本次请求。
 func (e *Engine) fetchList(ctx context.Context, st *sourceState, title string) ([]byte, source.URLOptions, []string, error) {
-	rawURL, opts := source.ParseURLOptions(expandSearchURL(st.profile.Online.SearchURL, title))
-	degraded := urlOptionWarnings(st.profile.ID, opts)
+	rawURL, opts, degraded := prepareSearchURL(st.profile, title)
 	if err := e.acquire(); err != nil {
 		return nil, opts, degraded, err
 	}
