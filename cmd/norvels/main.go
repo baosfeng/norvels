@@ -69,11 +69,8 @@ backfill-quality 给存量书补算质量分（升级到 0020 后跑一次）：
   噪声率按残留计（库里正文已清洗过，噪声行在入库时就丢了），口径见 docs/architecture.md。
 
 enrich 按在线书源补元数据（作者 / 简介 / 分类），并把超长章节切分：
-  --plan       只列待补清单与规模，不联网、不写库
-  默认 dry-run：不加 --apply 只打印「会改什么」，绝不写库
-  --apply      真写库，并生成一个可 --rollback 的批次号
-  --split-long-chapters  对 3 万字以上的章按段落边界切开（只改章节偏移，不重压正文）
-  没有在线书源时仍可用本地词表离线补分类；限流每源 QPS 1、并发 4，预算打满即收尾。
+  默认 dry-run（--apply 才写库并生成可 --rollback 的批次号）；--plan 只列清单不联网；
+  没有在线书源时仍能用本地词表离线补分类。细节见 docs/specs/2026-11-08-metadata-enrich-design.md。
 
 优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:
   NORVELS_ADDR         serve 监听地址（默认 :8080）
