@@ -52,7 +52,26 @@ func IsPlaceholderAuthor(name string) bool {
 	return placeholderSet[strings.ToLower(n)]
 }
 
-// NormalizeAuthor 归一作者名：去首尾与内部空白、去书名号/引号、去「著」后缀。
+// authorLabelPrefixes 是可机械剥离的作者标签前缀：标签词 + 冒号（全角 / 半角）。
+//
+// 冒号是必需的判别特征：写作「作者不爱洗澡」这类以「作者」二字开头的真实笔名不带冒号，
+// 剥掉就把真名改坏了——所以这里只认带冒号的标签，不做「看着像标签就剥」的猜测。
+var authorLabelPrefixes = []string{"作者：", "作者:", "著者：", "著者:"}
+
+// stripAuthorLabelPrefix 剥掉出现在最前面的作者标签前缀（至多一处），并去掉其后残留的空白。
+//
+// 剥完可能为空（书源只给了一个「作者：」），按调用方既有语义返回空串：
+// IsPlaceholderAuthor 会把空名当占位，从而不写库。
+func stripAuthorLabelPrefix(s string) string {
+	for _, p := range authorLabelPrefixes {
+		if strings.HasPrefix(s, p) {
+			return strings.TrimSpace(strings.TrimPrefix(s, p))
+		}
+	}
+	return s
+}
+
+// NormalizeAuthor 归一作者名：剥作者标签前缀、去首尾与内部空白、去书名号/引号、去「著」后缀。
 //
 // 只做可解释的机械归一，不做拼音/繁简转换——那属于内容判断，不是这里的事。
 func NormalizeAuthor(name string) string {
@@ -67,6 +86,7 @@ func NormalizeAuthor(name string) string {
 		}
 		return r
 	}, s)
+	s = stripAuthorLabelPrefix(s)
 	if len(s) > len("著") && strings.HasSuffix(s, "著") {
 		s = strings.TrimSuffix(s, "著")
 	}
