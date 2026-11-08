@@ -272,12 +272,13 @@ const reconcileScanBatch = 100000
 // 留下的快照。Stale 为 true 表示「快照过期 / 还没有 / 上次刷新失败」，
 // 数字可能旧或为 0，但接口照常 200（见 health_refresh.go）。
 type ContentHealth struct {
-	OrphanBlocks int    `json:"orphanBlocks"`
-	OrphanBooks  int    `json:"orphanBooks"`
-	DanglingRefs int    `json:"danglingRefs"`
-	MissingTable bool   `json:"missingTable"`
-	CheckedAt    string `json:"checkedAt"`
-	Stale        bool   `json:"stale,omitempty"`
+	OrphanBlocks      int    `json:"orphanBlocks"`
+	OrphanBooks       int    `json:"orphanBooks"`
+	DanglingRefs      int    `json:"danglingRefs"`
+	DanglingRefsSnake int    `json:"dangling_refs"`
+	MissingTable      bool   `json:"missingTable"`
+	CheckedAt         string `json:"checkedAt"`
+	Stale             bool   `json:"stale,omitempty"`
 }
 
 // String 让对账结果在日志里可读（CLI/运维排查用）。

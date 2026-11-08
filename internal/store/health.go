@@ -37,6 +37,11 @@ type HealthReport struct {
 	// Quality 是质量分覆盖率（0020 起）：缺口 > 0 时 Hint 指向 backfill-quality。
 	// 增量字段：统计失败时为 nil。
 	Quality *QualityHealth `json:"quality,omitempty"`
+	// DanglingRefs 是正文库悬空引用数（章节指向不存在的块）：需重导入对应书籍。
+	// 由后台 reconcile 快照填充，不触发全表扫描；缺快照时为 0 且 Content.Stale=true。
+	DanglingRefs int `json:"danglingRefs"`
+	// 兼容 snake_case 的对外字段名（与用户侧约定一致）。
+	DanglingRefsSnake int `json:"dangling_refs"`
 
 	// warnMu 串行化并发统计时的 Warnings 追加（指针以免 HealthReport 被复制时带走锁）。
 	warnMu *sync.Mutex
@@ -95,6 +100,9 @@ func (s *Store) HealthReport(ctx context.Context) HealthReport {
 	// 而驾驶舱的 STATS_TIMEOUT_MS = 20_000，21 s 的响应本来就是超时失败），
 	// 所以这里只读后台刷新留下的快照，过期就标 stale（见 health_refresh.go）。
 	r.Content = s.contentHealth(&r)
+	if r.Content != nil {
+		r.DanglingRefs, r.DanglingRefsSnake = r.Content.DanglingRefs, r.Content.DanglingRefs
+	}
 	// 指纹覆盖率：0019 之后历史书要靠 backfill-fingerprints 补齐，缺口必须可见。
 	// 0023 起读书级覆盖表（O(书数)）；覆盖表的历史回填由后台任务分批补，
 	// 补完之前这里标 stale + backfilling，并在读取时顺带确保后台任务在跑。

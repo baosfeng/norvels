@@ -617,6 +617,10 @@ export interface HealthReport {
   chapterBuckets: Bucket[];
   chapterLengthBuckets: Bucket[];
   warnings: string[];
+  /** 悬空引用数（章节指向不存在的正文块）：需重导入对应书籍。 */
+  danglingRefs?: number;
+  /** 同上（snake_case 兼容字段）。 */
+  dangling_refs?: number;
   /**
    * 阅读进度三态（按书聚合，后端直接算好）。
    * 契约见 leader 2026-10-25 通知；后端未上线时该字段为 undefined，前端回退到

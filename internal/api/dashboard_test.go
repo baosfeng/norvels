@@ -172,6 +172,9 @@ func TestHealthReportEndpoint(t *testing.T) {
 	if body.Warnings == nil {
 		t.Error("warnings 应为 [] 而非 null")
 	}
+	if body.DanglingRefs != body.DanglingRefsSnake {
+		t.Errorf("danglingRefs=%d dangling_refs=%d 不一致", body.DanglingRefs, body.DanglingRefsSnake)
+	}
 	if len(body.ChapterBuckets) == 0 || len(body.ChapterLengthBuckets) == 0 {
 		t.Errorf("分桶缺失: %d / %d", len(body.ChapterBuckets), len(body.ChapterLengthBuckets))
 	}
@@ -209,6 +212,8 @@ type healthReportBody struct {
 	ChapterBuckets       []bucket `json:"chapterBuckets"`
 	ChapterLengthBuckets []bucket `json:"chapterLengthBuckets"`
 	Warnings             []string `json:"warnings"`
+	DanglingRefs         int      `json:"danglingRefs"`
+	DanglingRefsSnake    int      `json:"dangling_refs"`
 }
 
 // bucket 是分桶响应结构（测试用）。

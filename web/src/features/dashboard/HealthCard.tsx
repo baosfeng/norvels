@@ -111,6 +111,17 @@ export function HealthCard({
 
           <div className="health-item">
             <div className="health-top">
+              <b>需重导入</b>
+              <span className={`pill${(report.danglingRefs ?? report.dangling_refs ?? 0) > 0 ? " is-warn" : " is-live"}`}>
+                {(report.danglingRefs ?? report.dangling_refs ?? 0) > 0 ? "需处理" : "良好"}
+              </span>
+            </div>
+            <p className="health-num num">{formatCount(report.danglingRefs ?? report.dangling_refs ?? 0)} 章</p>
+            <p className="meta">悬空引用：章节指向不存在的正文块，重新导入对应书籍可恢复。</p>
+          </div>
+
+          <div className="health-item">
+            <div className="health-top">
               <b>最近更新</b>
             </div>
             <p className="health-num num">{formatDate(lastImportAt)}</p>
