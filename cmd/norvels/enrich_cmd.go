@@ -122,8 +122,8 @@ func runEnrich(ctx context.Context, st *store.Store, o enrichOpts) error {
 	rep.Elapsed = time.Since(started)
 	rep.BatchID = batchID
 	rep.Engine = engine.Stats()
-	printEnrichReport(rep, o.apply)
 	if !o.apply || len(rep.Changes) == 0 {
+		printEnrichReport(rep, o.apply)
 		return nil
 	}
 	// 两阶段：先把「要改什么」落成变更日志，再改数据。
@@ -131,9 +131,13 @@ func runEnrich(ctx context.Context, st *store.Store, o enrichOpts) error {
 	if err := st.RecordEnrichChanges(ctx, batchID, rep.Changes); err != nil {
 		return err
 	}
-	written := applyEnrichChanges(ctx, st, rep.Changes)
-	fmt.Fprintf(os.Stdout, "变更已记录并写库：batch=%s（写库 %d 条；回滚用 --rollback %s --apply）\n",
-		batchID, written, batchID)
+	rep.Written = applyEnrichChanges(ctx, st, rep.Changes)
+	printEnrichReport(rep, o.apply)
+	if rep.Written < len(rep.Changes) {
+		fmt.Fprintf(os.Stdout, "注意：%d 条变更没写成功（见上方警告），回滚仍按整批记录的 %d 条处理\n",
+			len(rep.Changes)-rep.Written, len(rep.Changes))
+	}
+	fmt.Fprintf(os.Stdout, "批次号：%s（回滚用 --rollback %s --apply）\n", batchID, batchID)
 	return nil
 }
 

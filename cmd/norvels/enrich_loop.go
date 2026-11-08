@@ -95,7 +95,6 @@ func collectOutcomes(done <-chan enrichOutcome, rep *enrichReport) {
 			rep.HitBooks++
 		}
 		rep.Changes = append(rep.Changes, out.changes...)
-		rep.Written += len(out.changes)
 		for _, s := range out.skipped {
 			rep.Skipped[s]++
 		}
