@@ -7,6 +7,8 @@ import { chapterPosition, readPercent } from "../shelf/progressText";
 import { useReaderControls } from "../../lib/useReaderControls";
 import { prefersReducedMotion } from "../../lib/theme";
 import { ReaderBottomBar } from "./ReaderBottomBar";
+import { ReaderTtsBar } from "./ReaderTtsBar";
+import { useReaderTts } from "./useReaderTts";
 import { ReaderOverlays } from "./ReaderOverlays";
 import { ReaderAutoScrollBar } from "./ReaderAutoScrollBar";
 import { ReaderTopChrome } from "./ReaderTopChrome";
@@ -31,6 +33,7 @@ import { ReaderErrorBoundary, ReaderErrorPanel } from "./ReaderErrorBoundary";
 import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
 import { useReaderSwipe } from "./useReaderSwipe";
+import { useTTS } from "./useTTS";
 import { useReaderPaging } from "./useReaderPaging";
 import { pageModeFor } from "./readerPageMode";
 import { SURFACE_SELECTOR } from "./readerStreamLayout";
@@ -76,6 +79,7 @@ function ReaderScreen() {
   const progressList = useReaderProgress(bookId);
 
   const [hintDismissedFor, setHintDismissedFor] = useState(0);
+  const [ttsOpen, setTtsOpen] = useState(false);
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
   const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
 
@@ -92,6 +96,7 @@ function ReaderScreen() {
   );
   const activeSegment = segments.find((segment) => segment.id === chapterId);
   const viewParagraphs = activeSegment?.paragraphs ?? [];
+  const tts = useTTS(viewParagraphs);
 
   const {
     query: searchQuery,
@@ -164,6 +169,12 @@ function ReaderScreen() {
     next,
     goChapter: stream.flipTo,
     quiet: pagedMode,
+  });
+
+  const tts = useReaderTts({
+    paragraphs: viewParagraphs,
+    chapterKey: chapterId,
+    onNextChapter: () => stepChapter("next"),
   });
 
   /** 进度滑块松手：按章节下标跳章（滑块与手势共用同一句浮条口径）。 */
@@ -384,6 +395,8 @@ function ReaderScreen() {
         onOpenDirectory={toggleDirectory}
         onToggleHelp={toggleHelp}
         onToggleSettings={toggleSettings}
+        ttsSpeaking={tts.speaking}
+        onToggleTTS={tts.toggle}
         onCloseHelp={() => setHelpOpen(false)}
         onCloseSearch={closeSearch}
       />
@@ -410,6 +423,7 @@ function ReaderScreen() {
         bookId={bookId}
         reducedMotion={reducedMotion}
         pagedContent={paging.content}
+        ttsActivePara={tts.currentPara}
       />
 
       {/* 进度恢复提示：内容自适应的浮胶囊（3 秒自动消失），不进正文流、不把正文往下推 */}
@@ -444,6 +458,17 @@ function ReaderScreen() {
           searchOpen={searchOpen}
         />
       ) : null}
+
+      <button
+        type="button"
+        className="btn btn-ghost reader-tts-toggle"
+        data-testid="reader-tts-toggle"
+        onClick={() => setTtsOpen(true)}
+      >
+        朗读
+      </button>
+
+      <ReaderTtsBar tts={tts} open={ttsOpen} onClose={() => setTtsOpen(false)} />
 
       {settings.autoScroll ? (
         <ReaderAutoScrollBar

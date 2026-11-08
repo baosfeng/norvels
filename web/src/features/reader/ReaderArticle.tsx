@@ -27,6 +27,7 @@ export function ReaderArticle({
   onJumpChapter,
   onShelf,
   reducedMotion,
+  ttsActivePara,
 }: {
   stream: ChapterStream;
   hitsByPara: Map<number, ReaderHit[]>;
@@ -38,6 +39,7 @@ export function ReaderArticle({
   onJumpChapter: (index: number) => void;
   onShelf: () => void;
   reducedMotion: boolean;
+  ttsActivePara?: number | null;
 }) {
   const { chapters, activeIndex, segments } = stream;
   const tail = segments[segments.length - 1];
@@ -65,7 +67,13 @@ export function ReaderArticle({
             <div>
               {segment.paragraphs.map((para, i) =>
                 para ? (
-                  <p key={i} id={active ? `para-${i}` : undefined} data-para={i}>
+                  <p
+                    key={i}
+                    id={active ? `para-${i}` : undefined}
+                    data-para={i}
+                    className={active && ttsActivePara === i ? "is-tts-active" : undefined}
+                    data-tts-current={active && ttsActivePara === i ? "true" : undefined}
+                  >
                     {active ? paragraphNodes(para, hitsByPara.get(i) ?? [], currentHit, searching) : para}
                   </p>
                 ) : null,
