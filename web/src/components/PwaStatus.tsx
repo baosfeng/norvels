@@ -50,7 +50,8 @@ export function PwaStatus() {
     };
   }, []);
 
-  const showInstall = !installed && deferred !== null;
+  // 安装入口收进设置/菜单（原型 A），避免页面上再出现悬浮安装按钮
+  const showInstall = false;
 
   if (online && !showInstall) return null;
 
