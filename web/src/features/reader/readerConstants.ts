@@ -10,6 +10,7 @@ export const THEME_LABELS: Record<Theme, string> = {
   parchment: "羊皮纸",
   green: "护眼绿",
   black: "纯黑",
+  contrast: "高对比",
   system: "跟随系统",
 };
 
@@ -20,6 +21,7 @@ export const THEME_DOTS: Record<Theme, string> = {
   parchment: "#f1e3cf",
   green: "#e3ede1",
   black: "#000000",
+  contrast: "linear-gradient(90deg, #000000 50%, #ffffff 50%)",
   system: "linear-gradient(135deg, #fbf6ee 50%, #171514 50%)",
 };
 
