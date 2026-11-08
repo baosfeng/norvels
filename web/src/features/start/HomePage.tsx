@@ -20,7 +20,7 @@ export function HomePage() {
   const location = useLocation();
   const nav = useNavDrawer();
   const progress = useReadingProgress();
-  const recent = useBooks({ sort: "updated", page: 1, size: 5 });
+  const recent = useBooks({ sort: "updated", page: 1, size: 5, limit: 5, offset: 0 });
   // 「今天读多久」只用已有的 /api/stats/reading，不新增端点；取最少的 7 天即可
   const stats = useReadingStats(7);
   const [q, setQ] = useState("");

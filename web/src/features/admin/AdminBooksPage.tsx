@@ -45,6 +45,8 @@ export function AdminBooksPage() {
     authorId: filters.authorId === "" ? undefined : Number(filters.authorId),
     page,
     size: PAGE_SIZE,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   });
   const tags = useTags();
   const categories = useCategories();

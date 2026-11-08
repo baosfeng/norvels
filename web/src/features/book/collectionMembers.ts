@@ -30,7 +30,7 @@ export async function fetchCollectionMembers(
   let total: number;
   do {
     const data = await api.books(
-      { collection: collectionId, page, size: MEMBER_PAGE_SIZE, sort: "updated" },
+      { collection: collectionId, page, size: MEMBER_PAGE_SIZE, sort: "updated", limit: MEMBER_PAGE_SIZE, offset: (page - 1) * MEMBER_PAGE_SIZE },
       options,
     );
     total = data.total;

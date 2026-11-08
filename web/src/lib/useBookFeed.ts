@@ -159,6 +159,8 @@ export function useBookFeed(query: BookFeedQuery): BookFeedState {
               categoryL2: query.categoryL2,
               page,
               size: query.size,
+              limit: query.size,
+              offset: (page - 1) * query.size,
             },
             { signal: controller.signal },
           );

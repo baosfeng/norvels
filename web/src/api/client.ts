@@ -235,6 +235,9 @@ export interface BookQuery {
   readStatus?: Exclude<ReadStatus, "">;
   /** 连载状态筛选：ongoing / completed / none（未知）；不传即全部。 */
   serialStatus?: Exclude<SerialStatus, ""> | "none";
+  /** 以 limit/offset 取数：list views 默认 limit=30、offset=0 */
+  limit?: number;
+  offset?: number;
   /** 系列名筛选（精确匹配）；空串不落进 URL。 */
   series?: string;
   /** 评分筛选 1–5；0 = 未评，不能用来筛「未评」（不传才是全部）。 */
@@ -261,6 +264,8 @@ export type SearchParams = Pick<
   type?: "book" | "all";
   page?: number;
   size?: number;
+  limit?: number;
+  offset?: number;
 };
 
 /** 上传选项：force 对应「重新导入已入库的文件」，update 对应「追更（只追加新章节）」。 */

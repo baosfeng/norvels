@@ -56,7 +56,7 @@ export function SearchPage() {
   // 筛选参数与 /api/books 同名同口径：一变就重新取数（key 进 useResource 的依赖）。
   const { data, loading, error, reload } = useSearch(
     q,
-    filtersToSearchParams(filters, { type: "book", page, size: SEARCH_PAGE_SIZE }),
+    filtersToSearchParams(filters, { type: "book", page, size: SEARCH_PAGE_SIZE, limit: SEARCH_PAGE_SIZE, offset: (page - 1) * SEARCH_PAGE_SIZE }),
   );
   // chips 的候选值：分类树 / 常用作者（按藏书数）/ 标签，全部按需取（无关键词时不发请求）
   const categories = useCategories({ enabled: showFilters });

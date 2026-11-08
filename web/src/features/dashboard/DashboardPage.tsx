@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { showToast } from "../../lib/toastStore";
 import { useDashboard, useMetrics, useRecommendStats } from "../../api/hooks";
@@ -10,23 +10,23 @@ import { buildRecommendMetrics } from "../../lib/charts";
 import { HealthCard } from "./HealthCard";
 import { ObservePanel } from "./ObservePanel";
 import { ReadingHeatmapCard } from "./ReadingHeatmap";
-import {
-  CategoryClicksChart,
-  ChapterBucketsChart,
-  ChapterLengthChart,
-  EventTrendChart,
-  FunnelChart,
-  HotBooksChart,
-  ImportCumulativeChart,
-  ImportTrendChart,
-  InterestBarsChart,
-  ReadingDistChart,
-  ReadingTrendChart,
-  ReasonMixChart,
-  StorageChart,
-  TopAuthorsChart,
-  type ChartState,
-} from "./Charts";
+import type { ChartState } from "./Charts";
+
+const CategoryClicksChart = lazy(() => import("./Charts").then((m) => ({ default: m.CategoryClicksChart })));
+const ChapterBucketsChart = lazy(() => import("./Charts").then((m) => ({ default: m.ChapterBucketsChart })));
+const ChapterLengthChart = lazy(() => import("./Charts").then((m) => ({ default: m.ChapterLengthChart })));
+const EventTrendChart = lazy(() => import("./Charts").then((m) => ({ default: m.EventTrendChart })));
+const FunnelChart = lazy(() => import("./Charts").then((m) => ({ default: m.FunnelChart })));
+const HotBooksChart = lazy(() => import("./Charts").then((m) => ({ default: m.HotBooksChart })));
+const ImportCumulativeChart = lazy(() => import("./Charts").then((m) => ({ default: m.ImportCumulativeChart })));
+const ImportTrendChart = lazy(() => import("./Charts").then((m) => ({ default: m.ImportTrendChart })));
+const InterestBarsChart = lazy(() => import("./Charts").then((m) => ({ default: m.InterestBarsChart })));
+const ReadingDistChart = lazy(() => import("./Charts").then((m) => ({ default: m.ReadingDistChart })));
+const ReadingTrendChart = lazy(() => import("./Charts").then((m) => ({ default: m.ReadingTrendChart })));
+const ReasonMixChart = lazy(() => import("./Charts").then((m) => ({ default: m.ReasonMixChart })));
+const StorageChart = lazy(() => import("./Charts").then((m) => ({ default: m.StorageChart })));
+const TopAuthorsChart = lazy(() => import("./Charts").then((m) => ({ default: m.TopAuthorsChart })));
+
 
 const TREND_DAYS = 14;
 /** 最近在读列表只显示 5 行；聚合端点一次给 50 条（三态估算要用全部）。 */
@@ -275,7 +275,8 @@ export function DashboardPage() {
                       </div>
                     ))}
                   </div>
-                  <div className="chart-grid rec-charts" data-testid="recommend-charts">
+                  <Suspense fallback={null}>
+                    <div className="chart-grid rec-charts" data-testid="recommend-charts">
                     <EventTrendChart daily={recDaily} {...chartState(rec)} />
                     <InterestBarsChart interests={rec.data?.interests ?? []} {...chartState(rec)} />
                     <HotBooksChart books={rec.data?.hotBooks ?? []} {...chartState(rec)} />
@@ -284,6 +285,7 @@ export function DashboardPage() {
                     <ReasonMixChart rows={rec.data?.reasonMix ?? []} {...chartState(rec)} />
                     <CategoryClicksChart rows={rec.data?.categoryClicks ?? []} {...chartState(rec)} />
                   </div>
+                  </Suspense>
                 </>
               )}
             </section>
@@ -312,7 +314,8 @@ export function DashboardPage() {
 
             {/* 九张图两列排：阅读时长占整行（四项数值 2×2 + 90 天日历要横向空间），
                 其余两两配对——同为 14 天时间轴的放一行、同为分布的放一行，读起来成组。 */}
-            <div className="chart-grid" data-testid="dashboard:charts">
+            <Suspense fallback={null}>
+              <div className="chart-grid" data-testid="dashboard:charts">
               <ReadingHeatmapCard
                 stats={payload?.readingStats ?? null}
                 loading={dashboard.loading}
@@ -342,6 +345,7 @@ export function DashboardPage() {
                 {...chartState(dashboard, healthStale)}
               />
             </div>
+            </Suspense>
           </div>
 
           <aside className="dash-side">

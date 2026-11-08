@@ -36,6 +36,8 @@ export function CollectionMembers({
     page,
     size: MEMBER_PAGE_SIZE,
     sort: "updated",
+    limit: MEMBER_PAGE_SIZE,
+    offset: (page - 1) * MEMBER_PAGE_SIZE,
   });
 
   const tokenRef = useRef(refreshToken);

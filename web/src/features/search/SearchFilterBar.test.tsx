@@ -166,7 +166,7 @@ describe("搜索筛选：平铺展开、点一下即搜", () => {
     expect((await screen.findByTestId("search-active-filters")).textContent).toBe("已选 2 项");
 
     fireEvent.click(screen.getByTestId("search-filters-clear"));
-    await waitFor(() => expect(lastParams()).toEqual({ type: "book", page: 1, size: 8 }));
+    await waitFor(() => expect(lastParams()).toEqual({ type: "book", page: 1, size: 8, limit: 8, offset: 0 }));
     expect(screen.queryByTestId("search-active-filters")).toBeNull();
   });
 
@@ -193,7 +193,7 @@ describe("搜索筛选：平铺展开、点一下即搜", () => {
     expect(screen.getByTestId("search-filter-rating-5").getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(screen.getByTestId("search-filter-category-all"));
-    await waitFor(() => expect(lastParams()).toEqual({ type: "book", page: 1, size: 8 }));
+    await waitFor(() => expect(lastParams()).toEqual({ type: "book", page: 1, size: 8, limit: 8, offset: 0 }));
     // 其余组收起
     expect(screen.queryByTestId("search-filter-rating")).toBeNull();
     expect(screen.getByTestId("search-filters-hint")).toBeTruthy();

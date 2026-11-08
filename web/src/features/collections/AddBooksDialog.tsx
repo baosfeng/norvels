@@ -76,7 +76,7 @@ export function AddBooksDialog({
   useEffect(() => {
     let active = true;
     fetchAllMemberIds(async (page, size) => {
-      const res = await api.books({ collection: collection.id, page, size });
+      const res = await api.books({ collection: collection.id, page, size, limit: size, offset: (page - 1) * size });
       return { ids: res.items.map((item) => item.id), total: res.total };
     })
       .then((ids) => {
@@ -140,7 +140,7 @@ export function AddBooksDialog({
     setError("");
     try {
       const existing = await fetchAllMemberIds(async (page, size) => {
-        const res = await api.books({ collection: collection.id, page, size });
+        const res = await api.books({ collection: collection.id, page, size, limit: size, offset: (page - 1) * size });
         return { ids: res.items.map((item) => item.id), total: res.total };
       });
       const merged = mergeMemberIds(existing, [...picked]);
