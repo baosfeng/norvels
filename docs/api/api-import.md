@@ -68,7 +68,7 @@ zip 的每个条目单独出现在 `accepted`/`rejected` 里：`name` 是 `包�
 { "files": [{ "id": 1, "source": "/books/坏.txt", "displayPath": "坏.txt", "status": "failed", "reason": "解析失败", "bookId": 0, "updatedAt": "…" }], "truncated": false }
 ```
 - `status` 取值 `imported|failed|skipped|unsupported|canceled`，其它值 → 400 `invalid_param`；不带返回全部；最多 1000 条，超出 `truncated: true`；任务不存在 → 404 `not_found`。
-- `status=skipped` 的 `reason` 分两种结局：`疑似重复：…（《书名》质量更优/持平/无质量分）` 与 `升级候选：噪声率 3.2%→0.4%、乱码率 …（旧版本《书名》质量更差，需人工确认替换）`；
+- `status=skipped` 的 `reason` 分三种结局：`疑似重复：…（《书名》质量更优/持平/无质量分）`、`升级候选：噪声率 3.2%→0.4%、乱码率 …（旧版本《书名》质量更差，需人工确认替换）`，以及 `内容过滤（fem|supernatural）：命中「<特征词>」`——书名归一后命中女频 / 灵异悬疑词表，**不入库也不进失败明细**，与「章节数不足」同属 skipped；
   升级候选**不入库、不替换**（设计 §7），结构化字段（旧书 id/书名、命中率、新旧质量分、逐项差异）由 `importer.Result.UpgradeCandidates` 交给调用方，服务日志逐条打印。
 
 ### POST /api/import/jobs/{id}/retry
