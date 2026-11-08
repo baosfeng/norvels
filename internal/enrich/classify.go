@@ -26,7 +26,7 @@ var categoryRules = []categoryRule{
 	{l1: "军事", l2: "军旅", kw: []string{"军事", "战争", "特种兵", "军旅", "雇佣兵", "战场", "military", "army", "soldier", "军婚", "征兵", "兵役"}},
 	{l1: "体育", l2: "竞技", kw: []string{"足球", "篮球", "体育", "竞技", "sports", "sport", "联赛", "教练", "球员", "网球", "排球", "羽毛球", "田径", "游泳", "搏击"}},
 	{l1: "奇幻", l2: "西幻", kw: []string{"魔法", "精灵", "巫师", "骑士", "巨龙", "西幻", "fantasy", "magic", "elf", "dragon", "异族", "勇者", "魔王", "龙族"}},
-	{l1: "轻小说", l2: "轻小说", kw: []string{"轻小说", "同人", "二次元", "light novel", "anime", "manga", "后宫"}},
+	{l1: "轻小说", l2: "轻小说", kw: []string{"轻小说", "同人", "二次元", "light novel", "anime", "manga"}},
 }
 
 // Classify 用本地词表按「书名 + 简介前 200 字」判分类。
