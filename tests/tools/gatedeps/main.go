@@ -69,6 +69,11 @@ var allowedDeps = map[string][]string{
 	"norvels/internal/releases": {},
 	// 声明式规则执行器：只依赖标准库与 CSS/XPath 解析库（叶子包）。
 	"norvels/internal/ruleexec": {},
+	// 元数据补全的纯决策层（占位作者 / 投票 / 分类词表 / 切点）：只依赖标准库（叶子包）。
+	"norvels/internal/enrich": {},
+	// 在线书源检索执行器：抓取走 fetch、规则求值走 ruleexec，决策用 enrich 的纯函数。
+	// 三者都是叶子/低层包，crawl 只做编排，不碰解析与存储。
+	"norvels/internal/crawl": {"norvels/internal/fetch", "norvels/internal/ruleexec", "norvels/internal/source", "norvels/internal/enrich"},
 	// JS 沙箱执行器：只依赖 goja 与标准库（叶子包），不碰解析与抓取。
 	"norvels/internal/jsruntime": {},
 	// 书源导入适配器：Legado JSON → source.Profile，只依赖 source 与 ruleexec。
@@ -94,7 +99,7 @@ var allowedDeps = map[string][]string{
 	// cmd 是程序入口，可以依赖任意 internal 包。
 	// ai 只在这里出现：--ai 的上架判定器在 cmd 里接线（importer 只认函数类型、ai 不认识书库），
 	// cmd 是两条边界的唯一翻译点，所以由它同时依赖两边。
-	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config", "norvels/internal/recstore", "norvels/internal/ai"},
+	"norvels/cmd/norvels":     {"norvels/internal/api", "norvels/internal/importer", "norvels/internal/parser", "norvels/internal/store", "norvels/internal/model", "norvels/internal/webui", "norvels/internal/config", "norvels/internal/recstore", "norvels/internal/ai", "norvels/internal/enrich", "norvels/internal/crawl"},
 	"norvels/cmd/healthcheck": {},
 	// 压缩率/延迟实测工具：只读库 + 调正文编码层与路径推导，不进发布二进制（Makefile 只 build ./cmd/norvels）。
 	// store 只用来复用 ContentDBPath（正文库路径推导的唯一实现），不调用它的读写路径。

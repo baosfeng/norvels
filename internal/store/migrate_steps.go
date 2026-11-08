@@ -253,6 +253,8 @@ var migrationStepsByVersion = map[int][]migrationStep{
 // 是不依赖连接池的纯主库步骤；0018 要把块写进正文库（另一个文件）、0019 要在
 // 正文库建指纹表，都只能在 applyMigration 里把 Store 传进来。
 var storeStepsByVersion = map[int]func(ctx context.Context, tx *sql.Tx, s *Store) error{
+	// 0027：补全变更日志的可用性守卫（建表在 0027_enrich_changes.sql）。
+	27: createEnrichChangesStep,
 	18: splitContentBlocksStep,
 	19: createFingerprintTableStep,
 	// 0023：正文库建书级指纹覆盖表并回填（实现见 migrate_0023.go）。
