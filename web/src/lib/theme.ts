@@ -5,13 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * 五档显式主题（日间 / 夜间 / 羊皮纸 / 护眼绿 / 纯黑 OLED）+ 一档「跟随系统」：
  * 跟随系统时按 prefers-color-scheme 在日间与夜间之间自动切换，并持续监听系统外观变化。
  */
-export type Theme = "day" | "night" | "parchment" | "green" | "black" | "system";
+export type Theme = "day" | "night" | "parchment" | "green" | "black" | "contrast" | "system";
 /** 真正落到 data-theme 上的主题（system 已解析成 day / night）。 */
 export type ResolvedTheme = Exclude<Theme, "system">;
 
 const KEY = "norvels.theme";
 /** 面板里的展示顺序：由浅到深，跟随系统收在最后。 */
-const ORDER: Theme[] = ["day", "night", "parchment", "green", "black", "system"];
+const ORDER: Theme[] = ["day", "night", "parchment", "green", "black", "contrast", "system"];
 /** 深色外观的档位：color-scheme 与浏览器原生控件（滚动条 / 输入框）跟着走。 */
 const DARK_THEMES: readonly ResolvedTheme[] = ["night", "black"];
 
@@ -68,6 +68,12 @@ export const THEME_SHIFT_MS = 180;
 export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** 系统是否要求高对比（prefers-contrast: more）。 */
+export function prefersContrast(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-contrast: more)").matches;
 }
 
 /** 监听系统深浅色变化；回调只在变化时触发，卸载时摘掉。 */

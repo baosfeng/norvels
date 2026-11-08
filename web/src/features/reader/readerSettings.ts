@@ -8,7 +8,7 @@
 
 import { isTurnEffect, type TurnEffect } from "../../lib/paging/turnEffects";
 
-export type ReaderFontFamily = "serif" | "sans" | "system";
+export type ReaderFontFamily = "serif" | "sans" | "system" | "dyslexic" | "dyslexia" | "opendyslexic";
 export type ReaderWidth = "narrow" | "normal" | "wide";
 export type ReaderAlign = "left" | "justify";
 
@@ -36,7 +36,7 @@ export const PARA_LEVELS = [0.4, 0.7, 1, 1.6] as const;
 /** 页宽三档；标准档与改造前的正文宽度一致。 */
 export const WIDTH_VALUES: Record<ReaderWidth, string> = { narrow: "32rem", normal: "42rem", wide: "52rem" };
 
-export const FONT_FAMILY_LABELS: Record<ReaderFontFamily, string> = { serif: "衬线", sans: "黑体", system: "系统" };
+export const FONT_FAMILY_LABELS: Record<ReaderFontFamily, string> = { serif: "衬线", sans: "黑体", system: "系统", dyslexic: "阅读障碍友好", dyslexia: "阅读障碍友好", opendyslexic: "阅读障碍友好" };
 export const WIDTH_LABELS: Record<ReaderWidth, string> = { narrow: "窄", normal: "标准", wide: "宽" };
 export const ALIGN_LABELS: Record<ReaderAlign, string> = { left: "左对齐", justify: "两端" };
 
@@ -48,6 +48,9 @@ export const FONT_FAMILY_STACK: Record<ReaderFontFamily, string> = {
   serif: "var(--reader-serif, serif)",
   sans: "var(--reader-sans, sans-serif)",
   system: "var(--reader-system, system-ui, sans-serif)",
+  dyslexic: "var(--reader-dyslexic, \"OpenDyslexic\", \"Open Dyslexic\", sans-serif)",
+  dyslexia: "var(--reader-dyslexic, \"OpenDyslexic\", \"Open Dyslexic\", sans-serif)",
+  opendyslexic: "var(--reader-dyslexic, \"OpenDyslexic\", \"Open Dyslexic\", sans-serif)",
 };
 
 /** 正文字号五档预设（px）：A−/A+ 每次跳一档，不再连续调节。 */
@@ -161,7 +164,7 @@ export function readReaderSettings(storage: ReadStorage = typeof window === "und
   return {
     font: snapFontLevel(readNumber(storage, READER_KEYS.font, READER_DEFAULTS.font, FONT_MIN, FONT_MAX)),
     leading: Number(readNumber(storage, READER_KEYS.leading, READER_DEFAULTS.leading, LEADING_MIN, LEADING_MAX).toFixed(1)),
-    fontFamily: readEnum(storage, READER_KEYS.fontFamily, ["serif", "sans", "system"], READER_DEFAULTS.fontFamily),
+    fontFamily: readEnum(storage, READER_KEYS.fontFamily, ["serif", "sans", "system", "dyslexic", "dyslexia", "opendyslexic"], READER_DEFAULTS.fontFamily),
     para: snapParaLevel(readNumber(storage, READER_KEYS.para, READER_DEFAULTS.para, PARA_LEVELS[0], PARA_LEVELS[PARA_LEVELS.length - 1])),
     width: readEnum(storage, READER_KEYS.width, ["narrow", "normal", "wide"], READER_DEFAULTS.width),
     align: readEnum(storage, READER_KEYS.align, ["left", "justify"], READER_DEFAULTS.align),

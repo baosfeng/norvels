@@ -70,6 +70,8 @@
   --green-bg: #e3ede1; --green-surface: #eef4ec; --green-raised: #f4f8f2; --green-fg: #24301f; --green-muted: #5d6b56; --green-border: #cbd9c6;
   /* 纯黑 OLED：真黑底省电且不发光，正文压到 #d6d6d6 避免高对比拖影 */
   --black-bg: #000000; --black-surface: #0b0b0b; --black-raised: #161616; --black-fg: #d6d6d6; --black-muted: #8e8e8e; --black-border: #262626;
+  /* 高对比：纯黑字 / 纯白底 / 粗边框，最大化对比度（与 prefers-contrast 对齐） */
+  --contrast-bg: #ffffff; --contrast-surface: #ffffff; --contrast-raised: #f2f2f2; --contrast-fg: #000000; --contrast-muted: #1a1a1a; --contrast-border: #000000;
   --success-text: color-mix(in oklab, var(--success), var(--fg) 55%);
   --warn-text: color-mix(in oklab, var(--warn), var(--fg) 62%);
   --danger-text: color-mix(in oklab, var(--danger), var(--fg) 20%);
@@ -87,6 +89,8 @@
   --reader-serif: "Songti SC", "SimSun", "Source Han Serif SC", "Noto Serif CJK SC", Georgia, serif;
   --reader-sans: "Heiti SC", "SimHei", "PingFang SC", "Microsoft YaHei", sans-serif;
   --reader-system: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  /* Dyslexia-friendly 字体栈：OpenDyslexic 未安装时回退到无衬线 */
+  --reader-dyslexic: "OpenDyslexic", "Open Dyslexic", "Comic Sans MS", system-ui, sans-serif;
   --switch-w: 40px;
   --switch-h: 22px;
 }
@@ -128,4 +132,13 @@ html[data-theme="black"] {
   --muted: var(--black-muted); --border: var(--black-border); --border-soft: var(--black-raised);
   /* 纯黑底上原强调色偏暗，提亮一档保证按钮文字对比度 */
   --accent: #c07f4f; --meta: #c07f4f;
+}
+html[data-theme="contrast"] {
+  --r-bg: var(--contrast-bg); --r-surface: var(--contrast-surface); --r-fg: var(--contrast-fg);
+  --r-muted: var(--contrast-muted); --r-border: var(--contrast-border); --r-raised: var(--contrast-raised);
+  --bg: var(--contrast-bg); --surface: var(--contrast-surface); --surface-warm: var(--contrast-raised);
+  --fg: var(--contrast-fg); --fg-2: var(--contrast-fg);
+  --muted: var(--contrast-muted); --border: var(--contrast-border); --border-soft: var(--contrast-raised);
+  --accent: #000000; --meta: #000000;
+  --focus-ring: 0 0 0 4px rgba(0, 0, 0, 0.45);
 }

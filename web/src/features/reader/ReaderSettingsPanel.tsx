@@ -31,7 +31,7 @@ import type { ReaderPageMode } from "./readerSettings";
 
 import { PARA_LABELS, THEME_DOTS, THEME_LABELS } from "./readerConstants";
 
-const FONT_FAMILIES: ReaderFontFamily[] = ["serif", "sans", "system"];
+const FONT_FAMILIES: ReaderFontFamily[] = ["serif", "sans", "system", "dyslexic"];
 const PAGE_MODES: ReaderPageMode[] = ["page", "scroll"];
 const PAGE_MODE_LABELS: Record<ReaderPageMode, string> = { page: "左右翻页", scroll: "上下滚动" };
 /** 每种效果的一句人话：读者不知道「仿真折页」是什么，这里说清它长什么样。 */
