@@ -19,7 +19,7 @@ import (
 //
 //	norvels enrich [--db ...] [--apply] [--plan] [--fields author,intro,category]
 //	               [--workers 4] [--qps 1] [--max-sources 3] [--timeout 10s]
-//	               [--budget 30m] [--max-requests 20000] [--limit N] [--resume]
+//	               [--budget 30m] [--max-requests 20000] [--limit N] [--resume] [--since RFC3339]
 //	               [--min-title-sim 0.86] [--flush-every 200]
 //	norvels enrich --split-long-chapters [--apply] [--min-words 30000] [--target-words 8000]
 //	norvels enrich --rollback <batchID> [--apply]
@@ -45,6 +45,7 @@ func cmdEnrich(args []string) error {
 	budget := fs.Duration("budget", 30*time.Minute, "墙钟预算（0 = 不限）")
 	maxRequests := fs.Int("max-requests", 20000, "全局请求上限（0 = 不限）")
 	limit := fs.Int("limit", 0, "每类最多处理多少本（0 = 不限）")
+	ssince := fs.String("since", "", "只考虑 imported_at >= 该时间的书（RFC3339，空 = 不限）")
 	resume := fs.Bool("resume", false, "跳过本批次已处理过的书（配合上次 --apply 的 batch）")
 	resumeBatch := fs.String("resume-batch", "", "配合 --resume：上次的 batch id")
 	flushEvery := fs.Int("flush-every", 200, "每处理满 N 本就把变更落库并打进度（0 = 只在结束时落库）")
@@ -57,6 +58,14 @@ func cmdEnrich(args []string) error {
 
 	if err := validateEnrichFlags(*apply, *readOnly, *flushEvery); err != nil {
 		return err
+	}
+	var sinceTime time.Time
+	if *ssince != "" {
+		t, err := time.Parse(time.RFC3339, *ssince)
+		if err != nil {
+			return fmt.Errorf("--since 解析失败（需要 RFC3339）：%w", err)
+		}
+		sinceTime = t
 	}
 	lockRetry = *retry
 	ctx := context.Background()
@@ -79,7 +88,7 @@ func cmdEnrich(args []string) error {
 		workers: *workers, qps: *qps, maxSources: *maxSources, timeout: *timeout,
 		budget: *budget, maxRequests: *maxRequests, limit: *limit,
 		resume: *resume, resumeBatch: *resumeBatch, minTitleSim: *minTitleSim,
-		flushEvery: *flushEvery,
+		flushEvery: *flushEvery, since: sinceTime,
 	})
 }
 
@@ -122,6 +131,7 @@ type enrichOpts struct {
 	// flushEvery 是流式落库的批量：每处理满这么多本就把已收集的变更落库一次
 	// （0 = 只在结束时落库，等于旧的一次性行为）。
 	flushEvery int
+	since      time.Time
 }
 
 // splitOpts 是切分命令的参数集合。
@@ -210,7 +220,7 @@ func prepareEnrich(ctx context.Context, st *store.Store, o enrichOpts) (enrichOp
 		return o, nil, err
 	}
 	o.fields = want
-	cands, err := collectCandidates(ctx, st, want, o.limit)
+	cands, err := collectCandidates(ctx, st, want, o.limit, o.since)
 	if err != nil {
 		return o, nil, err
 	}
@@ -246,7 +256,11 @@ func newBatchID() string {
 }
 
 // collectCandidates 把请求的字段映射成三类待补清单（跨类去重，保留首次出现的顺序）。
-func collectCandidates(ctx context.Context, st *store.Store, want map[string]bool, limit int) ([]store.EnrichCandidate, error) {
+func collectCandidates(ctx context.Context, st *store.Store, want map[string]bool, limit int, since ...time.Time) ([]store.EnrichCandidate, error) {
+	var sinceTime time.Time
+	if len(since) > 0 {
+		sinceTime = since[0]
+	}
 	kinds := make([]string, 0, 3)
 	if want[store.EnrichFieldAuthor] {
 		kinds = append(kinds, store.EnrichKindPlaceholderAuthor)
@@ -260,7 +274,13 @@ func collectCandidates(ctx context.Context, st *store.Store, want map[string]boo
 	seen := make(map[int64]bool, 1024)
 	out := make([]store.EnrichCandidate, 0, 1024)
 	for _, k := range kinds {
-		list, err := st.EnrichCandidates(ctx, k, limit)
+		var list []store.EnrichCandidate
+		var err error
+		if sinceTime.IsZero() {
+			list, err = st.EnrichCandidates(ctx, k, limit)
+		} else {
+			list, err = st.EnrichCandidatesSince(ctx, k, limit, sinceTime)
+		}
 		if err != nil {
 			return nil, err
 		}

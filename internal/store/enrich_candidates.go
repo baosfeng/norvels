@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 )
 
 // 元数据补全的三类待补清单（enrich 子命令的输入）。
@@ -59,26 +61,48 @@ var enrichCandidateQueries = map[string]string{
 // 占位作者那一类走单独实现：它要按「作者名在不在占位名单里」筛，
 // SQL 只能做粗筛，最终判定在 enricher 侧用 enrich.IsPlaceholderAuthor 复核。
 func (s *Store) EnrichCandidates(ctx context.Context, kind string, limit int) ([]EnrichCandidate, error) {
+	return s.EnrichCandidatesSince(ctx, kind, limit, time.Time{})
+}
+
+// EnrichCandidatesSince 取一类待补书（limit ≤ 0 表示不限制；since 非零时只取 imported_at >= since 的书）。
+//
+// 占位作者那一类走单独实现：它要按「作者名在不在占位名单里」筛，
+// SQL 只能做粗筛，最终判定在 enricher 侧用 enrich.IsPlaceholderAuthor 复核。
+func (s *Store) EnrichCandidatesSince(ctx context.Context, kind string, limit int, since time.Time) ([]EnrichCandidate, error) {
+	hasSince := !since.IsZero()
+	sinceStr := ""
+	if hasSince {
+		sinceStr = since.UTC().Format(time.RFC3339)
+	}
 	if kind == EnrichKindPlaceholderAuthor {
-		return s.placeholderAuthorCandidates(ctx, limit)
+		return s.placeholderAuthorCandidates(ctx, limit, sinceStr, hasSince)
 	}
 	sqlText, ok := enrichCandidateQueries[kind]
 	if !ok {
 		return nil, fmt.Errorf("%w: kind 必须是 %s 之一", ErrInvalidArgument, joinKinds())
 	}
-	return s.queryEnrichCandidates(ctx, sqlText, limit)
+	if hasSince {
+		sqlText = strings.Replace(sqlText, " ORDER BY", " AND b.imported_at >= ? ORDER BY", 1)
+	}
+	return s.queryEnrichCandidates(ctx, sqlText, limit, sinceStr, hasSince)
 }
 
 // placeholderAuthorCandidates 取作者名为占位值的书（粗筛 + 原名返回，复核由调用方做）。
-func (s *Store) placeholderAuthorCandidates(ctx context.Context, limit int) ([]EnrichCandidate, error) {
+func (s *Store) placeholderAuthorCandidates(ctx context.Context, limit int, sinceStr string, hasSince bool) ([]EnrichCandidate, error) {
 	sqlText := "SELECT b.id, b.title, COALESCE(a.name, ''), b.intro," +
 		" COALESCE(b.category_l1, ''), COALESCE(b.category_l2, '')" +
 		" FROM books b LEFT JOIN authors a ON a.id = b.author_id" +
-		" WHERE a.name IN (" + placeholders(len(placeholderAuthorNames)) + ") AND " + activeBookCond +
-		" ORDER BY b.word_count DESC, b.id ASC"
-	args := make([]any, 0, len(placeholderAuthorNames)+1)
+		" WHERE a.name IN (" + placeholders(len(placeholderAuthorNames)) + ") AND " + activeBookCond
+	if hasSince {
+		sqlText += " AND b.imported_at >= ?"
+	}
+	sqlText += " ORDER BY b.word_count DESC, b.id ASC"
+	args := make([]any, 0, len(placeholderAuthorNames)+2)
 	for _, n := range placeholderAuthorNames {
 		args = append(args, n)
+	}
+	if hasSince {
+		args = append(args, sinceStr)
 	}
 	if limit > 0 {
 		sqlText += " LIMIT ?"
@@ -88,11 +112,17 @@ func (s *Store) placeholderAuthorCandidates(ctx context.Context, limit int) ([]E
 }
 
 // queryEnrichCandidates 执行一条带 LIMIT 占位的候选查询。
-func (s *Store) queryEnrichCandidates(ctx context.Context, sqlText string, limit int) ([]EnrichCandidate, error) {
-	if limit <= 0 {
-		return s.scanEnrichCandidates(ctx, sqlText, 1_000_000)
+func (s *Store) queryEnrichCandidates(ctx context.Context, sqlText string, limit int, sinceStr string, hasSince bool) ([]EnrichCandidate, error) {
+	args := make([]any, 0, 2)
+	if hasSince {
+		args = append(args, sinceStr)
 	}
-	return s.scanEnrichCandidates(ctx, sqlText, limit)
+	if limit <= 0 {
+		args = append(args, 1_000_000)
+	} else {
+		args = append(args, limit)
+	}
+	return s.scanEnrichCandidates(ctx, sqlText, args...)
 }
 
 // scanEnrichCandidates 扫描候选行。
