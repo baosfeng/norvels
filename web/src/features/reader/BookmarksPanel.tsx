@@ -3,6 +3,33 @@ import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { bookmarkTitle } from "../../lib/bookmark";
 import type { ResourceState } from "../../lib/useResource";
 
+function downloadText(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportBookmarks(list: Bookmark[], format: "md" | "json") {
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (format === "json") {
+    downloadText("norvels-bookmarks-" + stamp + ".json", JSON.stringify(list, null, 2));
+    return;
+  }
+  const md = list
+    .map((bookmark) => {
+      const loc = bookmark.chapterTitle || "第 " + (bookmark.chapterIdx + 1) + " 章";
+      return "## " + loc + "\n\n- 段落：" + (bookmark.paraIndex + 1) + "\n- 记忆：" + bookmark.label + "\n";
+    })
+    .join("\n");
+  downloadText("norvels-bookmarks-" + stamp + ".md", md);
+}
+
 /**
  * 书签页签内容：列表按时间倒序，每行可跳到该段；「在这里加书签」记在当前读到的段落。
  * 删除先弹二次确认，确认框在父级渲染——这里只负责发起。
@@ -41,6 +68,26 @@ export function BookmarksPanel({
         {adding ? "正在保存…" : "在这里加书签"}
       </button>
       {!canAdd ? <span className="inline-note">正文还没载入，稍后可以加书签</span> : null}
+      {list.length > 0 ? (
+        <div className="bookmark-export-actions">
+          <button
+            className="btn"
+            type="button"
+            data-testid="bookmark-export-md"
+            onClick={() => exportBookmarks(list, "md")}
+          >
+            导出 Markdown
+          </button>
+          <button
+            className="btn"
+            type="button"
+            data-testid="bookmark-export-json"
+            onClick={() => exportBookmarks(list, "json")}
+          >
+            导出 JSON
+          </button>
+        </div>
+      ) : null}
       {bookmarks.loading ? (
         <LoadingPanel title="正在读取书签" description="稍等一下。" />
       ) : bookmarks.error ? (
@@ -67,19 +114,19 @@ export function BookmarksPanel({
           {list.map((bookmark) => (
             <div
               key={bookmark.id}
-              className={`bookmark-row${bookmark.chapterId === currentChapterId ? " is-current" : ""}`}
-              data-testid={`bookmark-${bookmark.id}`}
+              className={"bookmark-row" + (bookmark.chapterId === currentChapterId ? " is-current" : "")}
+              data-testid={"bookmark-" + bookmark.id}
               data-current={bookmark.chapterId === currentChapterId}
             >
               <button className="bookmark-jump" type="button" onClick={() => onJump(bookmark)}>
-                <span className="num">{bookmark.chapterTitle || `第 ${bookmark.chapterIdx + 1} 章`}</span>
+                <span className="num">{bookmark.chapterTitle || "第 " + (bookmark.chapterIdx + 1) + " 章"}</span>
                 <span className="bookmark-label">{bookmarkTitle(bookmark)}</span>
               </button>
               <button
                 className="bookmark-delete"
                 type="button"
-                aria-label={`删除书签 ${bookmarkTitle(bookmark)}`}
-                data-testid={`bookmark-delete-${bookmark.id}`}
+                aria-label={"删除书签 " + bookmarkTitle(bookmark)}
+                data-testid={"bookmark-delete-" + bookmark.id}
                 onClick={() => onRequestDelete(bookmark)}
               >
                 删除
