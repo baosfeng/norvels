@@ -255,6 +255,13 @@ func (s *Server) miscRoutes() []route {
 		// AI 审核开关（设计 §6）：开关落库（ai.enabled），key 只从环境变量进内存。
 		newRoute(http.MethodGet, "/api/settings/ai", s.handleGetAISettings),
 		newRoute(http.MethodPut, "/api/settings/ai", s.handlePutAISettings),
+		// 阅读器设置（按账号 JSON 同步）：本地 localStorage 兜底 + 服务端按账号存储。
+		newRoute(http.MethodGet, "/api/settings/reader", s.handleGetReaderSettings),
+		newRoute(http.MethodPut, "/api/settings/reader", s.handlePutReaderSettings),
+		newRoute(http.MethodGet, "/api/reader/settings", s.handleGetReaderSettings),
+		newRoute(http.MethodPut, "/api/reader/settings", s.handlePutReaderSettings),
+		newRoute(http.MethodGet, "/api/reading/settings", s.handleGetReaderSettings),
+		newRoute(http.MethodPut, "/api/reading/settings", s.handlePutReaderSettings),
 		// 能力清单（策略注册表 + 上限）：前端硬编码上限的唯一来源。
 		newRoute(http.MethodGet, capabilitiesPath, s.handleCapabilities),
 		// 运行时性能快照（观测）：路由级分位、慢请求、SQL 模板与连接池，见 docs/api/api-observability.md

@@ -1,20 +1,55 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme, type Theme } from "../../lib/theme";
 import { showToast } from "../../lib/toastStore";
 import { tradToSimp } from "../../lib/trad2simp";
+import { api } from "../../api/client";
 import { readReaderSettings, writeReaderSettings, type ReaderSettings } from "./readerSettings";
 
 /**
  * 阅读设置的状态与落盘：默认值从 localStorage 读一次，改一次写一次。
- * 两个开关需要即时反馈（繁转简换了字形、自动滚动开始动起来），所以提示也在这里发；
- * 「跟随系统外观」同理——它不只是换配色，还会跟着系统变深变浅。
+ *
+ * 多端同步：启动时拉取服务端按账号存储的设置，远程优先但保留本地兜底（合并）；
+ * 修改时防抖写回服务端；离线/请求失败时继续用 localStorage，不影响阅读。
  */
 export function useReaderSettings(paragraphs: string[]) {
   const [settings, setSettings] = useState<ReaderSettings>(() => readReaderSettings());
   const { theme, setTheme, themes } = useTheme();
 
+  // 挂载时拉取远程设置并合并（远程优先、缺失键保留本地）。
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const res = await api.readerSettings();
+        const remote = res?.settings;
+        if (!active || !remote || typeof remote !== "object") return;
+        setSettings((prev) => ({ ...prev, ...(remote as Partial<ReaderSettings>) }));
+      } catch {
+        // 离线或未登录：继续用本地设置。
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // 本地落盘（每次变更）。
   useEffect(() => {
     writeReaderSettings(settings);
+  }, [settings]);
+
+  // 远程写回（防抖），避免每次击键都请求。
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void api.putReaderSettings(settings).catch(() => {
+        // 离线：本地已落盘，下次启动再同步。
+      });
+    }, 800);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [settings]);
 
   const changeSettings = useCallback(
