@@ -5,6 +5,7 @@ import { AuthProvider } from "./lib/AuthProvider";
 import { ShelfIdsProvider } from "./features/shelf/ShelfIdsProvider";
 import { useTheme } from "./lib/theme";
 import { ToastHost } from "./lib/toast";
+import { PwaStatus } from "./components/PwaStatus";
 
 function Routes() {
   return useRoutes(routeTable);
@@ -32,6 +33,7 @@ export function App() {
             {/* toast 的唯一渲染点：挂在路由之外，/read（阅读器是独立外壳，不在 AppShell 内）也能看见；
                 放在这张图里之前它挂在 AppShell，阅读器里的操作结果一律永不渲染。 */}
             <ToastHost />
+            <PwaStatus />
           </BrowserRouter>
         </ShelfIdsProvider>
       </AuthProvider>
