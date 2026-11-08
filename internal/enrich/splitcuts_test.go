@@ -98,3 +98,53 @@ func TestCountWords(t *testing.T) {
 		}
 	}
 }
+
+// TestSplitCutsSentenceFallback 覆盖无段落边界但有句末标点时退化按句子切。
+func TestSplitCutsSentenceFallback(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 40; i++ {
+		b.WriteString(strings.Repeat("句", 200))
+		b.WriteString("。")
+	}
+	body := b.String()
+	cuts := SplitCuts(body, 2000, 5000)
+	if len(cuts) < 2 {
+		t.Fatalf("8000 字按句子应切出至少 2 刀，实际 %v", cuts)
+	}
+	prev := -1
+	for _, c := range cuts {
+		if c <= prev {
+			t.Fatalf("切点必须严格递增，实际 %v", cuts)
+		}
+		prev = c
+	}
+}
+
+// TestSplitCutsSentenceShortTailMerged 覆盖句子退化下的尾段过短撤销。
+func TestSplitCutsSentenceShortTailMerged(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(strings.Repeat("长", 3000))
+	b.WriteString("。")
+	b.WriteString(strings.Repeat("尾", 100))
+	b.WriteString("。")
+	cuts := SplitCuts(b.String(), 1000, 2000)
+	if len(cuts) != 0 {
+		t.Fatalf("尾段只有 100 字，最后一刀应被撤销，实际 %v", cuts)
+	}
+}
+
+// TestSplitCutsSentenceMaxPieces 覆盖句子退化下的 99 段上限。
+func TestSplitCutsSentenceMaxPieces(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 400; i++ {
+		b.WriteString(strings.Repeat("句", 100))
+		b.WriteString("。")
+	}
+	cuts := SplitCuts(b.String(), 100, 200)
+	if len(cuts) >= maxSplitPieces {
+		t.Fatalf("切点数应少于 %d，实际 %d", maxSplitPieces, len(cuts))
+	}
+	if len(cuts) == 0 {
+		t.Fatal("40 万字按 100 字目标应至少切一刀")
+	}
+}

@@ -27,6 +27,13 @@ func SplitCuts(content string, targetWords, minWords int) []int {
 	}
 	lines := strings.Split(content, "\n")
 	cuts := trimShortTail(scanCuts(lines, targetWords), lines, targetWords)
+	if len(cuts) > 0 {
+		return cuts
+	}
+	// 段落边界切不出来（没有换行结构）时，退化成「按句末标点切」：
+	// 长单块按 . ? 。 ？ ！ ； ; 加换行拆成句子单位，复用上面的累计/尾段规则。
+	units := splitSentenceUnits(content)
+	cuts = trimShortTail(scanCuts(units, targetWords), units, targetWords)
 	if len(cuts) == 0 {
 		return nil
 	}
@@ -85,6 +92,36 @@ func hasWordsAfter(lines []string, from int) bool {
 		if countWords(lines[i]) > 0 {
 			return true
 		}
+	}
+	return false
+}
+
+// splitSentenceUnits 把单块按句末标点（及换行）切成句子单位；
+// 标点留在本单位末尾，空尾段整块保留以便累计字数。
+func splitSentenceUnits(content string) []string {
+	units := make([]string, 0, 8)
+	var b strings.Builder
+	for _, r := range content {
+		b.WriteRune(r)
+		if isSentenceBoundary(r) {
+			units = append(units, b.String())
+			b.Reset()
+		}
+	}
+	if b.Len() > 0 {
+		units = append(units, b.String())
+	}
+	if len(units) == 0 {
+		return []string{content}
+	}
+	return units
+}
+
+// isSentenceBoundary 判断句子切分的边界符（. ? 。 ？ ！ ； ; 加换行）。
+func isSentenceBoundary(r rune) bool {
+	switch r {
+	case '.', '?', '。', '？', '！', '；', ';', '\n', '\r':
+		return true
 	}
 	return false
 }
