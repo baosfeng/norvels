@@ -62,6 +62,8 @@ export function ReaderBody({
    * 传了就整条连续流的渲染让位给它——两条路径互斥，不在同一个 DOM 里叠。
    */
   pagedContent?: ReactNode;
+  /** TTS 当前朗读段落（整章下标），仅用于高亮已有段落。 */
+  ttsActivePara?: number | null;
 }) {
   const hasBody = stream.segments.length > 0;
   return (

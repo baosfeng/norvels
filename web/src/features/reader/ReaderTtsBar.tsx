@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useFocusTrap } from "../../lib/focusTrap";
 import type { TtsDriver, TtsVoice } from "../../lib/tts";
 import type { UseReaderTtsResult } from "./useReaderTts";

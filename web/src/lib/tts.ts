@@ -44,7 +44,6 @@ export function speakingParagraphs(paragraphs: string[]): string[] {
 }
 
 export function createWebSpeechDriver(): TtsDriver {
-  let active: SpeechSynthesisUtterance | null = null;
   return {
     id: "web-speech",
     label: "系统语音（Web Speech）",
@@ -82,23 +81,19 @@ export function createWebSpeechDriver(): TtsDriver {
       utterance.onend = () => {
         if (done) return;
         done = true;
-        active = null;
         options.onend?.();
       };
       utterance.onerror = (event) => {
         if (done) return;
         done = true;
-        active = null;
         options.onerror?.(event.error || "speech-error");
       };
-      active = utterance;
       window.speechSynthesis.speak(utterance);
       return {
         cancel: () => {
           if (done) return;
           done = true;
-          active = null;
-          window.speechSynthesis.cancel();
+            window.speechSynthesis.cancel();
         },
       };
     },
@@ -113,7 +108,6 @@ export function createWebSpeechDriver(): TtsDriver {
       }
     },
     cancel: () => {
-      active = null;
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
@@ -124,7 +118,6 @@ export function createWebSpeechDriver(): TtsDriver {
 export function createExternalHttpDriver(endpoint: string): TtsDriver {
   let activeAudio: HTMLAudioElement | null = null;
   let activeUrl: string | null = null;
-  let aborter: AbortController | null = null;
   const cleanup = () => {
     if (activeAudio) {
       try {
@@ -142,7 +135,6 @@ export function createExternalHttpDriver(endpoint: string): TtsDriver {
       }
       activeUrl = null;
     }
-    aborter = null;
   };
   return {
     id: "external-http",
@@ -157,7 +149,6 @@ export function createExternalHttpDriver(endpoint: string): TtsDriver {
         return { cancel: () => {} };
       }
       const controller = new AbortController();
-      aborter = controller;
       let done = false;
       const finish = (error?: string) => {
         if (done) return;
