@@ -40,6 +40,7 @@ const usage = `norvels — 本地中文小说库
   norvels refresh-metrics [--db ...]
   norvels enrich [--db ...] [--apply] [--plan] [--fields author,intro,category]
                  [--workers 4] [--qps 1] [--max-sources 3] [--budget 30m] [--limit N]
+                 [--flush-every 200]
   norvels enrich --split-long-chapters [--apply] [--min-words 30000] [--target-words 8000]
   norvels enrich --rollback <batchID> [--apply]
   norvels source test [--db ...] [--id src-xxxx --title 书名] [--json]
@@ -73,6 +74,8 @@ source test 单源实测：不带 --id 列出在线书源；带 --id/--title 发
 
 enrich 按在线书源补元数据（作者 / 简介 / 分类），并把超长章节切分：
   默认 dry-run（--apply 才写库并生成可 --rollback 的批次号）；--plan 只列清单不联网；
+  --apply 每处理满 --flush-every 本（默认 200，0 = 只在结束时）就落库并打一行进度，
+  整批共用一个批次号，中途被杀只丢最后未满的一批；
   没有在线书源时仍能用本地词表离线补分类。细节见 docs/specs/2026-11-08-metadata-enrich-design.md。
 
 优先级：命令行 flag > 环境变量 > 默认值。环境变量统一 NORVELS_ 前缀:

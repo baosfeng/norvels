@@ -102,7 +102,7 @@ func printPlan(cands []store.EnrichCandidate) {
 // printEnrichReport 打印汇总表：扫描 / 命中 / 写入 / 跳过原因 / 请求数 / 熔断源 / 耗时。
 func printEnrichReport(rep enrichReport, apply bool) {
 	fmt.Printf("\n扫描 %d 本 / 命中 %d 本 / 变更 %d 条 / 写库 %d 条 · 请求 %d 次 · 用时 %s%s\n",
-		rep.Scanned, rep.HitBooks, len(rep.Changes), rep.Written, rep.Engine.Requests,
+		rep.Scanned, rep.HitBooks, rep.changeCount(), rep.Written, rep.Engine.Requests,
 		rep.Elapsed.Round(time.Second), applyHint(apply))
 	if len(rep.Engine.Tripped) > 0 {
 		fmt.Printf("熔断源：%v（连续失败已达阈值，本次不再请求）\n", rep.Engine.Tripped)
