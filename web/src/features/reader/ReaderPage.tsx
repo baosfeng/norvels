@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useBook, useBookmarks, useRecordReadingSession, useSaveProgress } from "../../api/hooks";
 import { useIsH5 } from "../../lib/tier";
@@ -41,6 +41,8 @@ import { useChapterStream } from "./useChapterStream";
 import { tradToSimp } from "../../lib/trad2simp";
 import { pickStoredParaIndex, useReaderProgress } from "./readerProgress";
 import { useReadingSessionReporter } from "../../lib/readingTimer";
+import { readAiReadingConfig, writeAiReadingConfig, type AiReadingConfig } from "../../lib/aiReading";
+import { ReaderAiPanel } from "./ReaderAiPanel";
 
 /**
  * 阅读器：产品核心，两端能力等价。
@@ -80,6 +82,10 @@ function ReaderScreen() {
 
   const [hintDismissedFor, setHintDismissedFor] = useState(0);
   const [ttsOpen, setTtsOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiSelection, setAiSelection] = useState("");
+  const [aiConfig, setAiConfig] = useState<AiReadingConfig>(() => readAiReadingConfig());
+  useEffect(() => { writeAiReadingConfig(aiConfig); }, [aiConfig]);
   const [anchor, setAnchor] = useState({ chapterId: 0, para: 0 });
   const [pendingJump, setPendingJump] = useState<{ chapterId: number; paraIndex: number } | null>(null);
 
@@ -512,6 +518,30 @@ function ReaderScreen() {
         onJumpBookmark={jumpToBookmark}
         onRequestDeleteBookmark={requestDelete}
         onBookmarksRetry={retryBookmarks}
+      />
+
+      <button
+        type="button"
+        className="btn ai-reading-floating"
+        data-testid="reader-ai-open"
+        aria-label="打开 AI 辅读"
+        onClick={() => {
+          const sel = window.getSelection() ? window.getSelection()!.toString() : "";
+          setAiSelection(sel);
+          setAiOpen(true);
+        }}
+      >
+        AI
+      </button>
+
+      <ReaderAiPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        chapterTitle={activeSegment?.title ?? bookTitle}
+        chapterText={viewParagraphs.join("\n\n")}
+        selection={aiSelection}
+        config={aiConfig}
+        onConfigChange={setAiConfig}
       />
     </div>
   );
