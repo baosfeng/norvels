@@ -399,8 +399,12 @@ function ReaderScreen() {
         onOpenDirectory={toggleDirectory}
         onToggleHelp={toggleHelp}
         onToggleSettings={toggleSettings}
-        ttsSpeaking={tts.playing}
-        onToggleTTS={tts.toggle}
+        onOpenTts={() => setTtsOpen(true)}
+        onOpenAi={() => {
+          const sel = window.getSelection ? (window.getSelection()?.toString() ?? "") : "";
+          setAiSelection(sel);
+          setAiOpen(true);
+        }}
         onCloseHelp={() => setHelpOpen(false)}
         onCloseSearch={closeSearch}
       />
@@ -463,14 +467,6 @@ function ReaderScreen() {
         />
       ) : null}
 
-      <button
-        type="button"
-        className="btn btn-ghost reader-tts-toggle"
-        data-testid="reader-tts-toggle"
-        onClick={() => setTtsOpen(true)}
-      >
-        朗读
-      </button>
 
       <ReaderTtsBar tts={tts} open={ttsOpen} onClose={() => setTtsOpen(false)} />
 
@@ -518,19 +514,6 @@ function ReaderScreen() {
         onBookmarksRetry={retryBookmarks}
       />
 
-      <button
-        type="button"
-        className="btn ai-reading-floating"
-        data-testid="reader-ai-open"
-        aria-label="打开 AI 辅读"
-        onClick={() => {
-          const sel = window.getSelection() ? window.getSelection()!.toString() : "";
-          setAiSelection(sel);
-          setAiOpen(true);
-        }}
-      >
-        AI
-      </button>
 
       <ReaderAiPanel
         open={aiOpen}

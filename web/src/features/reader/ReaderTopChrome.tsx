@@ -29,8 +29,8 @@ export function ReaderTopChrome({
   onOpenDirectory,
   onToggleHelp,
   onToggleSettings,
-  ttsSpeaking,
-  onToggleTTS,
+  onOpenTts,
+  onOpenAi,
   onCloseHelp,
   onCloseSearch,
 }: {
@@ -66,8 +66,8 @@ export function ReaderTopChrome({
   onOpenDirectory: () => void;
   onToggleHelp: () => void;
   onToggleSettings: () => void;
-  ttsSpeaking?: boolean;
-  onToggleTTS?: () => void;
+  onOpenTts?: () => void;
+  onOpenAi?: () => void;
   onCloseHelp: () => void;
   onCloseSearch: () => void;
 }) {
@@ -95,8 +95,8 @@ export function ReaderTopChrome({
         onOpenDirectory={onOpenDirectory}
         onToggleHelp={onToggleHelp}
         onToggleSettings={onToggleSettings}
-        ttsSpeaking={ttsSpeaking}
-        onToggleTTS={onToggleTTS}
+        onOpenTts={onOpenTts}
+        onOpenAi={onOpenAi}
       />
 
       <ReaderHelpPanel open={helpOpen} onClose={onCloseHelp} />
