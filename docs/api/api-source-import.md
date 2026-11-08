@@ -62,14 +62,16 @@ body：
 | status | 含义 | 可入库 |
 |---|---|---|
 | `ok` | 全部规则可执行 | 是 |
-| `partial` | 部分字段含 `@js` 或规则无法编译，已降级 | 是（带标记） |
+| `partial` | 部分字段含 `@js`、规则无法编译或简写无法转换，已降级 | 是（带标记） |
 | `unusable` | 硬字段（`bookList`/`chapterList`/`content`/`searchUrl`/`exploreUrl`）含 `@js` | 否（apply 跳过，进 `skipped`） |
 | `invalid` | 缺 `bookSourceUrl` / 非 http(s) / 对象不合法 | 否 |
 | `unsupported_type` | 音频/图片/文件源（`bookSourceType` ≠ 0） | 否 |
 | `recognized` | 净化 / TXT 规则，已识别但本期不落库 | — |
 | `unknown_type` | 无法判定条目类型 | — |
 
-`degradedFields` 是「因 `@js` 降级」的字段（形如 `ruleSearch.bookList`、`searchUrl`）；
+导入时把 Legado 简写（`tag.`/`class.`/`id.` 前缀、`@` 链、`.N`/`!N` 索引）翻译成标准 CSS 再落库；`@css:`/`@xpath:`/`@json:` 前缀、`@text`/`@ownText`/`@html`/属性后缀与 `##正则##替换` 原样保留。转换不了的规则保持原文、字段进 `degradedFields`，状态降为 `partial`（整源仍可入库）。
+
+`degradedFields` 是「降级」的字段（形如 `ruleSearch.bookList`、`searchUrl`）：因 `@js` 不可执行，或 Legado 简写无法安全转换（此时规则保留原文）；
 `unsupportedFields` 是「保存但不会生效」的字段（`header`/`loginUrl`/`cookie`/`webJs`）。
 
 ## 错误与合并语义

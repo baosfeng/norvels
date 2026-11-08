@@ -90,6 +90,11 @@ func NewEngine(profiles []source.Profile, opt Options) (*Engine, error) {
 		if p.Kind != source.KindOnline || !p.Enabled || p.Online == nil {
 			continue
 		}
+		// 书源加载时转换一次：库里可能还存着导入适配器上线前的 Legado 简写原文。
+		// 复制 online 段再改，避免转换结果写回调用方传进来的规则包。
+		online := *p.Online
+		convertOnlineRules(&online)
+		p.Online = &online
 		st, err := newSourceState(p, o)
 		if err != nil {
 			return nil, err
@@ -103,6 +108,18 @@ func NewEngine(profiles []source.Profile, opt Options) (*Engine, error) {
 		return e.sources[i].profile.ID < e.sources[j].profile.ID
 	})
 	return e, nil
+}
+
+// convertOnlineRules 把五个规则块里的 Legado 简写翻译成标准 CSS（加载时转换一次）。
+//
+// 转换失败保留原文：导入时已在 degradedFields 里报过，运行期不重复刷屏；
+// 规则本身抽不出数据时按空结果处理，不影响其它字段与整个源。
+func convertOnlineRules(o *source.Online) {
+	o.RuleSearch, _ = source.ConvertLegadoRules(o.RuleSearch)
+	o.RuleExplore, _ = source.ConvertLegadoRules(o.RuleExplore)
+	o.RuleBookInfo, _ = source.ConvertLegadoRules(o.RuleBookInfo)
+	o.RuleToc, _ = source.ConvertLegadoRules(o.RuleToc)
+	o.RuleContent, _ = source.ConvertLegadoRules(o.RuleContent)
 }
 
 // newSourceState 为一个书源建受限客户端：限速与并发都在 fetch.Client 内部。
