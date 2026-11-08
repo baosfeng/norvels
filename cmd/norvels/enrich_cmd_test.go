@@ -90,11 +90,11 @@ func TestMaxInt(t *testing.T) {
 	}
 }
 
-// TestWriteChangesNoApply 覆盖 dry-run 语义：不写库也必须产出变更清单。
-func TestWriteChangesNoApply(t *testing.T) {
+// TestDecideChangesNoWrite 覆盖 dry-run 语义：只摊清单，不碰库。
+func TestDecideChangesNoWrite(t *testing.T) {
 	author := enrich.FieldValue{Value: "作者甲", Confidence: 1, Sources: []string{"src-a"}, Changed: true}
 	dec := enrich.Decision{Author: &author}
-	changes := applyDecision(nil, nil, store.EnrichCandidate{BookID: 7, Author: "佚名"}, dec, false)
+	changes := decideChanges(store.EnrichCandidate{BookID: 7, Author: "佚名"}, dec)
 	if len(changes) != 1 || changes[0].NewValue != "作者甲" {
 		t.Fatalf("dry-run 应产出变更清单，实际 %+v", changes)
 	}
@@ -103,11 +103,11 @@ func TestWriteChangesNoApply(t *testing.T) {
 	}
 }
 
-// TestWriteChangesSkipsUnchanged 覆盖「值没变就不记」。
-func TestWriteChangesSkipsUnchanged(t *testing.T) {
+// TestDecideChangesSkipsUnchanged 覆盖「值没变就不记」。
+func TestDecideChangesSkipsUnchanged(t *testing.T) {
 	author := enrich.FieldValue{Value: "作者甲", Changed: false}
 	dec := enrich.Decision{Author: &author}
-	if got := applyDecision(nil, nil, store.EnrichCandidate{BookID: 1}, dec, false); len(got) != 0 {
+	if got := decideChanges(store.EnrichCandidate{BookID: 1}, dec); len(got) != 0 {
 		t.Fatalf("未变化不该产生变更，实际 %+v", got)
 	}
 }

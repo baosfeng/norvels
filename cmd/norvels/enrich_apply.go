@@ -9,47 +9,58 @@ import (
 	"norvels/internal/store"
 )
 
-// applyDecision 把决策落到库：dry-run 只产出变更清单，--apply 才真正写。
+// decideChanges 把一本书的决策摊成变更清单（**不写库**）。
 //
-// 写库统一走 store.UpdateBookMeta（不是裸 SQL）：作者变更要同步 books_authors 与
-// 作者聚合列，绕过它会让 /api/authors 的作品数漂掉。
-func applyDecision(ctx context.Context, st *store.Store, c store.EnrichCandidate,
-	dec enrich.Decision, apply bool) []store.EnrichChange {
+// 写库由调用方在「日志已落库」之后统一做：先记 intent 再改数据，
+// 进程中途被杀也不会留下「改了库却没有回滚依据」的改动。
+func decideChanges(c store.EnrichCandidate, dec enrich.Decision) []store.EnrichChange {
 	changes := make([]store.EnrichChange, 0, 3)
-	if dec.Author != nil && dec.Author.Changed {
-		changes = append(changes, store.EnrichChange{
-			BookID: c.BookID, Field: store.EnrichFieldAuthor,
-			OldValue: c.Author, NewValue: dec.Author.Value,
-			SourceID: firstSource(dec.Author.Sources), Confidence: dec.Author.Confidence,
-		})
-	}
-	if dec.Intro != nil && dec.Intro.Changed {
-		changes = append(changes, store.EnrichChange{
-			BookID: c.BookID, Field: store.EnrichFieldIntro,
-			OldValue: c.Intro, NewValue: dec.Intro.Value,
-			SourceID: firstSource(dec.Intro.Sources), Confidence: dec.Intro.Confidence,
-		})
-	}
-	if dec.Category != nil && dec.Category.Changed {
-		changes = append(changes, store.EnrichChange{
-			BookID: c.BookID, Field: store.EnrichFieldCategory,
-			OldValue: enrich.JoinCategory(c.CategoryL1, c.CategoryL2),
-			NewValue: dec.Category.Value,
-			SourceID: firstSource(dec.Category.Sources), Confidence: dec.Category.Confidence,
-		})
-	}
-	if !apply || len(changes) == 0 {
-		return changes
-	}
-	if err := writeChanges(ctx, st, changes); err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 写库失败 book=%d: %v\n", c.BookID, err)
-		return nil
-	}
+	changes = appendField(changes, c, store.EnrichFieldAuthor, dec.Author, c.Author)
+	changes = appendField(changes, c, store.EnrichFieldIntro, dec.Intro, c.Intro)
+	category := enrich.JoinCategory(c.CategoryL1, c.CategoryL2)
+	changes = appendField(changes, c, store.EnrichFieldCategory, dec.Category, category)
 	return changes
 }
 
-// writeChanges 把一本书的改动写进库（一次 UpdateBookMeta，字段全量给出）。
-func writeChanges(ctx context.Context, st *store.Store, changes []store.EnrichChange) error {
+// appendField 把一个字段决策追加进变更清单（nil 或未变化则跳过）。
+func appendField(out []store.EnrichChange, c store.EnrichCandidate, field string,
+	v *enrich.FieldValue, old string) []store.EnrichChange {
+	if v == nil || !v.Changed {
+		return out
+	}
+	return append(out, store.EnrichChange{
+		BookID: c.BookID, Field: field, OldValue: old, NewValue: v.Value,
+		SourceID: firstSource(v.Sources), Confidence: v.Confidence,
+	})
+}
+
+// applyEnrichChanges 按书分组把变更写进库（一次 UpdateBookMeta 一本）。
+//
+// 写库统一走 store.UpdateBookMeta（不是裸 SQL）：作者变更要同步 books_authors
+// 与作者聚合列，绕过它会让 /api/authors 的作品数漂掉。
+// 单本失败只警告不中断：整批停在一半比少数几本没写成更难收拾。
+func applyEnrichChanges(ctx context.Context, st *store.Store, changes []store.EnrichChange) int {
+	byBook := make(map[int64][]store.EnrichChange, len(changes))
+	order := make([]int64, 0, len(changes))
+	for _, ch := range changes {
+		if _, ok := byBook[ch.BookID]; !ok {
+			order = append(order, ch.BookID)
+		}
+		byBook[ch.BookID] = append(byBook[ch.BookID], ch)
+	}
+	written := 0
+	for _, bookID := range order {
+		if err := writeBookChanges(ctx, st, bookID, byBook[bookID]); err != nil {
+			fmt.Fprintf(os.Stderr, "警告: 写库失败 book=%d: %v\n", bookID, err)
+			continue
+		}
+		written += len(byBook[bookID])
+	}
+	return written
+}
+
+// writeBookChanges 把一本书的改动写成一次 UpdateBookMeta。
+func writeBookChanges(ctx context.Context, st *store.Store, bookID int64, changes []store.EnrichChange) error {
 	patch := store.BookMetaPatch{}
 	for _, ch := range changes {
 		value := ch.NewValue
@@ -64,7 +75,7 @@ func writeChanges(ctx context.Context, st *store.Store, changes []store.EnrichCh
 			patch.CategoryL2 = &l2
 		}
 	}
-	return st.UpdateBookMeta(ctx, changes[0].BookID, patch)
+	return st.UpdateBookMeta(ctx, bookID, patch)
 }
 
 // firstSource 取首个参与投票的源 id（报告里只展示一个，完整清单留在 Value.Sources）。

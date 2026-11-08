@@ -56,7 +56,13 @@ func runEnrichLoop(ctx context.Context, st *store.Store, engine *crawl.Engine,
 	done := make(chan enrichOutcome, o.workers)
 	sem := make(chan struct{}, maxInt(o.workers, 1))
 	var wg sync.WaitGroup
-	go collectOutcomes(done, &rep)
+	// collectDone 保证「汇总真的跑完」才返回：只 close(done) 就返回的话，
+	// 主协程可能读到还没被消费的报告（并发写同一个 rep 更是数据竞争）。
+	collectDone := make(chan struct{})
+	go func() {
+		collectOutcomes(done, &rep)
+		close(collectDone)
+	}()
 	for _, c := range cands {
 		if skip[c.BookID] {
 			continue
@@ -66,11 +72,12 @@ func runEnrichLoop(ctx context.Context, st *store.Store, engine *crawl.Engine,
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			done <- enrichOne(ctx, st, engine, c, opt, o.apply)
+			done <- enrichOne(ctx, st, engine, c, opt)
 		}(c)
 	}
 	wg.Wait()
 	close(done)
+	<-collectDone
 	return rep
 }
 
@@ -114,14 +121,14 @@ func loadResumeSet(ctx context.Context, st *store.Store, o enrichOpts) map[int64
 
 // enrichOne 处理一本书：检索 → 决策 →（apply 时）写库。
 func enrichOne(ctx context.Context, st *store.Store, engine *crawl.Engine,
-	c store.EnrichCandidate, opt enrich.Options, apply bool) enrichOutcome {
+	c store.EnrichCandidate, opt enrich.Options) enrichOutcome {
 	res, err := engine.SearchBook(ctx, c.Title)
 	if err != nil && !errors.Is(err, crawl.ErrNoSource) {
 		return enrichOutcome{skipped: []string{"crawl_error"}}
 	}
 	dec := enrich.Decide(subjectOf(c), res.Hits, opt)
 	out := enrichOutcome{hit: len(res.Hits) > 0, skipped: dec.Skipped}
-	out.changes = applyDecision(ctx, st, c, dec, apply)
+	out.changes = decideChanges(c, dec)
 	return out
 }
 

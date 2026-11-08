@@ -185,14 +185,17 @@ func TestRunEnrichRollbackUnknownBatch(t *testing.T) {
 	}
 }
 
-// TestWriteChangesAppliesPatch 覆盖 applyDecision 在 --apply 时真正写库。
-func TestWriteChangesAppliesPatch(t *testing.T) {
+// TestApplyEnrichChangesWrites 覆盖 applyEnrichChanges 真正写库。
+func TestApplyEnrichChangesWrites(t *testing.T) {
 	st := openTempStore(t)
 	defer st.Close()
 	bookID := seedCandidateBooks(t, st)
 	author := enrich.FieldValue{Value: "作者甲", Confidence: 1, Sources: []string{"src-a"}, Changed: true}
 	dec := enrich.Decision{Author: &author}
-	changes := applyDecision(t.Context(), st, store.EnrichCandidate{BookID: bookID, Author: "佚名"}, dec, true)
+	changes := decideChanges(store.EnrichCandidate{BookID: bookID, Author: "佚名"}, dec)
+	if written := applyEnrichChanges(t.Context(), st, changes); written != 1 {
+		t.Fatalf("应写 1 条，实际 %d", written)
+	}
 	if len(changes) != 1 {
 		t.Fatalf("应产出 1 条变更，实际 %+v", changes)
 	}

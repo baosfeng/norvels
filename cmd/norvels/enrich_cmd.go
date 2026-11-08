@@ -123,12 +123,17 @@ func runEnrich(ctx context.Context, st *store.Store, o enrichOpts) error {
 	rep.BatchID = batchID
 	rep.Engine = engine.Stats()
 	printEnrichReport(rep, o.apply)
-	if o.apply && len(rep.Changes) > 0 {
-		if err := st.RecordEnrichChanges(ctx, batchID, rep.Changes); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stdout, "变更已记录：batch=%s（回滚用 --rollback %s --apply）\n", batchID, batchID)
+	if !o.apply || len(rep.Changes) == 0 {
+		return nil
 	}
+	// 两阶段：先把「要改什么」落成变更日志，再改数据。
+	// 反过来（先改库、后记日志）时进程被 kill，会留下改了库却没有回滚依据的改动。
+	if err := st.RecordEnrichChanges(ctx, batchID, rep.Changes); err != nil {
+		return err
+	}
+	written := applyEnrichChanges(ctx, st, rep.Changes)
+	fmt.Fprintf(os.Stdout, "变更已记录并写库：batch=%s（写库 %d 条；回滚用 --rollback %s --apply）\n",
+		batchID, written, batchID)
 	return nil
 }
 
