@@ -1,9 +1,22 @@
 import { ChevronLeftIcon } from "../../components/Icons";
 
+/** H5 顶栏三颗图标：朗读 / AI 辅读 / 全屏（路径取自定稿原型 index.html 的 ttsBtn / aiBtn / fsBtn）。 */
+const ICON = {
+  viewBox: "0 0 24 24",
+  width: 20,
+  height: 20,
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+} as const;
+
 /**
  * 阅读器顶栏：PC 右侧是书架 / 详情 / 书签 / 搜索 / 目录 / 帮助 / 设置；
- * H5 是「返回 + 可点的书名 + 全屏」——手机上没有横向空间再放一颗按钮，
- * 书名本来就是读者想点的地方，点它回书籍详情（aria-label 与 PC 的「详情」一致）。
+ * H5 是「返回 + 可点的书名（两行：书名 / 章号）+ 朗读 / AI / 全屏三颗 44×44 图标」——
+ * 手机上没有横向空间再放文字按钮，三颗图标与返回同一套尺寸。
  * 其余按钮是常驻操作入口，禁用态用常驻说明而不是悬停提示。
  */
 export function ReaderTopBar({
@@ -11,7 +24,6 @@ export function ReaderTopBar({
   hidden,
   bookTitle,
   progressText,
-  progressSubtext,
   fullscreen,
   canFullscreen,
   searchEnabled,
@@ -34,9 +46,8 @@ export function ReaderTopBar({
   isH5: boolean;
   hidden: boolean;
   bookTitle: string;
+  /** H5 只放「第 N 章 / 共 M 章」；PC 拼成「章号 · 字数 · 全书 % · 还剩约」一行 */
   progressText: string;
-  /** H5 顶栏第二行小字（全书 % · 还剩约）；不传就只显示主进度行 */
-  progressSubtext?: string;
   fullscreen: boolean;
   canFullscreen: boolean;
   searchEnabled: boolean;
@@ -84,7 +95,7 @@ export function ReaderTopBar({
           data-testid="reader-top-detail"
           onClick={onOpenBookDetail}
         >
-          <TitleLines bookTitle={bookTitle} progressText={progressText} subtext={progressSubtext} />
+          <TitleLines bookTitle={bookTitle} progressText={progressText} />
         </button>
       ) : (
         <div className="reader-top-title">
@@ -94,21 +105,46 @@ export function ReaderTopBar({
       <div className="reader-top-actions">
         {isH5 ? (
           <>
-            <button className="btn" type="button" aria-label="朗读本章" onClick={onOpenTts}>朗读</button>
-            <button className="btn" type="button" aria-label="打开 AI 辅读" onClick={onOpenAi}>AI</button>
             <button
-            className="icon-btn"
-            type="button"
-            aria-label={fullscreen ? "退出全屏" : "全屏阅读"}
-            aria-pressed={fullscreen}
-            aria-haspopup="true"
-            tabIndex={hidden ? -1 : undefined}
-            onClick={onToggleFullscreen}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-              <path d={canFullscreen ? "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" : "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"} />
-            </svg>
-          </button>
+              className="icon-btn"
+              type="button"
+              aria-label="朗读本章"
+              title="朗读本章"
+              tabIndex={hidden ? -1 : undefined}
+              onClick={onOpenTts}
+            >
+              <svg {...ICON}>
+                <path d="M4 9.5h3.2L11.5 6v12L7.2 14.5H4z" />
+                <path d="M15 9.4a3.7 3.7 0 0 1 0 5.2" />
+                <path d="M17.7 6.8a7.4 7.4 0 0 1 0 10.4" />
+              </svg>
+            </button>
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="打开 AI 辅读"
+              title="AI 辅读"
+              tabIndex={hidden ? -1 : undefined}
+              onClick={onOpenAi}
+            >
+              <svg {...ICON}>
+                <path d="M11 3.6l1.7 4.7 4.7 1.7-4.7 1.7L11 16.4l-1.7-4.7L4.6 10l4.7-1.7z" />
+                <path d="M18 15.4l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
+              </svg>
+            </button>
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label={fullscreen ? "退出全屏" : "全屏阅读"}
+              title="全屏阅读"
+              aria-pressed={fullscreen}
+              tabIndex={hidden ? -1 : undefined}
+              onClick={onToggleFullscreen}
+            >
+              <svg {...ICON}>
+                <path d={canFullscreen ? "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" : "M9 4H4v5M15 4h5v5M4 15v5h5M15 20h5v-5"} />
+              </svg>
+            </button>
           </>
         ) : (
           <>
@@ -175,27 +211,14 @@ export function ReaderTopBar({
 }
 
 /**
- * 书名 + 进度（+ H5 的第二行小字）：PC 放进 div、H5 放进可点的 button，排版只写一次。
- * 第二行是「全书 % · 还剩约」，与 PC 顶栏同一份数据；H5 只是换行显示，不另算一遍。
+ * 书名 + 进度：PC 放进 div（书名 + 一行进度），H5 放进可点的 button（书名 + 章号两行）。
+ * 排版只写一次；H5 的字数 / 全书 % / 剩余时长不在顶栏（字数在窄屏会挤掉书名，百分比移到下方滑块行）。
  */
-function TitleLines({
-  bookTitle,
-  progressText,
-  subtext,
-}: {
-  bookTitle: string;
-  progressText: string;
-  subtext?: string;
-}) {
+function TitleLines({ bookTitle, progressText }: { bookTitle: string; progressText: string }) {
   return (
     <>
       <strong>{bookTitle || "正在打开"}</strong>
       <span data-testid="reader-top-progress">{progressText}</span>
-      {subtext ? (
-        <span className="reader-top-sub" data-testid="reader-top-progress-sub">
-          {subtext}
-        </span>
-      ) : null}
     </>
   );
 }

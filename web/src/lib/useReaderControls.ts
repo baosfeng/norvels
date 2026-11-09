@@ -71,16 +71,44 @@ export function useReaderControls(options: {
   const [visible, setVisible] = useState(false);
   // 任何一次有效交互都重置自动收起计时
   const [activity, setActivity] = useState(0);
+  // 焦点落在控制层内时暂停自动收起：键盘用户 Tab 进按钮后，不会 3 秒后被抽走焦点
+  const [focusWithinControls, setFocusWithinControls] = useState(false);
   const start = useRef<TapStart | null>(null);
 
+  // 委托到 document 上收 focusin / focusout，不逐个元素挂监听。
+  // 按钮之间 Tab（relatedTarget 仍在控制层内）不重新起算；离开控制层才重新起算 3 秒。
   useEffect(() => {
-    if (!isH5 || !visible || paused) return;
-    const timer = window.setTimeout(() => setVisible(false), autoHideMs);
+    if (!isH5) return;
+    const inControls = (node: EventTarget | null) =>
+      node instanceof Element && Boolean(node.closest(".reader-top, .h5-reader-bar"));
+    const onFocusIn = (event: FocusEvent) => {
+      if (inControls(event.target)) setFocusWithinControls(true);
+    };
+    const onFocusOut = (event: FocusEvent) => {
+      if (!inControls(event.relatedTarget)) setFocusWithinControls(false);
+    };
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  }, [isH5]);
+
+  useEffect(() => {
+    if (!isH5 || !visible || paused || focusWithinControls) return;
+    const timer = window.setTimeout(() => {
+      setVisible(false);
+      // 收起后焦点不再可能在控制层里：清掉暂停标记，下次唤出不留下「永远不自动收起」
+      setFocusWithinControls(false);
+    }, autoHideMs);
     return () => window.clearTimeout(timer);
-  }, [isH5, visible, paused, activity, autoHideMs]);
+  }, [isH5, visible, paused, activity, autoHideMs, focusWithinControls]);
 
   const toggle = useCallback(() => {
     setVisible((value) => !value);
+    // 收起 / 唤出都从干净的计时状态起算，避免上一次的焦点暂停残留
+    setFocusWithinControls(false);
     setActivity((n) => n + 1);
   }, []);
 
@@ -91,6 +119,7 @@ export function useReaderControls(options: {
 
   const hide = useCallback(() => {
     setVisible(false);
+    setFocusWithinControls(false);
     setActivity((n) => n + 1);
   }, []);
 
