@@ -19,6 +19,9 @@ export function useReaderKeyboard({
   toggleHelp,
   helpOpen,
   searchOpen,
+  panelsOpen,
+  controlsVisible,
+  onHideControls,
   prev,
   next,
   goChapterAnnounce,
@@ -31,6 +34,11 @@ export function useReaderKeyboard({
   toggleHelp: () => void;
   helpOpen: boolean;
   searchOpen: boolean;
+  /** 目录 / 设置 / 帮助 / 搜索任一开着：Esc 先关面板，不动控制层。 */
+  panelsOpen: boolean;
+  /** H5 控制层是否展开：没有面板时 Esc 收起它。 */
+  controlsVisible: boolean;
+  onHideControls: () => void;
   prev: ChapterBrief | null;
   next: ChapterBrief | null;
   goChapterAnnounce: (target: ChapterBrief | null) => void;
@@ -48,13 +56,18 @@ export function useReaderKeyboard({
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      // 顺序固定：先关面板，没有面板时才收起控制层——一次 Esc 只做一件事
       if (event.key === "Escape") {
         if (deleteTarget) {
           onCancelDelete();
           return;
         }
-        onClosePanels();
-        closeSearch();
+        if (panelsOpen) {
+          onClosePanels();
+          closeSearch();
+          return;
+        }
+        if (controlsVisible) onHideControls();
         return;
       }
       const target = event.target as HTMLElement | null;
@@ -98,7 +111,7 @@ export function useReaderKeyboard({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goChapterAnnounce, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen, deleteTarget, toggleHelp, onCancelDelete, onClosePanels, paging]);
+  }, [goChapterAnnounce, prev, next, searchOpen, helpOpen, closeSearch, scrollByScreen, deleteTarget, toggleHelp, onCancelDelete, onClosePanels, panelsOpen, controlsVisible, onHideControls, paging]);
 
   return { scrollByScreen };
 }

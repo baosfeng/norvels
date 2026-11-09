@@ -273,6 +273,9 @@ function ReaderScreen() {
     toggleHelp,
     helpOpen,
     searchOpen,
+    panelsOpen: overlayOpen,
+    controlsVisible: controls.visible,
+    onHideControls: controls.hide,
     prev,
     next,
     goChapterAnnounce: (target) => jumpChapter(target, "已经是最后一章了"),
@@ -327,7 +330,8 @@ function ReaderScreen() {
   const bookTitle = book.data?.title ?? stream.chapterData?.bookTitle ?? "";
   const chapterWords = activeSegment ? formatWords(activeSegment.wordCount) : "";
   // 章末不再印统计行（那是常驻状态，不是章节内容）：章号 / 字数 / 全书进度 / 剩余时长
-  // 统一由顶栏承担。PC 顶栏常驻、宽度够，全部显示；H5 顶栏窄，只留章号与字数。
+  // 统一由控制层承担。PC 顶栏常驻、宽度够，全部显示；H5 顶栏只留章号，全书进度与剩余时长
+  // 落在底栏滑块行右端（字数在 390 宽会把书名挤掉，H5 放弃显示）。
   // 顶栏与书架卡同一口径：章号用 chapterPosition（「第 N 章 / 共 M 章」），
   // 百分比用 readPercent（读过至少 1%，不显示 0%）。两处文案只在一处维护。
   const wholePercent =
@@ -336,8 +340,8 @@ function ReaderScreen() {
     chapters.length > 0 && index >= 0
       ? chapters.slice(index + 1).reduce((sum, chapter) => sum + (chapter.wordCount || 0), 0)
       : 0;
-  // 顶栏进度：章号 + 字数一行，全书百分比 + 剩余时长一行。两档数据口径完全一致，
-  // 只是 H5 顶栏窄——把第二行放到书名下面当小字，不挤掉书名（PC 仍拼成一行）。
+  // 进度文案与书架卡同一口径：章号用 chapterPosition，百分比用 readPercent。
+  // PC 拼成一行；H5 主行只有章号，全书 / 剩余另走底栏（同一份数据，不重复算）。
   const chapterLine = [
     chapterPosition(chapters.length > 0 && index >= 0 ? index : null, chapters.length),
     chapterWords,
@@ -349,8 +353,11 @@ function ReaderScreen() {
           .join(" · ")
       : "";
   const chapterText = chapters.length > 0 && index >= 0 ? chapterLine.join(" · ") : "正在读取目录";
-  // PC 拼成一行；H5 主行只放章号与字数，全书/剩余交给第二行（同一份数据，不重复算）
-  const progressText = isH5 || !extraLine ? chapterText : `${chapterText} · ${extraLine}`;
+  // H5 顶栏只有两行：书名 + 章号（字数在 390 宽会挤掉书名，全书 % 与剩余时长移到下方滑块行右端）。
+  // PC 顶栏宽度够，仍拼成「章号 · 字数 · 全书 % · 还剩约」一行。
+  const h5ChapterText =
+    chapters.length > 0 && index >= 0 ? chapterPosition(index, chapters.length) : "正在读取目录";
+  const progressText = isH5 ? h5ChapterText : extraLine ? `${chapterText} · ${extraLine}` : chapterText;
 
   function dismissHint(reason: RestoreHintDismiss) {
     setHintDismissedFor(chapterId);
@@ -372,7 +379,6 @@ function ReaderScreen() {
         controlsVisible={controls.visible}
         bookTitle={bookTitle}
         progressText={progressText}
-        progressSubtext={isH5 ? extraLine : undefined}
         fullscreen={fullscreen}
         canFullscreen={canFullscreen}
         searchEnabled={Boolean(stream.chapterData)}
@@ -453,6 +459,7 @@ function ReaderScreen() {
           prev={prev}
           next={next}
           searchEnabled={Boolean(stream.chapterData)}
+          progressText={extraLine}
           onPrev={() => stepChapter("prev")}
           onNext={() => stepChapter("next")}
           onJumpChapter={jumpToChapterAt}

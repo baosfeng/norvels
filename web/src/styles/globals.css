@@ -258,88 +258,81 @@ body.h5-sheet-open {
     padding-left: calc(18px + env(safe-area-inset-left));
     padding-right: calc(18px + env(safe-area-inset-right));
   }
+  /* 顶栏：64 + 安全区定高，不透明纸底 + 模糊 + 1px 下边框（正文让位后不再透出字）。
+     左侧返回与右侧朗读 / AI / 全屏同一套 44×44；书名两行（书名 / 章号）。
+     底栏两行结构只在 ix-reader.css 定义，这里不再写 .h5-reader-bar 的 grid 与按钮样式。 */
   .reader-top {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     z-index: 45;
-    padding: calc(env(safe-area-inset-top) + 8px) calc(12px + env(safe-area-inset-right)) 10px
-      calc(12px + env(safe-area-inset-left));
-    border-bottom: 0;
-    background: linear-gradient(to bottom, var(--r-bg) 72%, color-mix(in oklab, var(--r-bg), transparent 10%));
-    transform: translateY(calc(-100% - env(safe-area-inset-top)));
+    height: calc(64px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-bottom: 1px solid var(--r-border);
+    background: color-mix(in srgb, var(--r-bg) 96%, transparent);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    transform: translateY(-100%);
     opacity: 0;
     pointer-events: none;
     transition:
-      transform 200ms var(--ease-standard),
-      opacity 180ms var(--ease-standard);
+      transform 180ms var(--ease-standard),
+      opacity 150ms var(--ease-standard);
   }
-  .reader-top .btn,
   .reader-top .icon-btn {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
     min-height: 44px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
   }
-  .reader-top .btn {
-    padding: 0 9px;
-    font-size: 13px;
+  .reader-top .icon-btn:hover {
+    background: color-mix(in srgb, var(--r-fg) 6%, transparent);
+  }
+  .reader-top .icon-btn:active {
+    background: color-mix(in srgb, var(--r-fg) 10%, transparent);
+  }
+  .reader-top .icon-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+  .reader-top-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 44px;
+    justify-content: center;
+    gap: 2px;
+    padding: 0 4px;
+    border-radius: 10px;
+  }
+  .reader-top-title strong {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .reader-top-title span {
+    font-size: 11px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .reader-shell.is-controls .reader-top {
     transform: none;
     opacity: 1;
     pointer-events: auto;
-  }
-  .h5-reader-bar {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 46;
-    display: grid;
-    /* 7 格：上一章 / 目录 / 书签 / 搜索 / 设置 / 书架 / 下一章 */
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 2px;
-    padding: 6px calc(6px + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 6px)
-      calc(6px + env(safe-area-inset-left));
-    background: var(--r-raised);
-    border-top: 1px solid var(--r-border);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.1);
-    display: none;
-    transform: translateY(calc(100% + env(safe-area-inset-bottom)));
-    opacity: 0;
-    pointer-events: none;
-    transition:
-      transform 200ms var(--ease-standard),
-      opacity 180ms var(--ease-standard);
-  }
-  .reader-shell.is-controls .h5-reader-bar {
-    display: grid;
-    transform: none;
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .h5-reader-bar button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    min-height: 48px;
-    padding: 4px 0;
-    border: 0;
-    background: transparent;
-    color: var(--r-fg);
-    font-size: 11px;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-  .h5-reader-bar button:active {
-    background: color-mix(in oklab, var(--r-fg), transparent 92%);
-    border-radius: var(--radius-sm);
-  }
-  .h5-reader-bar button[disabled] {
-    opacity: 0.38;
   }
 }
 
