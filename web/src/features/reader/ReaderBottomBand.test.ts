@@ -44,7 +44,7 @@ function ruleBody(block: string, selector: string): string {
 }
 
 describe("H5 阅读器底部留白带", () => {
-  it("留白带按在场的浮层给高度（常显 40 / 胶囊 96 / 展开 120），浮层不压在正文可视区里", async () => {
+  it("留白带按在场的浮层给高度（常显 40 / 胶囊 96 / 展开 128），浮层不压在正文可视区里", async () => {
     const css = await readStyles();
     const band = h5Block(css, "padding-bottom: calc(40px");
 
@@ -54,8 +54,9 @@ describe("H5 阅读器底部留白带", () => {
     expect(ruleBody(band, ".reader-shell:has(.restore-hint) {")).toContain(
       "padding-bottom: calc(96px + env(safe-area-inset-bottom))",
     );
+    // 底栏实测 115.4（首 / 末章多一行 9px 短词时）+ 12 呼吸；取整到 128
     expect(ruleBody(band, ".reader-shell.is-controls {")).toContain(
-      "padding-bottom: calc(120px + env(safe-area-inset-bottom))",
+      "padding-bottom: calc(128px + env(safe-area-inset-bottom))",
     );
     // 留白带在外壳上；滚动区内部只剩末行与底边的呼吸
     expect(ruleBody(band, ".reader-main {")).toContain("padding-bottom: 16px");

@@ -374,22 +374,24 @@ describe("阅读进度常驻顶栏（章末不再重复统计）", () => {
     expect(screen.getByTestId("reader-pager-end").textContent).toContain("全书读完");
   });
 
-  it("H5 顶栏把「全书 % · 还剩约」换到第二行小字，数据与 PC 同一份", () => {
+  it("H5 顶栏只放章号，全书 % 与剩余时长移到滑块行右端（与 PC 同一份数据）", () => {
     renderReader(["/read/7/10"], "h5");
     const main = screen.getByTestId("reader-top-progress").textContent ?? "";
-    expect(main).toContain("第 1 章 / 共 3 章 · 2,000 字");
-    // 主进度行只放章号与字数，全书/剩余换到第二行，避免挤掉书名
+    expect(main).toBe("第 1 章 / 共 3 章");
+    // 字数与百分比都不再进顶栏：390 宽会把书名挤掉
+    expect(main).not.toContain("字");
     expect(main).not.toContain("全书");
+    expect(screen.queryByTestId("reader-top-progress-sub")).toBeNull();
 
-    const sub = screen.getByTestId("reader-top-progress-sub").textContent ?? "";
-    expect(sub).toContain("全书 33%");
-    expect(sub).toContain("还剩约 9 分钟");
+    const pct = screen.getByTestId("reader-bar-pct").textContent ?? "";
+    expect(pct).toContain("全书 33%");
+    expect(pct).toContain("还剩约 9 分钟");
   });
 
-  it("H5 末章：第二行只有「全书 %」，不编「还剩约」", () => {
+  it("H5 末章：滑块行右端只有「全书 %」，不编「还剩约」", () => {
     renderReader(["/read/7/12"], "h5");
-    const sub = screen.getByTestId("reader-top-progress-sub").textContent ?? "";
-    expect(sub).toContain("全书 100%");
-    expect(sub).not.toContain("还剩约");
+    const pct = screen.getByTestId("reader-bar-pct").textContent ?? "";
+    expect(pct).toContain("全书 100%");
+    expect(pct).not.toContain("还剩约");
   });
 });

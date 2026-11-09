@@ -270,18 +270,69 @@ describe("阅读器：H5 控制层单击唤出与自动收起", () => {
     expect(headerHidden()).toBe("true");
   });
 
-  it("控制层并排显示当前章与字数，翻章后一起更新", () => {
+  it("H5 顶栏只放章号；字数与全书进度不再挤进顶栏", () => {
     renderReader();
 
     act(() => tap());
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章 · 2,000 字");
+    expect(screen.getByTestId("reader-top-progress").textContent).toBe("第 1 章 / 共 3 章");
 
     act(() => {
       fireEvent.click(screen.getByLabelText("下一章"));
     });
-    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 2 章 / 共 3 章 · 2,100 字");
-    // 章末不再重复统计：章号与字数只由顶栏承担（H5 顶栏不显示全书百分比与剩余时长）
+    expect(screen.getByTestId("reader-top-progress").textContent).toBe("第 2 章 / 共 3 章");
+    // 字数在 390 宽会挤掉书名：H5 放弃显示；全书 % 与剩余时长移到下方滑块行右端
+    const pct = screen.getByTestId("reader-bar-pct").textContent ?? "";
+    expect(pct).toContain("全书 67%");
+    expect(pct).toContain("还剩约 4 分钟");
+    // 章末不再重复统计：章号与字数只由控制层承担
     expect(screen.queryByTestId("reader-word")).toBeNull();
+  });
+
+  it("没有面板时 Esc 收起控制层；面板开着时 Esc 只关面板", () => {
+    renderReader();
+    act(() => tap());
+    expect(headerHidden()).toBe("false");
+
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(headerHidden()).toBe("true");
+
+    act(() => tap());
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "阅读设置" }));
+    });
+    const settingsButton = screen.getByRole("button", { name: "阅读设置" });
+    expect(settingsButton.getAttribute("aria-expanded")).toBe("true");
+
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    // 一次 Esc 只做一件事：面板关掉，控制层仍在
+    expect(screen.getByRole("button", { name: "阅读设置" }).getAttribute("aria-expanded")).toBe("false");
+    expect(headerHidden()).toBe("false");
+  });
+
+  it("焦点在控制层内时自动收起顺延，焦点离开后重新起算 3 秒", () => {
+    renderReader();
+    act(() => tap());
+    const menu = screen.getByRole("button", { name: "章节目录" });
+
+    act(() => {
+      fireEvent.focusIn(menu);
+    });
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(headerHidden()).toBe("false");
+
+    act(() => {
+      fireEvent.focusOut(menu);
+    });
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(headerHidden()).toBe("true");
   });
 
   it("浏览器没有全屏 API 时按钮照常可点：收起控制层并提示", () => {
