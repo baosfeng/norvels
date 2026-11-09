@@ -101,27 +101,10 @@
   min-height: 44px;
 }
 
-/* ── H5 顶栏第二行：全书 % · 还剩约（与 PC 同一份数据，只是换行显示） ──
-   选择器带 .reader-top-title：prototype.css 的 .reader-top-title span（12px）会盖掉裸类。 */
-.reader-top-title .reader-top-sub {
-  font-size: 11px;
-  line-height: 1.3;
-  color: var(--r-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* ── 禁用原因：顶栏 / 底栏 / 面板里一律常驻可见 ── */
 .reader-top-actions .inline-note {
   max-width: 132px;
   align-self: center;
-}
-.h5-reader-bar .inline-note {
-  font-size: 9px;
-  line-height: 1.15;
-  color: var(--r-muted);
-  text-align: center;
 }
 .settings-row .inline-note,
 .settings-panel > .inline-note {
@@ -578,15 +561,34 @@
   min-height: 44px;
 }
 
-/* ── 底部控制栏：进度滑块独占一行，按钮行是 6 个入口 ── */
-/* 全局 .h5-reader-bar 是「7 个按钮平铺」的网格，这里改成两行的纵向排布。 */
+/* ── 底部控制栏：滑块行（右端全书进度）+ 7 入口行，总高 113（首/末章多一行短说明时 ≤120） ──
+   结构只在这里定义一处：globals.css 的 H5 块不再写 .h5-reader-bar 的 grid / 按钮样式——
+   @import 提升后那两段旧规则会盖掉本文件，实测 7 列 grid 把滑块行与按钮行各压成 1/7 宽
+   （滑块 65px、按钮 8×80px 竖排重叠）。 */
 .h5-reader-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 46;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+  background: var(--r-raised);
+  border-top: 1px solid var(--r-border);
+  box-shadow: 0 -10px 28px -18px color-mix(in srgb, var(--r-fg) 30%, transparent);
+}
+/* 第一行：滑块独占剩余宽度，右端「全书 % · 还剩约」不换行 */
+.h5-reader-bar-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  margin-bottom: 2px;
 }
 .h5-reader-bar-slider {
-  padding: 0 10px 2px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .h5-reader-bar-slider .chapter-slider {
   min-height: 44px;
@@ -594,7 +596,20 @@
 .h5-reader-bar-slider .chapter-slider-bubble {
   bottom: calc(100% + 4px);
 }
-/* 7 个入口各占一格：上一章 / 目录 / 书签 / 搜索 / 书架 / 设置 / 下一章 */
+.h5-reader-bar-pct {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+  overflow: hidden;
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--r-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* 第二行：7 个入口各占一格：上一章 / 目录 / 书签 / 搜索 / 设置 / 书架 / 下一章 */
 .h5-reader-bar-actions {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -605,34 +620,45 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   min-height: 48px;
   padding: 4px 0;
   border: 0;
+  border-radius: 10px;
   background: transparent;
   color: var(--r-fg);
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
 }
+.h5-reader-bar-actions button:hover {
+  background: color-mix(in srgb, var(--r-fg) 5%, transparent);
+}
 .h5-reader-bar-actions button:active {
-  background: color-mix(in oklab, var(--r-fg), transparent 92%);
-  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--r-fg) 9%, transparent);
 }
 .h5-reader-bar-actions button[disabled] {
   opacity: 0.38;
 }
-/* 禁用原因逐格只有 ~52px 宽：单行放不下就整行挤成一团，这里只留最短的理由 */
+.h5-reader-bar-actions svg {
+  width: 18px;
+  height: 18px;
+}
+/* 禁用原因逐格只有 ~51px 宽：只留 9px 单行短词（首章 / 未载入 / 末章），
+   完整理由常驻 aria-label / title——长句换行会把底栏撑高。 */
 .h5-reader-bar-actions .inline-note {
   display: block;
   max-width: 100%;
+  overflow: hidden;
   font-size: 9px;
-  line-height: 1.2;
+  line-height: 1.1;
   color: var(--r-muted);
   text-align: center;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .chapter-slider-input:disabled::-webkit-slider-thumb {
   background: var(--r-muted);
@@ -648,9 +674,6 @@
   }
   .theme-swatches {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .h5-reader-bar-actions button {
-    font-size: 10px;
   }
 }
 
@@ -742,11 +765,13 @@
    滚动区随 flex 收缩到浮层之上，任何滚动位置都裁不到浮层底下。
    带宽按「此刻真的在场几个浮层」给，不常占：常显只有 3px 细条与 21px 浮标，
    收起态 40px = 浮标底距 10 + 高 21 + 呼吸 9；恢复胶囊在场（进章 3 秒）时 96px
-   = 胶囊 62 + 底距 10 + 24 呼吸；自动滚动浮条在场时 56px；控制层展开 120px（底栏 107 + 13）。
+   = 胶囊 62 + 底距 10 + 24 呼吸；自动滚动浮条在场时 56px；控制层展开 128px（底栏 116 + 12）。
    外壳 padding 只改可视窗底边、内容仍顶部对齐，所以带高一变正文不跳。
    留白高度只在这里定一次：globals.css 的 .reader-main 不给底部 padding。 */
 @media (max-width: 768px) {
   .reader-shell {
+    /* 展开态正文让位一个顶栏高（64；安全区另算，不叠进 transform） */
+    --reader-top-h: 64px;
     padding-bottom: calc(40px + env(safe-area-inset-bottom));
   }
   /* 只在有浮层时抬高：胶囊 / 浮条都是瞬时的，常占会把正文挤掉一大截 */
@@ -757,11 +782,19 @@
     padding-bottom: calc(56px + env(safe-area-inset-bottom));
   }
   .reader-shell.is-controls {
-    padding-bottom: calc(120px + env(safe-area-inset-bottom));
+    /* 底栏实际高 116（首 / 末章多一行 9px 短说明时）+ 12 呼吸 */
+    padding-bottom: calc(128px + env(safe-area-inset-bottom));
   }
   /* 滚动区内部只留末行与可视区底边的呼吸；留白带本体在外壳上 */
   .reader-main {
     padding-bottom: 16px;
+    transition: transform 180ms var(--ease-standard);
+  }
+  /* 展开态正文整体让位一个顶栏高：scrollTop 不变，只移视口。
+     transform 把底部 64px 推出视口，滚动容器自己补同样高度，章末最后一行才不被底栏遮住。 */
+  .reader-shell.is-controls .reader-main {
+    transform: translateY(var(--reader-top-h));
+    padding-bottom: calc(16px + var(--reader-top-h));
   }
   /* 自动滚动浮条也收进留白带：prototype.css 给的 78px 是按旧口径算的，会压在正文末行上 */
   .reader-autoscroll {
@@ -770,7 +803,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .reader-scroll-track,
-  .reader-scroll-chip {
+  .reader-scroll-chip,
+  .reader-main {
     transition: none;
   }
 }
