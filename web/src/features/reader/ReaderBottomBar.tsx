@@ -60,8 +60,8 @@ function IconSearch() {
  * H5 底部控制栏：与顶部 header 同属控制层，一起显隐。
  * 两行结构：第一行是全书进度滑块（右端「全书 % · 还剩约」），第二行是 7 个入口
  * （上一章 / 目录 / 书签 / 搜索 / 设置 / 书架 / 下一章），每格 ≥48px、整条 ≤120px。
- * 首末章与正文未载入时按钮置灰：格内只留 9px 单行短词（首章 / 未载入 / 末章），
- * 完整理由常驻在 aria-label / title——长句在 ~51px 的格里换行会把底栏撑高。
+ * 首末章与正文未载入时按钮置灰：格内仍只有「图标 + 标签」两行（原型口径），
+ * 完整理由常驻在 aria-label / title——多一行小字会挤在 ~51px 的格底，还把底栏撑高。
  */
 export function ReaderBottomBar({
   hidden,
@@ -141,7 +141,6 @@ export function ReaderBottomBar({
         >
           <IconPrev />
           <span>上一章</span>
-          {!prev ? <span className="inline-note">首章</span> : null}
         </button>
         <button type="button" aria-label="章节目录" tabIndex={tabInert} aria-expanded={drawerOpen && drawerTab === "toc"} onClick={() => onOpenDrawer("toc")}>
           <IconMenu />
@@ -162,7 +161,6 @@ export function ReaderBottomBar({
         >
           <IconSearch />
           <span>搜索</span>
-          {!searchEnabled ? <span className="inline-note">未载入</span> : null}
         </button>
         <button
           type="button"
@@ -189,7 +187,6 @@ export function ReaderBottomBar({
         >
           <IconNext />
           <span>下一章</span>
-          {!next ? <span className="inline-note">末章</span> : null}
         </button>
       </div>
     </nav>

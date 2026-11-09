@@ -561,7 +561,7 @@
   min-height: 44px;
 }
 
-/* ── 底部控制栏：滑块行（右端全书进度）+ 7 入口行，总高 113（首/末章多一行短说明时 ≤120） ──
+/* ── 底部控制栏：滑块行（右端全书进度）+ 7 入口行，总高 113（8 + 44 + 2 + 48 + 10 + 1 边框） ──
    结构只在这里定义一处：globals.css 的 H5 块不再写 .h5-reader-bar 的 grid / 按钮样式——
    @import 提升后那两段旧规则会盖掉本文件，实测 7 列 grid 把滑块行与按钮行各压成 1/7 宽
    （滑块 65px、按钮 8×80px 竖排重叠）。 */
@@ -646,19 +646,6 @@
 .h5-reader-bar-actions svg {
   width: 18px;
   height: 18px;
-}
-/* 禁用原因逐格只有 ~51px 宽：只留 9px 单行短词（首章 / 未载入 / 末章），
-   完整理由常驻 aria-label / title——长句换行会把底栏撑高。 */
-.h5-reader-bar-actions .inline-note {
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 9px;
-  line-height: 1.1;
-  color: var(--r-muted);
-  text-align: center;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .chapter-slider-input:disabled::-webkit-slider-thumb {
   background: var(--r-muted);
@@ -765,7 +752,7 @@
    滚动区随 flex 收缩到浮层之上，任何滚动位置都裁不到浮层底下。
    带宽按「此刻真的在场几个浮层」给，不常占：常显只有 3px 细条与 21px 浮标，
    收起态 40px = 浮标底距 10 + 高 21 + 呼吸 9；恢复胶囊在场（进章 3 秒）时 96px
-   = 胶囊 62 + 底距 10 + 24 呼吸；自动滚动浮条在场时 56px；控制层展开 128px（底栏 116 + 12）。
+   = 胶囊 62 + 底距 10 + 24 呼吸；自动滚动浮条在场时 56px；控制层展开 125px（两行底栏 113 + 12）。
    外壳 padding 只改可视窗底边、内容仍顶部对齐，所以带高一变正文不跳。
    留白高度只在这里定一次：globals.css 的 .reader-main 不给底部 padding。 */
 @media (max-width: 768px) {
@@ -782,8 +769,8 @@
     padding-bottom: calc(56px + env(safe-area-inset-bottom));
   }
   .reader-shell.is-controls {
-    /* 底栏实际高 116（首 / 末章多一行 9px 短说明时）+ 12 呼吸 */
-    padding-bottom: calc(128px + env(safe-area-inset-bottom));
+    /* 底栏两行实际高 113（滑块行 44 + 入口行 48 + 上下 18 + 1px 边框）+ 12 呼吸 */
+    padding-bottom: calc(125px + env(safe-area-inset-bottom));
   }
   /* 滚动区内部只留末行与可视区底边的呼吸；留白带本体在外壳上 */
   .reader-main {
