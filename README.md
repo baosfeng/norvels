@@ -186,6 +186,7 @@ docker run --rm --entrypoint /norvels \
 | `scripts/enrich.sh -- --plan` | 元数据补全：列待补清单（占位作者 / 缺简介 / 未分类），不联网不写库 |
 | `scripts/enrich.sh -- --limit 50 --apply` | 按在线书源补元数据（默认 dry-run；每次 apply 生成可回滚 batch） |
 | `scripts/enrich.sh -- --split-long-chapters` | 超长章节按段落边界切分（复用 `store.SplitChapter`，不重压正文） |
+| `scripts/classify-backfill.py --db <库>` | 未分类书回填：直连 SQLite，四层证据（词表 / 同名传播 / 双模型共识 / 外部预测表）依次补，默认 dry-run，`--apply` 记可回滚批次 |
 | `scripts/backup.sh --keep 7` | 备份数据库并保留最近 7 份 |
 | `make bench-capacity` | 容量压测（500 本 x 500 章合成库，不碰生产库） |
 | `./bin/norvels version` | 版本、commit、构建时间 |
