@@ -11,8 +11,11 @@
 接口（https://docs.ollama.com/api/systemone）：
   POST https://ollama.com/v1/systemone      Authorization: Bearer <key>
   POST http://127.0.0.1:11434/v1/systemone  本地模型，不需要 key
-请求体 {model, state, questions}：state 放书名/作者/简介/正文摘录，
-questions 放一个 choice 题（一级分类），criteria 是「选项 -> 判据」。
+请求体 {model, state, questions}：state 放书名/作者/简介/正文摘录；
+questions 支持一次带多个问题（云端上限 64 个），每题独立打分、答案不串给下一题。
+问题集用 --preset 选内置的（genre 只判题材 / full 另带受众、是否网文、质量分、
+有无广告），或用 --questions 传自己的 JSON。实测 5 问一次只多 36% 输入 token，
+比同一本书问 5 次省 73%，延迟基本不变——批量提问题比逐个问划算得多。
 
 职责边界：本脚本只做判断，不碰数据库。写库仍由
 scripts/classify-backfill.py --agents 按批次写（可回滚）；
@@ -24,6 +27,13 @@ scripts/classify-backfill.py --agents 按批次写（可回滚）；
 
   # 2) 批量判类：证据包 -> labels.jsonl（可断点续跑，逐行落盘）
   scripts/classify-decision.py run --evidence 'ev/*.json' --out labels.jsonl
+
+  # 2b) 一次问多个问题：题材 + 受众 + 是否网文 + 质量分 + 有无广告
+  scripts/classify-decision.py run --evidence 'ev/*.json' --out labels.jsonl --preset full
+
+  # 2c) 用自己写的问题集（JSON：{问题名: {type, instructions, criteria}}）
+  scripts/classify-decision.py run --evidence 'ev/*.json' --out labels.jsonl \
+      --questions my-questions.json
 
   # 3) 导出 backfill 能直接吃的数组（低置信度的先不写库）
   scripts/classify-decision.py export --labels labels.jsonl --out labels.json \\
@@ -89,6 +99,64 @@ L1_CHOICES = [
 ]
 
 
+# 问题集：一次请求带多个问题，每题独立打分。
+# 实测（clef 云端，同 10 本）：1 问 ≈ 1042 tok/本；5 问 ≈ 1419 tok/本，只多 36%，
+# 相当于比「问 5 次」省 73%，延迟基本不变（同一本书只跑一次前向）。
+# 云端硬上限：一次最多 64 个问题，问题名字母数字 _. 最多 100 字符。
+QUESTION_PRESETS = {
+    # 只判一级题材，最省——批量回填默认用它
+    "genre": {
+        "genre": {
+            "type": "choice",
+            "instructions": "这本书属于哪个一级题材分类？按题材设定判断，"
+                            "不要被书名里的字面或作者名带偏。",
+            "criteria": dict(L1_CHOICES),
+        }
+    },
+    # 判题材的同时顺手抽取几个筛选字段：受众、是否网文、正文质量、有无广告
+    "full": {
+        "genre": {
+            "type": "choice",
+            "instructions": "这本书属于哪个一级题材分类？按题材设定判断，"
+                            "不要被书名里的字面或作者名带偏。",
+            "criteria": dict(L1_CHOICES),
+        },
+        "is_webnovel": {
+            "type": "noul",
+            "instructions": "这是网络小说连载，而不是出版散文、社科专著或传记吗？",
+        },
+        "audience": {
+            "type": "choice",
+            "instructions": "目标读者偏男性向还是女性向？",
+            "criteria": {"male": "男性向（男频）", "female": "女性向（女频）",
+                         "neutral": "不区分性别"},
+        },
+        "quality": {
+            "type": "score",
+            "instructions": "正文可读性如何？按是否残缺、是否水字数、可读程度评分。",
+            "criteria": ["很差（明显残缺或水字数）", "一般", "较好", "很好"],
+        },
+        "has_promo": {
+            "type": "noul",
+            "instructions": "正文里是否混入大量站点广告、乱码或无关内容？",
+        },
+    },
+}
+
+
+def load_questions(preset, path):
+    """取本次要问的问题集：--questions 指定的 JSON 优先，否则用内置 preset。"""
+    if path:
+        with open(path, encoding="utf-8") as handle:
+            questions = json.load(handle)
+        if not isinstance(questions, dict) or not questions:
+            raise SystemExit("问题集必须是 {问题名: {type, instructions, criteria}} 的对象")
+        return questions
+    if preset not in QUESTION_PRESETS:
+        raise SystemExit("未知 preset：%s（可选 %s）" % (preset, "、".join(sorted(QUESTION_PRESETS))))
+    return QUESTION_PRESETS[preset]
+
+
 class AuthError(Exception):
     """凭据缺失或无效：不重试，立刻停。"""
 
@@ -124,24 +192,22 @@ def build_state(item):
     return state
 
 
-def build_payload(model, item):
-    """拼一个只问一级分类的请求。"""
-    return {
-        "model": model,
-        "state": build_state(item),
-        "questions": {
-            "genre": {
-                "type": "choice",
-                "instructions": "这本书属于哪个一级题材分类？按题材设定判断，"
-                                "不要被书名里的字面或作者名带偏。",
-                "criteria": dict(L1_CHOICES),
-            }
-        },
-    }
+def build_payload(model, item, questions):
+    """拼请求：state 是这本书，questions 是本次要问的全部问题。
+
+    System One 一次请求最多带 64 个问题，每题独立打分、答案不串给下一题。
+    多问一次比「同一本书反复问」省得多：实测 5 问一次只多 36% 输入 token，
+    相当于比问 5 次省 73%，延迟基本不变（同一次前向）。
+    """
+    return {"model": model, "state": build_state(item), "questions": questions}
 
 
 def post_once(endpoint, key, payload, timeout):
-    """POST 一次，返回 (answer, usage)。按错误类型决定是否值得重试。"""
+    """POST 一次，返回 (answers, usage)。按错误类型决定是否值得重试。
+
+    answers 是 {问题名: 答案对象}：choice 型带 choice/probabilities/confidence，
+    noul 型带 noul 概率，score 型带 score/legend。全部原样返回，由调用方挑选。
+    """
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = "Bearer " + key
@@ -167,18 +233,24 @@ def post_once(endpoint, key, payload, timeout):
         raise RetryableError("网络错误：%s" % err)
     except ValueError as err:
         raise RetryableError("响应不是合法 JSON：%s" % err)
-    answer = (body.get("answers") or {}).get("genre") or {}
-    if not answer.get("choice"):
-        raise RetryableError("响应里没有 genre.choice")
-    return answer, body.get("usage") or {}
+    answers = body.get("answers") or {}
+    if not answers:
+        raise RetryableError("响应里没有 answers")
+    return answers, body.get("usage") or {}
 
 
 def classify_one(opts, item, usage, lock):
-    """判一本；网络类失败退避重试，凭据/额度类错误直接抛。"""
-    payload = build_payload(opts.model, item)
+    """判一本：一次请求问完 opts.questions，网络类失败退避重试。
+
+    结果行形状：{id, category, confidence, runner_up, probabilities, extra}。
+    category/confidence/runner_up/probabilities 这四项是给
+    scripts/classify-backfill.py --agents 用的固定契约；其余问题（受众、
+    是否网文、质量分等）原样放进 extra，不影响既有写库链路。
+    """
+    payload = build_payload(opts.model, item, opts.questions)
     for attempt in range(opts.retries + 1):
         try:
-            answer, used = post_once(opts.endpoint, opts.key, payload, opts.timeout)
+            answers, used = post_once(opts.endpoint, opts.key, payload, opts.timeout)
         except RetryableError as err:
             if attempt >= opts.retries:
                 return {"id": int(item["id"]), "error": str(err)}
@@ -187,15 +259,22 @@ def classify_one(opts, item, usage, lock):
         with lock:
             usage["input_tokens"] += int(used.get("input_tokens") or 0)
             usage["output_tokens"] += int(used.get("output_tokens") or 0)
-        probs = {k: round(float(v), 4) for k, v in (answer.get("probabilities") or {}).items()}
+        genre = answers.get("genre") or {}
+        if not genre.get("choice"):
+            return {"id": int(item["id"]), "error": "响应里没有 genre.choice"}
+        probs = {k: round(float(v), 4) for k, v in (genre.get("probabilities") or {}).items()}
         ranked = sorted(probs.items(), key=lambda kv: kv[1], reverse=True)
-        return {
+        row = {
             "id": int(item["id"]),
-            "category": answer["choice"],
-            "confidence": round(float(answer.get("confidence") or 0.0), 4),
+            "category": genre["choice"],
+            "confidence": round(float(genre.get("confidence") or 0.0), 4),
             "runner_up": ranked[1][0] if len(ranked) > 1 else "",
             "probabilities": probs,
         }
+        extra = {k: v for k, v in answers.items() if k != "genre"}
+        if extra:
+            row["extra"] = extra
+        return row
     return {"id": int(item["id"]), "error": "exhausted"}
 
 
@@ -368,6 +447,7 @@ def cmd_run(args):
     """批量判类：证据包 -> JSONL，支持续跑。"""
     opts = argparse.Namespace(**vars(args))
     opts.key = load_key()
+    opts.questions = load_questions(args.preset, args.questions)
     items = load_json_items(args.evidence)
     if not items:
         raise SystemExit("证据包为空：检查 --evidence 的 glob 是否匹配到文件")
@@ -388,6 +468,7 @@ def cmd_eval(args):
     """金标准评测：算总体精度、阈值取舍与混淆。"""
     opts = argparse.Namespace(**vars(args))
     opts.key = load_key()
+    opts.questions = load_questions(args.preset, args.questions)
     with open(args.gold, encoding="utf-8") as handle:
         gold = json.load(handle)
     gold_map = {int(x["id"]): normalize_label(x.get("gold") or x.get("category")) for x in gold}
@@ -442,6 +523,10 @@ def build_parser():
         p.add_argument("--timeout", type=float, default=60.0, help="单请求超时秒数")
         p.add_argument("--progress", type=int, default=100, help="每 N 条打一行进度（0 = 静默）")
         p.add_argument("--out", required=True, help="结果 JSONL 路径（续跑会跳过已判 id）")
+        p.add_argument("--preset", default="genre", help="内置问题集名（genre / full，默认 genre）")
+        p.add_argument("--questions", default="",
+                       help="自定义问题集 JSON：{问题名: {type, instructions, criteria}}，"
+                            "一次最多 64 个问题")
 
     p_eval = sub.add_parser("eval", help="金标准评测")
     add_common(p_eval)
