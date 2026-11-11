@@ -58,10 +58,29 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-DEFAULT_ENDPOINT = os.environ.get("OLLAMA_DECISION_ENDPOINT", "https://ollama.com/v1/systemone")
-DEFAULT_MODEL = os.environ.get("OLLAMA_DECISION_MODEL", "clef")
-KEY_ENV = "OLLAMA_DECISION_KEY"
-PRICE_PER_MTOK = 0.24  # clef 输入 token 单价（美元/百万）；clef-flash 按同价估
+# 两套后端，协议都是 TypeSafe System One，只是域名、模型名、凭据与上限不同。
+#   ollama  云端 clef / clef-flash：一次最多 64 个问题，上下文 64K
+#   aliyun  decision-model-preview：一次最多 16 个问题，上下文 64K，华北2/新加坡限时免费
+BACKENDS = {
+    "ollama": {
+        "endpoint": os.environ.get("OLLAMA_DECISION_ENDPOINT", "https://ollama.com/v1/systemone"),
+        "model": os.environ.get("OLLAMA_DECISION_MODEL", "clef"),
+        "key_env": "OLLAMA_DECISION_KEY",
+        "max_questions": 64,
+        "price_per_mtok": 0.24,  # 美元/百万输入 token；clef-flash 按同价估
+    },
+    "aliyun": {
+        # 端点带业务空间 ID，格式 llm-xxxx；不填 workspace 时拼不出来，启动即报错
+        "endpoint": "",
+        "model": os.environ.get("ALIYUN_DECISION_MODEL", "decision-model-preview"),
+        "key_env": "ALIYUN_DECISION_KEY",
+        "max_questions": 16,
+        "price_per_mtok": 0.0,  # 文档标注「限时免费」，按 0 计
+        "workspace_env": "ALIYUN_DECISION_WORKSPACE",
+        "region": os.environ.get("ALIYUN_DECISION_REGION", "cn-beijing"),
+    },
+}
+KEY_ENV = "OLLAMA_DECISION_KEY"  # 兼容旧引用；实际按 backend 取
 
 # 金标准归一：库里历史分类名与一级选项名不完全一致，比较前先收敛到同一个字。
 # 与 scripts/classify-backfill.py 的 normalize_l1 同口径（否则「悬疑灵异」必然全判错）。
@@ -144,17 +163,26 @@ QUESTION_PRESETS = {
 }
 
 
-def load_questions(preset, path):
-    """取本次要问的问题集：--questions 指定的 JSON 优先，否则用内置 preset。"""
+def load_questions(preset, path, limit=None):
+    """取本次要问的问题集：--questions 指定的 JSON 优先，否则用内置 preset。
+
+    limit 是后端的问题数上限（ollama 64 / 阿里云 16）：超出直接报错，
+    让调用方在开跑前就知道，而不是跑到一半被服务端 400 打断。
+    """
     if path:
         with open(path, encoding="utf-8") as handle:
             questions = json.load(handle)
         if not isinstance(questions, dict) or not questions:
             raise SystemExit("问题集必须是 {问题名: {type, instructions, criteria}} 的对象")
-        return questions
-    if preset not in QUESTION_PRESETS:
-        raise SystemExit("未知 preset：%s（可选 %s）" % (preset, "、".join(sorted(QUESTION_PRESETS))))
-    return QUESTION_PRESETS[preset]
+    else:
+        if preset not in QUESTION_PRESETS:
+            raise SystemExit("未知 preset：%s（可选 %s）"
+                             % (preset, "、".join(sorted(QUESTION_PRESETS))))
+        questions = QUESTION_PRESETS[preset]
+    limit = int(limit or 64)
+    if len(questions) > limit:
+        raise SystemExit("问题数 %d 超过该后端上限 %d 个" % (len(questions), limit))
+    return questions
 
 
 class AuthError(Exception):
@@ -169,13 +197,40 @@ class FatalError(Exception):
     """额度不足、请求超长、模型不存在：重试也没用。"""
 
 
-def load_key():
-    """从环境变量取 key，缺失时报错并给出改写办法。绝不打印值。"""
-    key = (os.environ.get(KEY_ENV) or "").strip()
+def resolve_backend(name, args):
+    """把后端名 + 命令行覆盖合成一份实际使用的配置。
+
+    命令行给了 --endpoint / --model / --api-key-env 就覆盖后端默认值，
+    这样同一份脚本既能跑 ollama 云端，也能跑阿里云百炼。
+    """
+    if name not in BACKENDS:
+        raise SystemExit("未知后端：%s（可选 %s）" % (name, "、".join(sorted(BACKENDS))))
+    cfg = dict(BACKENDS[name])
+    endpoint = args.endpoint or cfg.get("endpoint") or ""
+    if not endpoint and name == "aliyun":
+        workspace = (os.environ.get(cfg["workspace_env"]) or "").strip()
+        if not workspace:
+            raise SystemExit(
+                "阿里云后端需要业务空间 ID：设置环境变量 " + cfg["workspace_env"]
+                + "（控制台右上角图标里复制，形如 llm-xxxx），或用 --endpoint 直接给全 URL"
+            )
+        endpoint = ("https://%s.%s.maas.aliyuncs.com/compatible-mode/v1/systemone"
+                    % (workspace, cfg["region"]))
+    cfg["endpoint"] = endpoint
+    cfg["model"] = args.model or cfg.get("model") or ""
+    cfg["key_env"] = args.api_key_env or cfg.get("key_env") or ""
+    cfg["max_questions"] = int(cfg.get("max_questions") or 64)
+    return cfg
+
+
+def load_key(env_name):
+    """从指定环境变量取 key，缺失时报错并给出改写办法。绝不打印值。"""
+    key = (os.environ.get(env_name) or "").strip()
     if not key:
         raise AuthError(
-            "环境变量 " + KEY_ENV + " 为空。macOS 上它通常写在 ~/.zshrc，"
-            "非交互 shell 读不到，改用 zsh -lc '<command>' 运行。"
+            "环境变量 " + env_name + " 为空。macOS 上它通常写在 ~/.zshrc，"
+            "非交互 shell 读不到，改用 zsh -ic '<command>' 运行；"
+            "也可以 --api-key-env 换成别的变量名。"
         )
     return key
 
@@ -391,7 +446,7 @@ def write_report(report, path):
           % (summary["input_tokens"], summary["cost_usd"], summary["elapsed"]))
 
 
-def build_report(rows, gold_map, usage, elapsed):
+def build_report(rows, gold_map, usage, elapsed, price_per_mtok):
     """把判定结果与金标准对齐，算精度、阈值取舍与混淆。
 
     入参 rows 已按 id 去重（见 load_rows）；这里再按 id 收敛一次，
@@ -431,7 +486,7 @@ def build_report(rows, gold_map, usage, elapsed):
             "mean_confidence": (sum(r["confidence"] for r in graded) / len(graded)) if graded else 0.0,
             "input_tokens": usage["input_tokens"],
             "output_tokens": usage["output_tokens"],
-            "cost_usd": round(usage["input_tokens"] / 1e6 * PRICE_PER_MTOK, 4),
+            "cost_usd": round(usage["input_tokens"] / 1e6 * price_per_mtok, 4),
             "elapsed": round(elapsed, 1),
             "normalized_gold": ["\u60ac\u7591\u7075\u5f02", "\u7075\u5f02"],
         },
@@ -446,8 +501,13 @@ def build_report(rows, gold_map, usage, elapsed):
 def cmd_run(args):
     """批量判类：证据包 -> JSONL，支持续跑。"""
     opts = argparse.Namespace(**vars(args))
-    opts.key = load_key()
-    opts.questions = load_questions(args.preset, args.questions)
+    cfg = resolve_backend(args.backend, args)
+    opts.endpoint = cfg["endpoint"]
+    opts.model = cfg["model"]
+    opts.key = load_key(cfg["key_env"])
+    opts.questions = load_questions(args.preset, args.questions, cfg["max_questions"])
+    opts.price = float(cfg["price_per_mtok"])
+    print("后端 %s · 模型 %s · 端点 %s" % (args.backend, opts.model, opts.endpoint))
     items = load_json_items(args.evidence)
     if not items:
         raise SystemExit("证据包为空：检查 --evidence 的 glob 是否匹配到文件")
@@ -460,15 +520,20 @@ def cmd_run(args):
     stats, usage, elapsed = run_batch(opts, todo, args.out)
     print("完成 ok=%d failed=%d · 输入 %d tokens ≈ $%.4f · 耗时 %.1f 秒"
           % (stats["ok"], stats["failed"], usage["input_tokens"],
-             usage["input_tokens"] / 1e6 * PRICE_PER_MTOK, elapsed))
+             usage["input_tokens"] / 1e6 * opts.price, elapsed))
     return 0 if stats["failed"] == 0 else 1
 
 
 def cmd_eval(args):
     """金标准评测：算总体精度、阈值取舍与混淆。"""
     opts = argparse.Namespace(**vars(args))
-    opts.key = load_key()
-    opts.questions = load_questions(args.preset, args.questions)
+    cfg = resolve_backend(args.backend, args)
+    opts.endpoint = cfg["endpoint"]
+    opts.model = cfg["model"]
+    opts.key = load_key(cfg["key_env"])
+    opts.questions = load_questions(args.preset, args.questions, cfg["max_questions"])
+    opts.price = float(cfg["price_per_mtok"])
+    print("后端 %s · 模型 %s · 端点 %s" % (args.backend, opts.model, opts.endpoint))
     with open(args.gold, encoding="utf-8") as handle:
         gold = json.load(handle)
     gold_map = {int(x["id"]): normalize_label(x.get("gold") or x.get("category")) for x in gold}
@@ -483,7 +548,7 @@ def cmd_eval(args):
         print("  全部已判，直接出报告")
     stats, usage, elapsed = run_batch(opts, todo, args.out)
     rows = load_rows(args.out)
-    report = build_report(rows, gold_map, usage, elapsed)
+    report = build_report(rows, gold_map, usage, elapsed, opts.price)
     report["summary"]["failed"] = stats["failed"]
     write_report(report, args.report)
     return 0
@@ -516,8 +581,11 @@ def build_parser():
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add_common(p):
-        p.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="决策接口地址")
-        p.add_argument("--model", default=DEFAULT_MODEL, help="决策模型名（clef / clef-flash / 本地模型）")
+        p.add_argument("--backend", default="ollama", help="后端：ollama（clef 云端）或 aliyun（百炼）")
+        p.add_argument("--endpoint", default="", help="覆盖后端端点（默认按后端拼）")
+        p.add_argument("--model", default="", help="覆盖模型名（默认按后端取）")
+        p.add_argument("--api-key-env", default="", dest="api_key_env",
+                       help="换成别的凭据环境变量名（默认按后端取）")
         p.add_argument("--workers", type=int, default=4, help="并发请求数（云端按套餐限并发）")
         p.add_argument("--retries", type=int, default=3, help="网络类失败重试次数")
         p.add_argument("--timeout", type=float, default=60.0, help="单请求超时秒数")
