@@ -193,8 +193,12 @@ class RetryableError(Exception):
     """超时、限流、5xx：退避后重试。"""
 
 
+class SkippedError(Exception):
+    """这一本被判不了（内容审核拒收、超长等）：记一条跳过，继续跑别的。"""
+
+
 class FatalError(Exception):
-    """额度不足、请求超长、模型不存在：重试也没用。"""
+    """额度不足、模型不存在、凭据无效：重试也没用，整批停。"""
 
 
 def resolve_backend(name, args):
@@ -281,6 +285,9 @@ def post_once(endpoint, key, payload, timeout):
             raise AuthError("决策接口拒绝凭据（HTTP %d）：%s" % (err.code, detail))
         if err.code == 402:
             raise FatalError("云端额度不足（HTTP 402）：补 usage credits，或换本地模型")
+        if err.code == 400 and "DataInspectionFailed" in detail:
+            # 内容安全审核拒收：只影响这一本，不当成致命错误
+            raise SkippedError("内容审核拒收：%s" % detail[:120])
         if err.code in (400, 404, 413):
             raise FatalError("请求被拒（HTTP %d）：%s" % (err.code, detail))
         raise RetryableError("HTTP %d：%s" % (err.code, detail))
@@ -311,6 +318,8 @@ def classify_one(opts, item, usage, lock):
                 return {"id": int(item["id"]), "error": str(err)}
             time.sleep(min(2 ** attempt, 8))
             continue
+        except SkippedError as err:
+            return {"id": int(item["id"]), "error": "skipped: " + str(err)}
         with lock:
             usage["input_tokens"] += int(used.get("input_tokens") or 0)
             usage["output_tokens"] += int(used.get("output_tokens") or 0)

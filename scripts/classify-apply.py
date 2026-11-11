@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把决策模型的判定结果写回库：只改「模型高置信度且与原分类不一致」的书。
+"""把决策模型的判定结果写回库，按批次可回滚。
 
-为什么单独一层：classify-backfill.py 只动「空 / 未分类 / 未知分类」的书，用来
-补空缺；本脚本处理的是「已经有分类、但要拿更强的证据复核」的场景——重判后
-与原值不同的，按批次写进 enrich_changes，可整批回滚。
+两个用途，风险差很多，用之前先想清楚是哪种：
+  · 补空缺（推荐）：书本来就没有分类（空 / 未分类 / 未分类/xxx），模型给出
+    任何分类都是增益，不会丢已有信息——这是当前实际采用的用法，385 本未知
+    分类取 confidence >= 0.7，写入 249 本。
+  · 覆盖已有分类（谨慎）：拿模型去改已有分类。单模型的 precision 只有
+    55~80%（400 本金标准实测），高置信度里仍有 15~25% 会改错，所以默认
+    不做；确需覆盖时按目标类加白名单（只采纳模型 precision 高的那几类）。
+
+写库纪律（与 classify-backfill.py 一致）：
 
 写库纪律（与 classify-backfill.py 一致）：
   · 默认 dry-run，只打印会改多少与抽样；--apply 才真写；
@@ -23,7 +29,7 @@ import os
 import sqlite3
 import time
 
-SOURCE_ID = "agent:decision-model"
+SOURCE_ID = "model:decision"  # 决策模型（Ollama clef / 百炼 preview）判定
 FIELD = "category"
 
 
@@ -129,7 +135,7 @@ def main():
         print("\n这是 dry-run：以上改动没有写库；加 --apply 才真写（并生成可回滚批次）。")
         return
 
-    batch = "20261111-decision-%s" % time.strftime("%H%M%S")
+    batch = "%s-decision-%s" % (time.strftime("%Y%m%d"), time.strftime("%H%M%S"))
     with conn:
         for book_id, old_l1, new_l1, conf in todo:
             conn.execute(
