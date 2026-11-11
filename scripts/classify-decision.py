@@ -53,6 +53,17 @@ DEFAULT_MODEL = os.environ.get("OLLAMA_DECISION_MODEL", "clef")
 KEY_ENV = "OLLAMA_DECISION_KEY"
 PRICE_PER_MTOK = 0.24  # clef 输入 token 单价（美元/百万）；clef-flash 按同价估
 
+# 金标准归一：库里历史分类名与一级选项名不完全一致，比较前先收敛到同一个字。
+# 与 scripts/classify-backfill.py 的 normalize_l1 同口径（否则「悬疑灵异」必然全判错）。
+GOLD_NORMALIZE = {"\u60ac\u7591\u7075\u5f02": "\u60ac\u7591", "\u7075\u5f02": "\u60ac\u7591"}
+
+
+def normalize_label(name):
+    """把历史分类名收敛到一级选项名。"""
+    name = (name or "").strip()
+    return GOLD_NORMALIZE.get(name, name)
+
+
 # 一级分类判据。顺序即并列时的优先级：常用类靠前，兜底类靠后。
 # 判据只写「读正文能验证的题材信号」，不写真实书名 / 作者（隐私红线）。
 # 选项名必须与库里的 category_l1 一致；命中隐私黑名单的字面量用 \u 转义。
@@ -221,6 +232,28 @@ def load_done_ids(path):
     return done
 
 
+def load_rows(path):
+    """读结果 JSONL，按 book_id 去重：同一本重跑多次只保留最后一条。
+
+    没有去重会让 report 的 n / 准确率被重复行放大——续跑、补跑、
+    中途重试用同一个输出文件时必然出现重复。
+    """
+    latest = {}
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+                latest[int(row["id"])] = row
+            except (KeyError, TypeError, ValueError):
+                continue
+    return [latest[k] for k in sorted(latest)]
+
+
 def run_batch(opts, items, out_path):
     """多线程跑完 items，每条结果即时追加进 JSONL。"""
     lock = threading.Lock()
@@ -248,15 +281,6 @@ def run_batch(opts, items, out_path):
     return stats, usage, time.time() - started
 
 
-def percentile(values, pct):
-    """取分位数（没有样本时返回 0）。"""
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    idx = min(len(ordered) - 1, int(round((len(ordered) - 1) * pct / 100.0)))
-    return ordered[idx]
-
-
 def write_report(report, path):
     """报告落盘；同时把摘要打到 stdout。"""
     if path:
@@ -268,6 +292,9 @@ def write_report(report, path):
     print("总体准确率 %.1f%%" % (summary["accuracy"] * 100))
     print("Top-2 命中率 %.1f%%" % (summary["top2_accuracy"] * 100))
     print("平均 confidence %.3f" % summary["mean_confidence"])
+    if summary.get("normalized_gold"):
+        print("金标准已归一：%s（与库里 category_l1 历史名对齐）"
+              % "、".join(summary["normalized_gold"]))
     print("\n== 按 confidence 阈值取舍（覆盖 = 肯写库的比例）==")
     print("%-10s %-12s %s" % ("阈值", "覆盖", "准确率"))
     for row in report["thresholds"]:
@@ -286,8 +313,13 @@ def write_report(report, path):
 
 
 def build_report(rows, gold_map, usage, elapsed):
-    """把判定结果与金标准对齐，算精度、阈值取舍与混淆。"""
-    graded = [r for r in rows if r.get("category") and r["id"] in gold_map]
+    """把判定结果与金标准对齐，算精度、阈值取舍与混淆。
+
+    入参 rows 已按 id 去重（见 load_rows）；这里再按 id 收敛一次，
+    保证无论调用方怎么组织数据，分母都不会被重复行放大。
+    """
+    unique = {int(r["id"]): r for r in rows}
+    graded = [r for r in unique.values() if r.get("category") and r["id"] in gold_map]
     hits = [r for r in graded if r["category"] == gold_map[r["id"]]]
     per_class = {}
     for row in graded:
@@ -322,6 +354,7 @@ def build_report(rows, gold_map, usage, elapsed):
             "output_tokens": usage["output_tokens"],
             "cost_usd": round(usage["input_tokens"] / 1e6 * PRICE_PER_MTOK, 4),
             "elapsed": round(elapsed, 1),
+            "normalized_gold": ["\u60ac\u7591\u7075\u5f02", "\u7075\u5f02"],
         },
         "thresholds": thresholds,
         "per_class": [{"label": k, "n": v["n"], "accuracy": v["hit"] / v["n"]}
@@ -357,17 +390,18 @@ def cmd_eval(args):
     opts.key = load_key()
     with open(args.gold, encoding="utf-8") as handle:
         gold = json.load(handle)
-    gold_map = {int(x["id"]): x.get("gold") or x.get("category") for x in gold}
-    items = [x for x in gold if gold_map.get(int(x["id"]))]
+    gold_map = {int(x["id"]): normalize_label(x.get("gold") or x.get("category")) for x in gold}
+    samples = [x for x in gold if gold_map.get(int(x["id"]))]
+    done = load_done_ids(args.out)
+    todo = [x for x in samples if int(x["id"]) not in done]
     print("评测 %d 本（金标准来自库里未被自动打标的原始分类）· 模型 %s · 并发 %d"
-          % (len(items), args.model, args.workers))
-    stats, usage, elapsed = run_batch(opts, items, args.out)
-    rows = []
-    with open(args.out, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if line:
-                rows.append(json.loads(line))
+          % (len(samples), args.model, args.workers))
+    if todo:
+        print("  本次判 %d 本（已判 %d 本跳过）" % (len(todo), len(samples) - len(todo)))
+    else:
+        print("  全部已判，直接出报告")
+    stats, usage, elapsed = run_batch(opts, todo, args.out)
+    rows = load_rows(args.out)
     report = build_report(rows, gold_map, usage, elapsed)
     report["summary"]["failed"] = stats["failed"]
     write_report(report, args.report)
