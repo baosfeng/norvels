@@ -34,7 +34,7 @@
 | 7 | 覆盖率 | 不低于登记基线（硬门禁），85% 为渐进目标 | `go tool cover` 行覆盖率 |
 | 9 | 隐私扫描 | 零命中 | `scripts/privacy-scan.sh --all` |
 | 10 | 构建一致性 | 容器工具版本满足 `web/` 要求；`Makefile` 的 `VERSION` 在 `internal/releases/CHANGELOG.md` 里有 `## [x.y.z]` 一节（go:embed 打进产品，发了版没写 = 发布事故） | `scripts/check-build-parity.sh` |
-| 11 | 前端类型检查 + 单元测试 + 覆盖率 + eslint | tsc 无 `error TS`；vitest 全绿（**含进程退出码**，见「门禁假红的识别」）+ **覆盖率不低于基线**；eslint error **不超过基线** | `scripts/gate-frontend.sh`：`typecheck` 与 `eslint` 并行（各带增量缓存），vitest 随后独占跑。**vitest 走 esbuild 不查类型**，导入路径写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 不查任何文件并返回 0。eslint 按 `LINT_BASELINE` 常量比对，只有**新增** error 才判红（既有 5 条历史问题不阻断提交） |
+| 11 | 前端类型检查 + 单元测试 + 覆盖率 + eslint | tsc 无 `error TS`；vitest 全绿（**含进程退出码**，见「门禁假红的识别」）+ **覆盖率不低于基线**；eslint error **不超过基线** | `scripts/gate-frontend.sh`：`typecheck` 与 `eslint` 并行（各带增量缓存），vitest 随后独占跑。**vitest 走 esbuild 不查类型**，导入路径写错时测试全绿而 `make build` 红（实测踩过）；必须带 `-p tsconfig.app.json`——根 tsconfig 是 `"files": []` 空壳，裸跑 tsc 不查任何文件并返回 0。eslint 按 `LINT_BASELINE` 常量比对，只有**新增** error 才判红（基线 5 是防退化上限，当前实测 0 条） |
 
 ## 门禁假红的识别（两类，处置相反）
 
