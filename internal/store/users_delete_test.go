@@ -26,6 +26,9 @@ func seedUserData(t *testing.T, ctx context.Context, st *Store, userID int64) in
 	if _, err := st.CreateUserSession(ctx, userID); err != nil {
 		t.Fatalf("建会话: %v", err)
 	}
+	// 阅读设置（0028）也在个人数据里：删账号必须带走它，否则下个复用该 id 的账号
+	// 会读到别人的主题/字号。
+	requireOK(t, "写阅读设置", st.PutReaderSettings(scoped, `{"theme":"sepia"}`))
 	return bookID
 }
 
@@ -70,6 +73,10 @@ func TestDeleteUserKeepsBooksAndOtherUsers(t *testing.T) {
 	}
 	if _, err := st.UserByID(ctx, keeper.ID); err != nil {
 		t.Errorf("保留账号不见了: %v", err)
+	}
+	// 阅读设置同样按账号隔离：删乙不能把甲的主题清掉。
+	if raw, ok, err := st.GetReaderSettings(WithUserID(ctx, keeper.ID)); err != nil || !ok || raw == "" {
+		t.Errorf("保留账号的阅读设置丢了 = (%q, %v, %v)", raw, ok, err)
 	}
 }
 
