@@ -82,13 +82,17 @@ export interface UseReaderTtsResult {
 
 export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
   const { chapterKey, onNextChapter } = options;
+  // 正文按引用放进 ref：回调（朗读结束、自动续读）读的是最新一版，不因为闭包过期而念旧文本。
+  // 同步放在 effect 里——渲染期写 ref 会让 React 的状态一致性无法保证，也不必在渲染期做。
   const paragraphsRef = useRef<string[]>(options.paragraphs);
-  paragraphsRef.current = options.paragraphs;
+  useEffect(() => {
+    paragraphsRef.current = options.paragraphs;
+  }, [options.paragraphs]);
 
   const [engineId, setEngineIdState] = useState<string>(() => readString(KEYS.engine, "web-speech"));
   const [externalEndpoint, setExternalEndpointState] = useState<string>(() => readString(KEYS.endpoint, ""));
   const [rate, setRateState] = useState<number>(() => clampTtsRate(readNumber(KEYS.rate, TTS_RATE_DEFAULT)));
-  const [voiceId, setVoiceIdState] = useState<string>(() => readString(KEYS.voice, ""));
+  const [voiceIdState, setVoiceIdState] = useState<string>(() => readString(KEYS.voice, ""));
   const [autoNext, setAutoNextState] = useState<boolean>(() => readBool(KEYS.autoNext, true));
 
   const driver = useMemo<TtsDriver>(() => {
@@ -109,12 +113,12 @@ export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
     return undefined;
   }, [driver, engineId]);
 
-  useEffect(() => {
-    if (voices.length === 0) return;
-    if (voiceId && voices.some((voice) => voice.id === voiceId)) return;
-    const preferred = voices.find((voice) => voice.lang.toLowerCase().startsWith("zh")) ?? voices[0];
-    if (preferred) setVoiceIdState(preferred.id);
-  }, [voices, voiceId]);
+  // 声音列表异步到达（Chrome 要等 onvoiceschanged）：选中的声音不在列表里就落到中文音色。
+  // 这是「从 props 算出来的值」，用派生代替「effect 里 setState」，少一轮渲染。
+  const preferredVoiceId = voices.length === 0 ? "" : (voices.find((voice) => voice.lang.toLowerCase().startsWith("zh")) ?? voices[0]).id;
+  const activeVoiceId = voices.length === 0 || (voiceIdState && voices.some((voice) => voice.id === voiceIdState))
+    ? voiceIdState
+    : preferredVoiceId;
 
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -128,7 +132,7 @@ export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
   const autoNextRef = useRef(autoNext);
   const onNextRef = useRef(onNextChapter);
   const rateRef = useRef(rate);
-  const voiceRef = useRef(voiceId);
+  const voiceRef = useRef(activeVoiceId);
   const driverRef = useRef(driver);
   useEffect(() => {
     autoNextRef.current = autoNext;
@@ -140,8 +144,8 @@ export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
     rateRef.current = rate;
   }, [rate]);
   useEffect(() => {
-    voiceRef.current = voiceId;
-  }, [voiceId]);
+    voiceRef.current = activeVoiceId;
+  }, [activeVoiceId]);
   useEffect(() => {
     driverRef.current = driver;
   }, [driver]);
@@ -162,7 +166,8 @@ export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
     }
   }, []);
 
-  const speakParagraph = useCallback((start: number) => {
+  // 命名函数表达式：念完一段要递归念下一段（跳过空段也一样），函数名在表达式内部可见。
+  const speakParagraph = useCallback(function speakParagraph(start: number) {
     const paragraphs = paragraphsRef.current;
     if (start >= paragraphs.length) {
       playingRef.current = false;
@@ -252,22 +257,30 @@ export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
     else play();
   }, [pause, play]);
 
-  // 章节切换：取消当前朗读，新章可由自动翻章标记自动续读。
+  // 换章 / 换引擎 / 换端点都算「新一代朗读」：上一代的进度与播放标记全部作废。
+  // 状态在渲染期按新的代次对齐（不再是 effect 里 setState，省掉一轮「先显示旧状态」的渲染）；
+  // ref 与浏览器语音合成的取消动作放在 effect 里，那里才是外部系统的位置。
+  const playbackKey = `${chapterKey}|${engineId}|${externalEndpoint}`;
+  const [playbackFor, setPlaybackFor] = useState(playbackKey);
+  if (playbackFor !== playbackKey) {
+    setPlaybackFor(playbackKey);
+    if (playing) setPlaying(false);
+    if (paused) setPaused(false);
+    if (currentPara !== null) setCurrentPara(null);
+  }
+
   useEffect(() => {
     cancelPlayback();
     playingRef.current = false;
     pausedRef.current = false;
     indexRef.current = -1;
-    setPlaying(false);
-    setPaused(false);
-    setCurrentPara(null);
     if (autoStartRef.current) {
       autoStartRef.current = false;
       window.setTimeout(() => {
         if (paragraphsRef.current.length > 0) play();
       }, 0);
     }
-  }, [chapterKey, cancelPlayback, play]);
+  }, [playbackKey, cancelPlayback, play]);
 
   // 新章正文异步到达时再启动自动续读。
   useEffect(() => {
@@ -276,11 +289,6 @@ export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
     autoStartRef.current = false;
     play();
   }, [options.paragraphs, play]);
-
-  // 引擎切换时停止当前朗读。
-  useEffect(() => {
-    stop();
-  }, [engineId, externalEndpoint, stop]);
 
   const setEngineId = useCallback((id: string) => {
     try {
@@ -339,7 +347,7 @@ export function useReaderTts(options: UseReaderTtsOptions): UseReaderTtsResult {
     externalEndpoint,
     setExternalEndpoint,
     voices,
-    voiceId,
+    voiceId: activeVoiceId,
     setVoiceId,
     rate,
     setRate,

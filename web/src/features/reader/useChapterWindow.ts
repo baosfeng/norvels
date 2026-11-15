@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useChapter } from "../../api/hooks";
 import type { ApiError } from "../../api/client";
 import type { ChapterBrief, ChapterDetail } from "../../api/types";
@@ -115,8 +115,12 @@ export function useChapterWindow({
 
   const activePos = windowIds.indexOf(activeId);
   const activeSlot = activePos >= 0 ? slots[activePos] : null;
-  /** 上一批渲染出来的段落：可见章正文还没到货时先顶着，别把流清空。 */
-  const lastSegments = useRef<StreamSegment[]>([]);
+  /**
+   * 上一批渲染出来的段落：可见章正文还没到货时先顶着，别把流清空。
+   * 放在 state 而不是 ref：它是渲染要用的数据；写回在下面按「id 序列变了才写」做（React 的
+   * 渲染期对齐 state 模式），不写在 memo 里——memo 里写 ref 就是把渲染期当副作用。
+   */
+  const [lastSegments, setLastSegments] = useState<StreamSegment[]>([]);
 
   const segments = useMemo<StreamSegment[]>(() => {
     // slotKey 只是重算信号：它把「槽位数据变了」这件事带进依赖数组
@@ -138,7 +142,7 @@ export function useChapterWindow({
     // 清空会让 scrollHeight 掉到一屏，浏览器把 scrollTop 钳到 0，读者就被甩回上一章。
     // 只有这一章确实打不开时才交回空表，让页面走错误态（pendingFlip 也才会放行）。
     const active = build(activeId);
-    if (!active) return activeSlot?.error ? [] : lastSegments.current;
+    if (!active) return activeSlot?.error ? [] : lastSegments;
     // 窗口里可见章之前的章按顺序全部渲染（滚到顶多补一章时，上一章的末尾才接得上）；
     // 遇到没取到的章就停——中间留洞会让正文出现一段空白
     const head: StreamSegment[] = [];
@@ -153,10 +157,13 @@ export function useChapterWindow({
       if (!segment) break;
       list.push(segment);
     }
-    lastSegments.current = list;
     return list;
     // slotKey 是「某个槽位的数据变过」的信号；正文统一从 cache 取（同一章可能挪过槽位）
-  }, [windowIds, chapters, activeId, slotKey, cache, activeSlot?.error]);
+  }, [windowIds, chapters, activeId, slotKey, cache, activeSlot?.error, lastSegments]);
+
+  // 可见章到货后把这一批记成「上一批」。判等只看 id 序列：memo 每次重算都会产生新数组，
+  // 按引用比会无限再渲染；id 序列一致说明内容就是同一批章。
+  if (segments.length > 0 && !sameSegmentIds(segments, lastSegments)) setLastSegments(segments);
 
   const tailSlot = slots[Math.max(0, windowCount - 1)] ?? null;
   const loaded = segments.length > 0;
@@ -176,6 +183,12 @@ export function useChapterWindow({
     extendHead: () => setExtras((state) => ({ ...state, head: Math.min(EDGE_SLOTS, state.head + 1) })),
     extendTail: () => setExtras((state) => ({ ...state, tail: Math.min(EDGE_SLOTS, state.tail + 1) })),
   };
+}
+
+function sameSegmentIds(a: StreamSegment[], b: StreamSegment[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let at = 0; at < a.length; at += 1) if (a[at].id !== b[at].id) return false;
+  return true;
 }
 
 function clampExtra(value: number): number {

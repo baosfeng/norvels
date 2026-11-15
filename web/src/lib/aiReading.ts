@@ -10,7 +10,7 @@ function raw(storage: StorageLike, key: string): string | null {
   try { return storage ? storage.getItem(key) : null; } catch { return null; }
 }
 function safeSet(storage: StorageLike, key: string, value: string): void {
-  try { storage && storage.setItem(key, value); } catch { /* ignore */ }
+  try { if (storage) storage.setItem(key, value); } catch { /* ignore */ }
 }
 export function normalizeBaseUrl(input: string): string {
   const value = (input || "").trim();
@@ -49,7 +49,7 @@ export function buildAiMessages(request: AiReadingRequest): { role: "system" | "
   const chapterTitle = (request.chapterTitle || "").trim() || "本章";
   const chapterText = (request.chapterText || "").trim().slice(0, 16000);
   const system = "你是中文小说阅读助手。只基于提供的原文回答，不编造事实；回答简洁有条理；如果原文信息不足，明确说“原文未提供”。";
-  let user = "";
+  let user: string;
   if (request.task === "summary") user = "请用 3-5 条要点概括「" + chapterTitle + "」的主要内容与关键情节：\n\n" + chapterText;
   else if (request.task === "explain") user = "请用通俗语言解释下面选中的段落。\n\n选中段落：\n" + (request.selection || "").trim() + "\n\n上下文（同章）：\n" + chapterText;
   else if (request.task === "qa") user = "基于「" + chapterTitle + "」原文回答问题：" + (request.question || "").trim() + "\n\n原文：\n" + chapterText;

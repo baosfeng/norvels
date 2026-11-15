@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { hasShelfFilterQuery } from "./shelfQuery";
@@ -21,15 +21,16 @@ export function useShelfView() {
   const [params] = useSearchParams();
   const raw = parseShelfView(params.get("view"));
   const fromUrl: ShelfView = hasShelfFilterQuery(params) ? "all" : resolveShelfView(params.get("view"), auth.loggedIn);
-  const [view, setViewState] = useState<ShelfView>(fromUrl);
+  /** 上一次看到的地址得出的视图 + 当前生效的视图；两者一起对齐，地址一变本地选择就作废。 */
+  const [state, setState] = useState<{ fromUrl: ShelfView; view: ShelfView }>({ fromUrl, view: fromUrl });
 
-  // 外部导航（浏览器后退 / 分享链接）跟着地址走；本地切换时 state 先变、地址随后由筛选的写地址 effect 补齐，
-  // 两者一致后这里不会把刚点的结果翻回去。
-  useEffect(() => {
-    setViewState(fromUrl);
-  }, [fromUrl]);
-
-  const setView = useCallback((next: ShelfView) => setViewState(next), []);
+  // 外部导航（浏览器后退 / 分享链接）跟着地址走；本地切换时 state 先变、地址随后由筛选的写地址 effect 补齐。
+  // 按地址在渲染期对齐 state（React 的「渲染期间调整 state」模式），不用 effect 再 setState 一轮。
+  if (state.fromUrl !== fromUrl) setState({ fromUrl, view: fromUrl });
+  const view = state.fromUrl === fromUrl ? state.view : fromUrl;
+  const setView = useCallback((next: ShelfView) => {
+    setState((prev) => ({ fromUrl: prev.fromUrl, view: next }));
+  }, []);
 
   return {
     view,

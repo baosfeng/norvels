@@ -11,7 +11,9 @@ export function useTTS(paragraphs: string[], opts: TTSOptions = {}) {
   const stop = useCallback(() => { synth?.cancel(); setSpeaking(false); }, [synth]);
   const voices = synth?.getVoices() ?? [];
 
-  const speakFrom = useCallback((start: number) => {
+  // 用命名函数表达式而不是箭头：onend 里要递归喊自己（念完一段接下一段），
+  // 函数名在这个表达式内部可见，既不需要 ref、也不受「先声明后使用」约束。
+  const speakFrom = useCallback(function speakFrom(start: number) {
     if (!synth || start >= paragraphs.length) { setSpeaking(false); return; }
     synth.cancel();
     idxRef.current = start;

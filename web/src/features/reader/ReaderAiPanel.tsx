@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   readAiReadingConfig,
   writeAiReadingConfig,
@@ -21,9 +21,14 @@ type Tab = "summary" | "explain" | "qa";
 
 export function ReaderAiPanel(props: ReaderAiPanelProps) {
   const { open, onClose, chapterTitle, chapterText, selection, config: configProp, onConfigChange } = props;
-  const [config, setConfig] = useState<AiReadingConfig>(() =>
-    configProp ? configProp : readAiReadingConfig(),
-  );
+  // 初值：父级给了 config 就用它，否则从 localStorage 读一份自己管。
+  const [config, setConfig] = useState<AiReadingConfig>(() => configProp ?? readAiReadingConfig());
+  // 父级后来换了 config（例如别的入口改了端点）：跟着换，按 prop 在渲染期对齐 state。
+  const [syncedConfig, setSyncedConfig] = useState(configProp);
+  if (syncedConfig !== configProp) {
+    setSyncedConfig(configProp);
+    if (configProp) setConfig(configProp);
+  }
   const [tab, setTab] = useState<Tab>("summary");
   const [question, setQuestion] = useState("");
   const [explainText, setExplainText] = useState(selection || "");
@@ -31,22 +36,23 @@ export function ReaderAiPanel(props: ReaderAiPanelProps) {
   const [loading, setLoading] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
 
-  useEffect(() => {
-    if (configProp) setConfig(configProp);
-  }, [configProp]);
-
-  useEffect(() => {
+  // 打开面板或选中段落变了就回到干净的一屏：按 prop 在渲染期对齐 state，
+  // 不走 effect，省掉「先按旧内容提交一帧、再重置」的那轮渲染。
+  const selectionText = selection || "";
+  const [shown, setShown] = useState({ open, selection: selectionText });
+  if (shown.open !== open || shown.selection !== selectionText) {
+    setShown({ open, selection: selectionText });
     if (open) {
       setResult(null);
-      setExplainText(selection || "");
+      setExplainText(selectionText);
     }
-  }, [open, selection]);
+  }
 
   function patchConfig(patch: Partial<AiReadingConfig>) {
     const next = { ...config, ...patch };
     setConfig(next);
+    onConfigChange?.(next);
     writeAiReadingConfig(next);
-    if (onConfigChange) onConfigChange(next);
   }
 
   async function run(task: "summary" | "explain" | "qa") {
@@ -74,7 +80,7 @@ export function ReaderAiPanel(props: ReaderAiPanelProps) {
         res = await requestAiReading(config, { task: "qa", chapterTitle, chapterText, question: q });
       }
       setResult(res);
-    } catch (e) {
+    } catch {
       setResult({ ok: false, text: "", error: "网络请求失败，请检查地址与网络" });
     } finally {
       setLoading(false);
