@@ -36,9 +36,9 @@
 | 减少透明度 | 毛玻璃不理会系统设置 | `prefers-reduced-transparency` 下退成实色（Safari 不认该查询） | CSS 契约 |
 | 章标题裁边（`text-box-trim`） | 标题上方多一条 4px 字形留白 | 标题盒 44 → **28px**；页数 9 → 9、页高 836 不变 | 切 `text-box-trim:none` 复测前后 h2 高度与 pageCount |
 | 翻页链路埋点 | 「翻一页多少 ms」只能靠外部脚本量 | 页面自己打 `performance.mark/measure`（`norvels.turn.<effect>`） | 过滤 `getEntriesByType('measure')` |
-| 本设备能力自检 | 局域网 http 下能力静默失效，读者只以为「没用」 | 帮助面板列出六项可用 / 不可用并说明原因 | vitest + 真浏览器强制 `isSecureContext=false` |
+| 本设备能力自检 | 局域网 http 下能力静默失效，读者只以为「没用」 | 帮助面板列出四项真有消费点的能力，可用 / 不可用并说明原因 | vitest + 真浏览器强制 `isSecureContext=false` |
 
-> **依赖安全上下文**（`https` 或 `localhost`）：屏幕常亮、持久化存储、Service Worker 离线、剪贴板、分享。局域网 `http://<NAS-IP>` 访问时五项一起失效，阅读器帮助面板逐项标注；方案见 [部署文档](../deploy/nas/README.md)「浏览器访问与能力边界」。
+> **依赖安全上下文**（`https` 或 `localhost`）：屏幕常亮、离线缓存、持久化存储。局域网 `http://<NAS-IP>` 访问时三项一起失效，离线徽标同时改说「离线不可用」而不是承诺「离线阅读」；阅读器帮助面板逐项标注，方案见 [部署文档](../deploy/nas/README.md)「浏览器访问与能力边界」。
 
 ## 2 已修（21 条，判据全部落进审计或 vitest）
 

@@ -2,21 +2,18 @@
  * 本设备能力自检：此刻这台设备、这个地址上，哪些浏览器能力真的能用。
  *
  * 所有端都是「打开浏览器访问 NAS 上的服务」，能力随地址而变：https / localhost 是安全上下文，
- * 屏幕常亮、离线缓存、剪贴板、分享、持久化存储都在；http://192.168.x.x 这类局域网地址不是，
+ * 屏幕常亮、离线缓存、持久化存储都在；http://192.168.x.x 这类局域网地址不是，
  * 它们会静默消失——读者只看到「这功能没用」，没有任何提示。
+ *
+ * 清单只收**界面里真有消费点**的能力：剪贴板与分享全仓零调用，列进来等于承诺一个
+ * 界面上找不到入口的功能。
  *
  * 这里只做**判定与说明**，不碰任何能力的调用路径：调用方照旧静默降级，面板只负责让人看清原因。
  * 判定写成纯函数（环境由参数传入），组件不直接读 navigator，便于单测。
  */
 
 /** 能力标识；顺序即面板展示顺序。 */
-export type CapabilityId =
-  | "secureContext"
-  | "wakeLock"
-  | "serviceWorker"
-  | "clipboard"
-  | "share"
-  | "storagePersist";
+export type CapabilityId = "secureContext" | "wakeLock" | "serviceWorker" | "storagePersist";
 
 /** 一条自检结果。 */
 export interface CapabilityReport {
@@ -36,12 +33,11 @@ export interface CapabilityEnv {
   isSecureContext?: boolean;
   wakeLock?: { request?: unknown };
   serviceWorker?: { register?: unknown };
-  clipboard?: { writeText?: unknown };
-  share?: unknown;
   storage?: { persist?: unknown };
 }
 
-const NEED_SECURE = "需 https 或 localhost 访问";
+/** 非安全上下文里各项的统一归因：问题在地址，不在浏览器。离线徽标也复用它。 */
+export const NEED_SECURE_CONTEXT_HINT = "需 https 或 localhost 访问";
 const NEED_BROWSER = "当前浏览器不支持";
 
 function hasFunction(value: unknown): boolean {
@@ -57,18 +53,16 @@ const CHECKS: { id: CapabilityId; label: string; probe: (env: CapabilityEnv) => 
     label: "离线缓存（Service Worker）",
     probe: (env) => hasFunction(env.serviceWorker?.register),
   },
-  { id: "clipboard", label: "剪贴板", probe: (env) => hasFunction(env.clipboard?.writeText) },
-  { id: "share", label: "分享", probe: (env) => hasFunction(env.share) },
   { id: "storagePersist", label: "持久化存储", probe: (env) => hasFunction(env.storage?.persist) },
 ];
 
 /** 不可用时该说什么：安全上下文缺失优先归因到地址，否则才归因到浏览器。 */
 function hintOf(id: CapabilityId, secure: boolean): string {
-  return id === "secureContext" || !secure ? NEED_SECURE : NEED_BROWSER;
+  return id === "secureContext" || !secure ? NEED_SECURE_CONTEXT_HINT : NEED_BROWSER;
 }
 
 /**
- * 逐项判定。安全上下文是这六项的共同前提，缺了它其余一律按不可用算——
+ * 逐项判定。安全上下文是这四项的共同前提，缺了它其余一律按不可用算——
  * 即使某个 API 对象还在，调下去也只是静默失败，说「可用」会让人误判。
  */
 export function detectCapabilities(env: CapabilityEnv): CapabilityReport[] {
@@ -84,16 +78,12 @@ export function browserCapabilityEnv(): CapabilityEnv {
   if (typeof window === "undefined") return {};
   const nav = window.navigator as Navigator & {
     wakeLock?: { request?: unknown };
-    share?: unknown;
     storage?: { persist?: unknown };
-    clipboard?: { writeText?: unknown };
   };
   return {
     isSecureContext: window.isSecureContext,
     wakeLock: nav.wakeLock,
     serviceWorker: nav.serviceWorker,
-    clipboard: nav.clipboard,
-    share: nav.share,
     storage: nav.storage,
   };
 }
