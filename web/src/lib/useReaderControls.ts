@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { isIgnorableSwipeTarget } from "./swipe";
 
 /** 控制层无操作自动收起的时长（ms）；需求口径为 3 秒。 */
 export const AUTO_HIDE_MS = 3000;
@@ -9,6 +8,30 @@ export const AUTO_HIDE_MS = 3000;
 const TAP_SLOP = 12;
 /** 按住超过这个时长不算单击（长按多半是在选词）。 */
 const TAP_MAX_MS = 700;
+
+/**
+ * 起点落在这些元素上就不算「单击正文」：读者是在点按钮、填输入框或拖选文字，
+ * 交给浏览器原本的行为，不拿它切换控制层。
+ */
+const TAP_IGNORE_SELECTOR = [
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  "[role='button']",
+  "[role='dialog']",
+  "[contenteditable='true']",
+].join(",");
+
+function isIgnorableTapTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target.closest(TAP_IGNORE_SELECTOR)) return true;
+  // 已经选中了文字时不动，避免把「选词」当成单击
+  const selection = typeof window !== "undefined" ? window.getSelection() : null;
+  return Boolean(selection && selection.toString().length > 0);
+}
 
 /**
  * 单击分区的边缘宽度（占宽比例）：左 30% 上一章、中 40% 唤出菜单、右 30% 下一章。
@@ -147,7 +170,7 @@ export function useReaderControls(options: {
       onPointerDown(event: ReactPointerEvent) {
         if (!isH5) return;
         // 点按钮/链接/输入框、拖选文字都不算「单击正文」
-        if (isIgnorableSwipeTarget(event.target)) {
+        if (isIgnorableTapTarget(event.target)) {
           start.current = null;
           return;
         }
@@ -161,7 +184,7 @@ export function useReaderControls(options: {
         if (Date.now() - from.t > TAP_MAX_MS) return;
         const dx = (event.clientX ?? 0) - from.x;
         const dy = (event.clientY ?? 0) - from.y;
-        // 滑动翻章交给 useSwipePaging：位移大就不在这里处理
+        // 位移大的算滚动 / 拖动（分页模式下由翻页引擎接管），不在这里当单击
         if (Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP) return;
         handleTap(event);
       },

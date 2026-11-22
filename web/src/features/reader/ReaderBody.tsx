@@ -12,7 +12,6 @@ import type { ChapterStream } from "./useChapterStream";
  */
 export function ReaderBody({
   isH5,
-  swipeRef,
   surfaceProps,
   zonesEnabled,
   loading,
@@ -34,7 +33,6 @@ export function ReaderBody({
   ttsActivePara,
 }: {
   isH5: boolean;
-  swipeRef: (node: HTMLElement | null) => void;
   surfaceProps: {
     onPointerDown: (event: import("react").PointerEvent) => void;
     onPointerUp: (event: import("react").PointerEvent) => void;
@@ -69,7 +67,6 @@ export function ReaderBody({
   return (
     <ReaderTapZone
       isH5={isH5}
-      swipeRef={swipeRef}
       surfaceProps={surfaceProps}
       zonesEnabled={zonesEnabled}
       paged={Boolean(pagedContent)}

@@ -32,7 +32,6 @@ import { useReaderToggles } from "./useReaderToggles";
 import { ReaderErrorBoundary, ReaderErrorPanel } from "./ReaderErrorBoundary";
 import { readerStyleVars } from "./readerSettings";
 import { useReaderSettings } from "./useReaderSettings";
-import { useReaderSwipe } from "./useReaderSwipe";
 import { useReaderPaging } from "./useReaderPaging";
 import { pageModeFor } from "./readerPageMode";
 import { SURFACE_SELECTOR } from "./readerStreamLayout";
@@ -307,13 +306,6 @@ function ReaderScreen() {
     Boolean(stream.chapterData) && storedParaIndex > 0 && !pendingJump && hintDismissedFor !== chapterId;
 
   const reducedMotion = prefersReducedMotion();
-  const swipeRef = useReaderSwipe({
-    isH5,
-    overlayOpen,
-    reducedMotion,
-    step: stepChapter,
-    enabled: !paging.active,
-  });
 
   const { toggleSearch, toggleSettings, toggleDirectory, toggleBookmarks } = useReaderToggles({
     searchOpen,
@@ -417,7 +409,6 @@ function ReaderScreen() {
 
       <ReaderBody
         isH5={isH5}
-        swipeRef={swipeRef}
         surfaceProps={controls.surfaceProps}
         zonesEnabled={!overlayOpen}
         loading={stream.loading}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
@@ -102,7 +102,10 @@ function progressText(): string {
 
 /** 正文容器：H5 下 .reader-main 自己滚，window 不滚。 */
 function surface(): HTMLElement {
-  return screen.getByTestId("reader-swipe-area");
+  const node = screen.getByTestId("reader-swipe-area");
+  // jsdom 不做布局：三区判定要读宽度，这里钉成手机视口宽
+  Object.defineProperty(node, "clientWidth", { value: 390, configurable: true });
+  return node;
 }
 
 /** jsdom 没有 Touch / TouchEvent 构造器：造一个带 touches / changedTouches 的事件，hook 只读坐标。 */
@@ -115,6 +118,13 @@ function touch(type: string, x: number, y: number) {
     targetTouches: type === "touchend" ? [] : [point],
   });
   return event;
+}
+
+/** 一次边缘短按：左三成 / 右三成翻章，中间唤出控制层。 */
+function tap(x: number) {
+  const node = surface();
+  fireEvent.pointerDown(node, { clientX: x, clientY: 400 });
+  fireEvent.pointerUp(node, { clientX: x, clientY: 400 });
 }
 
 /**
@@ -130,17 +140,9 @@ function stubLayout(offsets: Record<string, number>) {
   });
 }
 
-/** 一次横滑：起点 → 两个中间点 → 松手。 */
-function swipe(from: number, to: number, dy = 2) {
-  const node = surface();
-  fireEvent(node, touch("touchstart", from, 400));
-  fireEvent(node, touch("touchmove", (from + to) / 2, 400 + dy));
-  fireEvent(node, touch("touchend", to, 400 + dy * 2));
-}
-
 describe("翻章与回章首", () => {
   beforeEach(() => {
-    // 横滑翻章属于滚动模式：分页模式下横滑是翻页（由翻页引擎接管）
+    // 点击边缘翻章属于滚动模式：分页模式下三区单击是翻一页（由翻页引擎接管）
     localStorage.setItem(READER_KEYS.pageMode, "scroll");
     vi.clearAllMocks();
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -151,14 +153,14 @@ describe("翻章与回章首", () => {
   });
 
   /**
-   * 防复发：实测章内滚到 70%（scrollTop=780）左滑翻章，新章停在 56%——
+   * 防复发：实测章内滚到 70%（scrollTop=780）翻章，新章停在 56%——
    * 旧实现用 window.scrollTo({top:0}) 回章首，而正文在容器内滚动，它对这个容器无效。
    */
-  it("章内滚到一半左滑翻章，新章从章首开始", async () => {
+  it("章内滚到一半点右边缘翻章，新章从章首开始", async () => {
     stubLayout({ "10": 0, "11": 2000 });
     renderReader("/read/7/10");
     surface().scrollTop = 500;
-    swipe(300, 200);
+    tap(350);
     await waitFor(() => expect(progressText()).toContain("第 2 章 / 共 2 章"));
     // 按「第二章的 section」对齐到屏幕顶：连续流里上方还有第一章，不能停在它里面
     await waitFor(() => expect(surface().scrollTop).toBe(2000));
@@ -166,34 +168,29 @@ describe("翻章与回章首", () => {
     expect(window.scrollY).toBe(0);
   });
 
-  it("右滑回上一章同样落在章首", async () => {
+  it("点左边缘回上一章同样落在章首", async () => {
     stubLayout({ "10": 0, "11": 2000 });
     renderReader("/read/7/11");
     surface().scrollTop = 480;
-    swipe(100, 220);
+    tap(30);
     await waitFor(() => expect(progressText()).toContain("第 1 章 / 共 2 章"));
     await waitFor(() => expect(surface().scrollTop).toBe(0));
   });
 
-  it("斜向漂移（dx=70 / dy=45）不翻章：读者在往下滚", () => {
+  /**
+   * 读者要求：滚动模式下的左右滑动不该换章（旧实现一横滑翻一章，往下滚时横向漂移就丢位置）。
+   * 分页模式下横滑仍是翻页，由翻页引擎接管，不经过这里。
+   */
+  it("左右滑动不再翻章：横滑整段不换章", async () => {
+    stubLayout({ "10": 0, "11": 2000 });
     renderReader("/read/7/10");
     const node = surface();
-    fireEvent(node, touch("touchstart", 300, 200));
-    fireEvent(node, touch("touchmove", 260, 240));
-    fireEvent(node, touch("touchend", 230, 245));
-    expect(progressText()).toContain("第 1 章 / 共 2 章");
-  });
-
-  it("目录抽屉打开时横滑不翻章，关掉后才翻", async () => {
-    renderReader("/read/7/10");
-    // 唤出控制层（点击中间区），再打开目录
-    const node = surface();
-    fireEvent.pointerDown(node, { clientX: 195, clientY: 400 });
-    fireEvent.pointerUp(node, { clientX: 195, clientY: 400 });
-    fireEvent.click(screen.getByLabelText("章节目录"));
-    await waitFor(() => expect(screen.getByTestId("reader-drawer").getAttribute("aria-hidden")).toBe("false"));
-
-    swipe(300, 200);
+    await act(async () => {
+      fireEvent(node, touch("touchstart", 300, 400));
+      fireEvent(node, touch("touchmove", 250, 402));
+      fireEvent(node, touch("touchend", 180, 404));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
     expect(progressText()).toContain("第 1 章 / 共 2 章");
   });
 });

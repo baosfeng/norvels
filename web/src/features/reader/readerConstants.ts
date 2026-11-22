@@ -48,7 +48,6 @@ export const READER_TOUCH_HINTS: { keys: string[]; desc: string }[] = [
   { keys: ["单击左边缘"], desc: "上一章（页边有淡淡的渐变提示）" },
   { keys: ["单击中间"], desc: "显示 / 隐藏控制栏" },
   { keys: ["单击右边缘"], desc: "下一章（末章时提示已经到底）" },
-  { keys: ["左右滑动"], desc: "上一章 / 下一章" },
   { keys: ["拖动底部进度条"], desc: "跳到任意一章" },
 ];
 /** 标题开头的「第 N 章」及其后的分隔符；写成纯函数避免在渲染期拼正则。 */
