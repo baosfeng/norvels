@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computePageBox } from "../../../lib/paging/pageGeometry";
 import { PageTurnEngine } from "./PageTurnEngine";
+import { clearTurnStart, markTurnStart, measureTurnEnd } from "../../../lib/paging/turnPerf";
+
+// 埋点是旁路：单测只验「起点终点成对打、回弹不记样本」，不重复 turnPerf 自己的用例
+vi.mock("../../../lib/paging/turnPerf", () => ({
+  markTurnStart: vi.fn(),
+  measureTurnEnd: vi.fn(),
+  clearTurnStart: vi.fn(),
+}));
 
 const box = computePageBox({ stageW: 390, stageH: 844, padX: 18, lineH: 42 });
 
@@ -69,5 +77,56 @@ describe("翻页收尾兜底", () => {
     expect(engine.turn(1)).toBe(true);
     vi.advanceTimersByTime(500);
     expect(engine.currentPage).toBe(2);
+  });
+});
+describe("翻页埋点", () => {
+  beforeEach(() => {
+    vi.mocked(markTurnStart).mockClear();
+    vi.mocked(measureTurnEnd).mockClear();
+    vi.mocked(clearTurnStart).mockClear();
+  });
+
+  it("点按翻页：起点与新页落定各打一次，效果名一路带下去", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    const { engine, onCommit } = setup();
+
+    engine.turn(1);
+    // 起点在「第二层建好、动画开跑」那一刻，此时还没落页
+    expect(markTurnStart).toHaveBeenCalledWith("fade");
+    expect(measureTurnEnd).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+    expect(onCommit).toHaveBeenCalledWith(1);
+    expect(measureTurnEnd).toHaveBeenCalledWith("fade");
+    expect(vi.mocked(measureTurnEnd)).toHaveBeenCalledTimes(1);
+  });
+
+  it("回弹（取消 / 松手不翻）只丢掉起点，不记 measure", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    const { engine } = setup();
+
+    engine.pointerDown(100, 400);
+    engine.pointerMove(40, 402); // 横移 60px：越过方向锁但与提交阈值差得远
+    engine.pointerUp(40);
+    vi.advanceTimersByTime(600);
+
+    expect(markTurnStart).toHaveBeenCalledTimes(1);
+    expect(engine.currentPage).toBe(0);
+    // 回弹不落页：不记 measure，起点一并清掉（缓冲区里不留孤儿样本）
+    expect(measureTurnEnd).not.toHaveBeenCalled();
+    expect(clearTurnStart).toHaveBeenCalledWith("fade");
+  });
+
+  it("连续翻页：每次落定正好一条 measure，不串页也不少记", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    const { engine } = setup();
+
+    engine.turn(1);
+    vi.advanceTimersByTime(500);
+    engine.turn(1);
+    vi.advanceTimersByTime(500);
+
+    expect(markTurnStart).toHaveBeenCalledTimes(2);
+    expect(measureTurnEnd).toHaveBeenCalledTimes(2);
   });
 });

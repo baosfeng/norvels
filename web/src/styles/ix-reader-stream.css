@@ -25,6 +25,18 @@
   margin: 0;
 }
 
+/* 章标题裁掉上下留白，与分页那套（ix-reader-paging.css 的 .pg-source h2）同一条规则：
+   同一个标题在两套排版里必须一样高，否则切模式时章首会上下跳一段。
+   只给标题：正文段落裁了会把字顶裁进上一行的行盒里（实测汉字 top 变 −7.22）。
+   edge 用 text 而不是 cap：中文没有大写字母高度，cap 按拉丁度量量会把字顶削掉。
+   @supports 包住：不认的浏览器完全不生效。 */
+@supports (text-box-trim: trim-both) {
+  .reader-article > h2 {
+    text-box-trim: trim-both;
+    text-box-edge: text alphabetic;
+  }
+}
+
 /* PC 上正文是一条居中的阅读列：.reader-main 虽然是 flex 居中，但流里的 section 是 flex item
    （默认 stretch 到整行），只有 margin-inline:auto 才会真的把 42rem 的正文列放到中间。
    流末尾的进度区与翻章条跟正文同宽同轴，避免读到末章时突然横跨整屏。 */

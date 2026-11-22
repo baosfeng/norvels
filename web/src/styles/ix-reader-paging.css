@@ -93,6 +93,20 @@
   font-weight: 600;
 }
 
+/* 章标题裁掉上下留白：汉字字形只占行盒的中间一段，不裁的话首行与页顶差 4px、
+   标题到正文又多空出一行的一半，一页少一行。
+   只给标题、不给正文：同一条规则用在 p 上会把字顶裁进页顶外（实测汉字 top 从 4 变 −7.22，
+   字被切掉），标题字号更大、留白更多，裁到字形边缘才安全。
+   edge 用 text（不是 cap）：中文没有大写字母高度，cap 按拉丁度量裁会把字顶削掉半笔；
+   text 按文字实际 em 顶对齐，实测字顶正好落在盒顶内 9px。
+   @supports 包住：不认这套属性的浏览器行为完全不变，页高与页数也就不会被它带动。 */
+@supports (text-box-trim: trim-both) {
+  .pg-source h2 {
+    text-box-trim: trim-both;
+    text-box-edge: text alphabetic;
+  }
+}
+
 .pg-source p {
   text-indent: var(--reader-indent, 2em);
   margin: 0 0 var(--reader-para, 1em);

@@ -11,6 +11,7 @@ import {
   type TurnDir,
 } from "../../../lib/paging/turnGesture";
 import { effectDuration, type TurnEffect } from "../../../lib/paging/turnEffects";
+import { clearTurnStart, markTurnStart, measureTurnEnd } from "../../../lib/paging/turnPerf";
 import { createEffect } from "./effects";
 import type { EffectFrame, EffectRunner } from "./effects/types";
 
@@ -60,6 +61,8 @@ export class PageTurnEngine {
   private page = 0;
   private total = 1;
   private dir: TurnDir = 1;
+  /** 本轮翻页埋点用的效果名；null = 没有在追踪。起点与终点靠它配对。 */
+  private traceEffect: TurnEffect | null = null;
 
   constructor(opts: PageTurnOptions) {
     this.opts = opts;
@@ -78,6 +81,8 @@ export class PageTurnEngine {
     this.page = clampPage(page, total);
     this.total = total;
     this.clearAll();
+    // 换章不是翻页：上一条没落定的起点作废，免得被下一次落定配成一条假样本
+    this.cancelTrace();
     this.cur = this.opts.createLayer(this.page);
     this.cur.style.zIndex = CUR_Z;
   }
@@ -86,6 +91,8 @@ export class PageTurnEngine {
   relocate(page: number, total: number): void {
     this.total = total;
     this.page = clampPage(page, total);
+    // 重排后原地换页也不是「翻一页」，同 reset
+    this.cancelTrace();
     if (this.cur) this.opts.setLayerPage(this.cur, this.page);
   }
 
@@ -145,7 +152,10 @@ export class PageTurnEngine {
     if (!this.inc) {
       // 没有第二层只有两种来由：无动画效果（不跟手，松手直接换页）或越界
       if (this.opts.effect() === "none" && this.canTurn(drag.dir)) {
-        if (commit) this.land(this.page + drag.dir);
+        if (commit) {
+          this.startTrace();
+          this.land(this.page + drag.dir);
+        }
       } else {
         this.reboundBoundary(dx);
         this.opts.onEdge(drag.dir);
@@ -179,6 +189,7 @@ export class PageTurnEngine {
       return false;
     }
     if (this.opts.effect() === "none") {
+      this.startTrace();
       this.land(this.page + dir);
       return true;
     }
@@ -217,6 +228,18 @@ export class PageTurnEngine {
     // 当前这一页不会被重画，也就不会闪。
     this.runner = createEffect(this.opts.effect(), frameOf);
     this.runner.apply(frameOf());
+    // 埋点起点：第二层已经建好、手势生效的这一刻才算「翻页开始」，拖动途中的抖动不计入
+    this.startTrace();
+  }
+
+  /**
+   * 翻页埋点：起点只在这里与两条无动画路径各打一次，终点统一在 land 末尾收。
+   * 埋点自身不参与翻页决策——取不到 User Timing 就整段跳过（见 lib/paging/turnPerf）。
+   */
+  private startTrace() {
+    const effect = this.opts.effect();
+    this.traceEffect = effect;
+    markTurnStart(effect);
   }
 
   private run(to: 0 | 1, dir: TurnDir, from: number) {
@@ -239,7 +262,11 @@ export class PageTurnEngine {
       window.clearTimeout(watchdog);
       if (this.cancelSettle === settle) this.cancelSettle = null;
       if (to === 1) this.land(this.page + dir);
-      else this.clearPair();
+      else {
+        // 回弹 / 取消：这一下没有落新页，起点作废，免得残留的 mark 被下一轮误配
+        this.cancelTrace();
+        this.clearPair();
+      }
     };
     cancel = runner.settle(from, to, duration, dir, finish);
     // 收尾未必等得到 done：rAF 在后台标签页被暂停、transitionend 在一次重排后丢失，
@@ -267,6 +294,22 @@ export class PageTurnEngine {
       host?.focus({ preventScroll: true });
     }
     this.opts.onCommit(this.page);
+    // 终点：新页已建好、页码已上报，这一段就是读者感受到的「翻一页」
+    this.endTrace();
+  }
+
+  /** 回弹埋点：这一轮没落页，起点作废、不记 measure。 */
+  private cancelTrace() {
+    const effect = this.traceEffect;
+    this.traceEffect = null;
+    if (effect) clearTurnStart(effect);
+  }
+
+  /** 收尾埋点：只在本轮真有起点时记一条 measure，避免无配对起点时刷出空样本。 */
+  private endTrace() {
+    const effect = this.traceEffect;
+    this.traceEffect = null;
+    if (effect) measureTurnEnd(effect);
   }
 
   private applyBoundary(dx: number) {

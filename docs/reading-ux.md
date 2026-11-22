@@ -34,6 +34,8 @@
 | 多标签页进度同步 | 另一标签读完，这边的「继续阅读」不刷新 | `BroadcastChannel` 广播一条极简信号，收到只刷新本地、不回弹 | vitest 5 例（含「收到远端不 bump」防互弹） |
 | 持久化存储 | PWA 缓存可能被浏览器清掉 | `load` 后调一次 `navigator.storage.persist()`，已持久化不重复申请、被拒静默 | vitest 7 例 |
 | 减少透明度 | 顶栏/底栏毛玻璃不理会系统设置 | `prefers-reduced-transparency` 下退成实色（Safari 不认该查询，保持原样） | CSS 契约（两处 `backdrop-filter:none`） |
+| 章标题裁边（`text-box-trim`） | 标题上方空出一条 4px 的字形留白，首行与页顶不齐 | 标题盒 44 → **28px**，字顶贴齐页顶；页数 9 → 9、页高 836 不变（每页容量不变） | 真浏览器切 `text-box-trim:none` 复测前后 h2 高度与 pageCount |
+| 翻页链路埋点 | 「翻一页多少 ms」只能靠外部脚本量 | 页面自己打 `performance.mark/measure`，名字 `norvels.turn.<effect>`，可直接按页取耗时 | `performance.getEntriesByType('measure')` 过滤 `norvels.turn` |
 
 ## 2 已修（本轮，判据已落进审计或 vitest）
 
