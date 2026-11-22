@@ -22,6 +22,21 @@
   的 `thresholds`，vitest 5 新口径实测 88.2/85.14/80.87/90.26，当前阈值 lines 89.9 / functions 80.5 / branches 84.8 / statements 87.9）——Go 侧删测试会被门禁 7 抓住，前端此前毫无防线：实测删掉 `pageGeometry.test.ts` 后
   vitest 照报 166/1521 全绿、门禁 11 全绿，加阈值才红。
 
+## 浏览器端体验验收（`make audit-reader`，不进 9 项）
+
+> 阅读器的分页页高、底部空白、全屏布局只在真实布局里有值；jsdom 全是 0，测出来的绿是假的。
+> 这条入口用 agent-browser 起真 Chrome（默认 390×844），对 `scripts/reader-audit.mjs` 的不变量逐条断言。
+
+| 项 | 口径 |
+|---|---|
+| 前置 | `scripts/preview.sh --detach`（后端 :8080 + 前端 :5173）；环境没起返回 2 |
+| 跑法 | `make audit-reader`；按组跑 `make audit-reader ONLY=fullscreen`；换机 `--viewport=320x640` |
+| 断言口径 | 只写「读者能感知、跨书成立」的不变量：舞台 = 视口、页高对齐行高、全屏收起控制栏、五种效果连翻三页、章末跨章、横滑不换章……不写死页数与文案 |
+| 跳过 ≠ 通过 | 条件不成立（本章没有恢复提示）记「跳过」并打印原因；失败打印实测值与期望并返回 1 |
+| 自证 | 反向验证过三条：注入旧留白带 → `layout-stage` 红（实测留白 40px）；去掉全屏收起 → `fullscreen-layout` 红；页高不取整 → `layout-pageheight` 红（实测 844 对行高 38） |
+| 为何不进 gate | 要 Chrome + 本机书库，CI 两者都没有；改阅读器布局 / 手势 / 全屏时手动跑 |
+| 截图 | `.shots/reader-audit/`（已 gitignore）：全屏、控制栏、页面内全屏、翻页中途 |
+
 ## 9 项与阈值
 
 | # | 门禁 | 阈值 | 度量方式 |

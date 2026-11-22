@@ -8,7 +8,7 @@ BIN := bin/norvels
 
 .PHONY: all help web build build-server build-web run import test lint fmt tidy clean docker privacy \
         bench-capacity bench-capacity-1m verify gate gate-complexity gate-size gate-deps gate-cover gate-acceptance \
-        preview shot wait-for gate-fast gate-fast-impl privacy-changed perf-budget
+        preview shot wait-for gate-fast gate-fast-impl privacy-changed perf-budget audit-reader
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -34,6 +34,9 @@ run: ## 本地启动（只用后端 :8080）
 
 preview: ## 一条命令起预览：后端 :8080 + vite HMR :5173（已在跑则复用，不占新端口）
 	@scripts/preview.sh
+
+audit-reader: ## 阅读器体验审计（真浏览器 390×844；先 scripts/preview.sh --detach，可按 ONLY=layout 分组）
+	@scripts/reader-audit.sh $(if $(ONLY),--only=$(ONLY),)
 
 shot: ## 截图取证（URL= OUT=.shots/x.png VIEWPORT=390x844,1280x800 EVAL='js' CLICK=选择器 可选）
 	@scripts/shot.sh --url "$(URL)" $(if $(OUT),--out "$(OUT)",) $(if $(VIEWPORT),--viewport "$(VIEWPORT)",) \
