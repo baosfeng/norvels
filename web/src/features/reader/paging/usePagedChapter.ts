@@ -91,6 +91,7 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
   const snapshot = useCallback((page: number, pageCount: number): PageSnapshot => {
     const layout = layoutRef.current;
     const range = layout ? paragraphRangeOfPage(layout.anchors, page, layout.pageBox.pageW) : null;
+
     const lastPara = layout?.anchors.at(-1)?.pi ?? 0;
     return { page, pageCount, pageRange: range, lastPara };
   }, []);
@@ -180,6 +181,10 @@ export function usePagedChapter(input: PagedChapterInput): PagedChapterApi {
     if (lastSignature.current === signature) return;
     lastSignature.current = signature;
     place(null, false);
+    // 防御性二次测量：列布局在字体加载 / 极端情况下可能晚一拍，页范围与落点会用到半新半旧的锚点。
+    // 下一帧再量一次（幂等），读者看到的页与读屏念的段才一致。
+    const raf = requestAnimationFrame(() => place(null, false));
+    return () => cancelAnimationFrame(raf);
   }, [signature, place]);
 
   // 视口变化与字体加载：同样重排保位。

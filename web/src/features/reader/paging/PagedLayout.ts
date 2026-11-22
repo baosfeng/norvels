@@ -88,12 +88,15 @@ export class PagedLayout {
     const measure = this.measureNode;
     if (!measure || isEmptyBox(box)) return null;
     const pages = countPages(measure.scrollWidth, box.pageW);
-    const base = measure.getBoundingClientRect().left;
+    const base = measure.getBoundingClientRect();
     const anchors: ParaBox[] = [];
     measure.querySelectorAll<HTMLElement>("[data-para]").forEach((node) => {
       const pi = Number(node.dataset.para);
       if (!Number.isFinite(pi)) return;
-      anchors.push({ pi, left: node.getBoundingClientRect().left - base });
+      const rect = node.getBoundingClientRect();
+      // top 是该段首行在「它所在那一列」里的位置：0 = 从列首开始。锚点要靠它区分
+      // 「本页第一段」与「本页最后一小段」——同列内所有段的 left 相同，只看 left 分不出先后。
+      anchors.push({ pi, left: rect.left - base.left, top: rect.top - base.top });
     });
     this.pages = pages;
     this.paraBoxes = anchors.sort((a, b) => a.pi - b.pi);
