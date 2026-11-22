@@ -46,7 +46,7 @@
 | `store.Segment()` 在写入路径上的调用 | 分词由导入时的 CPU 开销变为零 |
 
 保留：`books.title` / `authors.name` 的 `LIKE` 检索（章节标题属于一本书的内部结构，由详情页目录展开，不参与找书）。
-实测 5 万本时「书名 + 作者」全表 `LIKE` 18.4 ms，交互无感（§10.3）。
+当时的实测口径是「书名 + 作者」双字段全表 `LIKE`（5 万本 18.4 ms，§10.3）；作者 LIKE 后因无索引可走、成为大库全表扫描的主要成本而收窄——现在只匹配书名（[book_filter.go](../../internal/store/book_filter.go)），百万本口径见 [data-profile §10.3](../data-profile.md#103-延迟实测100-万本合成库)。
 
 ### 3.1 取舍
 

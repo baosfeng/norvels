@@ -40,3 +40,9 @@
 - `GET /api/stats/reading?days=1–365&tz=分钟偏移` → 200 `{totalSeconds,todaySeconds,weekSeconds,streak,days:[{date,seconds}]}`；days 默认 90、tz 默认 0（东八区 480），越界 400。
 - `DELETE /api/reading/history/{bookId}` → **204**（只删当前账号在这本书上的会话）；bookId 非法 → 400 `invalid_id`；该账号没有这本书的会话 → 404 `not_found`。
 - `DELETE /api/reading/history` → **204**（清空当前账号的全部会话，空库也 204）；两处都只动 `reading_sessions`，进度 / 书签 / 书架保留。
+
+## 阅读设置按账号同步（0028）
+
+- `GET /api/settings/reader` → 200 `{"settings": …}`：该账号存过就原样回放这份 JSON，没存过 `settings` 为 `null`（默认值由前端补，服务端不解释字段内容）。
+- `PUT /api/settings/reader` body `{"settings": …}`（也接受裸对象）→ **204**；只校验是合法 JSON，**不校验字段**——读者存过脏值也不该让阅读器打不开，吸附与回落都在前端做。
+- `/api/reader/settings` 是同一 handler 的别名。载荷目前是排版的 14 个字段；主题（`norvels.theme`）与朗读、AI 配置不在同步范围，仍只存浏览器本地。

@@ -1,10 +1,10 @@
 # norvels — 本地中文小说库
 
-> Go 1.27（`CGO_ENABLED=0`）单二进制 + SQLite 双库（主库存元数据，`norvels-content.db` 存正文：8 MB 块 + 内置字码本 zstd）+ React 19 内嵌前端；版本号事实源是 [Makefile](Makefile) 的 `VERSION`，生产跑在飞牛 NAS（部署见 [deploy/nas](deploy/nas/README.md)）。
+> Go 1.27（`CGO_ENABLED=0`）单二进制 + SQLite 三库（主库存元数据，`norvels-content.db` 存正文：8 MB 块 + 内置字码本 zstd，`norvels-rec.db` 存推荐数据、可整库重建不进备份）+ React 19 内嵌前端；版本号事实源是 [Makefile](Makefile) 的 `VERSION`，生产跑在飞牛 NAS（部署见 [deploy/nas](deploy/nas/README.md)）。
 
 ## 先读文档，再动代码
 
-> 改解析→[parser-architecture](docs/parser-architecture.md)｜改数据层/迁移→[architecture](docs/architecture.md)+[ADR](docs/adr/)｜改接口→[api](docs/api.md)｜改前端/图表→[charts.ts](web/src/lib/charts.ts)｜改阅读器分页/翻页效果→[h5-paged-reading](docs/specs/2026-11-04-h5-paged-reading.md)｜部署升级→[deploy](docs/deploy.md)｜发版→[release](docs/release.md)｜门禁口径→[quality-gates](docs/quality-gates.md)｜全量导航→[README](README.md)
+> 改解析→[parser-architecture](docs/parser-architecture.md)｜改数据层/迁移→[architecture](docs/architecture.md)+[ADR](docs/adr/)｜改接口→[api](docs/api.md)｜改前端/图表→[charts.ts](web/src/lib/charts.ts)｜改阅读器→[reading](docs/reading.md)（现状与边界）+[分页](docs/specs/2026-11-04-h5-paged-reading.md)｜改阅读体验优先级→[roadmap](docs/reading-roadmap.md)｜部署升级→[deploy](docs/deploy.md)｜发版→[release](docs/release.md)｜门禁口径→[quality-gates](docs/quality-gates.md)｜全量导航→[README](README.md)
 
 ## 隐私红线（不进仓库）
 

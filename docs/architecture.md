@@ -21,7 +21,7 @@
 | **store** | `internal/store` | SQLite 打开/PRAGMA/**版本化迁移**、所有写读查询、事务批次 | `store.Open(dsn)`、`Migrate()` / `MigrateTo(target)`、`*store.Store` 上的方法（见 `internal/store/types.go`） |
 | **importer** | `internal/importer` | 目录扫描（递归）、并发 worker、去重（文件 SHA-256 + 书名作者指纹）、导入任务记录、失败清单、断点续跑、进度回调 | `importer.Run(ctx, store, importer.Options)` |
 | **api** | `internal/api` | REST API、中间件（日志/gzip/CORS/panic 恢复）、分页、搜索、静态前端 `http.Handler` | `api.New(store, embedFS, opts) http.Handler` |
-| **webui · web** | `internal/webui` · `web/` | React 19 + TS + Vite 前端（书架/目录/阅读器/搜索/作者/导入），`go:embed` 进二进制 | `webui.FS() fs.FS`，调 `/api/*` |
+| **webui · web** | `internal/webui` · `web/` | React 19 + TS + Vite 前端（书架/目录/阅读器/搜索/作者/导入），`go:embed` 进二进制；阅读器是最大的前端域（`web/src/features/reader`，现状见 [reading](reading.md)） | `webui.FS() fs.FS`，调 `/api/*` |
 | **cmd/norvels** | `cmd/norvels` | 子命令分发：`import` / `serve` / `stats` / `check-content` / `reconcile-content` / `migrate` / `version` | — |
 | **config · deploy** | `internal/config` · `deploy/` | 运行配置收敛（flag > env > 默认，统一 `NORVELS_` 前缀）；多阶段 Dockerfile + compose + 健康检查 | `config.FromEnv()` |
 

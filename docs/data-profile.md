@@ -313,7 +313,7 @@ python3 scripts/bench-capacity.py --books 1000000 --chapters 346 \
 |---|---|---|---|---|---|
 | 书架分页（word_count DESC, LIMIT 20） | — | 10.0 | 书 | 10.0 ms | 可用 |
 | 书名 LIKE 子串（`%…%` 全表） | — | 47 | 书 | 47 ms | 可用 |
-| **书名 + 作者 LIKE（JOIN authors）** | — | **1.13 s** | 书 | **1.13 s** | **临界** |
+| 书名 + 作者 LIKE（JOIN authors）·**已下线** | — | **1.13 s** | 书 | **1.13 s** | 已改为只匹配书名（见上行） |
 | 单本目录（346 章，ORDER BY idx） | — | 0.16 | 固定 | 0.16 ms | 可用 |
 | 随机读一章元数据（按主键） | — | 0.01 | 固定 | 0.01 ms | 可用 |
 | 章节总数 `COUNT(*) FROM chapters` | 旧 | 84 | 章 | 978 ms | 应移除 |
