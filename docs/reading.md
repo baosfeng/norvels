@@ -57,4 +57,4 @@
 
 ## 下一步去哪
 
-对标与优化路线见 [reading-roadmap](reading-roadmap.md)。
+体验打磨（已知摩擦点与量化判据）见 [reading-ux](reading-ux.md)。

@@ -111,7 +111,7 @@ NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml up -d     
 
 ## 文档
 
-- 阅读：[现状与边界](docs/reading.md) · [对标矩阵与来源](docs/reading-benchmark.md) · [优化路线](docs/reading-roadmap.md) · [朗读](docs/tts.md)
+- 阅读：[现状与边界](docs/reading.md) · [体验打磨清单](docs/reading-ux.md) · [朗读](docs/tts.md)
 - 数据与解析：[architecture](docs/architecture.md) · [parser-architecture](docs/parser-architecture.md) · [数据画像](docs/data-profile.md) · [ADR](docs/adr/)
 - 运维：[部署](docs/deploy.md) · [REST API](docs/api.md) · [运行时观测](docs/observability.md) · [发版](docs/release.md) · [质量门禁](docs/quality-gates.md) · [隐私](docs/privacy.md)
 

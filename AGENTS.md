@@ -4,7 +4,7 @@
 
 ## 先读文档，再动代码
 
-> 改解析→[parser-architecture](docs/parser-architecture.md)｜改数据层/迁移→[architecture](docs/architecture.md)+[ADR](docs/adr/)｜改接口→[api](docs/api.md)｜改前端/图表→[charts.ts](web/src/lib/charts.ts)｜改阅读器→[reading](docs/reading.md)（现状与边界）+[分页](docs/specs/2026-11-04-h5-paged-reading.md)｜改阅读体验优先级→[roadmap](docs/reading-roadmap.md)｜部署升级→[deploy](docs/deploy.md)｜发版→[release](docs/release.md)｜门禁口径→[quality-gates](docs/quality-gates.md)｜全量导航→[README](README.md)
+> 改解析→[parser-architecture](docs/parser-architecture.md)｜改数据层/迁移→[architecture](docs/architecture.md)+[ADR](docs/adr/)｜改接口→[api](docs/api.md)｜改前端/图表→[charts.ts](web/src/lib/charts.ts)｜改阅读器→[reading](docs/reading.md)（现状与边界）+[分页](docs/specs/2026-11-04-h5-paged-reading.md)｜打磨阅读体验→[ux](docs/reading-ux.md)｜部署升级→[deploy](docs/deploy.md)｜发版→[release](docs/release.md)｜门禁口径→[quality-gates](docs/quality-gates.md)｜全量导航→[README](README.md)
 
 ## 隐私红线（不进仓库）
 
