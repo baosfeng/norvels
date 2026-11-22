@@ -114,3 +114,4 @@ sudo docker run --rm -v /vol1/norvels/data:/data -v /vol1/norvels/backup:/backup
 | 迁移很久不动 | 正常，42 万章约 23 分钟；`docker compose logs -f` 看进度 |
 | 要回滚版本 | 没有 `--backup` 副本时把 `.env` 版本改小重启；升级过的库不能给旧版本用——**schema 只前进** |
 | 启动日志报找不到正文库 | `NORVELS_CONTENT_DIR` 指错目录或目录没建；`./update.sh --check` 会打印实际用的正文库目录 |
+| 搬到新盘后启动即 unhealthy、日志 `unable to open database file` | 飞牛 btrfs 卷挂 `trimacl`，新建目录/文件落盘是 **mode 0**，容器内 65532 进不去。`chmod 755 <目录> && chmod 644 <目录>/norvels-content.db` 即可（`--move-content` 已自动处理） |

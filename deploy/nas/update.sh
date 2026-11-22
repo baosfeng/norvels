@@ -191,6 +191,12 @@ precheck_move_target() {
       die "建不了 $dst 或改不了属主（需要 root 运行本脚本）"
     fi
   fi
+  # 新建目录的 mode 必须是 755：飞牛的 btrfs 卷挂了 trimacl，新建目录拿到的是 mode 0
+  # （实测 /vol3 上 mkdir 出来的目录是 d---------），容器内 65532 连 cd 都进不去，
+  # 表现为「启动即 unhealthy / unable to open database file」。chmod 在该卷上是生效的。
+  if ! chmod 755 "$dst" || ! chown 65532:65532 "$dst"; then
+    die "改不了 $dst 的权限（需要 root 运行本脚本）"
+  fi
   local src_kb free_kb need_kb
   src_kb=$(( $(stat -c %s "$(db_path_host norvels-content.db)") / 1024 ))
   need_kb=$(( src_kb * 11 / 10 ))                     # 留 10% 余量
@@ -224,6 +230,9 @@ move_content() {
   dst_file="${dst%/}/norvels-content.db"
   echo "== 复制正文库 → ${dst_file}（160 GB 级别约十几分钟）=="
   cp --sparse=always -a "$src" "$dst_file"
+  # -a 会连 mode 一起带过来，但目标盘在 trimacl 上落盘后可能仍是 0（见 precheck_move_target 注释）；
+  # 明确给一份 644，否则容器读不到这个文件，启动直接 unhealthy。
+  chmod 644 "$dst_file" || die "改不了 ${dst_file} 的权限，未改 .env（源文件未动）"
   # -wal 已确认空/不存在（SQLite 正常退出会删掉），无需复制；-shm 是内存索引，复制过去
   # 可能带着旧锁表让目标库打不开，交给新进程重建。
   echo "== 校验 sha256（源与目标各算一次，约 5 分钟）=="
