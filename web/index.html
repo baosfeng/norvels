@@ -4,7 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
+    <!-- 状态栏/任务栏底色：这里的值只是样式表加载前的中性兜底，
+         applyTheme() 之后一律以运行时读到的 --r-bg 为准（见 src/lib/theme.ts） -->
     <meta name="theme-color" content="#8a6a3b" />
+    <!-- orientation 用 "any"：阅读器现在支持横屏，manifest 里锁竖屏会让装成 PWA 后横屏失效
+         （JSON 里写不了注释，所以把理由留在这里） -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="description" content="本地中文小说库：导入、阅读、按书名/作者/章节标题检索" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

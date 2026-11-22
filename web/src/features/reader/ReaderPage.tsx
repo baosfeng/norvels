@@ -23,6 +23,7 @@ import { useChapterRetry } from "./useChapterRetry";
 import { useReaderAutoScroll } from "./useReaderAutoScroll";
 import { useReaderKeyboard } from "./useReaderKeyboard";
 import { useReaderVisiblePara } from "./useReaderVisiblePara";
+import { useReaderWakeLock } from "./useReaderWakeLock";
 import { useReaderScrollRestore } from "./useReaderScrollRestore";
 import { useReaderRepositionAfterReflow } from "./useReaderRepositionAfterReflow";
 import { useReaderFullscreen } from "./useReaderFullscreen";
@@ -283,6 +284,9 @@ function ReaderScreen() {
   });
 
   useReaderVisiblePara({ segments: stream.segments, onAnchor: setAnchor, enabled: !paging.active });
+
+  // 阅读器挂载即保持屏幕常亮，卸载即释放：只在这里挂，书架/目录页不该替读者改屏幕行为
+  useReaderWakeLock();
 
   useReaderScrollRestore({
     enabled: !paging.active,

@@ -766,3 +766,15 @@
 .shelf-toolbar-note {
   flex: 1 1 100%;
 }
+
+/* 退出毛玻璃：系统开了「降低透明度」时，H5 详情页吸底条改成实色。
+   .h5-book-cta 原本是 92% 底 + blur(12px)，压在它下面的正文会糊成一片；低视力读者
+   要的是「底就是底、正文就是正文」。颜色沿用 --surface（侧栏、弹层同一档纸面），不新造颜色。
+   Safari 不支持 prefers-reduced-transparency，这段只在 Chrome / Android 生效，Safari 保持原样。 */
+@media (prefers-reduced-transparency: reduce) {
+  .h5-book-cta {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

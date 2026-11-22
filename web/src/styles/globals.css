@@ -342,6 +342,20 @@ body.h5-sheet-open {
     transition: none;
   }
 }
+
+/* 退出毛玻璃：系统开了「降低透明度」时，顶栏改成实色纸面。
+   半透明 + blur 在低视力与部分视力矫正下会让压在下面的正文变成糊影，
+   Chrome / Android 的 prefers-reduced-transparency 就是给这种情况的开关；
+   Safari 至今不认这条媒体查询（它在辅助功能里自己做模糊降级），所以这段只影响 Chrome/Android，
+   Safari 保持原来的毛玻璃。底色沿用 --r-surface（与顶栏里按钮同一档纸面），不新造颜色。 */
+@media (prefers-reduced-transparency: reduce) {
+  .reader-top {
+    background: var(--r-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /* ── P0 书籍管理：危险操作按钮 / 删除确认弹层 / toast / 章节规则 ── */
 .btn-danger {
   color: var(--danger-text);

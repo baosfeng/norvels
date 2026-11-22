@@ -23,6 +23,18 @@
 | 手机横屏 844×390 | 判成 PC：分页/三区/底栏全消失，顶栏 21% 视高 | ✅ 仍 H5 分页，顶栏 44 px = 11% 视高 | 已修 |
 | H5 帮助入口 | 顶栏 5 颗、底栏 7 个入口均无帮助 | ✅ 顶栏第 4 颗「?」，文案与 DOM 一致 | 已修 |
 
+## 1.1 平台能力（浏览器已有、本轮接上）
+
+| 能力 | 之前 | 现在 | 怎么验的 |
+|---|---|---|---|
+| Screen Wake Lock | 读长章手机自动锁屏 | 阅读器持有唤醒锁，切后台自动释放、回前台重新申请；不支持就静默跳过 | 真 Chrome 里 `navigator.wakeLock.request('screen')` 返回 `{type:"screen",released:false}` |
+| manifest orientation | `portrait-primary`：Android 装成 PWA 后强制竖屏，吃掉刚修好的横屏 | `any` | 字段直读 |
+| 状态栏 theme-color | 写死羊皮纸 `#8a6a3b`，切夜间/纯黑后状态栏仍是浅色 | 跟主题走：夜 `#171514`、纯黑 `#000000`、日间 `#fbf6ee` | 真实点主题按钮后读 `meta[name=theme-color]` |
+| prefers-contrast | `prefersContrast()` 定义了但零调用 | 读者没手动选过主题时，系统要高对比就落到「高对比」；选过一律不覆盖 | vitest 8 例（含「手动选过不被覆盖」「坏值等于没选过」） |
+| 多标签页进度同步 | 另一标签读完，这边的「继续阅读」不刷新 | `BroadcastChannel` 广播一条极简信号，收到只刷新本地、不回弹 | vitest 5 例（含「收到远端不 bump」防互弹） |
+| 持久化存储 | PWA 缓存可能被浏览器清掉 | `load` 后调一次 `navigator.storage.persist()`，已持久化不重复申请、被拒静默 | vitest 7 例 |
+| 减少透明度 | 顶栏/底栏毛玻璃不理会系统设置 | `prefers-reduced-transparency` 下退成实色（Safari 不认该查询，保持原样） | CSS 契约（两处 `backdrop-filter:none`） |
+
 ## 2 已修（本轮，判据已落进审计或 vitest）
 
 | # | 场景 | 原来 | 现在 | 判据落点 |
