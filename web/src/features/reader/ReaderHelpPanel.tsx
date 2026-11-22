@@ -1,15 +1,18 @@
 import { useRef } from "react";
+import { browserCapabilityEnv, detectCapabilities } from "../../lib/capabilities";
 import { useFocusTrap } from "../../lib/focusTrap";
 import { READER_SHORTCUTS, READER_TOUCH_HINTS } from "./readerConstants";
 
 /**
- * 快捷键帮助面板（role=dialog）：列出阅读器全部快捷键与触摸手势。
+ * 快捷键帮助面板（role=dialog）：列出阅读器全部快捷键与触摸手势，
+ * 末尾附「本设备能力」——哪些浏览器能力在当前地址上真的能用（纯展示，不带按钮）。
  * Esc 或「关闭」退出，焦点陷阱把 Tab 限制在面板内，关闭后焦点回到「?」按钮。
  */
 export function ReaderHelpPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   useFocusTrap(open, rootRef, onClose);
   if (!open) return null;
+  const capabilities = detectCapabilities(browserCapabilityEnv());
 
   return (
     <div className="reader-help-backdrop">
@@ -49,6 +52,15 @@ export function ReaderHelpPanel({ open, onClose }: { open: boolean; onClose: () 
                 ))}
               </dt>
               <dd>{item.desc}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="reader-help-sub">本设备能力</p>
+        <dl className="reader-help-list" data-testid="reader-help-capabilities">
+          {capabilities.map((item) => (
+            <div className="reader-help-row" key={item.id} data-testid={`cap-${item.id}`}>
+              <dt>{item.label}</dt>
+              <dd>{item.available ? "可用" : `不可用 · ${item.hint}`}</dd>
             </div>
           ))}
         </dl>

@@ -3,21 +3,21 @@
 > 只写**现有能力的摩擦点与量化判据**，不写新功能提案。阅读器现状与边界见 [reading](reading.md)，分页几何真值见 [h5-paged-reading](specs/2026-11-04-h5-paged-reading.md)。
 > 实测环境：真 Chrome + 本机书库，390×844 为主、1280×800 补测；数字取 5 次中位。复跑方法见 §5。
 
-## 1 基线（0.13.5 实测；✅ = 本轮已修并复测）
+## 1 基线（实测；✅ = 已修并复测）
 
 | 指标 | 改前 | 改后 | 判定 |
 |---|---|---|---|
 | 首屏正文可见 | 长章 249 / 短章 196 ms（PC 209 ms） | 未改 | 好 |
-| 翻一页（松手→新页） | slide 305 · cover 318 · fade 235 · curl 417 · none 20 ms | 未改 | curl 偏慢 |
-| 1 秒连点 5 次 | 只前进 **2** 页（间隔 <300 ms 必丢） | ✅ **5/5 全中**，120 / 200 / 260 / 300 ms 各档 0 丢、页码单调 | 已修 |
+| 翻一页（松手→新页） | slide 305 · cover 318 · fade 235 · curl 417 · none 20 ms | none 拖动跟手后仍 20 ms；其余四种未变 | curl 偏慢 |
+| 1 秒连点 5 次 | 只前进 **2** 页（间隔 <300 ms 必丢） | ✅ **5/5 全中**，120 / 200 / 260 / 300 ms 各档 0 丢 | 已修 |
 | 跨章翻页（章末→下章首页） | **52 ms**（不播动画，比同章快 255 ms） | 未改 | 好 |
 | 滚动滚过章末 | 空白帧 0（157 帧采样最少 16 行） | 未改 | 好 |
-| 改字号 20→28 重排 | H5 223 ms 同段保持；**PC 可见段漂移 −154~−189 段** | ✅ H5 221.7 ms 同段；**PC 漂移 0**（五档滚动深度） | 已修 |
+| 改字号 20→28 重排 | H5 223 ms 同段保持；**PC 可见段漂移 −154~−189 段** | ✅ H5 221.7 ms 同段；**PC 漂移 0** | 已修 |
 | 打开设置面板的位置 | **PC 被拉回章首**（y 1200 → 202） | ✅ y 不变（差 0 px） | 已修 |
-| 切模式（分页↔滚动） | 85 / 65 ms，**位置不保持**（第 3 页→章首→第 0 页） | 仍有损（第 11 页→章首→第 8 页） | 待修 |
-| 目录打开（4413 章） | 46 ms 可滚，首屏 60 行 | 未改 | 好 |
+| 切模式（分页↔滚动） | 85 / 65 ms，**位置不保持**（第 3 页→章首→第 0 页） | ✅ 第 7 页 → 滚动首段与原页首段逐字相同（scrollTop 5566） | 已修 |
+| 目录打开（4413 章） | 46 ms 可滚，首屏 60 行 | ✅ 首帧即定位，偏差 0 px、无二次跳动 | 已修 |
 | 改行距 3 档的完整路径 | 5 次点击 / 1.55 s | 未改 | 一般 |
-| 控制栏自动收起 | 3015–3019 ms（设定 3000） | 未改 | 好 |
+| 控制栏自动收起 | 3015–3019 ms（设定 3000） | ✅ 按住底栏 3.4 s 仍可见，松手后重新起算 | 已修 |
 | 分页恢复胶囊压字 | 与页末字形行相交 3 行 | ✅ 0 行（竖排进右页边 16 px） | 已修 |
 | 页码浮标压字 | 46 页里 5 页相交 44–64 px | ✅ 40/40 页 0 相交（竖排进右页边） | 已修 |
 | 手机横屏 844×390 | 判成 PC：分页/三区/底栏全消失，顶栏 21% 视高 | ✅ 仍 H5 分页，顶栏 44 px = 11% 视高 | 已修 |
@@ -27,50 +27,51 @@
 
 | 能力 | 之前 | 现在 | 怎么验的 |
 |---|---|---|---|
-| Screen Wake Lock | 读长章手机自动锁屏 | 阅读器持有唤醒锁，切后台自动释放、回前台重新申请；不支持就静默跳过 | 真 Chrome 里 `navigator.wakeLock.request('screen')` 返回 `{type:"screen",released:false}` |
-| manifest orientation | `portrait-primary`：Android 装成 PWA 后强制竖屏，吃掉刚修好的横屏 | `any` | 字段直读 |
-| 状态栏 theme-color | 写死羊皮纸 `#8a6a3b`，切夜间/纯黑后状态栏仍是浅色 | 跟主题走：夜 `#171514`、纯黑 `#000000`、日间 `#fbf6ee` | 真实点主题按钮后读 `meta[name=theme-color]` |
-| prefers-contrast | `prefersContrast()` 定义了但零调用 | 读者没手动选过主题时，系统要高对比就落到「高对比」；选过一律不覆盖 | vitest 8 例（含「手动选过不被覆盖」「坏值等于没选过」） |
-| 多标签页进度同步 | 另一标签读完，这边的「继续阅读」不刷新 | `BroadcastChannel` 广播一条极简信号，收到只刷新本地、不回弹 | vitest 5 例（含「收到远端不 bump」防互弹） |
-| 持久化存储 | PWA 缓存可能被浏览器清掉 | `load` 后调一次 `navigator.storage.persist()`，已持久化不重复申请、被拒静默 | vitest 7 例 |
-| 减少透明度 | 顶栏/底栏毛玻璃不理会系统设置 | `prefers-reduced-transparency` 下退成实色（Safari 不认该查询，保持原样） | CSS 契约（两处 `backdrop-filter:none`） |
-| 章标题裁边（`text-box-trim`） | 标题上方空出一条 4px 的字形留白，首行与页顶不齐 | 标题盒 44 → **28px**，字顶贴齐页顶；页数 9 → 9、页高 836 不变（每页容量不变） | 真浏览器切 `text-box-trim:none` 复测前后 h2 高度与 pageCount |
-| 翻页链路埋点 | 「翻一页多少 ms」只能靠外部脚本量 | 页面自己打 `performance.mark/measure`，名字 `norvels.turn.<effect>`，可直接按页取耗时 | `performance.getEntriesByType('measure')` 过滤 `norvels.turn` |
+| Screen Wake Lock | 读长章手机自动锁屏 | 阅读器持有唤醒锁，切后台自动释放、回前台重新申请；不支持静默跳过 | 真 Chrome 里 `request('screen')` 返回 `{type:"screen",released:false}` |
+| manifest orientation | `portrait-primary`：装成 PWA 后强制竖屏，吃掉刚修好的横屏 | `any` | 字段直读 |
+| 状态栏 theme-color | 写死羊皮纸 `#8a6a3b`，切夜间/纯黑后状态栏仍是浅色 | 跟主题走：夜 `#171514`、纯黑 `#000000`、日间 `#fbf6ee` | 真实点主题按钮后读 meta |
+| prefers-contrast | 定义了但零调用 | 读者没手动选过主题时，系统要高对比就落到「高对比」；选过一律不覆盖 | vitest 8 例 |
+| 多标签页进度同步 | 另一标签读完，这边的「继续阅读」不刷新 | `BroadcastChannel` 广播极简信号，收到只刷新本地、不回弹 | vitest 5 例 |
+| 持久化存储 | PWA 缓存可能被浏览器清掉 | `load` 后调一次 `storage.persist()`，已持久化不重复申请、被拒静默 | vitest 7 例 |
+| 减少透明度 | 毛玻璃不理会系统设置 | `prefers-reduced-transparency` 下退成实色（Safari 不认该查询） | CSS 契约 |
+| 章标题裁边（`text-box-trim`） | 标题上方多一条 4px 字形留白 | 标题盒 44 → **28px**；页数 9 → 9、页高 836 不变 | 切 `text-box-trim:none` 复测前后 h2 高度与 pageCount |
+| 翻页链路埋点 | 「翻一页多少 ms」只能靠外部脚本量 | 页面自己打 `performance.mark/measure`（`norvels.turn.<effect>`） | 过滤 `getEntriesByType('measure')` |
+| 本设备能力自检 | 局域网 http 下能力静默失效，读者只以为「没用」 | 帮助面板列出六项可用 / 不可用并说明原因 | vitest + 真浏览器强制 `isSecureContext=false` |
 
-## 2 已修（本轮，判据已落进审计或 vitest）
+> **依赖安全上下文**（`https` 或 `localhost`）：屏幕常亮、持久化存储、Service Worker 离线、剪贴板、分享。局域网 `http://<NAS-IP>` 访问时五项一起失效，阅读器帮助面板逐项标注；方案见 [部署文档](../deploy/nas/README.md)「浏览器访问与能力边界」。
+
+## 2 已修（21 条，判据全部落进审计或 vitest）
 
 | # | 场景 | 原来 | 现在 | 判据落点 |
 |---|---|---|---|---|
-| U1 | 连点右侧翻页 | 收尾期直接丢输入，1 秒 5 下只走 2 页 | 收尾中先把上一翻就地落定再翻这一下，页数恒等于点击数 | vitest `ReaderChapterFlip`「70 ms 连点 4 次增量 = 4」+ 审计 `turn-effects` |
-| U2 | 打开设置面板 | `closeSearch` 无条件回到 `searchOrigin=0` → PC 被拉回章首 | 没打开过搜索就不动位置；打开过才按原滚动根复原 | vitest `useReaderPanels`（8 例，旧代码 5 红） |
-| U3 | PC 改字号 | 锚点只认容器 `scrollTop`，PC 滚的是页面 → 漂 −154~−189 段 | 双路径取滚动根（复用 `readerStreamLayout`），量位置/听 scroll/写回三处同源 | vitest `useReaderRepositionAfterReflow`（PC 5 组，漂移 0） |
-| U4 | 分页恢复胶囊 | 压住页末 3 行字 | 分页/全屏下竖排进右侧页边 16 px，与字形行零相交 | 审计 `layout-hint` + `ReaderBottomBand` CSS 契约 |
-| U5 | 页码浮标 | 46 页里 5 页压末字（44–64 px） | 同上竖排进右页边，40/40 页零相交 | 审计 `chip-fade` + CSS 契约测试 |
-| U6 | 手机横屏 | 判成 PC，分页/三区/底栏全消失，顶栏 21% 视高 | 按短边 + `pointer: coarse` 判 H5；横屏顶栏 44 px = 11% | `lib.test.ts` tier 断言 + 真机 CDP 触屏实测 |
-| U7 | H5 帮助入口 | 全界面无入口 | 顶栏第 4 颗「?」，复用现有帮助面板 | vitest `ReaderHelpEntry` |
-| U8 | 帮助文案 | 写「页边有淡淡的渐变提示」，DOM 里没有 | 改成「分页时是上一页」 | 同上，文案与 DOM 断言一致 |
+| U1 | 连点右侧翻页 | 收尾期丢输入，1 秒 5 下只走 2 页 | 收尾中先把上一翻就地落定再翻这一下，页数恒等于点击数 | `ReaderChapterFlip` + 审计 `turn-effects` |
+| U2 | 打开设置面板 | `closeSearch` 无条件回 `searchOrigin=0` → PC 被拉回章首 | 没打开过搜索就不动位置 | `useReaderPanels`（旧代码 5 红） |
+| U3 | PC 改字号 | 锚点只认容器 `scrollTop`，PC 滚的是页面 → 漂 −154~−189 段 | 双路径取滚动根，量位置/听 scroll/写回三处同源 | `useReaderRepositionAfterReflow` |
+| U4 | 分页恢复胶囊 | 压住页末 3 行字 | 竖排进右侧页边 16 px，与字形行零相交 | 审计 `layout-hint` + CSS 契约 |
+| U5 | 页码浮标 | 46 页里 5 页压末字 | 同上，40/40 页零相交 | 审计 `chip-fade` + CSS 契约 |
+| U6 | 手机横屏 | 判成 PC，分页/三区/底栏全消失 | 按短边 + `pointer: coarse` 判 H5 | `lib.test.ts` tier 断言 + 真机 CDP 实测 |
+| U7 | H5 帮助入口 | 全界面无入口 | 顶栏第 4 颗「?」，复用现有帮助面板 | `ReaderHelpEntry` |
+| U8 | 帮助文案 | 写「页边有渐变提示」，DOM 里没有 | 改成「分页时是上一页」 | 同上，文案与 DOM 一致 |
+| U9 | 分页切「上下滚动」 | 那页不见了，直接回章首 | 切换那一下按当前页首段落位并写回进度锚点 | `useReaderScrollRestore` 5 例；真浏览器首段逐字相同 |
+| U10 | 目录远跳 | 先闪「还没有正文」空态再出文字 | 段落未到沿用上一章排版骨架 | `ReaderPagedBody.skeleton`；真浏览器空态帧 0（骨架 2 帧 ≈30 ms） |
+| U11 | 打开目录 | 列表先停第 1 章，隔一拍才跳 | 按当前章下标直接算首帧 `scrollTop` | `tocScroll` + `TocOpenPosition`；实测偏差 0 px |
+| U12 | 滚动模式想唤菜单 | 手指落边缘就翻章，还弹 4 秒 toast | 滚动模式边缘 22%，分页仍 30% | `ReaderGestures`；x=25% 章节不变、x=96% 仍翻章 |
+| U13 | 按住进度滑块 | 第 3 秒整条底栏消失 | 底栏 `pointerdown` 续一拍，松手重新起算 | `useReaderControls` 3 例；按住 3.4 s 仍可见 |
+| U14 | 收起控制层 | 底栏「啪」地消失，顶栏却滑 180 ms | 底栏同走 `transform`，与顶栏同一曲线 | `ReaderChromeLayout`（断言时长相等且在 150–200 ms） |
+| U15 | 改背景色 | 背景行在面板 1044 px 处，要滚两屏 | 背景与字号提到面板顶部 | `ReaderSettingsPanel`；实测 1079 → **58 px** |
+| U16 | 调完想回默认 | 14 个键只能一项项调回 | 面板头「恢复默认」（关闭在前，避免回车清空） | 点击后 14 键 == `READER_DEFAULTS` |
+| U17 | 分页下调「滚动速度」 | 显示「120 像素/秒」，实际 3.5–14 秒/页 | 分页说「约 N 秒/页」，滚动仍说像素/秒 | `readerSettings` 3 例 + 面板 4 例 |
+| U18 | 第一次进阅读器 | 满屏正文，没人告诉「点中间出菜单」 | 首次给一次 1.5 s 提示，看过即写标记不再出现 | `useReaderControls` 4 例；真浏览器 1.7 s 后消失 |
+| U19 | 章内搜索逐字输入 | 每打一字整页顿 2–3 帧 | 排版源只认章号，高亮事后打点 | `ReaderPagedArticle` 7 例；单次输入 13.3–17.4 ms、重建 0 次 |
+| U20 | 章号与标题冲突 | 顶栏「第 18 章」，正文「第十九章 …」 | 章号前缀与库内序号不一致时正文剥前缀 | `chapterTitle` 9 例 + 两条组件用例；真浏览器两条路径同口径 |
+| U21 | 选「无动画」后左右拖 | 拖 160 px 一动不动，以为没识别 | 15% 阻尼跟手，松手仍瞬时换页 | `PageTurnEngine` 5 例；拖 120 px → 位移 −18 px |
 
-## 3 待修（按痛感排序）
+> U9 与 U11 同一个根因的两面：切模式与目录跳转都靠「按段重定位」，而分页真值是页码——已一并改掉。
 
-| # | 场景 | 读者感知 | 证据 | 修法 | 判据 |
-|---|---|---|---|---|---|
-| U9 | 分页读着切「上下滚动」 | 那页不见了，直接回章首 | `useReaderScrollRestore.ts:100` ref 拦住重跑 | 切模式时把当前页首段写进 pendingJump | 切换后首段 = 原页首段 |
-| U10 | 目录远跳 | 先闪「还没有正文」空态再出文字 | `ReaderPagedBody.tsx:124` 段落未到即整屏换状态区 | 段落未到沿用上一章排版骨架 | 远跳后 0–400 ms 空态帧 = 0 |
-| U11 | 打开目录 | 列表先停第 1 章，隔一拍才跳到我这里 | `TocPanel.tsx:88` 靠 setTimeout + scrollIntoView | 按当前章下标直接算首帧 scrollTop | 首帧当前章偏差 ≤ 40 px |
-| U12 | 滚动模式想唤菜单 | 手指落在边缘直接翻章，还弹 4 秒 toast | `useReaderControls.ts:41` 边缘 30% | 滚动模式边缘收到 22% | x=25% 点击后章节不变 |
-| U13 | 按住进度滑块 | 到第 3 秒整条底栏消失 | `useReaderControls.ts:121` 不计底栏指针 | 底栏 pointerdown 续一拍 | 按住 3.4 s 仍 visible |
-| U14 | 收起控制层 | 底栏「啪」地消失，顶栏却滑 180 ms | `globals.css:50` vs `:279` | 底栏同样走 transform | 收起时底栏 transitionDuration 150–200 ms |
-| U15 | 改背景色 | 面板内容 1320 px，背景行在 1044 px，要滚两屏 | `ReaderSettingsPanel.tsx:417` | 背景与字号上提到顶部 | 背景行 offset ≤ 视口高 |
-| U16 | 调完想回默认 | 14 个键只能一项项手动调回去 | `readerSettings.ts:95` 已有 READER_DEFAULTS | 面板头加「恢复默认」 | 点击后 14 键 == READER_DEFAULTS |
-| U17 | 分页下调「滚动速度」 | 显示「120 像素/秒」，实际是 3.5–14 秒/页 | `ReaderSettingsPanel.tsx:401` | 分页下改「约 N 秒/页」 | 分页时 hint 匹配秒每页 |
-| U18 | 第一次进阅读器 | 满屏正文，没人告诉「点中间出菜单」 | `useReaderControls.ts:94` 初始 false | 首次进入给一次 1.5 s 提示 | 无 seenHint 时渲染一次性提示 |
-| U19 | 章内搜索逐字输入 | 每打一个字整页顿 2–3 帧 | `ReaderPagedArticle.tsx:47` contentKey 含命中数 | contentKey 去掉 size，标记事后打点 | 单次输入 ≤ 20 ms |
-| U20 | 章号与标题冲突 | 顶栏「第 178 章」，正文标题「第 180 章」 | `progressText.ts:10`（下标+1）vs `TocList.tsx:26`（印 title） | 章号口径二选一 | 全库不一致章数 = 0 |
-| U21 | 选「无动画」后左右拖 | 拖 160 px 一动不动，以为没识别 | `PageTurnEngine.ts:124,189` | none 下也给 15% 阻尼跟手 | 拖 120 px 后单层位移 ≠ 0 |
+## 3 已知残留
 
-> U9 与 U11 是**同一个根因的两面**：切模式与目录跳转都靠「按段重定位」，而分页模式的真值是页码。修的时候一起看。
-
-每条修完必须落一个判据进 `make audit-reader`（真浏览器）或前端 vitest；只改不看 = 没修。
+- `paging/chapterFragment.ts` 的 `searching / hitsByPara / currentHit` 分页侧已不再传入（U19 后排版源恒为纯文本），属死字段，待清理。
+- 分页正文仍不可选词（`user-select: none`）：横向拖动要让位给翻页，选词要去「上下滚动」。
 
 ## 4 不在这份清单里的
 
@@ -84,5 +85,5 @@ make audit-reader               # 18 条不变量（真浏览器 390×844，约 
 cd web && npx vitest run src/features/reader src/lib   # 这部分改动对应的单测
 ```
 
-- 判据优先落进上面两条命令，不落「我手动看过」。横屏那条要触屏语义：agent-browser 的 `--viewport` 不会让 `(pointer: coarse)` 命中，需先发 CDP `Emulation.setTouchEmulationEnabled` + `setDeviceMetricsOverride({mobile:true})`。
-- 基线的 12 项数字（含 3 项附加）用同一本书的同一章对照；改完只重跑受影响的那几组，数字变了就更新 §1，不留旧值。
+- 判据优先落进上面两条命令，不落「我手动看过」。横屏那条要触屏语义：`--viewport` 不会让 `(pointer: coarse)` 命中，需先发 CDP `Emulation.setTouchEmulationEnabled` + `setDeviceMetricsOverride({mobile:true})`。
+- 数字变了就更新 §1，不留旧值。
