@@ -45,7 +45,7 @@ export const READER_SHORTCUTS: { keys: string[]; desc: string }[] = [
 
 /** 触摸端手势：H5 没有键盘，同样列在这里（与 useReaderControls 的分区口径一致）。 */
 export const READER_TOUCH_HINTS: { keys: string[]; desc: string }[] = [
-  { keys: ["单击左边缘"], desc: "上一章（页边有淡淡的渐变提示）" },
+  { keys: ["单击左边缘"], desc: "上一章（分页时是上一页）" },
   { keys: ["单击中间"], desc: "显示 / 隐藏控制栏" },
   { keys: ["单击右边缘"], desc: "下一章（末章时提示已经到底）" },
   { keys: ["拖动底部进度条"], desc: "跳到任意一章" },

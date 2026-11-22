@@ -1,5 +1,18 @@
 import { useCallback, useRef, useState } from "react";
 import type { ReaderDrawerTab } from "./readerConstants";
+import { pageScrollTop, readerSurface, setScrollTop, type Surface } from "./readerStreamLayout";
+
+/** 搜索打开前的阅读位置：当时滚的是正文容器（H5）还是整页（PC），记下来才能原路回去。 */
+interface SearchOrigin {
+  surface: Surface | null;
+  top: number;
+}
+
+/** 当前滚动位置：与 readerStreamLayout 同一口径（容器可滚用容器，否则用整页）。 */
+function currentScrollTop(): number {
+  const surface = readerSurface();
+  return surface?.scrolls ? surface.el.scrollTop : pageScrollTop();
+}
 
 /**
  * 阅读器的四个面板（目录 / 设置 / 书签 / 搜索 / 帮助）：
@@ -18,18 +31,31 @@ export function useReaderPanels({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  // 搜索打开前的滚动位置：关闭搜索条时正文回到原处
-  const searchOrigin = useRef(0);
+  /**
+   * 搜索打开前的阅读位置；null = 这次没打开过搜索。
+   *
+   * 不能默认成 0：设置面板 / 帮助也在收起搜索，它们会把「没记过的 0」当成原处，
+   * 于是只要打开设置面板（改字号必经此路），PC 滚动模式的页面就被拉到章首——
+   * 实测 1280×800 下 y 1200 → 202，读者回来时已经不在读的那一段。
+   */
+  const searchOrigin = useRef<SearchOrigin | null>(null);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     onResetSearch();
-    window.scrollTo({ top: searchOrigin.current });
+    const origin = searchOrigin.current;
+    // 先清再复原：复原本身可能触发 scroll 事件回调，留着 origin 会被二次套用
+    searchOrigin.current = null;
+    if (!origin) return;
+    // 同一根上回同一个位置：搜索期间命中会被 scrollIntoView 带走，这里把人送回来
+    if (origin.surface) setScrollTop(origin.surface, origin.top);
+    else window.scrollTo(0, origin.top);
   }, [onResetSearch]);
 
   const openSearch = useCallback(() => {
     if (!canSearch) return;
-    searchOrigin.current = window.scrollY;
+    // H5 正文容器自己滚时 window.scrollY 恒为 0，只记它等于没记
+    searchOrigin.current = { surface: readerSurface(), top: currentScrollTop() };
     setSearchOpen(true);
   }, [canSearch]);
 

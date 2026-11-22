@@ -129,7 +129,14 @@ export class PageTurnEngine {
   pointerUp(x: number): number {
     const drag = this.drag;
     this.drag = null;
-    if (!drag || drag.lock !== "horizontal") {
+    // 收尾期间按下是被拒的（pointerDown 不记 drag），对应的松手也就没有手势可言。
+    // 这时清配对层会掐死正在跑的收尾（层被摘掉，transitionend / 补帧的 done 再也等不到），
+    // 而这一下紧接着会走 turn() 补翻——所以收尾中什么都不做。
+    if (!drag) {
+      if (!this.cancelSettle) this.clearPair();
+      return this.page;
+    }
+    if (drag.lock !== "horizontal") {
       this.clearPair();
       return this.page;
     }
@@ -150,14 +157,23 @@ export class PageTurnEngine {
   }
 
   pointerCancel(): void {
-    const from = this.drag?.p ?? 1;
+    // 收尾期间没有 drag（down 被拒），这一下 cancel 不该被当成「回弹」：
+    // 它会用 run(0) 覆盖 cancelSettle，把上一翻的收尾换成一次空回弹，页码停在半路。
+    if (!this.drag) return;
+    const from = this.drag.p;
     this.drag = null;
     this.run(0, this.dir, from);
   }
 
   /** 点按 / 键盘 / 自动翻页：没有手势，跑一次完整收尾。返回是否真的翻了。 */
   turn(dir: TurnDir): boolean {
-    if (this.cancelSettle) return false;
+    // 收尾中又来一下（连点 / 按住方向键）：先把上一翻就地落定，再接着翻这一下。
+    //
+    // 旧实现在这里直接 return false：收尾 200–380ms 内的后续点击全被丢掉，1 秒点 5 次
+    // 只前进 2 页（实测 120ms 间隔丢 4 下、200ms 丢 3 下、≥300ms 才不丢）。
+    // 改成排队又会把连点累积成一次跳跃（点 5 下飞到第 6 页）。就地落定两头都占：
+    // 每一下正好对应一页，节拍由读者自己的点击决定，页数永远不会超过点击次数。
+    this.cancelSettle?.();
     if (!this.canTurn(dir)) {
       this.opts.onEdge(dir);
       return false;

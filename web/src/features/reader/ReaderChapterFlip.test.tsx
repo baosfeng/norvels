@@ -194,3 +194,71 @@ describe("翻章与回章首", () => {
     expect(progressText()).toContain("第 1 章 / 共 2 章");
   });
 });
+/**
+ * 分页模式的布局桩：jsdom 不做布局，而分页几何全部靠量尺寸得出。
+ * 钉成 390×748 的舞台 + 10 页的多栏排版源（= 实测的 354 页宽 × 10 列）。
+ */
+function stubPagedLayout(pages = 10) {
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 390 });
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 748 });
+  Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.classList?.contains("pg-measure") ? 354 * pages : 0;
+    },
+  });
+}
+
+function clearPagedLayout() {
+  Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth");
+  Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
+}
+
+/** 分页正文当前页码（0 起）；不在分页模式时为 null。 */
+function currentPage(): number | null {
+  const node = screen.queryByTestId("reader-paged");
+  return node ? Number(node.dataset.page) : null;
+}
+
+describe("分页连点翻页", () => {
+  beforeEach(() => {
+    localStorage.setItem(READER_KEYS.pageMode, "page");
+    vi.clearAllMocks();
+    stubPagedLayout();
+  });
+
+  afterEach(() => {
+    clearPagedLayout();
+  });
+
+  it("70ms 间隔连点 4 次右区：data-page 增量 = 4", async () => {
+    renderReader("/read/7/10");
+    await waitFor(() => expect(currentPage()).toBe(0));
+    for (let i = 0; i < 4; i += 1) {
+      tap(350);
+      await act(async () => { await new Promise((r) => setTimeout(r, 70)); });
+    }
+    await waitFor(() => expect(currentPage()).toBe(4), { timeout: 2000 });
+  });
+
+  /**
+   * 连点必须收敛在页内：每一下正好一页，不排队累积成一次跳跃，
+   * 也不许把页码推到 pageCount 之外（推到越界就是「一下点过头」）。
+   */
+  it("连点时页码始终在页内：任意时刻 data-page < data-page-count", async () => {
+    stubPagedLayout(3);
+    renderReader("/read/7/10");
+    await waitFor(() => expect(currentPage()).toBe(0));
+    for (let i = 0; i < 5; i += 1) {
+      tap(350);
+      await act(async () => { await new Promise((r) => setTimeout(r, 70)); });
+      const node = screen.getByTestId("reader-paged");
+      expect(Number(node.dataset.page)).toBeLessThan(Number(node.dataset.pageCount));
+    }
+    await waitFor(() => {
+      const node = screen.getByTestId("reader-paged");
+      expect(Number(node.dataset.page)).toBeLessThan(Number(node.dataset.pageCount));
+    }, { timeout: 2000 });
+  });
+});

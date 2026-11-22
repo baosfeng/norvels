@@ -91,6 +91,43 @@ describe("H5 阅读器底部留白带", () => {
     expect(css).toContain(".reader-shell.is-controls .reader-scroll-chip {");
   });
 
+
+  it("分页 / 全屏下恢复胶囊与页码浮标都让到右侧页边（竖排、16px 宽、不压字形行）", async () => {
+    const css = await readStyles();
+
+    // 分页页高拿满视口、页底没有留白带：胶囊与浮标按旧口径浮在页底会压住末行（实测 3 行 / 5 页）。
+    // 判据是「与最后一整个字形行零相交」，而正文铺满版心（390 宽到 x=372、字形到 358），
+    // 所以两者都改成竖排贴右页边、只占版心右侧那 18px。
+    for (const selector of [".reader-scroll-chip {", ".restore-hint,"]) {
+      const block = css.slice(css.indexOf(".reader-shell:has(.reader-paged) " + (selector === ".restore-hint," ? ".restore-hint," : selector)));
+      expect(block.length).toBeGreaterThan(0);
+    }
+    const edgeKit = css.slice(css.indexOf("/* ── L1 分页 / 全屏下的恢复提示"));
+    expect(edgeKit).toContain("writing-mode: vertical-rl");
+    expect(edgeKit).toContain("width: 16px");
+    expect(edgeKit).toContain("right: 0");
+    // 竖排 16px 放不下 44px 触屏按钮：分页下不摆「知道了」，3 秒自动收
+    expect(edgeKit).toContain(".restore-hint .btn");
+    expect(edgeKit).toContain("display: none");
+    // 关键帧写的是 translate(-50%, …)：竖排后必须关掉，否则定位被打乱
+    expect(edgeKit).toContain("animation: none");
+  });
+
+  it("横屏也在触屏档里：短边判的媒体查询覆盖外壳定高与顶栏浮层", async () => {
+    const css = await readStyles();
+    // 与 lib/tier.ts 的 H5_QUERY 同口径；只认 max-width 时 844×390 会退化成 PC
+    const shortEdge = css.slice(css.indexOf("/* ── 触屏短边档的阅读器几何"));
+    // 短边那条必须带触屏限定：只有高度会把「矮窗口的桌面」也算成 H5
+    expect(shortEdge).toContain("@media (max-width: 768px), ((max-height: 768px) and (pointer: coarse))");
+    expect(shortEdge).toContain("height: 100dvh");
+    expect(shortEdge).toContain("position: absolute");
+    // 横屏顶栏：80px（21% 视高）缩到 44px（≈11%）
+    expect(shortEdge).toContain("(pointer: coarse)");
+    const landscape = css.slice(css.indexOf("@media ((max-width: 768px) and (orientation: landscape))"));
+    expect(landscape).toContain("height: calc(44px + env(safe-area-inset-top))");
+    expect(landscape).toContain("--reader-top-h: 44px");
+  });
+
   it("PC 保持贴底口径：浮标抬到 12px，不套用窄屏留白带", async () => {
     const css = await readStyles();
     const pc = braceBlock(css, css.indexOf("@media (min-width: 769px)"));

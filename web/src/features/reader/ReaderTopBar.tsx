@@ -145,6 +145,24 @@ export function ReaderTopBar({
                 <path d={canFullscreen ? "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" : "M9 4H4v5M15 4h5v5M4 15v5h5M15 20h5v-5"} />
               </svg>
             </button>
+            {/* 帮助入口：PC 一直有「?」，手机上此前 5 颗按钮里没有它，
+                读者想看手势说明只能猜（U15）。与 PC 同一套 aria-label 与 aria-expanded，
+                面板本身复用 ReaderHelpPanel，焦点陷阱不用重做。 */}
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="快捷键帮助"
+              title="手势与快捷键"
+              aria-expanded={helpOpen}
+              tabIndex={hidden ? -1 : undefined}
+              onClick={onToggleHelp}
+            >
+              <svg {...ICON}>
+                <circle cx="12" cy="12" r="8.4" />
+                <path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.8c0 1.7-2.4 1.9-2.4 3.6" />
+                <path d="M12 17.2h.01" />
+              </svg>
+            </button>
           </>
         ) : (
           <>

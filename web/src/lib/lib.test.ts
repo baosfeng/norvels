@@ -7,7 +7,7 @@ import {
   percentOf,
   readingMinutes,
 } from "./format";
-import { isManagementRoute, tierOf } from "./tier";
+import { H5_QUERY, isManagementRoute, tierOf } from "./tier";
 import { isTheme, readStoredTheme } from "./theme";
 import { splitSnippet } from "./snippet";
 import { auditDuplicates, findForbiddenTerms } from "./audit";
@@ -68,6 +68,25 @@ describe("tier", () => {
   it("≤768 归 H5，其余归 PC", () => {
     expect(tierOf(true)).toBe("h5");
     expect(tierOf(false)).toBe("pc");
+  });
+
+  // 只认 max-width 时，手机横屏 844×390 被判成 PC：分页、三区点击、H5 底栏一起消失，
+  // 顶栏 80px 吃掉 21% 视高（实测）。所以宽度那条之外还要有「短边 + 触屏」那条。
+  it("短边判 H5：横屏 844×390 仍落在 H5 分支", () => {
+    expect(H5_QUERY).toContain("(max-width: 768px)");
+    expect(H5_QUERY).toContain("(max-height: 768px)");
+    // 竖屏看宽、横屏看高：两条子句必须是「或」（顶层用逗号分隔）而不是「且」
+    expect(H5_QUERY).toMatch(/^\(max-width: 768px\), \(/);
+  });
+
+  // 矮窗口的桌面（1280×800 扣掉浏览器工具栏 ≈ 1280×650）不能被短边那条抓进来：
+  // 否则桌面会凭空长出分页、三区点击与 H5 底栏。触屏限定是这条的护栏。
+  it("短边那条只对触屏生效：桌面窗口再矮也留在 PC", () => {
+    expect(H5_QUERY).toContain("(pointer: coarse)");
+    const shortEdge = H5_QUERY.slice(H5_QUERY.indexOf("(max-height: 768px)"));
+    expect(shortEdge).toContain("(pointer: coarse)");
+    // 宽度那条不受触屏限定影响：窄桌面窗口仍按老口径归 H5
+    expect(H5_QUERY.startsWith("(max-width: 768px)")).toBe(true);
   });
 
   it("管理类路由在 H5 不承认", () => {

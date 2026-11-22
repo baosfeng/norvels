@@ -1,10 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { ReaderSettings } from "./readerSettings";
+import { pageScrollTop, readerSurface, setScrollTop, type Surface } from "./readerStreamLayout";
 
 type Anchor = { chapterId: number; para: number };
-
-/** 正文滚动容器（与 useReaderScrollPercent / dismissHint 取的是同一个节点）。 */
-const SURFACE_SELECTOR = '[data-testid="reader-swipe-area"]';
 
 /** 参与排版的设置项：任一项变化正文都会重排，之前的像素滚动位置随即失效。 */
 const REFLOW_KEYS = ["font", "leading", "fontFamily", "para", "width", "align", "indent", "followSystemFont", "script"] as const;
@@ -39,11 +37,74 @@ export function scrollTopForAnchor(box: ReflowAnchorBox, next: { docTop: number;
   return next.docTop + box.ratio * next.height;
 }
 
-/** 量一段相对正文内容起点的位置与高度（视口矩形 + scrollTop 换算，含容器内边距）。 */
-function measure(surface: HTMLElement, node: HTMLElement) {
+/**
+ * 滚动根：正文容器（H5 自己滚）或整页（PC，正文容器不滚）。
+ *
+ * 量位置、听 scroll、写回位置三处必须认同一个根。只认容器时，PC 上读到的
+ * `surface.scrollTop` 恒为 0，docTop 却是容器坐标——算出的占比没有意义，
+ * 重排后按它落点会把读者甩走（1280×800 实测 20→28px 可见段 −154~−189）。
+ * 可滚性判定与赋值同样复用 `readerStreamLayout`：那里已经为「容器坐标与窗口坐标
+ * 混用」付过一次代价（见 contentOffset 注释），两处各写一份必然再次分叉。
+ */
+export interface ScrollRoot {
+  /** 当前滚动位置。 */
+  get(): number;
+  /** 段落顶端在滚动内容里的位置。 */
+  offsetOf(node: HTMLElement): number;
+  /** 把滚动位置设过去（直接赋值，不走平滑滚动）。 */
+  set(value: number): void;
+}
+
+/**
+ * 每次现取：挂载瞬间内容还没铺满，容器可能先不可滚、一秒后才可滚。
+ *
+ * 分页模式不经过这里：那边正文是页层克隆、段落 id 只挂在测量源上（见 chapterFragment），
+ * 本 hook 取不到 para 节点就什么都不做——位置真值是页码，保位由 usePagedChapter 负责。
+ */
+export function scrollRoot(): ScrollRoot | null {
+  const surface = readerSurface();
+  if (!surface) return null;
+  return surface.scrolls ? containerRoot(surface) : pageRoot();
+}
+
+function containerRoot(surface: Surface): ScrollRoot {
+  const el = surface.el;
+  return {
+    get: () => el.scrollTop,
+    offsetOf: (node) => node.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop,
+    set: (value) => setScrollTop(surface, value),
+  };
+}
+
+function pageRoot(): ScrollRoot {
+  return {
+    get: pageScrollTop,
+    // 整页滚时只有视口顶固定：正文容器自己也随页面一起跑，拿它的 rect 当基准算出来的是
+    // 这一章在流里的偏移，再叠上 scrollY 就会落到别处（同 scrollToChapterTop 的教训）。
+    offsetOf: (node) => node.getBoundingClientRect().top + pageScrollTop(),
+    set: (value) => window.scrollTo(0, Math.max(0, value)),
+  };
+}
+
+/**
+ * 两处都听：滚动根会随可滚性变，挂错一次就再也不会跟踪。
+ * 同一时刻只有一处真的产生 scroll 事件（另一处根本不滚），重复监听不带来重复刷新。
+ */
+function observeScroll(track: () => void): () => void {
+  window.addEventListener("scroll", track, { passive: true });
+  const el = readerSurface()?.el;
+  el?.addEventListener("scroll", track, { passive: true });
+  return () => {
+    window.removeEventListener("scroll", track);
+    el?.removeEventListener("scroll", track);
+  };
+}
+
+/** 量一段相对滚动内容起点的位置与高度（视口矩形 + 滚动位置换算，含容器内边距）。 */
+function measure(root: ScrollRoot, node: HTMLElement) {
   const rect = node.getBoundingClientRect();
   return {
-    docTop: rect.top - surface.getBoundingClientRect().top + surface.scrollTop,
+    docTop: root.offsetOf(node),
     height: rect.height > 0 ? rect.height : 1,
   };
 }
@@ -79,21 +140,19 @@ export function useReaderRepositionAfterReflow({
   // 滚动时刷新阅读位置：读者停在哪，「重排前」记下的就是哪。
   // 只跟 para 走——anchor 对象每次上报都是新的，跟着它会把这份记录反复重置。
   useEffect(() => {
-    const surface = document.querySelector<HTMLElement>(SURFACE_SELECTOR);
-    if (!surface) return;
     const track = () => {
+      const root = scrollRoot();
       const node = document.getElementById(`para-${para}`);
-      if (!node) return;
-      const at = measure(surface, node);
-      lastBox.current = { ...at, ratio: anchorRatio(surface.scrollTop, at.docTop, at.height) };
+      if (!root || !node) return;
+      const at = measure(root, node);
+      lastBox.current = { ...at, ratio: anchorRatio(root.get(), at.docTop, at.height) };
     };
     track();
-    surface.addEventListener("scroll", track, { passive: true });
-    return () => surface.removeEventListener("scroll", track);
+    return observeScroll(track);
   }, [para]);
 
   useEffect(() => {
-    const surface = document.querySelector<HTMLElement>(SURFACE_SELECTOR);
+    const root = scrollRoot();
     const node = document.getElementById(`para-${para}`);
     const reflowed = lastSignature.current !== null && lastSignature.current !== signature;
     const chapterChanged = lastChapter.current !== chapterDataId;
@@ -102,16 +161,16 @@ export function useReaderRepositionAfterReflow({
 
     lastSignature.current = signature;
     lastChapter.current = chapterDataId;
-    if (!surface || !node) return;
+    if (!root || !node) return;
 
-    // 此刻 DOM 已重排、scrollTop 还是旧值：量到的是新布局，换算用的是旧占比
-    const next = measure(surface, node);
+    // 此刻 DOM 已重排、滚动位置还是旧值：量到的是新布局，换算用的是旧占比
+    const next = measure(root, node);
     if (reflowed && !chapterChanged && sameChapter && box) {
-      surface.scrollTop = scrollTopForAnchor(box, next);
+      root.set(scrollTopForAnchor(box, next));
     }
     // 落点定下来再按实际位置记一遍：下次变化从新位置起算，旧占比不会被重复套用；
-    // scrollTop 被夹在 0 或章末时，记下的也是实际读到的位置，不是那个够不着的理想值
-    const settled = measure(surface, node);
-    lastBox.current = { ...settled, ratio: anchorRatio(surface.scrollTop, settled.docTop, settled.height) };
+    // 滚动被夹在 0 或章末时，记下的也是实际读到的位置，不是那个够不着的理想值
+    const settled = measure(root, node);
+    lastBox.current = { ...settled, ratio: anchorRatio(root.get(), settled.docTop, settled.height) };
   }, [signature, chapterDataId, para, anchor]);
 }

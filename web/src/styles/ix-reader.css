@@ -51,7 +51,9 @@
 .restore-hint .btn {
   min-height: 32px;
 }
-@media (max-width: 768px) {
+/* 触屏档：判据是**短边**（与 lib/tier.ts 的 H5_QUERY 同一口径）——只认 max-width 时
+   手机横屏（844×390）会退化成 PC，分页 / 三区点击 / 底栏一起消失。 */
+@media (max-width: 768px), ((max-height: 768px) and (pointer: coarse)) {
   /* 触屏：胶囊压到正文底部留白带的最低一档（细条与「本章 N%」浮标之上 10px 起），
      浮条在 z 44，控制栏 z 46——唤出菜单时它仍在控制层之下，收起态不产生遮挡。 */
   .restore-hint {
@@ -755,7 +757,7 @@
    = 胶囊 62 + 底距 10 + 24 呼吸；自动滚动浮条在场时 56px；控制层展开 125px（两行底栏 113 + 12）。
    外壳 padding 只改可视窗底边、内容仍顶部对齐，所以带高一变正文不跳。
    留白高度只在这里定一次：globals.css 的 .reader-main 不给底部 padding。 */
-@media (max-width: 768px) {
+@media (max-width: 768px), ((max-height: 768px) and (pointer: coarse)) {
   .reader-shell {
     /* 展开态正文让位一个顶栏高（64；安全区另算，不叠进 transform） */
     --reader-top-h: 64px;
@@ -866,3 +868,134 @@
 
 
 .reader-tts-toggle{position:fixed;bottom:72px;right:20px;z-index:70}
+
+/* ── 触屏短边档的阅读器几何（横屏补齐 + 遮挡规避） ──
+   判据统一是**短边**（与 lib/tier.ts 的 H5_QUERY 同口径）：手机横屏 844×390 也归 H5。
+   globals.css 的 H5 块只认 max-width，横屏时整块不生效——外壳不定高、正文不滚、顶栏退回
+   sticky 的 80px 静态条，分页与三区点击随之消失（实测 844×390）。这里按同一口径补一份，
+   数值与 globals 的窄屏块一致，改一处请一起改。 */
+@media (max-width: 768px), ((max-height: 768px) and (pointer: coarse)) {
+  .reader-shell {
+    position: relative;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  .reader-main {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+    /* 与 globals.css 的窄屏块同值：横屏时那一块不生效，prototype 的 32/20/56 会露出来 */
+    padding-top: calc(24px + env(safe-area-inset-top));
+    padding-left: calc(18px + env(safe-area-inset-left));
+    padding-right: calc(18px + env(safe-area-inset-right));
+  }
+  /* 顶栏仍是浮层：收起态滑出屏幕，不占正文位置 */
+  .reader-top {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 45;
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform 180ms var(--ease-standard),
+      opacity 150ms var(--ease-standard);
+  }
+  .reader-shell.is-controls .reader-top {
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ── 横屏（短边档内）：顶栏吃掉的视高比例收回来 ──
+   844×390 实测顶栏 80px = 21% 视高；缩成 44px 单行后 = 11.3%，图标仍 44×44 可点。
+   --reader-top-h 同步下调，展开态正文让位量才跟着顶栏走。 */
+@media ((max-width: 768px) and (orientation: landscape)), ((max-height: 768px) and (pointer: coarse) and (orientation: landscape)) {
+  .reader-shell {
+    --reader-top-h: 44px;
+  }
+  .reader-top {
+    height: calc(44px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: 0;
+  }
+}
+
+/* ── L1 分页 / 全屏下的恢复提示：让到右侧页边，不压页末三行 ──
+   分页页高按行高取整、拿满视口（spec 2026-11-22 §2.2），页底没有留白带：
+   胶囊按旧口径浮在 bottom 10px 时与最后 3 行字形相交（实测 390×844：胶囊 782–844，
+   页末字形 802–831）。让位（缩页高）会违反 layout-hint「提示在场不改页高」的既定审计，
+   所以改成**换一条道**：竖排贴右侧页边。版心右侧留 18px（--pg-pad-x），
+   字形行最多到 x=372，胶囊落在 373–390，与任何一行横向零相交。
+   胶囊 3 秒自动消失，所以分页下不摆「知道了」按钮（竖排 18px 放不下 44px 触屏按钮，
+   塞进去只会挡住正文或缩到点不准）；滚动模式保持原样。 */
+@media (max-width: 768px), ((max-height: 768px) and (pointer: coarse)) {
+  .reader-shell:has(.reader-paged) .restore-hint,
+  .reader-shell.is-fullscreen .restore-hint {
+    left: auto;
+    right: 0;
+    bottom: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    /* 关键帧 hintToastIn 写的是 translate(-50%, …)：改成竖排后整个关掉，否则定位被打乱 */
+    animation: none;
+    box-sizing: border-box;
+    /* 只占版心右边那 18px：字形行最右到 x=372，胶囊落在 374–390，零相交 */
+    width: 16px;
+    max-width: none;
+    max-height: 60vh;
+    padding: 8px 0;
+    border-radius: 999px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    /* 11px 是 16px 页边里还能放下的一档；再大就要吃掉版心 */
+    font-size: 11px;
+    line-height: 1.15;
+    /* 同页码浮标：一列到底，不折成两列 */
+    white-space: nowrap;
+    text-align: center;
+  }
+  /* 竖排 16px 宽放不下 44px 触屏按钮：分页下只留一句提示，3 秒自己收 */
+  .reader-shell:has(.reader-paged) .restore-hint .btn,
+  .reader-shell.is-fullscreen .restore-hint .btn {
+    display: none;
+  }
+}
+
+/* ── L2 分页页码浮标：移进右侧页边安全区并竖排 ──
+   分页正文铺满版心（390 宽时右边界 x=358），任何横排浮标都会落进某一页末行的横向区间
+   （实测 46 页里 5 页相交 44–64px）。改成竖排贴右页边：宽度落在版心右侧那 18px 留白内，
+   与字形行横向零相交；文案仍从「第 p / P 页」取，中文竖排逐字读得下来。
+   滚动模式保持原样（浮标在右下、贴在留白带里）——只改分页 / 全屏两支。 */
+@media (max-width: 768px), ((max-height: 768px) and (pointer: coarse)) {
+  .reader-shell:has(.reader-paged) .reader-scroll-chip,
+  .reader-shell.is-fullscreen .reader-scroll-chip {
+    right: 0;
+    bottom: auto;
+    top: 50%;
+    box-sizing: border-box;
+    /* 同恢复胶囊：只占版心右侧那 18px，与字形行零相交 */
+    width: 16px;
+    max-height: 60vh;
+    padding: 6px 0;
+    border-radius: 999px;
+    overflow: hidden;
+    writing-mode: vertical-rl;
+    /* 数字保持横排后再整体转 90°：写 upright 会把「11」拆成两个孤零零的 1，
+       读者要在「1 1 页」里猜是多两位。mixed（缺省）把数字当一个整体排，仍是竖排里的常规写法。 */
+    text-orientation: mixed;
+    /* 一条竖排：宽 16px 只容一列字，换行会折成两列交错的乱码 */
+    white-space: nowrap;
+    text-align: center;
+    font-size: 10.5px;
+    line-height: 1.15;
+    transform: translateY(-50%);
+  }
+}
+

@@ -1,12 +1,20 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
 /**
- * H5/PC 分档：≤768 是轻量阅读器，≥1024 是全功能工作台（768–1024 归 PC，保留管理能力）。
+ * H5/PC 分档：短边 ≤768 是轻量阅读器，≥1024 是全功能工作台（768–1024 归 PC，保留管理能力）。
  * H5 不是「不渲染工具栏」：书架两档同一套筛选（H5 收进底部弹层）、系列 / 阅读历史 / 书单两档都开。
+ *
+ * 判据是**短边**不只有宽度：手机横屏 844×390 若只认 max-width，会被判成 PC——
+ * 分页、三区点击、H5 底栏一起消失，顶栏 80px 吃掉 21% 视高（实测 390×844 的同一页完全正常）。
+ * 两条子句是「或」关系：竖屏看宽、横屏看高，覆盖同一台设备转屏前后。
+ *
+ * 短边那条必须带上 `pointer: coarse`：只看高度会把「窗口矮一点的桌面」也算进来——
+ * 1280×800 的笔记本扣掉工具栏后视口约 1280×650，桌面会凭空长出分页、三区与底栏。
+ * 触屏窄屏两种朝向都命中，桌面窗口再矮也留在 PC。
  */
 export type Tier = "pc" | "h5";
 
-export const H5_QUERY = "(max-width: 768px)";
+export const H5_QUERY = "(max-width: 768px), ((max-height: 768px) and (pointer: coarse))";
 
 export function tierOf(matches: boolean): Tier {
   return matches ? "h5" : "pc";
