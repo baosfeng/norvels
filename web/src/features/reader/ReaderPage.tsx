@@ -4,7 +4,7 @@ import { useBook, useBookmarks, useRecordReadingSession, useSaveProgress } from 
 import { useIsH5 } from "../../lib/tier";
 import { formatRemainingTime, formatWords } from "../../lib/format";
 import { chapterPosition, readPercent } from "../shelf/progressText";
-import { useReaderControls } from "../../lib/useReaderControls";
+import { useFirstGestureHint, useReaderControls } from "../../lib/useReaderControls";
 import { prefersReducedMotion } from "../../lib/theme";
 import { ReaderBottomBar } from "./ReaderBottomBar";
 import { ReaderTtsBar } from "./ReaderTtsBar";
@@ -207,6 +207,7 @@ function ReaderScreen() {
     settings,
     chapterId,
     title: activeSegment?.title ?? "",
+    chapterIndex: index,
     paragraphs: viewParagraphs,
     hitsByPara,
     currentHit,
@@ -236,6 +237,8 @@ function ReaderScreen() {
     onZoneTap: paging.active ? paging.zoneTap : stepChapter,
   });
   const { fullscreen, canFullscreen, toggle: toggleFullscreen } = useReaderFullscreen({ onEnter: controls.hide });
+  // 首次进阅读器给一次「点中间出菜单」的提示（1.5 秒自淡），看过就写 seenHint、之后不再出现
+  const firstHint = useFirstGestureHint(isH5);
 
   useReaderProgressSync({
     bookId,
@@ -433,6 +436,7 @@ function ReaderScreen() {
         reducedMotion={reducedMotion}
         pagedContent={paging.content}
         ttsActivePara={tts.currentPara}
+        firstHint={firstHint}
       />
 
       {/* 进度恢复提示：内容自适应的浮胶囊（3 秒自动消失），不进正文流、不把正文往下推 */}

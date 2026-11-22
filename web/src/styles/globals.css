@@ -46,9 +46,19 @@
   background: var(--r-bg);
 }
 
-/* 控制栏未显示时整条底栏不出现在布局里，避免手机端出现额外滚动空白 */
+/* 控制栏未显示时底栏滑出视口、整条不占位也不吃指针（3px 细条、恢复胶囊这些浮层因此都落到视口底边）。
+   与 ix-reader.css 的顶栏同一套 180ms / 150ms 曲线：两半控制层一起滑出，
+   收起时不再出现「顶栏滑 180ms、底栏啪一下没了」的割裂。 */
 .reader-shell:not(.is-controls) .h5-reader-bar {
-  display: none;
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  /* visibility 等滑完再切，否则底栏在动画第一帧就被撤掉 */
+  transition:
+    transform 180ms var(--ease-standard),
+    opacity 150ms var(--ease-standard),
+    visibility 0s linear 180ms;
 }
 body:has(.reader-shell) {
   background: var(--r-bg);

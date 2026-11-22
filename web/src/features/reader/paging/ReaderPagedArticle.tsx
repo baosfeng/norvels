@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { ReaderHit } from "../../../lib/readerSearch";
 import type { TurnDir } from "../../../lib/paging/turnGesture";
 import type { ReaderSettings } from "../readerSettings";
 import type { TurnEffect } from "../../../lib/paging/turnEffects";
+import { usePaintSearchHits, pagingContentKey } from "./searchMarks";
 import { usePagedChapter, type PagedChapterApi } from "./usePagedChapter";
 
 /** 对外暴露的分页能力：页面用 ref 拿它做三区点击 / 搜索定位 / 书签跳转。 */
@@ -44,17 +51,16 @@ export interface ReaderPagedArticleProps {
  */
 export function ReaderPagedArticle(props: ReaderPagedArticleProps) {
   const { handleRef, hitsByPara, currentHit, searching, landAtEnd } = props;
-  const contentKey = `${props.chapterId}:${searching ? `${currentHit}:${hitsByPara.size}` : "plain"}`;
   const api = usePagedChapter({
+    // 排版源永远按纯文本构建：命中 <mark> 事后打点（见 paintSearchHits），
+    // 这样搜索结果变化既不重建排版、也不重算页数
     content: {
       chapterId: props.chapterId,
       title: props.title,
       paragraphs: props.paragraphs,
-      hitsByPara,
-      currentHit,
-      searching,
+      searching: false,
     },
-    contentKey,
+    contentKey: pagingContentKey(props.chapterId),
     settings: props.settings,
     effect: props.effect,
     reducedMotion: props.reducedMotion,
@@ -66,12 +72,22 @@ export function ReaderPagedArticle(props: ReaderPagedArticleProps) {
   const drag = useRef({ active: false });
   // 先解构再进渲染：把「含 ref 的 api 对象」整体带进 JSX 会让 lint 认为在读 ref
   const { page, pageCount, pageRange, stageRef, pointerDown, pointerMove, pointerUp, pointerCancel } = api;
+  const stageEl = useRef<HTMLDivElement | null>(null);
   const spoken = useMemo(
     () => (pageRange ? props.paragraphs.slice(pageRange.start, pageRange.end + 1).join("\n") : ""),
     [pageRange, props.paragraphs],
   );
   useExposeHandle(handleRef, api);
   useLandAtEnd(api, props.chapterId, landAtEnd);
+  usePaintSearchHits(stageEl, { chapterId: props.chapterId, hitsByPara, currentHit, searching, page });
+
+  const bindStage = useCallback(
+    (node: HTMLDivElement | null) => {
+      stageEl.current = node;
+      stageRef(node);
+    },
+    [stageRef],
+  );
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     drag.current.active = false;
@@ -117,7 +133,7 @@ export function ReaderPagedArticle(props: ReaderPagedArticleProps) {
       {/* 舞台对读屏隐藏：里面是一整份多栏排版源，读屏读它会把全章念一遍 */}
       <div
         className="pg-stage"
-        ref={stageRef}
+        ref={bindStage}
         data-testid="pg-stage"
         aria-hidden="true"
         tabIndex={-1}

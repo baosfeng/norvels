@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
-import { ZONE_EDGE, resolveTapZone } from "../../lib/useReaderControls";
+import { HINT_SEEN_KEY, ZONE_EDGE, ZONE_EDGE_SCROLL, resolveTapZone } from "../../lib/useReaderControls";
 import { READER_KEYS } from "./readerSettings";
 
 const chapters: ChapterBrief[] = [
@@ -146,11 +146,33 @@ describe("三区手势：分区判定纯函数", () => {
     expect(resolveTapZone(10, -1)).toBe("menu");
     expect(resolveTapZone(Number.NaN, 300)).toBe("menu");
   });
+
+  /**
+   * U12：滚动模式读者会贴着边缘往下捋，落点常在 25%–30% 那一带。
+   * 旧实现一律按 30% 判，于是 x=25% 被当成「翻章」，还弹一句 4 秒浮条（改前实测 361 px / 300 宽 = 30% 才进中区）。
+   * 分页模式保持 30%：那边的边缘本来就是「上一页 / 下一页」的主控区，不许跟着缩。
+   */
+  it("U12 滚动模式边缘 22%：x=25% 落中区唤菜单，分页模式仍是 30%", () => {
+    expect(ZONE_EDGE).toBe(0.3);
+    expect(ZONE_EDGE_SCROLL).toBe(0.22);
+
+    // 300 宽：滚动模式的中区从 66 起，分页模式要到 90 才算中区
+    expect(resolveTapZone(75, 300, ZONE_EDGE_SCROLL)).toBe("menu");
+    expect(resolveTapZone(75, 300, ZONE_EDGE)).toBe("prev");
+    // 两侧对称：右边缘同理
+    expect(resolveTapZone(225, 300, ZONE_EDGE_SCROLL)).toBe("menu");
+    expect(resolveTapZone(225, 300, ZONE_EDGE)).toBe("next");
+    // 真的贴边还是翻章，22% 没把边缘整个吃掉
+    expect(resolveTapZone(20, 300, ZONE_EDGE_SCROLL)).toBe("prev");
+    expect(resolveTapZone(280, 300, ZONE_EDGE_SCROLL)).toBe("next");
+  });
 });
 
 describe("三区手势：H5 单击分区", () => {
   beforeEach(() => {
     localStorage.clear();
+    // 首次进阅读器的手势提示已在别的用例里守：这里钉成「看过」，免得它挡住点击探针
+    localStorage.setItem(HINT_SEEN_KEY, "1");
     // 三区点击在滚动模式下是翻一章；分页模式另有专门用例守「翻一页」
     localStorage.setItem(READER_KEYS.pageMode, "scroll");
     vi.clearAllMocks();
@@ -206,6 +228,19 @@ describe("三区手势：H5 单击分区", () => {
     expect(screen.getByTestId("reader-settings").getAttribute("aria-hidden")).toBe("false");
   });
 
+  /**
+   * U12 的端到端口径：滚动模式（本组已钉 pageMode=scroll）下点 x=25%（300 宽里的 75 px：
+   * 改前落在 30% 边缘区 = 翻章 + 4 秒浮条），现在属于中区——章节不变，控制层被唤出。
+   */
+  it("U12 滚动模式点 x=25%：章节不变、唤出控制层（改前直接翻章并弹浮条）", () => {
+    renderReader();
+    showToast.mockClear();
+    act(() => tapAt(75));
+    expect(screen.getByTestId("reader-top-progress").textContent).toContain("第 1 章 / 共 3 章");
+    expect(showToast).not.toHaveBeenCalled();
+    expect(screen.getByTestId("reader-top").getAttribute("aria-hidden")).toBe("false");
+  });
+
   it("滑动不算单击：位移超过阈值既不翻章也不切控制层", () => {
     renderReader();
     fireEvent.pointerDown(surface(), { clientX: 280, clientY: 300 });
@@ -220,5 +255,45 @@ describe("三区手势：H5 单击分区", () => {
     renderReader();
     expect(screen.queryByTestId("reader-edge-hints")).toBeNull();
     expect(document.querySelectorAll(".reader-edge-hint")).toHaveLength(0);
+  });
+});
+
+/**
+ * U18：第一次进阅读器是满屏正文，没人告诉读者「点中间出菜单」。
+ * 判据：没有 seenHint 标记时渲染一次性提示（1.5 秒自淡），写完标记后不再渲染。
+ */
+describe("U18 首次进阅读器的手势提示", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem(READER_KEYS.pageMode, "scroll");
+    stubWidth(300);
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("没有 seenHint 时渲染一行提示；1.5 秒后消失并写下标记", () => {
+    vi.useFakeTimers();
+    renderReader();
+    expect(screen.getByTestId("reader-first-hint").textContent).toContain("单击屏幕中间唤出菜单");
+
+    act(() => {
+      vi.advanceTimersByTime(1499);
+    });
+    expect(screen.queryByTestId("reader-first-hint")).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByTestId("reader-first-hint")).toBeNull();
+    expect(localStorage.getItem(HINT_SEEN_KEY)).toBe("1");
+  });
+
+  it("已有 seenHint 标记时不再渲染（之后进任何书都不出现）", () => {
+    localStorage.setItem(HINT_SEEN_KEY, "1");
+    renderReader();
+    expect(screen.queryByTestId("reader-first-hint")).toBeNull();
   });
 });

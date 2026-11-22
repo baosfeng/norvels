@@ -13,6 +13,7 @@ import {
 import { effectDuration, type TurnEffect } from "../../../lib/paging/turnEffects";
 import { clearTurnStart, markTurnStart, measureTurnEnd } from "../../../lib/paging/turnPerf";
 import { createEffect } from "./effects";
+import { noneFollowOffset } from "./effects/none";
 import type { EffectFrame, EffectRunner } from "./effects/types";
 
 export interface PageTurnOptions {
@@ -129,6 +130,9 @@ export class PageTurnEngine {
     drag.p = dragProgress(dx, this.opts.box().viewportW);
     if (this.inc) this.runner?.apply(this.frame(drag.p, drag.dir));
     else if (this.opts.effect() !== "none") this.applyBoundary(dx);
+    // 无动画不建第二层，但也不能一动不动：那会让读者以为手势没被识别（见 applyNoneFollow）。
+    // 越界（不能翻）时保持原样：那一段的手感由松手后的回弹负责。
+    else if (this.canTurn(drag.dir)) this.applyNoneFollow(dx);
     return true;
   }
 
@@ -150,11 +154,14 @@ export class PageTurnEngine {
     const dx = x - drag.x0;
     const commit = shouldCommit(drag.p, drag.v, dx);
     if (!this.inc) {
-      // 没有第二层只有两种来由：无动画效果（不跟手，松手直接换页）或越界
+      // 没有第二层只有两种来由：无动画效果（只跟手、松手直接换页）或越界
       if (this.opts.effect() === "none" && this.canTurn(drag.dir)) {
         if (commit) {
           this.startTrace();
           this.land(this.page + drag.dir);
+        } else {
+          // 不翻：跟手位移就地回位（无动画没有回弹过渡，也没有要等的收尾）
+          this.clearFollow();
         }
       } else {
         this.reboundBoundary(dx);
@@ -172,6 +179,8 @@ export class PageTurnEngine {
     if (!this.drag) return;
     const from = this.drag.p;
     this.drag = null;
+    // 无动画没有 runner，run(0) 收不掉跟手位移，就地清掉
+    this.clearFollow();
     this.run(0, this.dir, from);
   }
 
@@ -315,6 +324,21 @@ export class PageTurnEngine {
   private applyBoundary(dx: number) {
     if (!this.cur) return;
     this.cur.style.transform = `translate3d(${rubberOffset(dx, this.opts.box().viewportW).toFixed(2)}px,0,0)`;
+  }
+
+  /**
+   * 无动画拖动：只给 15% 阻尼跟手，松手仍旧瞬时换页（见 effects/none 的跟手比例）。
+   * 不复用 applyBoundary：那套是「往边界外拉」的橡皮筋，跟手是「朝翻页方向推」，方向语义不同。
+   */
+  private applyNoneFollow(dx: number) {
+    if (!this.cur) return;
+    const width = this.opts.box().viewportW;
+    this.cur.style.transform = `translate3d(${noneFollowOffset(dx, width).toFixed(2)}px,0,0)`;
+  }
+
+  /** 清掉跟手位移：无动画没有收尾过渡，回位只能就地瞬时完成。 */
+  private clearFollow() {
+    if (!this.inc) this.cur?.style.removeProperty("transform");
   }
 
   private reboundBoundary(dx: number) {

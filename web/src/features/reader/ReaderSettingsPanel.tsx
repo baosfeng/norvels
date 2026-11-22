@@ -12,10 +12,12 @@ import {
   PARA_LEVELS,
   SPEED_MAX,
   SPEED_MIN,
+  READER_DEFAULTS,
   WIDTH_LABELS,
   fontLevelIndex,
   formatFontLevel,
   formatSpeed,
+  formatSpeedHint,
   stepFont,
   stepLeading,
   stepParaLevel,
@@ -25,8 +27,8 @@ import {
   type ReaderSettings,
   type ReaderWidth,
 } from "./readerSettings";
-import { speedToPxPerSec } from "../../lib/autoScroll";
 import { TURN_EFFECTS, TURN_EFFECT_LABELS, type TurnEffect } from "../../lib/paging/turnEffects";
+import { pageModeFor } from "./readerPageMode";
 import type { ReaderPageMode } from "./readerSettings";
 
 import { PARA_LABELS, THEME_DOTS, THEME_LABELS } from "./readerConstants";
@@ -161,6 +163,8 @@ export function ReaderSettingsPanel({
   useFocusTrap(open, rootRef, onClose);
   const fontLocked = settings.followSystemFont;
   const speedLocked = !settings.autoScroll;
+  // 速度提示要说读者的真实体感：分页下正文不滚，说的是每页停留多久（PC 恒为滚动）
+  const actualPageMode = pageModeFor(isH5, settings);
 
   return (
     <aside
@@ -173,45 +177,41 @@ export function ReaderSettingsPanel({
     >
       <div className="settings-head">
         <strong>阅读设置</strong>
-        <button className="btn btn-ghost" type="button" onClick={onClose} aria-label="关闭阅读设置">
-          关闭
-        </button>
+        {/* 关闭在前：面板一打开焦点落在第一个可聚焦元素上，回车不该一上来就把设置清空 */}
+        <div style={{ display: "flex", gap: 4 }}>
+          <button className="btn btn-ghost" type="button" onClick={onClose} aria-label="关闭阅读设置">
+            关闭
+          </button>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            data-testid="reader-settings-reset"
+            onClick={() => onChange(READER_DEFAULTS)}
+          >
+            恢复默认
+          </button>
+        </div>
       </div>
 
-      {/* 阅读模式与翻页效果：只有手机能分页（PC 的正文是整页连续滚动，切换没有意义） */}
-      <Row label="阅读模式">
-        <div>
-          <SegGroup
-            label="阅读模式"
-            values={PAGE_MODES}
-            current={settings.pageMode}
-            labelOf={(value) => PAGE_MODE_LABELS[value]}
-            disabled={!isH5}
-            onChange={(value) => onChange({ pageMode: value })}
-          />
+      {/* 常用项前置：背景与字号是读者最常改的两项，放在面板最上面，不用滚两屏才摸到 */}
+      <Row label="背景">
+        <div className="theme-swatches" role="group" aria-label="背景">
+          {themes.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={theme === value ? "is-active" : ""}
+              aria-pressed={theme === value}
+              data-testid={`reader-theme-${value}`}
+              onClick={() => setTheme(value)}
+            >
+              <span className="theme-dot" style={{ background: THEME_DOTS[value] }} aria-hidden="true" />
+              <span className="theme-dot-label">{THEME_LABELS[value]}</span>
+            </button>
+          ))}
         </div>
       </Row>
-      {isH5 ? null : <span className="inline-note">手机专用：电脑上始终是上下滚动</span>}
-
-      <Row label="翻页效果">
-        <div>
-          <SegGroup
-            label="翻页效果"
-            values={TURN_EFFECTS}
-            current={settings.pageEffect}
-            labelOf={(value) => TURN_EFFECT_LABELS[value]}
-            disabled={!isH5 || settings.pageMode !== "page"}
-            onChange={(value) => onChange({ pageEffect: value })}
-          />
-        </div>
-      </Row>
-      {isH5 && settings.pageMode !== "page" ? <span className="inline-note">先切到「左右翻页」再挑效果</span> : null}
-      {isH5 && settings.pageMode === "page" ? (
-        <p className="settings-note" data-testid="reader-page-effect-hint">
-          {TURN_EFFECT_HINTS[settings.pageEffect]}
-        </p>
-      ) : null}
-
+      <p className="settings-note">护眼绿适合白天长读；纯黑适合 OLED 屏，夜间最省电。</p>
       <Row label="字号">
         <div className="font-stepper">
           <button
@@ -265,6 +265,40 @@ export function ReaderSettingsPanel({
         />
         </span>
       </Row>
+
+      {/* 阅读模式与翻页效果：只有手机能分页（PC 的正文是整页连续滚动，切换没有意义） */}
+      <Row label="阅读模式">
+        <div>
+          <SegGroup
+            label="阅读模式"
+            values={PAGE_MODES}
+            current={settings.pageMode}
+            labelOf={(value) => PAGE_MODE_LABELS[value]}
+            disabled={!isH5}
+            onChange={(value) => onChange({ pageMode: value })}
+          />
+        </div>
+      </Row>
+      {isH5 ? null : <span className="inline-note">手机专用：电脑上始终是上下滚动</span>}
+
+      <Row label="翻页效果">
+        <div>
+          <SegGroup
+            label="翻页效果"
+            values={TURN_EFFECTS}
+            current={settings.pageEffect}
+            labelOf={(value) => TURN_EFFECT_LABELS[value]}
+            disabled={!isH5 || settings.pageMode !== "page"}
+            onChange={(value) => onChange({ pageEffect: value })}
+          />
+        </div>
+      </Row>
+      {isH5 && settings.pageMode !== "page" ? <span className="inline-note">先切到「左右翻页」再挑效果</span> : null}
+      {isH5 && settings.pageMode === "page" ? (
+        <p className="settings-note" data-testid="reader-page-effect-hint">
+          {TURN_EFFECT_HINTS[settings.pageEffect]}
+        </p>
+      ) : null}
 
       <Row label="行距">
         <div className="stepper">
@@ -399,7 +433,7 @@ export function ReaderSettingsPanel({
       {!speedLocked && settings.autoScrollSpeed <= SPEED_MIN ? <span className="inline-note">已经是最慢速度</span> : null}
       {!speedLocked && settings.autoScrollSpeed >= SPEED_MAX ? <span className="inline-note">已经是最快速度</span> : null}
       <p className="settings-note" data-testid="reader-speed-hint">
-        {SPEED_MIN}–{SPEED_MAX} 档，步进 0.5 · 当前约 {speedToPxPerSec(settings.autoScrollSpeed)} 像素/秒
+        {SPEED_MIN}–{SPEED_MAX} 档，步进 0.5 · {formatSpeedHint(actualPageMode, settings.autoScrollSpeed)}
       </p>
 
       <Row label="到底自动下一章">
@@ -413,25 +447,6 @@ export function ReaderSettingsPanel({
         />
         </span>
       </Row>
-
-      <Row label="背景">
-        <div className="theme-swatches" role="group" aria-label="背景">
-          {themes.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={theme === value ? "is-active" : ""}
-              aria-pressed={theme === value}
-              data-testid={`reader-theme-${value}`}
-              onClick={() => setTheme(value)}
-            >
-              <span className="theme-dot" style={{ background: THEME_DOTS[value] }} aria-hidden="true" />
-              <span className="theme-dot-label">{THEME_LABELS[value]}</span>
-            </button>
-          ))}
-        </div>
-      </Row>
-      <p className="settings-note">护眼绿适合白天长读；纯黑适合 OLED 屏，夜间最省电。</p>
     </aside>
   );
 }

@@ -16,7 +16,7 @@ const box = computePageBox({ stageW: 390, stageH: 844, padX: 18, lineH: 42 });
  * 舞台 + 引擎的最小装配。页层用裸 div 充当（引擎只写 dataset / 内联样式）。
  * effect 取 fade：它的收尾靠 requestAnimationFrame 逐帧推进——正是「done 可能永远不来」的那一类。
  */
-function setup() {
+function setup(effectName: "fade" | "none" = "fade") {
   const stage = document.createElement("div");
   document.body.appendChild(stage);
   const onCommit = vi.fn();
@@ -30,13 +30,23 @@ function setup() {
     },
     setLayerPage: () => undefined,
     box: () => box,
-    effect: () => "fade",
+    effect: () => effectName,
     reducedMotion: () => false,
     onEdge: () => undefined,
     onCommit,
   });
   engine.reset(0, 4);
   return { engine, onCommit, stage };
+}
+
+/** 从 translate3d(x,y,z) 里取第一个参数（x）；空值算 NaN。 */
+function xOf(transform: string): number {
+  const match = /translate3d\((-?[\d.]+)px/.exec(transform);
+  return match ? Number.parseFloat(match[1]) : Number.NaN;
+}
+
+function currentLayer(stage: HTMLElement): HTMLElement {
+  return stage.querySelector<HTMLElement>(".pg-layer") as HTMLElement;
 }
 
 beforeEach(() => {
@@ -128,5 +138,70 @@ describe("翻页埋点", () => {
 
     expect(markTurnStart).toHaveBeenCalledTimes(2);
     expect(measureTurnEnd).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("无动画（none）拖动跟手", () => {
+  /**
+   * 防复发：none 早先完全不跟手（横向拖 160 px 页面一动不动），读者会以为手势没被识别。
+   * 现在的口径：拖动中给 15% 阻尼跟手，松手仍然瞬时翻页——翻页耗时不变。
+   */
+  it("拖 120 px 单层位移 ≠ 0，方向跟着手指走", () => {
+    const { engine, stage } = setup("none");
+    const layer = currentLayer(stage);
+
+    engine.pointerDown(300, 400);
+    expect(engine.pointerMove(180, 402)).toBe(true);
+
+    // 左滑（下一页）时页面跟着往左让：120 × 15% = 18 px
+    expect(xOf(layer.style.transform)).toBeCloseTo(-18, 1);
+  });
+
+  it("跟手有封顶：拖满一屏也只走可视宽的 15%", () => {
+    const { engine, stage } = setup("none");
+    const layer = currentLayer(stage);
+
+    engine.pointerDown(300, 400);
+    engine.pointerMove(0, 402); // 横移 300 px
+    expect(Math.abs(xOf(layer.style.transform))).toBeLessThanOrEqual(58.5);
+    expect(xOf(layer.style.transform)).not.toBe(0);
+  });
+
+  it("松手过阈值：瞬时换页（不等动画）且新页没有残留位移", () => {
+    const { engine, stage, onCommit } = setup("none");
+    const layer = currentLayer(stage);
+
+    engine.pointerDown(300, 400);
+    engine.pointerMove(60, 402); // 横移 240 px → p ≈ 0.62 > 0.22
+    engine.pointerUp(60);
+
+    // none 收尾时长 0：不推进任何定时器就该已经落页
+    expect(onCommit).toHaveBeenCalledWith(1);
+    expect(engine.currentPage).toBe(1);
+    expect(layer.isConnected).toBe(false);
+    expect(currentLayer(stage).style.transform).toBe("");
+  });
+
+  it("松手不够阈值：就地回位，页码与层都不动", () => {
+    const { engine, stage } = setup("none");
+    const layer = currentLayer(stage);
+
+    engine.pointerDown(300, 400);
+    engine.pointerMove(220, 402); // 横移 80 px → p ≈ 0.21 < 0.22
+    engine.pointerUp(220);
+
+    expect(engine.currentPage).toBe(0);
+    expect(layer.isConnected).toBe(true);
+    expect(layer.style.transform).toBe("");
+  });
+
+  it("越界方向拖动不跟手（首/末页仍交给回弹与跨章）", () => {
+    const { engine, stage } = setup("none");
+    const layer = currentLayer(stage);
+
+    engine.pointerDown(100, 400);
+    engine.pointerMove(220, 402); // 右滑 = 上一页，第 0 页已经没得翻
+    expect(layer.style.transform).toBe("");
+    engine.pointerUp(220);
   });
 });

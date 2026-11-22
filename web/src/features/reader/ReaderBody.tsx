@@ -31,6 +31,7 @@ export function ReaderBody({
   reducedMotion,
   pagedContent,
   ttsActivePara,
+  firstHint,
 }: {
   isH5: boolean;
   surfaceProps: {
@@ -62,6 +63,8 @@ export function ReaderBody({
   pagedContent?: ReactNode;
   /** TTS 当前朗读段落（整章下标），仅用于高亮已有段落。 */
   ttsActivePara?: number | null;
+  /** 首次进阅读器的一次性手势提示：由页面的 useFirstGestureHint 决定，看过即永久关掉。 */
+  firstHint?: boolean;
 }) {
   const hasBody = stream.segments.length > 0;
   return (
@@ -70,6 +73,7 @@ export function ReaderBody({
       surfaceProps={surfaceProps}
       zonesEnabled={zonesEnabled}
       paged={Boolean(pagedContent)}
+      firstHint={firstHint}
     >
       {pagedContent ?? (hasBody ? (
         <ReaderArticle

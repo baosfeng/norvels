@@ -575,6 +575,14 @@
   z-index: 46;
   display: flex;
   flex-direction: column;
+  /* 收起态由 globals.css 的 .reader-shell:not(.is-controls) 滑出视口；这里只定展开态与时长。
+     180ms 位移 / 150ms 透明与顶栏同一条曲线：两半控制层一起滑，收起时不出现「顶栏滑完底栏才啪地没了」。 */
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    transform 180ms var(--ease-standard),
+    opacity 150ms var(--ease-standard);
   padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
   background: var(--r-raised);
   border-top: 1px solid var(--r-border);
@@ -651,6 +659,43 @@
 }
 .chapter-slider-input:disabled::-webkit-slider-thumb {
   background: var(--r-muted);
+}
+
+/* ── 首次进阅读器的一次性手势提示：居中一行、1.5 秒自淡 ──
+   只在「没有 seenHint 标记」的那一次渲染（见 lib/useReaderControls 的 useFirstGestureHint），
+   看过即写标记，之后进任何书都不再出现。不吃指针：提示在场时读者先点一下，那一下照常归正文三区。 */
+.reader-first-hint {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 47;
+  margin: 0;
+  padding: 10px 16px;
+  border: 1px solid var(--r-border);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--r-surface), transparent 4%);
+  box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--r-fg) 40%, transparent);
+  color: var(--r-fg);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: reader-first-hint-fade 1500ms var(--ease-standard) forwards;
+}
+@keyframes reader-first-hint-fade {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 4px));
+  }
+  12%,
+  82% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%);
+  }
 }
 
 @media (max-width: 390px) {
@@ -809,8 +854,13 @@
 @media (prefers-reduced-motion: reduce) {
   .reader-scroll-track,
   .reader-scroll-chip,
-  .reader-main {
+  .reader-main,
+  /* 底栏与顶栏同一档：系统关了动效就一起硬切 */
+  .h5-reader-bar {
     transition: none;
+  }
+  .reader-first-hint {
+    animation: none;
   }
 }
 

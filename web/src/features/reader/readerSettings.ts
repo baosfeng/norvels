@@ -6,7 +6,8 @@
  * 隐私模式 / 手改过的脏值一律回落到默认值，绝不让阅读器打不开。
  */
 
-import { isTurnEffect, type TurnEffect } from "../../lib/paging/turnEffects";
+import { speedToPxPerSec } from "../../lib/autoScroll";
+import { isTurnEffect, pageHoldMs, type TurnEffect } from "../../lib/paging/turnEffects";
 
 export type ReaderFontFamily = "serif" | "sans" | "system" | "dyslexic" | "dyslexia" | "opendyslexic";
 export type ReaderWidth = "narrow" | "normal" | "wide";
@@ -278,6 +279,23 @@ export function stepSpeed(current: number, delta: number): number {
 export function formatSpeed(speed: number): string {
   const value = snapSpeed(speed);
   return value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+}
+
+/**
+ * 每页停留秒数：与 usePageAutoTurn 用的是同一个 pageHoldMs。
+ * 提示说的是「约」，所以按半秒取整（8.2 → 8、3.5 保留），不把毫秒级误差念给读者。
+ */
+function formatHoldSeconds(speed: number): string {
+  const seconds = Math.round(pageHoldMs(speed) / 500) / 2;
+  return seconds % 1 === 0 ? seconds.toFixed(0) : seconds.toFixed(1);
+}
+
+/**
+ * 速度提示的人话：上下滚动说的是「每秒走多少像素」，分页模式则按每页停留多久说。
+ * 分页下正文不滚，「120 像素/秒」在读者眼里没有对应体感（真值是 3.5–14 秒/页）。
+ */
+export function formatSpeedHint(mode: ReaderPageMode, speed: number): string {
+  return mode === "page" ? `当前约 ${formatHoldSeconds(speed)} 秒/页` : `当前约 ${speedToPxPerSec(speed)} 像素/秒`;
 }
 
 /** 段距步进：在四档之间前后移动，到头停住。 */

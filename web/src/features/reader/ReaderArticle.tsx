@@ -1,5 +1,6 @@
 import type { ChapterBrief } from "../../api/types";
 import type { ReactNode } from "react";
+import { displayChapterTitle } from "../../lib/chapterTitle";
 import { formatRemainingTime } from "../../lib/format";
 import type { ReaderHit } from "../../lib/readerSearch";
 import { ReaderChapterSlider } from "./ReaderChapterSlider";
@@ -63,7 +64,8 @@ export function ReaderArticle({
             data-chapter-id={segment.id}
             data-testid={`reader-segment-${segment.id}`}
           >
-            <h2>{segment.title}</h2>
+            {/* 章号以顶栏「第 N 章」为准：标题里印的章号与之冲突时只留标题文字（见 lib/chapterTitle） */}
+            <h2>{displayChapterTitle(segment.title, segment.index)}</h2>
             <div>
               {segment.paragraphs.map((para, i) =>
                 para ? (

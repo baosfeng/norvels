@@ -6,6 +6,27 @@ type Jump = { chapterId: number; paraIndex: number } | null;
 /** 正文滚动容器（与 useReaderScrollPercent / useReaderRepositionAfterReflow 取的是同一个节点）。 */
 const SURFACE_SELECTOR = '[data-testid="reader-swipe-area"]';
 
+/**
+ * 分页模式最后一次落位 = 当前页**首段**。
+ *
+ * 分页的位置真值是页码，滚动的位置真值是段落；两种模式之间只有「段」能对得上。
+ * 分页模式把每次落位记在这里（见 ReaderPagedBody），切回滚动时由本 hook 消费：
+ * 否则滚动恢复整条路径在分页期间是关着的（enabled=false），切回来只会走「本章已恢复过」
+ * 的分支，读者看到的就是「第 11 页 → 章首」。
+ */
+let pagedAnchor: { chapterId: number; para: number } | null = null;
+
+/** 分页正文翻页 / 落位时记下这一页首段：切模式时滚动恢复按它落位。 */
+export function rememberPagedPara(chapterId: number, para: number) {
+  if (!Number.isFinite(chapterId) || !Number.isFinite(para) || para < 0) return;
+  pagedAnchor = { chapterId, para: Math.floor(para) };
+}
+
+/** 清掉记忆：换书 / 用例之间用，避免上一轮的锚点落到新章上。 */
+export function clearPagedPara() {
+  pagedAnchor = null;
+}
+
 /** 回到章首：滚的是正文容器自己，不是窗口。 */
 export function scrollSurfaceToTop(surface: HTMLElement | null) {
   if (!surface) return;
@@ -92,11 +113,20 @@ export function useReaderScrollRestore({
   }, [enabled, pendingJump, chapterDataId, chapterId]);
 
   const restoredChapter = useRef(0);
+  /** 上一次的开关状态：只有「分页 → 滚动」这一下才消费分页锚点。 */
+  const wasEnabled = useRef(enabled);
   // 进章落位用 layoutEffect：必须赶在第一次 IntersectionObserver 判定之前落位，
   // 否则「可见章」会按落位前的位置算成上一章（连续流里上一章就在上方）。
   useLayoutEffect(() => {
+    const switchedFromPaged = !wasEnabled.current && enabled;
+    wasEnabled.current = enabled;
     if (!enabled) return;
     if (chapterDataId === undefined || chapterDataId !== chapterId) return;
+    // 从分页切回来：滚到分页时那一页的首段，而不是「本章已恢复过 → 什么都不做」
+    if (switchedFromPaged) {
+      restoreFromPaged(chapterId, onRestoreAnchor);
+      return;
+    }
     if (restoredChapter.current === chapterId) return;
     if (progressLoading) return;
     restoredChapter.current = chapterId;
@@ -116,4 +146,24 @@ export function useReaderScrollRestore({
     // 实测滚到 70% 翻章，新章直接停在 56%。这里滚的是容器，且按「本章 section」定位。
     scrollSurfaceToChapter(surface, chapterId);
   }, [enabled, chapterDataId, chapterId, pendingJump, storedParaIndex, progressLoading, onRestoreAnchor]);
+}
+
+/**
+ * 从分页切回滚动：落到分页时看到的那一页的**首段**，而不是章首。
+ *
+ * 分页期间本 hook 的恢复路径是关着的（enabled=false），切回来时这一章早已「恢复过」，
+ * 旧实现直接 return —— 读者看到分页的第 11 页变成滚动模式的章首。
+ */
+function restoreFromPaged(chapterId: number, onRestoreAnchor: (anchor: { chapterId: number; para: number }) => void) {
+  const left = pagedAnchor;
+  if (!left || left.chapterId !== chapterId) return;
+  pagedAnchor = null;
+  const node = document.getElementById(`para-${left.para}`);
+  if (node && typeof node.scrollIntoView === "function") {
+    node.scrollIntoView({ block: "start" });
+    onRestoreAnchor({ chapterId, para: left.para });
+    return;
+  }
+  // 段号来自上一轮排版（段落被重新切过）：退回章首，至少不把读者丢到别处
+  scrollSurfaceToChapter(document.querySelector<HTMLElement>(SURFACE_SELECTOR), chapterId);
 }

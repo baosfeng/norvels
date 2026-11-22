@@ -43,6 +43,8 @@ export function useReaderPaging(options: {
   settings: ReaderSettings;
   chapterId: number;
   title: string;
+  /** 本章在全书目录里的下标（0 起）：正文标题按它判断印的章号对不对得上（U20）。 */
+  chapterIndex: number;
   paragraphs: string[];
   hitsByPara: Map<number, ReaderHit[]>;
   currentHit: number;
@@ -98,6 +100,7 @@ export function useReaderPaging(options: {
       <ReaderPagedBody
         chapterId={chapterId}
         title={options.title}
+        chapterIndex={options.chapterIndex}
         paragraphs={options.paragraphs}
         hitsByPara={options.hitsByPara}
         currentHit={options.currentHit}
@@ -131,6 +134,7 @@ export function useReaderPaging(options: {
     active,
     chapterId,
     options.title,
+    options.chapterIndex,
     options.paragraphs,
     options.hitsByPara,
     options.currentHit,

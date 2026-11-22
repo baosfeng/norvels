@@ -28,7 +28,8 @@ describe("H5 阅读器控制层结构", () => {
     // 的两行结构（@import 提升后 globals 的规则在后），实测滑块 65px、按钮 8×80px 竖排重叠。
     expect(globals).not.toContain("grid-template-columns: repeat(7");
     expect(globals).toContain(".reader-shell:not(.is-controls) .h5-reader-bar {");
-    expect(ruleBody(globals, ".reader-shell:not(.is-controls) .h5-reader-bar")).toContain("display: none");
+    // 收起态是「滑出视口」而不是 display: none（U14，判据见本文件最后一组用例）
+    expect(ruleBody(globals, ".reader-shell:not(.is-controls) .h5-reader-bar")).toContain("transform: translateY(100%)");
 
     const bar = ruleBody(ix, ".h5-reader-bar");
     expect(bar).toContain("display: flex");
@@ -73,5 +74,38 @@ describe("H5 阅读器控制层结构", () => {
     expect(ix).toContain("transition: transform 180ms var(--ease-standard)");
     const reduced = ix.slice(ix.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reduced).toContain(".reader-main");
+  });
+
+  /**
+   * U14：收起控制层时底栏「啪」地消失、顶栏却滑 180 ms。
+   * 改前 globals.css 的收起态是 display: none（没有过渡可算），顶栏是 transform 180ms / opacity 150ms。
+   * 判据：底栏也有 transform 过渡，时长落在 150–200 ms 且与顶栏同一条曲线。
+   */
+  it("U14 收起时底栏同样走 transform 过渡，时长 150–200 ms 且与顶栏一致", async () => {
+    const [globals, ix] = await Promise.all([readStyles("globals.css"), readStyles("ix-reader.css")]);
+
+    const hidden = ruleBody(globals, ".reader-shell:not(.is-controls) .h5-reader-bar");
+    // 不再靠 display: none 硬切；先滑出视口，再把 visibility 延到动画结束才切
+    expect(hidden).not.toContain("display: none");
+    expect(hidden).toContain("transform: translateY(100%)");
+    expect(hidden).toContain("pointer-events: none");
+    expect(hidden).toContain("visibility: hidden");
+    expect(hidden).toContain("visibility 0s linear 180ms");
+
+    const duration = (css: string) => {
+      const matched = /transform (\d+)ms/.exec(css);
+      return matched ? Number(matched[1]) : Number.NaN;
+    };
+    const bar = ruleBody(ix, ".h5-reader-bar");
+    const top = ruleBody(globals, ".reader-top");
+    const barMs = duration(bar);
+    expect(barMs).toBeGreaterThanOrEqual(150);
+    expect(barMs).toBeLessThanOrEqual(200);
+    // 两半控制层同一条时长：收起时不会一半滑完另一半还在
+    expect(barMs).toBe(duration(top));
+    expect(bar).toContain("opacity 150ms");
+    // 系统关了动效就一起硬切
+    const reduced = ix.slice(ix.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toContain(".h5-reader-bar");
   });
 });

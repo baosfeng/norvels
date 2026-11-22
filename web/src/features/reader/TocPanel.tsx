@@ -6,6 +6,7 @@ import { SearchIcon } from "../../components/Icons";
 import { EmptyPanel, LoadingPanel } from "../../components/StatePanel";
 import { showToast } from "../../lib/toastStore";
 import { TocChapterRow, TocVolumeHeader } from "./TocList";
+import { useTocFirstFramePosition } from "./tocScroll";
 
 function errorText(error: ApiError | null): string {
   if (error?.kind === "timeout") return "读取超时了，稍等一下再试一次。";
@@ -55,7 +56,6 @@ export function TocPanel({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const searchToggleRef = useRef<HTMLButtonElement | null>(null);
   const baseline = useRef<ApiError | null>(null);
-  const positioned = useRef(false);
 
   // 每次打开抽屉本组件都重新挂载（ReaderDrawer 只在 open 时渲染内容），
   // 所以搜索 / 折叠 / 分块等浏览状态天然从干净状态开始，不需要在 effect 里重置。
@@ -84,22 +84,6 @@ export function TocPanel({
     }
   }, [retrying, error]);
 
-  // 打开后把当前章滚进视口：先确保当前章所在的块已显示，再滚过去
-  useEffect(() => {
-    if (!active || loading || error || positioned.current) return;
-    if (currentChapterId <= 0) return;
-    positioned.current = true;
-    const at = volumes.flatMap((volume) => volume.chapters).findIndex((chapter) => chapter.id === currentChapterId);
-    if (at < 0) return;
-    window.setTimeout(() => {
-      setRevealed((shown) => Math.max(shown, at + 1));
-      window.setTimeout(() => {
-        const row = listRef.current?.querySelector<HTMLElement>("[data-current-chapter='true']");
-        row?.scrollIntoView?.({ block: "center" });
-      }, 20);
-    }, 0);
-  }, [active, loading, error, currentChapterId, volumes]);
-
   const chapters = useMemo(() => volumes.flatMap((volume) => volume.chapters), [volumes]);
   const total = chapters.length;
   const matches = useMemo(() => filterChapters(chapters, query), [chapters, query]);
@@ -107,6 +91,22 @@ export function TocPanel({
   // PC 常驻输入框；H5 只在「点了入口」或「已经有关键词」时才把输入框放出来
   const searchShown = !isH5 || searchOpen || filtering;
   const currentIndex = chapters.findIndex((chapter) => chapter.id === currentChapterId);
+
+  // 打开目录就把当前章放到可视区中间：布局阶段算 scrollTop，读者看到的第一帧已经是「我这里」。
+  // 需要的行还没渲染（当前章在第 60 章之后）时一次补够，并多留一批在下面——目标行是最后一行的话，
+  // 滚到底也只能贴底（偏差半个视口），居中不了。
+  useTocFirstFramePosition({
+    active,
+    loading,
+    error,
+    currentChapterId,
+    currentIndex,
+    revealed,
+    total,
+    listRef,
+    revealTo: setRevealed,
+    chunk: TOC_CHUNK,
+  });
 
   const retry = useCallback(() => {
     baseline.current = error;

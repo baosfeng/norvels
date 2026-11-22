@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, ChapterBrief, ChapterDetail } from "../../api/types";
 import { TierProvider } from "../../lib/tier";
+import { TOC_CHUNK } from "../../lib/tocRows";
 import { READER_KEYS } from "./readerSettings";
 
 const chapters = [
@@ -455,13 +456,18 @@ describe("阅读器：目录抽屉（铺满 / 搜索 / 定位）", () => {
     expect(scroller).toBeTruthy();
   });
 
-  it("按章号搜索只剩命中行，清空后恢复全部 420 章", async () => {
+  it("按章号搜索只剩命中行，清空后恢复已补显的章", async () => {
     renderReader("pc", [CURRENT]);
     openDrawer();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 60));
     });
-    expect(rows()).toHaveLength(201);
+    // 打开目录就把当前章（下标 200）补显出来，并在它下面再留一批：目标行若是最后一行，
+    // 居中定位只能贴底（U11）。补显量按 TOC_CHUNK 推导，不写死数字。
+    const revealed = rows().length;
+    const needed = 200 + 1;
+    expect(revealed).toBeGreaterThanOrEqual(needed);
+    expect(revealed).toBe(Math.min(longChapters.length, needed + TOC_CHUNK));
 
     fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "419" } });
     expect(rows()).toHaveLength(1);
@@ -469,7 +475,7 @@ describe("阅读器：目录抽屉（铺满 / 搜索 / 定位）", () => {
     expect(screen.getByTestId("toc-match").textContent).toContain("匹配 1 章");
 
     fireEvent.change(screen.getByTestId("toc-search-input"), { target: { value: "" } });
-    expect(rows()).toHaveLength(201);
+    expect(rows()).toHaveLength(revealed);
     expect(screen.queryByTestId("toc-match")).toBeNull();
   });
 

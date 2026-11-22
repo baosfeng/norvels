@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApiError } from "../../../api/client";
+import { displayChapterTitle } from "../../../lib/chapterTitle";
 import type { ChapterBrief } from "../../../api/types";
 import type { ReaderHit } from "../../../lib/readerSearch";
 import type { TurnDir } from "../../../lib/paging/turnGesture";
@@ -7,6 +8,7 @@ import type { TurnEffect } from "../../../lib/paging/turnEffects";
 import { showToast } from "../../../lib/toastStore";
 import type { ReaderSettings } from "../readerSettings";
 import { ReaderStateArea } from "../ReaderStateArea";
+import { rememberPagedPara } from "../useReaderScrollRestore";
 import { ReaderPagedArticle, type PagedReaderHandle } from "./ReaderPagedArticle";
 import { usePageAutoTurn } from "./usePageAutoTurn";
 import { usePagedSearchJump } from "./usePagedSearchJump";
@@ -19,6 +21,8 @@ export interface PagedTurnState {
 export interface ReaderPagedBodyProps {
   chapterId: number;
   title: string;
+  /** 本章在全书目录里的下标（0 起）：正文标题按它判断印的章号对不对得上（U20）。 */
+  chapterIndex: number;
   paragraphs: string[];
   hitsByPara: Map<number, ReaderHit[]>;
   currentHit: number;
@@ -63,7 +67,7 @@ export interface ReaderPagedBodyProps {
  * 「落末页」必须等新章排完版才知道末页是第几页，所以它是个标记，由分页组件在页数出来之后自己跳。
  */
 export function ReaderPagedBody(props: ReaderPagedBodyProps) {
-  const { paragraphs, prev, next, jumpChapter, handleRef, jumpPara } = props;
+  const { paragraphs, prev, next, jumpChapter, handleRef, jumpPara, onAnchor } = props;
   /**
    * 本章的落点：进来的那一下定下来，之后重排 / 翻页都不再改。
    *
@@ -85,6 +89,19 @@ export function ReaderPagedBody(props: ReaderPagedBodyProps) {
       jumpChapter(target, dir > 0 ? "已经是最后一章了" : "已经是第一章了");
     },
     [jumpChapter, next, prev],
+  );
+
+  /**
+   * 分页的每次落位（进入 / 翻页 / 跳转 / 重排）都记下「这一页首段」：
+   * 读者从分页切回「上下滚动」时，滚动恢复按它落位——否则会被丢回章首（U9）。
+   * 写入点只在这里，读取点在 useReaderScrollRestore，两边共用同一个锚点口径。
+   */
+  const anchorWithPageMark = useCallback(
+    (para: number) => {
+      if (Number.isFinite(para)) rememberPagedPara(chapterId, para);
+      onAnchor(para);
+    },
+    [chapterId, onAnchor],
   );
 
   const gotoPara = useCallback((para: number) => handleRef.current?.gotoPara(para), [handleRef]);
@@ -122,8 +139,10 @@ export function ReaderPagedBody(props: ReaderPagedBodyProps) {
   });
 
   if (paragraphs.length === 0) {
-    // 跨章时新章还没到货：先给加载 / 错误 / 空态，正文到了再挂分页层——
-    // 不留白屏，也不闪回上一章。
+    // 目录远跳：新章还没到货时，连续流的窗口里还留着上一章，loading 是 false（流不算空）——
+    // 整屏换成状态区就会先闪一下「还没有正文」。标题到了才说明「这一章确实没有正文」；
+    // 标题也没到就是还在路上，沿用本页的排版骨架（不换画面、不留白屏）。
+    if (!props.loading && !props.error && !props.title.trim()) return <PagedSkeleton />;
     return (
       <ReaderStateArea
         loading={props.loading}
@@ -147,7 +166,7 @@ export function ReaderPagedBody(props: ReaderPagedBodyProps) {
   return (
     <ReaderPagedArticle
       chapterId={chapterId}
-      title={props.title}
+      title={displayChapterTitle(props.title, props.chapterIndex)}
       paragraphs={props.paragraphs}
       hitsByPara={props.hitsByPara}
       currentHit={props.currentHit}
@@ -158,7 +177,7 @@ export function ReaderPagedBody(props: ReaderPagedBodyProps) {
       initialPara={initialPara}
       landAtEnd={landAtEnd}
       onCrossChapter={onCrossChapter}
-      onAnchor={props.onAnchor}
+      onAnchor={anchorWithPageMark}
       onPageChange={(page, pageCount) => props.onPageChange({ page, pageCount })}
       handleRef={props.handleRef}
     />
@@ -182,4 +201,46 @@ function resolveEntry(
   if (jumpPara !== null) return { chapterId, para: jumpPara };
   if (landed?.chapterId === chapterId) return landed;
   return { chapterId, para: storedParaIndex > 0 ? storedParaIndex : null };
+}
+
+/**
+ * 分页正文的排版骨架：新章正文还没到货时先占住这一页。
+ *
+ * 画的是「每一页都会有的东西」：页顶标题与几行正文的占位。尺寸跟着设置里的字号 /
+ * 行距走（变量来自 readerStyleVars），所以从骨架换到真正文时版面不跳，也不换画面。
+ * 不进读屏（aria-hidden）：它没有内容，念出来只会打断读者。
+ */
+function PagedSkeleton() {
+  return (
+    <div className="reader-paged" data-testid="reader-paged-skeleton" aria-hidden="true">
+      <div
+        className="pg-stage"
+        style={{ padding: "var(--pg-top, 0px) var(--pg-pad-x, 18px) 0", boxSizing: "border-box" }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(var(--reader-leading, 1.9) * 0.5em)" }}>
+          <span
+            style={{
+              display: "block",
+              width: "46%",
+              height: "calc(var(--reader-leading, 1.9) * 1.35em)",
+              borderRadius: 3,
+              background: "color-mix(in oklab, var(--r-fg) 7%, transparent)",
+            }}
+          />
+          {Array.from({ length: 9 }, (_, i) => (
+            <span
+              key={i}
+              style={{
+                display: "block",
+                height: "calc(var(--reader-leading, 1.9) * 0.62em)",
+                width: `${92 - (i % 3) * 7}%`,
+                borderRadius: 3,
+                background: "color-mix(in oklab, var(--r-fg) 7%, transparent)",
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }

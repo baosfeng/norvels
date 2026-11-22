@@ -7,6 +7,7 @@ import {
   WIDTH_VALUES,
   FONT_LEVELS,
   formatFontLevel,
+  formatSpeedHint,
   readReaderSettings,
   readerFontCss,
   readerStyleVars,
@@ -150,6 +151,26 @@ describe("阅读设置：字号 / 行距 / 段距步进", () => {
     expect(snapParaLevel(0.45)).toBe(0.4);
     expect(snapParaLevel(0.86)).toBe(1);
     expect(snapParaLevel(9)).toBe(1.6);
+  });
+});
+
+describe("阅读设置：速度提示的口径", () => {
+  it("滚动模式说每秒像素：与 speedToPxPerSec 同源，1 档 14 px/s", () => {
+    expect(formatSpeedHint("scroll", 3)).toBe("当前约 42 像素/秒");
+    expect(formatSpeedHint("scroll", 0.5)).toBe("当前约 7 像素/秒");
+    expect(formatSpeedHint("scroll", 5)).toBe("当前约 70 像素/秒");
+  });
+
+  it("分页模式说每页停留多久：与 usePageAutoTurn 的 pageHoldMs 同源", () => {
+    // 0.5 档 → 14 秒/页，5 档 → 3.5 秒/页；分页下正文不滚，「像素/秒」没有对应体感
+    expect(formatSpeedHint("page", 0.5)).toBe("当前约 14 秒/页");
+    expect(formatSpeedHint("page", 5)).toBe("当前约 3.5 秒/页");
+    expect(formatSpeedHint("page", 3)).toMatch(/^当前约 \d+(\.\d)? 秒\/页$/);
+  });
+
+  it("脏速度先吸附：越界与 NaN 都落回合法档位", () => {
+    expect(formatSpeedHint("page", 99)).toBe(formatSpeedHint("page", 5));
+    expect(formatSpeedHint("scroll", 0)).toBe(formatSpeedHint("scroll", 0.5));
   });
 });
 
