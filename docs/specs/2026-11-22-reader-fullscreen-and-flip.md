@@ -48,7 +48,7 @@
 
 ## 3 验收（390×844 实测，agent-browser，curl 效果）
 
-> 回归入口：`make audit-reader`（真浏览器跑 17 条不变量，口径见 [quality-gates](../../quality-gates.md)）。
+> 回归入口：`make audit-reader`（真浏览器跑 18 条不变量，口径见 [quality-gates](../../quality-gates.md)）。
 
 | 项 | 改前 | 改后 |
 |---|---|---|
