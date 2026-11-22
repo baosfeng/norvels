@@ -17,6 +17,8 @@ services:
     environment:
       NORVELS_ADDR: ":8080"
       NORVELS_DB: "/data/norvels.db"
+      # 正文库固定在 /content 挂载点下：后端按这个绝对路径打开，不再由主库路径推导兄弟文件。
+      NORVELS_CONTENT_DB: "/content/norvels-content.db"
       NORVELS_HEALTH_URL: "http://127.0.0.1:8080/api/health"
       TZ: "${TZ:-Asia/Shanghai}"
       # 鉴权：不设口令时绑 0.0.0.0 会被拒绝启动（默认拒绝开放 + 非回环）。
@@ -29,6 +31,10 @@ services:
       # 数据库目录：SQLite 主库 + WAL + SHM 都在这里。
       # 放独立数据盘（如 /vol1/norvels/data），不要放在系统分区。
       - "${NORVELS_DATA_DIR:-./data}:/data"
+      # 正文库目录：正文库（norvels-content.db，生产约 160 GB）可独立放另一块盘（如机械盘 /vol3）。
+      # 不设 NORVELS_CONTENT_DIR 时它等于 NORVELS_DATA_DIR，即 /content 与 /data 指向同一宿主目录、
+      # 行为与分离前完全一致；改设后两个挂载点分别指向两块盘，跨盘的文件操作不能用 mv/cp -a 之外的假设。
+      - "${NORVELS_CONTENT_DIR:-${NORVELS_DATA_DIR:-./data}}:/content"
       # 小说 txt 源目录，只读挂载，导入新书时才会用到；不导入可以留空目录。
       - "${NORVELS_BOOKS_DIR:-./books}:/books:ro"
     healthcheck:

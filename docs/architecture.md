@@ -28,7 +28,7 @@
 ## 2. 关键约束
 
 1. **CGO-free**：使用 `modernc.org/sqlite`（纯 Go），才能 `CGO_ENABLED=0` 静态编译进 `scratch`/distroless。
-2. **数据与代码分离**：主库 `/data/norvels.db` + 正文库 `/data/norvels-content.db`（同一个容器 volume），镜像内不含任何小说内容。
+2. **数据与代码分离**：主库 `/data/norvels.db` + 正文库 `/data/norvels-content.db`（默认同一个容器 volume；可用 `NORVELS_CONTENT_DIR` 把正文库单独挂到另一块盘的 `/content`，路径由 `NORVELS_CONTENT_DB` 指定），镜像内不含任何小说内容。
 3. **前端只经 API**：不引入 SSR，构建产物全部 embed，运行时无需 Node。
 4. **导入可重复执行**：同一目录重复 `import` 必须幂等（文件 SHA-256 命中则跳过，除非 `--force`）。
 5. **大文件友好**：单文件最大 42MB、单库 4.4GB 文本；导入使用事务分批（每 N 章或每文件提交），WAL 模式，`synchronous=NORMAL`。
@@ -98,7 +98,7 @@ book_totals(kind PK, n)                          -- 书数 / 书目字数 / 已�
 tags(id, name) / book_tags(book_id, tag_id)       -- 检索范围只有书名（LIKE），无全文索引
 import_jobs(...) / import_errors(...) / import_reviews(...)  -- 导入任务、失败明细与 AI 审核记录（0021）
 
--- 以下一张表在**正文库**（data/norvels-content.db），与主库同目录、同寿命
+-- 以下表在**正文库**（data/norvels-content.db），与主库同寿命；默认同目录，可用 NORVELS_CONTENT_DIR + NORVELS_CONTENT_DB 分离到另一块盘
 chapter_blocks(id, book_id, seq, first_idx, last_idx, raw_bytes, packed)
                                                  -- 每块约 8 MB 原始正文，0x03 码本 + zstd
 chapter_fingerprints(hash, book_id, bytes)       -- 章级内容指纹（0019，WITHOUT ROWID，主键 (hash, book_id)）
@@ -133,5 +133,5 @@ recent_items(user_id, book_id, ts)                             -- 近期已曝�
 
 ## 5. 端口与运行
 
-- 默认监听 `0.0.0.0:8080`；主库 `/data/norvels.db`、正文库 `/data/norvels-content.db`（本地默认 `./data/norvels.db`，正文库由主库路径推导，可用 `NORVELS_CONTENT_DB` 覆盖）。
+- 默认监听 `0.0.0.0:8080`；主库 `/data/norvels.db`、正文库 `/data/norvels-content.db`（本地默认 `./data/norvels.db`，正文库由主库路径推导，可用 `NORVELS_CONTENT_DB` 覆盖；容器部署可用 `NORVELS_CONTENT_DIR` 把它挂到另一块盘）。
 - 健康检查 `GET /api/health` 返回 `{"status":"ok","db":"ok","version":"..."}`。

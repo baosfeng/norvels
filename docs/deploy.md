@@ -236,7 +236,7 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 ## 5. SQLite on volume 注意事项
 
-1. **两个库都放同一个目录**：主库 `norvels.db` 与正文库 `norvels-content.db`（0018 起），各自还有 `-wal`/`-shm`，一共六个文件都在 `/data`。
+1. **两个库默认都放同一个目录**：主库 `norvels.db` 与正文库 `norvels-content.db`（0018 起），各自还有 `-wal`/`-shm`，一共六个文件都在 `/data`。容量吃紧时可把正文库单独放另一块盘：容器部署用 `NORVELS_CONTENT_DIR` 把宿主目录挂到 `/content`，再由 `NORVELS_CONTENT_DB=/content/norvels-content.db` 指过去（`deploy/nas` 的 `update.sh --move-content` 会做搬库 + 改配置）；此时六个文件分在两块盘，但仍必须成对备份。
    不要把 `-wal` 单独挂载/清理；两个库必须一起备份、一起恢复（只恢复主库 = 全部正文丢失）。
 2. **单写者**：导入与服务不要并发写库。导入期间请停止 `serve`（compose 场景先 `docker compose stop`，或用 `scripts/import.sh` 的顺序导入）。SQLite 会以 `busy_timeout=10000` 等待，但并发导入/备份仍可能触发 BUSY。**容器场景特别注意：导入期间不要并发执行 `scripts/backup.sh`**（备份会读一致性快照，但 `VACUUM INTO` 需要写锁，且大库备份与导入叠加会放大磁盘 IO）。
 3. **备份方式**：使用 `scripts/backup.sh`（`.backup` 在线备份或 `VACUUM INTO`）。它**成对**备份主库与正文库
@@ -592,7 +592,7 @@ NORVELS_ALLOW_PUBLIC=1 docker compose -f deploy/compose.yml up -d
 |---|---|---|
 | `NORVELS_ADDR` | `:8080` | 监听地址 |
 | `NORVELS_DB` | `./data/norvels.db`（镜像内 `/data/norvels.db`） | 主库路径 |
-| `NORVELS_CONTENT_DB` | 空 = 按主库路径推导同目录 `*-content.db` | 正文库路径（0018 起；默认兄弟文件） |
+| `NORVELS_CONTENT_DB` | 空 = 按主库路径推导同目录 `*-content.db` | 正文库路径（0018 起；默认兄弟文件，容器部署由 compose 固定成 `/content/norvels-content.db`） |
 | `NORVELS_AUTH_TOKEN` | 空 | 空 = 开放模式 |
 | `NORVELS_LOG_LEVEL` | `info` | debug/info/warn/error（非法值启动即报错） |
 | `NORVELS_BOOKS_DIR` | `/books` | 导入源目录（只读挂载点） |

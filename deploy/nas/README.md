@@ -15,20 +15,22 @@
 ├── compose.yml
 ├── .env
 ├── update.sh
-├── data/                   # 数据库（主库 + 正文库，成对备份/恢复）
-│   ├── norvels.db
-│   └── norvels-content.db
+├── data/                   # 数据库目录（NORVELS_DATA_DIR → 容器 /data）
+│   ├── norvels.db          #   主库：元数据 / 用户 / 聚合，几 GB
+│   └── norvels-content.db  #   正文库：未分离时也在这里（历史行为）
 └── books/                  # 小说 txt 源目录（只读挂载，导入时才用）
 ```
 
 > 数据目录优先放独立数据盘：飞牛上 `/` 只有 97G，`/vol1` 是 1.9T SSD；几万本约 100 GB，留够余量。
+> **正文库可以不在 data/ 里**：`NORVELS_CONTENT_DIR` 留空时正文库就在 data/（历史行为）；设成另一块盘的目录（如 `/vol3/norvels-data`）后，容器把它挂到 `/content`，后端按 `NORVELS_CONTENT_DB=/content/norvels-content.db` 打开。
+> 生产就是这么做的：162 GB 正文库放机械盘 `/vol3/norvels-data`，SSD 只留主库。两个库仍必须**成对备份、成对恢复**。
 
 ## 首次部署
 
 ```bash
 mkdir -p /vol1/norvels/{data,books} && cd /vol1/norvels   # momo 对自己的目录可写，不需要 root
 cp /path/to/compose.yml . && cp /path/to/update.sh . && chmod +x update.sh
-cp .env.example .env && vi .env                            # 改 NORVELS_DATA_DIR / NORVELS_PORT
+cp .env.example .env && vi .env                            # 改 NORVELS_DATA_DIR / NORVELS_PORT（正文库默认跟 data 同目录）
 sudo chown -R 65532:65532 /vol1/norvels/data               # 容器内 65532 需可写（一次性）
 sudo docker compose up -d && sudo docker compose ps
 ```
@@ -71,7 +73,11 @@ sudo ./update.sh --check          # 只看本地状态
 sudo ./update.sh --check-updates  # 问上游有没有新版本（不升级、不重启）
 sudo ./update.sh --vacuum         # 迁移后回收空间：停服，VACUUM 主库与正文库
 sudo ./update.sh --backfill       # 0019/0020 之后补存量指纹与质量分（可中断续跑）
+sudo ./update.sh --move-content /vol3/norvels-data   # 正文库搬到另一块盘（复制+校验+改 .env，不删源文件）
 ```
+
+> `--move-content` 走脚本自己的 sudo 权限（sudoers 白名单只放行 update.sh，`sudo docker` 要密码）：校验目标盘空间 ≥ 正文库 1.1 倍 → 停服等 WAL 落定 → `cp --sparse=always` 复制 → 源与目标各算一次 sha256 比对 → 改 `.env` 的 `NORVELS_CONTENT_DIR`（旧 `.env` 备份成 `.env.bak-<时间戳>`）→ 起服 + `check-content --sample 200` 抽检。
+> **源文件永不自动删除**：确认无误后自己删。中间任何一步失败都会把服务按当前 `.env` 拉回来。
 
 脚本按顺序做四件事：拉镜像 → 一次性容器预跑迁移 → 重启并轮询健康。任何一步失败都会**自动把镜像版本回滚**到升级前；**数据不会回滚**（schema 只前进，回滚镜像不还原库）。
 
@@ -81,17 +87,18 @@ sudo ./update.sh --backfill       # 0019/0020 之后补存量指纹与质量分�
 
 `--check-updates` 对比「容器正在用的镜像 ID」与「`bsfeng/norvels:latest` 的镜像 ID」：走 docker 镜像加速器（部署时唯一必须打通的那条路），不依赖 Docker Hub API 或 registry 直连——国内这两条常常超时。镜像 17 MB，层已缓存时约 2 秒。
 
-> **升级涉及 schema 迁移时**：迁移后跑一次 `--vacuum` 回收空间（旧数据变成空洞页，文件不会自动缩小）。镜像里没有 sqlite3，可用临时容器：`docker run --rm -v /vol1/norvels/data:/data keinos/sqlite3 /data/norvels.db 'VACUUM;'`
+> **升级涉及 schema 迁移时**：迁移后跑一次 `--vacuum` 回收空间（旧数据变成空洞页，文件不会自动缩小）。镜像里没有 sqlite3，临时容器要显式给 `--entrypoint sqlite3`（该镜像默认是 tini，会把库路径当可执行文件）：`docker run --rm --entrypoint sqlite3 -v /vol1/norvels/data:/data keinos/sqlite3 /data/norvels.db 'VACUUM;'`
 
 ## 备份
 
-`update.sh` 默认**不备份**：正文库 121 GB + 主库 5.9 GB，成对备份要再占一份空间。需要时显式加 `--backup`（停服 → 成对备份 + sha256 → quick_check/schema 校验 → `.meta`，保留 3 组）。不停服的在线备份用 `.backup`（一致快照，WAL 一并读取）：
+`update.sh` 默认**不备份**：正文库 162 GB + 主库 7.9 GB，成对备份要再占一份空间（`NORVELS_BACKUP_DIR` 建议同样指到机械盘，否则成对备份要把正文库写回 SSD）。需要时显式加 `--backup`（停服 → 成对备份 + sha256 → quick_check/schema 校验 → `.meta`，保留 3 组）。不停服的在线备份用 `.backup`（一致快照，WAL 一并读取）：
 
 ```bash
 sudo ./update.sh --backup --latest            # 升级前成对备份主库 + 正文库
 # 不停服：两个库各跑一次 .backup（SQLite 一致快照，WAL 一并读取）
 sudo docker run --rm -v /vol1/norvels/data:/data -v /vol1/norvels/backup:/backup keinos/sqlite3 \
   /data/norvels.db ".backup /backup/norvels-$(date +%F).db"
+# 正文库分离后（NORVELS_CONTENT_DIR=/vol3/norvels-data）：-v 换成 -v /vol3/norvels-data:/content，路径用 /content/norvels-content.db
 sudo docker run --rm -v /vol1/norvels/data:/data -v /vol1/norvels/backup:/backup keinos/sqlite3 \
   /data/norvels-content.db ".backup /backup/norvels-content-$(date +%F).db"
 ```
@@ -106,3 +113,4 @@ sudo docker run --rm -v /vol1/norvels/data:/data -v /vol1/norvels/backup:/backup
 | 页面 502/连不上 | `docker compose ps` 看健康状态；端口是否被占 |
 | 迁移很久不动 | 正常，42 万章约 23 分钟；`docker compose logs -f` 看进度 |
 | 要回滚版本 | 没有 `--backup` 副本时把 `.env` 版本改小重启；升级过的库不能给旧版本用——**schema 只前进** |
+| 启动日志报找不到正文库 | `NORVELS_CONTENT_DIR` 指错目录或目录没建；`./update.sh --check` 会打印实际用的正文库目录 |
