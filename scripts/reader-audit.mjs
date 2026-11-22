@@ -135,6 +135,16 @@ const ctx = {
       " pt('pointerdown'); pt('pointerup'); return 'ok'; })()");
     await wait(500);
   },
+  /** 轮询到条件成立（默认 2 秒）：翻页有动画时长，固定等待在慢帧下会误判失败。 */
+  async waitFor(predicate, timeout = 2000, step = 120) {
+    const deadline = Date.now() + timeout;
+    let value = await ev(SNAPSHOT);
+    while (Date.now() < deadline && !predicate(value)) {
+      await wait(step);
+      value = await ev(SNAPSHOT);
+    }
+    return value;
+  },
   /** 干净起点：退出全屏、收起控制栏、回到第 0 页。 */
   async reset() {
     ev("(() => { if (document.fullscreenElement) document.exitFullscreen(); return 'x'; })()");

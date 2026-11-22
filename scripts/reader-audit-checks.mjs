@@ -168,7 +168,8 @@ export const CHECKS = [
         let page = start.page;
         for (let i = 0; i < 3; i += 1) {
           await ctx.tapZone("next");
-          const now = await ctx.snapshot();
+          // 翻页收尾有动画时长（curl 380ms）：轮询到页码落定，别用固定等待赌帧率
+          const now = await ctx.waitFor((snap) => snap.page === page + 1 || snap.page === 0, 2200);
           if (now.page !== page + 1) {
             broken.push(effect + " 第 " + (i + 1) + " 次：" + page + "→" + now.page);
             break;
@@ -309,6 +310,32 @@ export const CHECKS = [
       const actual = "离开时 " + left.page + "/" + left.pageCount + " → 重进 " + back.page + "/" + back.pageCount;
       const ok = left.page === 2 && back.page !== null && Math.abs(back.page - left.page) <= 1;
       return (ok ? pass : fail)(actual, "第 3 页重进仍在第 3 页（±1 页）");
+    },
+  },
+  {
+    id: "reflow-font",
+    title: "调大字号后仍停在原段落（重排按段锚点保位，不漂）",
+    async run(ctx) {
+      await ctx.setScene({ mode: "page", effect: "slide" });
+      await ctx.reset();
+      await ctx.tapZone("next");
+      await ctx.tapZone("next");
+      const before = await ctx.snapshot();
+      const head = (before.spoken ?? "").trim().slice(0, 10);
+      if (head.length < 8) {
+        return { ok: true, skip: true, actual: "当前页读屏文本太短，无法定位段落", expected: "调字号后同一段仍在当前页" };
+      }
+      await ctx.tapZone("menu");
+      await ctx.click('[data-testid="reader-bottombar-settings"]');
+      await ctx.wait(400);
+      await ctx.click('[data-testid="reader-font-level-28"]');
+      await ctx.wait(900);
+      const after = await ctx.snapshot();
+      const kept = (after.spoken ?? "").includes(head);
+      const actual = "字号 20 → 28：" + (kept ? "原页首段仍在" : "原页首段丢了") + "（页 " + before.page + " → " + after.page + "）";
+      // 还原字号并重载：设置面板的远程写回是防抖的，reload 之后 finally 的恢复才不会被它盖回
+      await ctx.setScene({ mode: "page", effect: "slide", force: true });
+      return (kept ? pass : fail)(actual, "调字号后同一段仍在当前页");
     },
   },
   {
