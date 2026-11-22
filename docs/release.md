@@ -22,7 +22,7 @@ workflow 里**不放任何凭据**：唯一用到的 secret 是 `DOCKER_HUB_TOKE
 | tag 形式 | 示例 | 何时更新 | 用途 |
 |---|---|---|---|
 | `latest` | `latest` | 推送**非预发布** tag 时 | 跟随最新正式版 |
-| `X.Y.Z` | `0.13.5` | 推送 `v0.13.5` 时 | 精确版本，**生产环境推荐锁这个** |
+| `X.Y.Z` | `0.14.0` | 推送 `v0.14.0` 时 | 精确版本，**生产环境推荐锁这个** |
 
 预发布 tag（名称含 `-`，如 `v0.3.0-rc1`）只出 `0.3.0-rc1`，**不更新** `latest`。
 
@@ -36,7 +36,7 @@ workflow 里**不放任何凭据**：唯一用到的 secret 是 `DOCKER_HUB_TOKE
 要追溯某个镜像对应的源码提交，看镜像自带 label（由 metadata-action 写入）：
 
 ```bash
-docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' bsfeng/norvels:0.13.5
+docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' bsfeng/norvels:0.14.0
 ```
 
 对应的 `docker/metadata-action` 配置（`.github/workflows/release.yml`）：
@@ -44,7 +44,7 @@ docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revisi
 | 配置行 | 生成的 tag |
 |---|---|
 | `flavor: latest=false` | 关掉 semver 自带的 latest，改由下一条显式控制 |
-| `type=semver,pattern={{version}}` | `0.13.5` |
+| `type=semver,pattern={{version}}` | `0.14.0` |
 | `type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}` | `latest`（仅非预发布） |
 
 ## 3. 流水线总览
@@ -163,11 +163,11 @@ make run         # 可选自查：打开 /changelog，「你在用的这一版�
 #    去掉引号后说明正文里的反引号与 $ 又会被 shell 吃掉。
 #    --cleanup=verbatim：默认的 strip 会把以 # 开头的行当注释删掉，
 #    而说明正文里全是「### 新增 / 改进」这类标题。
-git tag -a v0.13.5 --cleanup=verbatim -F <(
-  printf 'norvels v0.13.5\n\n'
-  sed -n '/^## \[0.13.5\]/,/^## \[/p' internal/releases/CHANGELOG.md | sed '1d;$d'
+git tag -a v0.14.0 --cleanup=verbatim -F <(
+  printf 'norvels v0.14.0\n\n'
+  sed -n '/^## \[0.14.0\]/,/^## \[/p' internal/releases/CHANGELOG.md | sed '1d;$d'
 )
-git push origin v0.13.5
+git push origin v0.14.0
 ```
 
 推送后自动发生：`release.yml` → 复用 CI 的四项检查 → 登录 Docker Hub → buildx 构建 amd64/arm64 → 推送镜像。
@@ -176,14 +176,14 @@ git push origin v0.13.5
 
 ```bash
 # 确认两个架构的 manifest 都在
-docker buildx imagetools inspect bsfeng/norvels:0.13.5
+docker buildx imagetools inspect bsfeng/norvels:0.14.0
 
 # 本地拉一份跑起来，确认版本注入正确
-docker run --rm bsfeng/norvels:0.13.5 version
-# 期望输出形如：norvels 0.13.5 (commit <sha>, built 2026-...)
+docker run --rm bsfeng/norvels:0.14.0 version
+# 期望输出形如：norvels 0.14.0 (commit <sha>, built 2026-...)
 ```
 
-再核一遍 Docker Hub 页面的 tag 列表：本版应当只多出 `0.13.5` 一个，`latest` 跟着更新（不生成 `0.13` / `0` / `sha-*` / `edge`）。
+再核一遍 Docker Hub 页面的 tag 列表：本版应当只多出 `0.14.0` 一个，`latest` 跟着更新（不生成 `0.13` / `0` / `sha-*` / `edge`）。
 
 ## 6. 用户升级指引
 
@@ -202,7 +202,7 @@ curl -fsS localhost:8080/api/health              # 期望 {"db":"ok",...}
 
 - **库自动迁移**：启动时自动应用尚未应用的迁移，单次启动即可完成；迁移在事务内，失败则**启动失败并打印版本号**，不会带着半迁移的库继续跑。
 - **回滚**：把 compose 里的镜像 tag 改回旧版本（或用 `docker run` 指定旧 tag），数据目录保持不动；若新版本已写入旧版本不认识的列，**先用备份恢复再回滚**。
-- 建议生产环境锁精确版本（`bsfeng/norvels:0.13.5`），升级时显式改号，不要跟 `latest` 裸跑；NAS 用 `./update.sh --latest` 会把实际版本号回写进 `.env`。
+- 建议生产环境锁精确版本（`bsfeng/norvels:0.14.0`），升级时显式改号，不要跟 `latest` 裸跑；NAS 用 `./update.sh --latest` 会把实际版本号回写进 `.env`。
 
 ## 7. 首次发布前 checklist
 
@@ -217,7 +217,7 @@ curl -fsS localhost:8080/api/health              # 期望 {"db":"ok",...}
 - [ ] 本版有用户会踩的迁移/备份要求时，「升级注意」已写清（哪些操作要在升级前做）
 - [ ] 打本版 tag（注释 tag，正文取 CHANGELOG 该版本一节，见 §5 第 3 步）并 `git push origin v<版本>`
 - [ ] `release.yml` 跑完后 `docker buildx imagetools inspect bsfeng/norvels:<版本>` 看到 amd64 + arm64
-- [ ] Docker Hub 页面上本版 `X.Y.Z` 与 `latest` 都在（当前 `0.13.5`）
+- [ ] Docker Hub 页面上本版 `X.Y.Z` 与 `latest` 都在（当前 `0.14.0`）
 
 ## 8. Dependabot
 

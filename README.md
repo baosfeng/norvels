@@ -64,7 +64,7 @@ make build                                                       # 生产产物 
 ### Docker（3 条命令）
 
 ```bash
-docker build -f deploy/Dockerfile -t norvels:0.13.5 .   # 1) 构建镜像（tag 与 Makefile 的 VERSION 同名）
+docker build -f deploy/Dockerfile -t norvels:0.14.0 .   # 1) 构建镜像（tag 与 Makefile 的 VERSION 同名）
 NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml \
   run --rm --entrypoint /norvels norvels import --dir /books --db /data/norvels.db   # 2) 先导入
 NORVELS_BOOKS_DIR="/path/to/txt" docker compose -f deploy/compose.yml up -d          # 3) 启动
