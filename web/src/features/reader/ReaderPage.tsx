@@ -234,7 +234,7 @@ function ReaderScreen() {
     // 分页下左右 30% 是翻一页（章末再翻才跨章），滚动模式下仍是翻一章
     onZoneTap: paging.active ? paging.zoneTap : stepChapter,
   });
-  const { fullscreen, canFullscreen, toggle: toggleFullscreen } = useReaderFullscreen({ onUnsupported: controls.hide });
+  const { fullscreen, canFullscreen, toggle: toggleFullscreen } = useReaderFullscreen({ onEnter: controls.hide });
 
   useReaderProgressSync({
     bookId,

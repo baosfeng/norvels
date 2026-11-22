@@ -40,6 +40,8 @@ interface DragState {
 
 const CUR_Z = "2";
 const NEXT_Z = "1";
+/** 收尾兜底的余量（ms）：超过「理论时长 + 这个值」还没落定，就强制落定（见 run）。 */
+const SETTLE_WATCHDOG_MS = 240;
 
 /**
  * 翻页引擎：手势 → 逐帧 p → 提交或回弹。
@@ -208,12 +210,27 @@ export class PageTurnEngine {
       return;
     }
     const duration = settleDuration(effectDuration(this.opts.effect(), this.opts.reducedMotion()), from, to);
-    const cancel = runner.settle(from, to, duration, dir, () => {
-      this.cancelSettle = null;
+    let active = true;
+    let watchdog = 0;
+    let cancel = () => {};
+    const settle = () => {
+      cancel();
+      finish();
+    };
+    const finish = () => {
+      if (!active) return;
+      active = false;
+      window.clearTimeout(watchdog);
+      if (this.cancelSettle === settle) this.cancelSettle = null;
       if (to === 1) this.land(this.page + dir);
       else this.clearPair();
-    });
-    this.cancelSettle = cancel;
+    };
+    cancel = runner.settle(from, to, duration, dir, finish);
+    // 收尾未必等得到 done：rAF 在后台标签页被暂停、transitionend 在一次重排后丢失，
+    // 都会让 busy 永远为真——之后每一次点击 / 滑动翻页都被「翻页中」挡掉，表现为「翻不动页」。
+    // 按理论时长加余量兜底：到点强制落定，宁可少一段动画，也不能卡住翻页。
+    watchdog = window.setTimeout(finish, duration + SETTLE_WATCHDOG_MS);
+    this.cancelSettle = settle;
   }
 
   /**

@@ -50,8 +50,8 @@ afterEach(() => {
 
 describe("useReaderFullscreen", () => {
   it("支持 Fullscreen API 时进入浏览器全屏，退出后回到普通态", async () => {
-    const onUnsupported = vi.fn();
-    const hook = renderHook(() => useReaderFullscreen({ onUnsupported }));
+    const onEnter = vi.fn();
+    const hook = renderHook(() => useReaderFullscreen({ onEnter }));
     expect(hook.result.current.fullscreen).toBe(false);
     expect(hook.result.current.canFullscreen).toBe(true);
 
@@ -60,38 +60,41 @@ describe("useReaderFullscreen", () => {
     });
     expect(doc.documentElement.requestFullscreen).toHaveBeenCalled();
     expect(hook.result.current.fullscreen).toBe(true);
+    // 进入全屏就要收起控制栏：留着控制栏既不是真全屏，还会给外壳留一条底部空白带
+    expect(onEnter).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await hook.result.current.toggle();
     });
     expect(doc.exitFullscreen).toHaveBeenCalled();
     expect(hook.result.current.fullscreen).toBe(false);
-    expect(onUnsupported).not.toHaveBeenCalled();
+    // 退出全屏不再触发一次收起
+    expect(onEnter).toHaveBeenCalledTimes(1);
   });
 
   it("浏览器拒绝全屏时降级为页面内全屏并通知调用方", async () => {
     setFullscreenApi({ enabled: true, requestFails: true });
-    const onUnsupported = vi.fn();
-    const hook = renderHook(() => useReaderFullscreen({ onUnsupported }));
+    const onEnter = vi.fn();
+    const hook = renderHook(() => useReaderFullscreen({ onEnter }));
 
     await act(async () => {
       await hook.result.current.toggle();
     });
     expect(hook.result.current.fullscreen).toBe(true);
-    expect(onUnsupported).toHaveBeenCalledTimes(1);
+    expect(onEnter).toHaveBeenCalledTimes(1);
   });
 
   it("环境不支持 Fullscreen API 时直接进入页面内全屏", async () => {
     setFullscreenApi({ enabled: false });
-    const onUnsupported = vi.fn();
-    const hook = renderHook(() => useReaderFullscreen({ onUnsupported }));
+    const onEnter = vi.fn();
+    const hook = renderHook(() => useReaderFullscreen({ onEnter }));
 
     await act(async () => {
       await hook.result.current.toggle();
     });
     expect(doc.documentElement.requestFullscreen).not.toHaveBeenCalled();
     expect(hook.result.current.fullscreen).toBe(true);
-    expect(onUnsupported).toHaveBeenCalledTimes(1);
+    expect(onEnter).toHaveBeenCalledTimes(1);
 
     // 再点一次退出页面内全屏
     await act(async () => {
@@ -101,7 +104,7 @@ describe("useReaderFullscreen", () => {
   });
 
   it("外部（Esc 键）退出浏览器全屏时状态跟着回来", async () => {
-    const hook = renderHook(() => useReaderFullscreen({ onUnsupported: () => undefined }));
+    const hook = renderHook(() => useReaderFullscreen({ onEnter: () => undefined }));
     await act(async () => {
       await hook.result.current.toggle();
     });

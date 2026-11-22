@@ -772,6 +772,15 @@
     /* 底栏两行实际高 113（滑块行 44 + 入口行 48 + 上下 18 + 1px 边框）+ 12 呼吸 */
     padding-bottom: calc(125px + env(safe-area-inset-bottom));
   }
+  /* 分页与全屏：外壳不留底部空白带。
+     留白带只服务「滚动正文的末行不被浮层压住」；分页的页高是按舞台量的，
+     这条带只会让每页少两行、页面底下空一条（实测 40px / 恢复胶囊在场 96px）。
+     全屏时连浮层都不常驻，更要让正文铺满视口。安全区保留，文字才不被手势条遮住。 */
+  .reader-shell:has(.reader-paged),
+  .reader-shell.is-fullscreen,
+  .reader-shell.is-fullscreen.is-controls {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
   /* 滚动区内部只留末行与可视区底边的呼吸；留白带本体在外壳上 */
   .reader-main {
     padding-bottom: 16px;
@@ -782,6 +791,13 @@
   .reader-shell.is-controls .reader-main {
     transform: translateY(var(--reader-top-h));
     padding-bottom: calc(16px + var(--reader-top-h));
+  }
+  /* 分页 / 全屏下控制栏是覆盖层：不把正文推下 64px，也不再给底部让位。
+     必须写在 .is-controls .reader-main 之后——两者特异性相同，靠顺序取胜。 */
+  .reader-shell:has(.reader-paged) .reader-main,
+  .reader-shell.is-fullscreen .reader-main {
+    transform: none;
+    padding-bottom: 0;
   }
   /* 自动滚动浮条也收进留白带：prototype.css 给的 78px 是按旧口径算的，会压在正文末行上 */
   .reader-autoscroll {
