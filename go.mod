@@ -3,7 +3,7 @@ module norvels
 go 1.27.0
 
 require (
-	github.com/PuerkitoBio/goquery v1.13.0
+	github.com/PuerkitoBio/goquery v1.14.0
 	github.com/antchfx/htmlquery v1.3.7
 	github.com/cucumber/godog v0.16.0
 	github.com/dop251/goja v0.0.0-20261105002551-2413f2132ac8
