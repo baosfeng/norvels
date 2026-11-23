@@ -7,7 +7,7 @@ require (
 	github.com/antchfx/htmlquery v1.3.7
 	github.com/cucumber/godog v0.16.0
 	github.com/dop251/goja v0.0.0-20261105002551-2413f2132ac8
-	github.com/klauspost/compress v1.20.4
+	github.com/klauspost/compress v1.20.5
 	golang.org/x/net v0.62.0
 	golang.org/x/text v0.44.0
 	modernc.org/sqlite v1.61.1
