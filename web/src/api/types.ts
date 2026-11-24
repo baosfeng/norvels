@@ -1254,6 +1254,11 @@ export interface RuntimeStat {
   heapMB: number;
   numGC: number;
   pools: PoolStat[];
+  /**
+   * 进程常驻内存（含 SQLite 的 off-heap 页缓存）。
+   * 只有拿得到 /proc 的 Linux 才返回；heapMB 看不见页缓存，两者要并排看。
+   */
+  rssMB?: number;
 }
 
 /** GET /api/metrics：进程内（重启清零）的运行时性能快照。 */

@@ -98,6 +98,21 @@ describe("接口耗时面板", () => {
     expect(line).toContain("main 1/8");
   });
 
+  it("拿到 rssMB 时同时显示内存与堆：只写堆会让人以为进程很省", () => {
+    const base = snapshot();
+    renderPanel({ snapshot: { ...base, runtime: { ...base.runtime, rssMB: 105.5 } } });
+    const line = screen.getByTestId("metrics-runtime").textContent ?? "";
+    expect(line).toContain("内存 105.5MB");
+    expect(line).toContain("堆 2.5MB");
+  });
+
+  it("没有 rssMB（非 Linux）时退回只写堆，不显示 0MB", () => {
+    renderPanel();
+    const line = screen.getByTestId("metrics-runtime").textContent ?? "";
+    expect(line).toContain("堆 2.5MB");
+    expect(line).not.toContain("内存 ");
+  });
+
   it("一条读数都没有时给空态", () => {
     renderPanel({ snapshot: snapshot({ http: [] }) });
     expect(screen.getByTestId("metrics-empty")).toBeTruthy();

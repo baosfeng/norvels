@@ -35,7 +35,9 @@ function topByP95(routes: RouteTiming[]): RouteTiming[] {
 function runtimeLine(snapshot: MetricsSnapshot): string {
   const rt = snapshot.runtime;
   const pools = rt.pools.map((pool) => `${pool.name} ${pool.inUse}/${pool.open}`).join(" · ");
-  const base = `${rt.goVersion} · goroutines ${rt.goroutines} · 堆 ${rt.heapMB.toFixed(1)}MB · GC ${rt.numGC} 次 · 已运行 ${formatDuration(snapshot.uptimeSec)}`;
+  // 内存写「内存 / 堆」：内存含 SQLite 页缓存（off-heap），只看堆会以为进程很省。
+  const mem = rt.rssMB === undefined ? `堆 ${rt.heapMB.toFixed(1)}MB` : `内存 ${rt.rssMB.toFixed(1)}MB（堆 ${rt.heapMB.toFixed(1)}MB）`;
+  const base = `${rt.goVersion} · goroutines ${rt.goroutines} · ${mem} · GC ${rt.numGC} 次 · 已运行 ${formatDuration(snapshot.uptimeSec)}`;
   return pools ? `${base} · 连接池 ${pools}` : base;
 }
 
