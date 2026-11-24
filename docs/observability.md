@@ -10,7 +10,9 @@
 | HTTP | 路由**模板**（`GET /api/books/{id}`），上限 512 | api 路由包装（`observe.Wrap`） | 哪一类接口慢（次数/分位/错误数） |
 | 慢请求 | 单条请求，环形 200 条 | 超过 `NORVELS_SLOW_MS` 的请求 | 带路径与 request id 的现场复现 |
 | SQL | 归一化**模板**，上限 512 | SQLite 计时驱动（`sqlite-observed`） | 是接口慢还是某条 SQL 慢 |
-| 运行时 | 进程级快照 | `runtime` + 已登记连接池的 `sql.DBStats` | goroutine 泄漏 / 堆 / GC / 连接池排队 |
+| 运行时 | 进程级快照 | `runtime`（含 `heapMB` 与 `rssMB`）+ 已登记连接池的 `sql.DBStats` | goroutine 泄漏 / 堆 / GC / 连接池排队 |
+
+> `heapMB` 只是 Go 堆，`rssMB` 才是内核视角的常驻内存；两者之差就是 SQLite 的 off-heap 页缓存（排查「内存为什么这么高」先看这一对，见 [deploy.md §6](deploy.md)）。
 
 ## 口径（读数字前先看这几条）
 

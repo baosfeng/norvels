@@ -261,12 +261,14 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 | 场景 | CPU | 内存 | 磁盘 | 依据 |
 |---|---|---|---|---|
-| 浏览/阅读（serve） | 1 vCPU | 1 GB | 数据卷大小 | Go 服务 RSS 约 50–100 MB；`cache_size=-65536` 是**每连接** 64 MiB 页缓存上限（主库/正文库/推荐库三池 × `SetMaxOpenConns(8)`，实际按访问模式增长，1C512M 机器建议调到 `-16384`） |
+| 浏览/阅读（serve） | 1 vCPU | 1 GB | 数据卷大小 | 进程 RSS 约 100–200 MB（实测口径见下）；`cache_size=-16384`（16 MiB）是**每条连接**的页缓存上限，主库/正文库/推荐库三池 × `SetMaxOpenConns(8)` = 24 份，最坏约 384 MB。库闲置 10 分钟后后台自动归还页缓存（`PRAGMA shrink_memory`，实测 713 MB → 65 MB、耗时 ≤ 79 ms） |
 | 导入 4.4 GB / 865 文件 | 2 vCPU | 2 GB | 源 4.4 GB + 库约 1.6 GB + 备份 | 解析是 CPU 密集（并发 `min(NumCPU, 8)`），SQLite 写入是 IO 密集；WAL 峰值数十 MB。1C1G 也能跑完，但耗时约翻倍 |
 
 - 磁盘 IO：SSD 明显优于机械盘（估算 2–3 倍差异），4.4 GB 文本顺序读 + 随机写库。
 - 网络：仅 API 与静态资源，浏览流量很小；导入不需要网络。
-- 若在低配机器（1C512M）上运行，建议把 `cache_size` 调小（需改代码）或只用于浏览。
+- **内存构成**（排障按这个顺序看）：`/api/metrics` 的 `runtime.rssMB` 是内核视角的常驻内存，`runtime.heapMB` 只是 Go 堆。两者差出来的就是 SQLite 页缓存——它走 `libc.Xmalloc` 落在 Go 堆之外，`GOMEMLIMIT` **管不到**（实测设 64 MiB 后页缓存照样涨到 712 MB），别指望用 Go 的内存限制去约束它。
+- 容器 cgroup 的 `memory.current` 大部分是 page cache（读大库留下的文件页，随时可回收）；判断「进程真的占多少」看 `runtime.rssMB` 或 `anon`，别看 cgroup 总数。
+- 想让容器更早回收、别把进程页换进 swap，给 compose 设 `NORVELS_MEM_LIMIT`（默认 768M）：那是给内核的回收边界，不是应用配额。
 
 ## 7. 升级与回滚
 

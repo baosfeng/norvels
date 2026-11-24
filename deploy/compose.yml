@@ -63,11 +63,13 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
     # 资源建议：浏览 1C1G 足够；导入 4.4GB 建议 2C2G（详见 docs/deploy.md）。
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "2.0"
-    #       memory: 2G
+    # memory 是给内核的回收边界（到顶先回收 page cache、不是把进程换进 swap），
+    # 不是应用的内存配额：浏览实测 RSS 约 100–200 MB。大库首次导入时用
+    # NORVELS_MEM_LIMIT=2G 放开，需要限 CPU 再加一行 cpus: "2.0"。
+    deploy:
+      resources:
+        limits:
+          memory: ${NORVELS_MEM_LIMIT:-768M}
     logging:
       driver: json-file
       options:

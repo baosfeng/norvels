@@ -84,7 +84,7 @@ func openSQLite(ctx context.Context, path string) (*sql.DB, error) {
 		"&_pragma=synchronous(NORMAL)" +
 		"&_pragma=foreign_keys(ON)" +
 		"&_pragma=temp_store(MEMORY)" +
-		"&_pragma=cache_size(-65536)"
+		"&_pragma=cache_size(" + cacheSizePragma + ")"
 	// 走 observe 的计时包装驱动（DriverName）：DSN 与驱动行为完全不变，只是多一层耗时采集。
 	// 打开时 sql.Register 已由 observe 包 init 完成，这里不再依赖下划线导入顺序。
 	db, err := sql.Open(observe.DriverName, dsn)

@@ -47,12 +47,15 @@ services:
       retries: 3
     restart: unless-stopped
     stop_grace_period: 15s
-    # 大库首次全量导入时把这里打开（浏览本身 1C1G 够用）：
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "2.0"
-    #       memory: 2G
+    # 内存上限（软兜底）：这里**不是**限制应用能用多少内存，而是给内核一个明确的
+    # 回收边界——cgroup 到顶时优先回收 page cache，而不是把进程页换进 swap。
+    # 浏览/阅读实测：进程 RSS 约 100–200 MB（页缓存上限已降到三库共 24 条连接 × 16 MiB），
+    # 768M 留足余量又不至于让冷页面长期赖在内存里。大库首次全量导入时改成 2G，
+    # 需要限 CPU 再加一行 cpus: "2.0"。
+    deploy:
+      resources:
+        limits:
+          memory: ${NORVELS_MEM_LIMIT:-768M}
     logging:
       driver: json-file
       options:

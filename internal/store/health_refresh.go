@@ -55,6 +55,8 @@ type storeBackground struct {
 	// started / stop 控制后台循环只启动一次、退出时能停。
 	started bool
 	stop    chan struct{}
+	// reclaimStarted 去重闲置归还循环（与内容对账共用 stop，见 cache_reclaim.go）。
+	reclaimStarted bool
 	// bg / cancel 是后台对账自己的 context：与请求、与循环生命周期都解耦，
 	// Stop 时统一取消（进程退出 / 测试收尾）。
 	bg     context.Context

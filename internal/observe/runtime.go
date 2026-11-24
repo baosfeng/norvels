@@ -41,6 +41,7 @@ func RegisterPool(db *sql.DB, name string) {
 // snapshotRuntime 采集进程级运行时与连接池统计。
 //
 // HeapMB 取 HeapAlloc（存活对象），不是 Sys：容器内存看 Sys 只会看到「用不掉也还不了」的那部分。
+// RSSMB 补上 HeapMB 看不见的那一半——SQLite 页缓存是 off-heap 的（见 memory.go）。
 // WaitMs 是累计等待时长，配合 WaitCount 才能判断「是不是连接池在排队」。
 func snapshotRuntime() RuntimeStat {
 	var ms runtime.MemStats
@@ -51,6 +52,10 @@ func snapshotRuntime() RuntimeStat {
 		HeapMB:     round2(float64(ms.HeapAlloc) / (1024 * 1024)),
 		NumGC:      ms.NumGC,
 		Pools:      []PoolStat{},
+	}
+	// RSS 与 HeapMB 互补而不是重复：SQLite 页缓存（off-heap）只体现在前者。
+	if mb, ok := RSSMB(); ok {
+		stat.RSSMB = round2(mb)
 	}
 	for _, reg := range registeredPools() {
 		stat.Pools = append(stat.Pools, poolSnapshot(reg))

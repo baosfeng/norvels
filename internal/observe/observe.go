@@ -104,6 +104,7 @@ func SQLSlowThreshold() time.Duration { return time.Duration(sqlSlowNs.Load()) }
 func ResetForTest() {
 	resetHTTP()
 	resetSQL()
+	lastActivity.Store(0)
 	slowNs.Store(int64(defaultSlowMs) * int64(time.Millisecond))
 	sqlSlowNs.Store(int64(defaultSQLSlowMs) * int64(time.Millisecond))
 	disabled = false
@@ -164,6 +165,10 @@ type RuntimeStat struct {
 	HeapMB     float64    `json:"heapMB"`
 	NumGC      uint32     `json:"numGC"`
 	Pools      []PoolStat `json:"pools"`
+	// RSSMB 是内核视角的常驻内存（含 SQLite 的 off-heap 页缓存）。
+	// HeapMB 只看得见 Go 堆，两者差出来的就是页缓存——排查内存时先看这一对。
+	// 拿不到时缺省为 0（非 Linux 平台）。
+	RSSMB float64 `json:"rssMB,omitempty"`
 }
 
 // Snapshot 是 GET /api/metrics 的完整响应体（字段名与前端冻结）。

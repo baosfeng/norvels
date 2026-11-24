@@ -84,7 +84,7 @@ func openSQLite(ctx context.Context, path string) (*sql.DB, error) {
 		"&_pragma=synchronous(NORMAL)" +
 		"&_pragma=foreign_keys(ON)" +
 		"&_pragma=temp_store(MEMORY)" +
-		"&_pragma=cache_size(-65536)"
+		"&_pragma=cache_size(" + cacheSizePragma + ")"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("recstore: open %s: %w", path, err)

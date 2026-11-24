@@ -61,6 +61,7 @@ func (c *observedConn) Begin() (driver.Tx, error)                 { return c.con
 
 // QueryContext 计时后转发；底层不支持 QueryerContext 时退化为 Prepare + Query。
 func (c *observedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	noteActivity()
 	start := time.Now()
 	rows, err := queryContext(ctx, c.conn, query, args)
 	c.track(ctx, query, time.Since(start), err)
@@ -69,6 +70,7 @@ func (c *observedConn) QueryContext(ctx context.Context, query string, args []dr
 
 // ExecContext 计时后转发；底层不支持 ExecerContext 时退化为 Prepare + Exec。
 func (c *observedConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	noteActivity()
 	start := time.Now()
 	res, err := execContext(ctx, c.conn, query, args)
 	c.track(ctx, query, time.Since(start), err)
